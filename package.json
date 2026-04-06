@@ -30,7 +30,9 @@
   },
   "packageManager": "npm@10.2.4",
   "dependencies": {
+    "@prisma/client": "^6.19.3",
     "drizzle-orm": "^0.45.2",
-    "postgres": "^3.4.9"
+    "postgres": "^3.4.9",
+    "prisma": "^6.19.3"
   }
 }

@@ -14,7 +14,6 @@ import {
   jsonb,
   timestamp,
   index,
-  pgVector,
 } from 'drizzle-orm/pg-core';
 
 // Multi-tenant Foundation - Every participant in the supply chain
@@ -38,7 +37,7 @@ export const products = pgTable('products', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
   hsn_code: text('hsn_code').notNull(), // Required for GST categorization
-  image_embedding: pgVector('image_embedding', { dimensions: 1536 }), // Visual SKU matching
+  image_embedding: text('image_embedding'), // Visual SKU matching (stored as JSON array string)
   current_stock: numeric('current_stock').notNull().default('0'),
   wholesale_price: numeric('wholesale_price').notNull().default('0'),
   mrp: numeric('mrp').notNull().default('0'), // 2026 regulated maximum retail price
@@ -55,7 +54,7 @@ export const transactions = pgTable('transactions', {
   inv_no: text('inv_no').notNull().unique(), // Formatted as SHOP-YYYY-SERIAL
   journal_no: bigint('journal_no', { mode: 'number' }).notNull(), // Sequential double-entry
   seller_id: uuid('seller_id').notNull().references(() => entities.id),
-  buyer_hash: pgVector('buyer_hash', { dimensions: 512 }), // Anonymized Face-ID embedding
+  buyer_hash: text('buyer_hash'), // Anonymized Face-ID embedding (stored as JSON array string)
   items: jsonb('items').notNull(), // Detailed snapshot: [{sku, name, qty, rate, discount, gst_5, total}]
   subtotal: numeric('subtotal').notNull().default('0'),
   gst_total: numeric('gst_total').notNull().default('0'), // Strict 5% flat calculation

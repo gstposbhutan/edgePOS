@@ -15,6 +15,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@prisma/client": "^7.6.0",
     "@supabase/supabase-js": "^2.39.0",
     "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.9",
@@ -23,6 +24,7 @@
   "devDependencies": {
     "@types/node": "^20",
     "drizzle-kit": "^0.31.10",
+    "prisma": "^7.6.0",
     "typescript": "^5",
     "vitest": "^1.1.0"
   }
