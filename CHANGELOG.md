@@ -8,42 +8,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Supabase project initialization and configuration
-- Prisma ORM setup with PostgreSQL schema for GST 2026 compliance
-- Complete database schema for NEXUS BHUTAN ecosystem:
-  - Entity model (multi-tenant supply chain hierarchy)
-  - Product model (with image embedding storage for AI recognition)
-  - Transaction model (GST 2026 compliant with 5% flat rate)
-  - AuditLog model (compliance and fraud detection tracking)
-  - InventoryMovement model (stock flow tracking)
-- Environment variable configuration for Supabase connection
-- Database client setup examples for POS terminal integration
+- **Database Connection Testing Suite**: Comprehensive troubleshooting tools for Supabase connectivity
+  - `test-db-connection.js`: Direct PostgreSQL connection testing
+  - `test-db-connection-advanced.js`: Advanced connection diagnostics
+  - `test-supabase-rest.js`: REST API connection verification
+- **SQL Schema Creation**: Complete database schema ready for manual execution
+  - `supabase/schema.sql`: Production-ready SQL with indexes and sample data
+  - Multi-tenant entity hierarchy (Distributor → Wholesaler → Retailer)
+  - AI-ready product table with image embedding storage
+  - GST 2026 compliant transaction ledger (5% flat rate + ITC)
+  - Complete audit trail for compliance and fraud detection
+  - Inventory movement tracking across supply chain
+- **Alternative Connection Methods**: Multiple approaches for database connectivity
+  - Supabase REST API (✅ Working)
+  - Direct PostgreSQL connection (requires password verification)
+  - Prisma ORM integration (pending schema creation)
+- **Database Setup Scripts**: Automated Prisma client generation and schema pulling
+- **Sample Data**: Initial test data for 3 entities and 3 products
 
 ### Changed
-- Switched from Drizzle ORM to Prisma 6 for better Supabase compatibility
-- Updated vector storage approach from pgVector to JSON arrays
+- **Database Password Resolution**: Corrected authentication credentials
+- **Connection Approach**: Shifted from direct PostgreSQL to REST API primary method
+- **Schema Creation**: Manual SQL execution instead of automated migration
 
 ### Technical Details
-- Database: PostgreSQL via Supabase (project: uoermqevxkuxbazbzxkc)
-- ORM: Prisma 6 with traditional schema-based configuration
-- Connection: Pooler and direct connection URLs configured
-- Schema: Multi-tenant design with RLS-ready structure
+- **Database**: PostgreSQL via Supabase (project: uoermqevxkuxbazbzxkc)
+- **Connection Methods**: REST API (working), Direct PostgreSQL (troubleshooting)
+- **Authentication**: Service role and anon keys confirmed working
+- **Schema Design**: Multi-tenant with RLS-ready structure
+- **GST Compliance**: 5% flat rate with Input Tax Credit tracking
 
-### Database Schema
-- **entities**: Multi-tenant foundation (Distributor → Wholesaler → Retailer)
-- **products**: Central brain with 1536-dim image embeddings for AI
-- **transactions**: GST compliant accounting ledger with digital signatures
-- **audit_logs**: Complete audit trail for compliance
-- **inventory_movements**: Stock tracking with reconciliation support
+### Database Schema Features
+- **entities**: Multi-tenant foundation with parent-child relationships
+- **products**: Central brain with JSON-stored image embeddings (1536-dim)
+- **transactions**: GST compliant ledger with digital signature support
+- **audit_logs**: Complete audit trail for regulatory compliance
+- **inventory_movements**: Stock reconciliation across supply chain
 
-### Known Issues
-- Database connection authentication pending verification
-- Need to configure Row-Level Security (RLS) policies
-- Migration scripts to be created once connection is established
+### Connection Status
+- ✅ **Supabase REST API**: Working with anon/service role keys
+- ⚠️ **Direct PostgreSQL**: Password authentication under investigation
+- 📋 **SQL Schema**: Ready for manual execution in Supabase dashboard
+- 🔧 **Prisma Integration**: Pending schema creation
 
 ### Next Steps
-- Resolve database connection authentication
-- Push schema to Supabase
-- Configure RLS policies for multi-tenant isolation
-- Create seed data for testing
-- Set up Prisma Client generation
+1. Execute `supabase/schema.sql` in Supabase SQL Editor
+2. Run `update-prisma-client.js` to generate Prisma client
+3. Configure Row-Level Security (RLS) policies
+4. Begin POS terminal development with working database
+5. Set up automated migrations for future schema changes
+
+### Documentation
+- Updated database connection troubleshooting guide
+- Added comprehensive SQL schema with sample data
+- Created automated Prisma client update script
+- Documented REST API integration patterns
