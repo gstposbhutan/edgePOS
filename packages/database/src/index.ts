@@ -7,44 +7,15 @@
  * @package @nexus-bhutan/database
  */
 
-// Supabase client configuration
+// Export database client and schemas
+export { db, closeConnection } from './db';
+export * from './schema';
+
+// Supabase client configuration (for direct Supabase usage when needed)
 export const createSupabaseClient = (url: string, key: string) => {
   // Placeholder for Supabase client initialization
   return { url, key };
 };
 
-// Database schema types (to be implemented with Prisma/Drizzle)
-export interface Entity {
-  id: string;
-  name: string;
-  role: 'DISTRIBUTOR' | 'WHOLESALER' | 'RETAILER';
-  tpn_gstin: string;
-  whatsapp_no: string;
-  credit_limit: number;
-  parent_entity_id?: string;
-}
-
-export interface Product {
-  id: string;
-  name: string;
-  hsn_code: string;
-  image_embedding: number[];
-  current_stock: number;
-  wholesale_price: number;
-  mrp: number;
-}
-
-export interface Transaction {
-  id: string;
-  inv_no: string;
-  journal_no: bigint;
-  seller_id: string;
-  buyer_hash: number[];
-  items: any[];
-  subtotal: number;
-  gst_total: number;
-  grand_total: number;
-  payment_method: 'MBOB' | 'MPAY' | 'RTGS' | 'CASH' | 'CREDIT';
-  ocr_verify_id?: string;
-  whatsapp_status: 'SENT' | 'DELIVERED' | 'READ';
-}
+// Re-export types for backward compatibility
+export type { Entity, Product, Transaction } from './schema';

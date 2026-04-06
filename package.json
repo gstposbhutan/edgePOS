@@ -20,6 +20,7 @@
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.1",
+    "drizzle-kit": "^0.31.10",
     "prettier": "^3.2.5",
     "turbo": "^2.0.4"
   },
@@ -27,5 +28,9 @@
     "node": ">=18.0.0",
     "npm": ">=9.0.0"
   },
-  "packageManager": "npm@10.2.4"
+  "packageManager": "npm@10.2.4",
+  "dependencies": {
+    "drizzle-orm": "^0.45.2",
+    "postgres": "^3.4.9"
+  }
 }
