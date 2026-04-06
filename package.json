@@ -31,7 +31,9 @@
   "packageManager": "npm@10.2.4",
   "dependencies": {
     "@prisma/client": "^6.19.3",
+    "@supabase/supabase-js": "^2.101.1",
     "drizzle-orm": "^0.45.2",
+    "pg": "^8.20.0",
     "postgres": "^3.4.9",
     "prisma": "^6.19.3"
   }
