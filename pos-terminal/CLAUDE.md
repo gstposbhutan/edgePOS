@@ -6,7 +6,9 @@
 **Full Name**: 4K Edge-AI & GST Master Blueprint (2026)  
 **System Type**: Local-First AI POS & Multi-Tier Supply Chain Ecosystem  
 **Target Market**: Bhutan retail ecosystem (Distributors → Wholesalers → Retailers)  
-**Core Mandate**: 4K Vision. Local Inference (YOLO26). 5% GST Compliance. WhatsApp-Led Logistics. Zero Keyboard Interface.
+**Core Mandate**: 4K Vision. Local Inference (YOLO26). 5% GST Compliance. WhatsApp-Led Logistics. Zero Keyboard Interface.  
+**Repository**: https://github.com/gstposbhutan/edgePOS  
+**License**: Proprietary - Copyright © 2026 NEXUS BHUTAN
 
 ---
 
