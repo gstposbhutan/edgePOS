@@ -21,6 +21,9 @@ model Entity {
   parentEntityId String?   @map("parent_entity_id")
   parent         Entity?   @relation("EntityHierarchy", fields: [parentEntityId], references: [id])
   children       Entity[]  @relation("EntityHierarchy")
+  soldTransactions Transaction[] @relation("TransactionSeller")
+  auditActions    AuditLog[] @relation("AuditLogActor")
+  inventoryMovements InventoryMovement[] @relation("InventoryMovementEntity")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
@@ -54,7 +57,7 @@ model Transaction {
   invNo         String    @unique @map("inv_no") // Formatted as SHOP-YYYY-SERIAL
   journalNo     BigInt    @map("journal_no") // Sequential double-entry
   sellerId      String    @map("seller_id")
-  seller        Entity    @relation(fields: [sellerId], references: [id])
+  seller        Entity    @relation("TransactionSeller", fields: [sellerId], references: [id])
   buyerHash     String?   @map("buyer_hash") // Anonymized Face-ID embedding (stored as JSON)
   items         Json      // Detailed snapshot: [{sku, name, qty, rate, discount, gst_5, total}]
   subtotal      Decimal   @default(0)
@@ -65,8 +68,6 @@ model Transaction {
   whatsappStatus String    @default("PENDING") @map("whatsapp_status") // SENT, DELIVERED, READ
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
-
-  inventoryMovements InventoryMovement[]
 
   @@index([invNo], map: "transactions_inv_idx")
   @@index([sellerId], map: "transactions_seller_idx")
@@ -83,7 +84,7 @@ model AuditLog {
   oldValues  Json?    @map("old_values")
   newValues  Json?    @map("new_values")
   actorId    String?  @map("actor_id")
-  actor      Entity?  @relation(fields: [actorId], references: [id])
+  actor      Entity?  @relation("AuditLogActor", fields: [actorId], references: [id])
   timestamp  DateTime @default(now())
 
   @@index([tableName], map: "audit_logs_table_idx")
@@ -99,13 +100,12 @@ model InventoryMovement {
   productId    String   @map("product_id")
   product      Product  @relation(fields: [productId], references: [id])
   entityId     String   @map("entity_id")
-  entity       Entity   @relation(fields: [entityId], references: [id])
+  entity       Entity   @relation("InventoryMovementEntity", fields: [entityId], references: [id])
   movementType String   @map("movement_type") // SALE, RESTOCK, TRANSFER, LOSS, DAMAGED
   quantity     Int
   referenceId  String?  @map("reference_id") // transaction_id or transfer_id
   timestamp    DateTime @default(now())
   notes        String?
-  transaction  Transaction? @relation(fields: [referenceId], references: [id])
 
   @@index([productId], map: "inventory_movements_product_idx")
   @@index([entityId], map: "inventory_movements_entity_idx")
