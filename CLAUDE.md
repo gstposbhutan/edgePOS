@@ -47,7 +47,7 @@ Represents every participant in the supply chain.
 - `tpn_gstin`: String (Unique) - Bhutanese Taxpayer Number for GST 2026 compliance
 - `whatsapp_no`: String (E.164 format) - Primary channel for all system communications
 - `credit_limit`: Decimal - Managed by Wholesalers for their Retailer network
-- `parent_entity_id`: UUID (Self-ref) - Establishes hierarchy (Retailer → Wholesaler → Distributor)
+- ~~`parent_entity_id`~~: **Removed** — replaced by `retailer_wholesalers` junction table. Retailers can have multiple Wholesaler relationships per category. See `docs/plan/features/distributor-role.md`.
 
 ### products (Central Brain Vector Library)
 Shared repository for product identification across Bhutan.
