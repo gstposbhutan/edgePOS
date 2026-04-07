@@ -8,9 +8,9 @@ import { signOut } from "@/lib/auth"
 import { useRouter } from "next/navigation"
 
 /**
- * @param {{ storeName: string, cashierName: string, customer: object|null, syncing: boolean }} props
+ * @param {{ storeName: string, cashierName: string, customer: object|null, syncing: boolean, onEnrollFace: () => void, faceCamera: React.ReactNode }} props
  */
-export function PosHeader({ storeName, cashierName, customer, syncing }) {
+export function PosHeader({ storeName, cashierName, customer, syncing, onEnrollFace, faceCamera }) {
   const router = useRouter()
 
   async function handleSignOut() {
@@ -31,8 +31,21 @@ export function PosHeader({ storeName, cashierName, customer, syncing }) {
         </div>
       </div>
 
-      {/* Center — customer identity */}
-      <FaceAuthBadge customer={customer} />
+      {/* Center — face camera + customer identity */}
+      <div className="flex items-center gap-3">
+        {faceCamera}
+        <div className="flex flex-col gap-1">
+          <FaceAuthBadge customer={customer} />
+          {!customer?.buyerHash && onEnrollFace && (
+            <button
+              onClick={onEnrollFace}
+              className="text-[10px] text-primary hover:underline underline-offset-2 text-left"
+            >
+              + Enroll Face-ID
+            </button>
+          )}
+        </div>
+      </div>
 
       {/* Right — status + actions */}
       <div className="flex items-center gap-2">

@@ -7,6 +7,10 @@ import { ProductPanel }    from "@/components/pos/product-panel"
 import { CartPanel }       from "@/components/pos/cart-panel"
 import { CustomerIdModal } from "@/components/pos/customer-id-modal"
 import { StockGateModal }  from "@/components/pos/stock-gate-modal"
+import { CameraCanvas }      from "@/components/pos/camera/camera-canvas"
+import { FaceCamera }        from "@/components/pos/camera/face-camera"
+import { FaceConsentModal }  from "@/components/pos/face-consent-modal"
+import { FaceStore }         from "@/lib/vision/face-store"
 import { useCart }         from "@/hooks/use-cart"
 import { useProducts }     from "@/hooks/use-products"
 import { getUser, getRoleClaims } from "@/lib/auth"
@@ -23,7 +27,10 @@ export default function PosPage() {
   const [showCustomerModal, setShowCustomerModal] = useState(false)
   const [checkoutLoading,   setCheckoutLoading]   = useState(false)
   const [checkoutError,     setCheckoutError]     = useState(null)
-  const [stockShortfalls,   setStockShortfalls]   = useState([])  // items with insufficient stock
+  const [stockShortfalls,   setStockShortfalls]   = useState([])
+  const [cameraActive,      setCameraActive]      = useState(false)
+  const [faceActive,        setFaceActive]        = useState(true)
+  const [showConsent,       setShowConsent]        = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -185,6 +192,15 @@ export default function PosPage() {
     }
   }
 
+  async function handleFaceIdentified(profile) {
+    await setCustomerIdentity({ whatsapp: profile.whatsapp_no, buyerHash: profile.id })
+  }
+
+  async function handleFaceEnroll(params) {
+    const store = new FaceStore()
+    return store.enroll({ entityId: entity?.id, ...params })
+  }
+
   async function handleCustomerIdentified(whatsapp) {
     await setCustomerIdentity({ whatsapp, buyerHash: null })
     setShowCustomerModal(false)
@@ -209,16 +225,59 @@ export default function PosPage() {
         cashierName={user?.email ?? ''}
         customer={customer}
         syncing={false}
+        onEnrollFace={() => setShowConsent(true)}
+        faceCamera={
+          <FaceCamera
+            entityId={entity?.id}
+            active={faceActive}
+            onIdentified={handleFaceIdentified}
+            onUnidentified={() => {}}
+          />
+        }
       />
 
       <div className="flex-1 flex overflow-hidden">
-        <div className="flex-1 min-w-0 p-4 overflow-hidden flex flex-col border-r border-border">
-          <ProductPanel
-            products={products}
-            loading={productsLoading}
-            onSearch={search}
-            onAddItem={addItem}
-          />
+        {/* Left — Camera + Products */}
+        <div className="flex-1 min-w-0 overflow-hidden flex flex-col border-r border-border">
+          {/* Camera toggle bar */}
+          <div className="flex items-center gap-2 px-4 pt-3 pb-2 shrink-0">
+            <button
+              onClick={() => setCameraActive(v => !v)}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-all
+                ${cameraActive
+                  ? 'bg-primary text-primary-foreground border-transparent'
+                  : 'border-border text-muted-foreground hover:border-primary/40'
+                }`}
+            >
+              📷 {cameraActive ? 'Camera On' : 'Camera Off'}
+            </button>
+            {cameraActive && (
+              <span className="text-xs text-muted-foreground">Hold items in view to auto-add</span>
+            )}
+          </div>
+
+          {/* 4K Camera canvas */}
+          {cameraActive && (
+            <div className="px-4 pb-3 shrink-0 h-64">
+              <CameraCanvas
+                active={cameraActive}
+                onProductRecognized={(product) => {
+                  const match = products.find(p => p.id === product.productId)
+                  if (match) addItem(match)
+                }}
+              />
+            </div>
+          )}
+
+          {/* Manual product grid */}
+          <div className="flex-1 p-4 pt-0 overflow-hidden flex flex-col">
+            <ProductPanel
+              products={products}
+              loading={productsLoading}
+              onSearch={search}
+              onAddItem={addItem}
+            />
+          </div>
         </div>
 
         <div className="w-80 lg:w-96 shrink-0 p-4 flex flex-col overflow-hidden">
@@ -247,6 +306,13 @@ export default function PosPage() {
           />
         </div>
       </div>
+
+      <FaceConsentModal
+        open={showConsent}
+        entityId={entity?.id}
+        onEnroll={handleFaceEnroll}
+        onClose={() => setShowConsent(false)}
+      />
 
       <CustomerIdModal
         open={showCustomerModal}
