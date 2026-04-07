@@ -10,7 +10,8 @@ import { StockGateModal }  from "@/components/pos/stock-gate-modal"
 import { CameraCanvas }      from "@/components/pos/camera/camera-canvas"
 import { FaceCamera }        from "@/components/pos/camera/face-camera"
 import { FaceConsentModal }  from "@/components/pos/face-consent-modal"
-import { FaceStore }         from "@/lib/vision/face-store"
+import { FaceStore }          from "@/lib/vision/face-store"
+import { PaymentScannerModal } from "@/components/pos/payment-scanner-modal"
 import { useCart }         from "@/hooks/use-cart"
 import { useProducts }     from "@/hooks/use-products"
 import { getUser, getRoleClaims } from "@/lib/auth"
@@ -31,6 +32,12 @@ export default function PosPage() {
   const [cameraActive,      setCameraActive]      = useState(false)
   const [faceActive,        setFaceActive]        = useState(true)
   const [showConsent,       setShowConsent]        = useState(false)
+  const [showPaymentScan,   setShowPaymentScan]   = useState(false)
+  const [ocrVerifyId,       setOcrVerifyId]       = useState(null)
+  const [ocrReferenceNo,    setOcrReferenceNo]    = useState(null)
+
+  // Payment methods that require OCR verification
+  const OCR_REQUIRED_METHODS = ['MBOB', 'MPAY', 'RTGS']
 
   useEffect(() => {
     async function load() {
@@ -61,22 +68,31 @@ export default function PosPage() {
   // ── Stock availability check ───────────────────────────────────────────────
   async function checkStockAvailability() {
     if (!items.length) return []
+    const shortfalls = []
 
-    const productIds = [...new Set(items.map(i => i.product_id).filter(Boolean))]
-    const { data: stocks } = await supabase
-      .from('products')
-      .select('id, current_stock')
-      .in('id', productIds)
+    for (const item of items) {
+      if (item.package_id) {
+        // For packages: use DB function to get available qty
+        const { data: avail } = await supabase
+          .rpc('package_available_qty', { p_package_id: item.package_id })
 
-    const stockMap = Object.fromEntries((stocks ?? []).map(p => [p.id, p.current_stock]))
+        if ((avail ?? 0) < item.quantity) {
+          shortfalls.push({ item, available: avail ?? 0, needed: item.quantity })
+        }
+      } else if (item.product_id) {
+        const { data: product } = await supabase
+          .from('products')
+          .select('current_stock')
+          .eq('id', item.product_id)
+          .single()
 
-    return items
-      .filter(item => item.product_id && (stockMap[item.product_id] ?? 0) < item.quantity)
-      .map(item => ({
-        item,
-        available: stockMap[item.product_id] ?? 0,
-        needed:    item.quantity,
-      }))
+        if ((product?.current_stock ?? 0) < item.quantity) {
+          shortfalls.push({ item, available: product?.current_stock ?? 0, needed: item.quantity })
+        }
+      }
+    }
+
+    return shortfalls
   }
 
   // ── Checkout flow ──────────────────────────────────────────────────────────
@@ -100,7 +116,21 @@ export default function PosPage() {
       return
     }
 
+    // OCR verification required for digital payment methods
+    if (OCR_REQUIRED_METHODS.includes(paymentMethod) && !ocrVerifyId) {
+      setCheckoutLoading(false)
+      setShowPaymentScan(true)
+      return
+    }
+
     await processCheckout()
+  }
+
+  function handlePaymentVerified(verifyId, referenceNo) {
+    setOcrVerifyId(verifyId)
+    setOcrReferenceNo(referenceNo)
+    // Proceed to checkout now that OCR is done
+    processCheckout({ verifyId, referenceNo })
   }
 
   async function handleRestockComplete() {
@@ -110,10 +140,13 @@ export default function PosPage() {
     if (shortfalls.length === 0) await processCheckout()
   }
 
-  async function processCheckout() {
+  async function processCheckout(ocr = {}) {
     if (!cartId || !paymentMethod || items.length === 0) return
     setCheckoutLoading(true)
     setCheckoutError(null)
+
+    const finalVerifyId    = ocr.verifyId    ?? ocrVerifyId
+    const finalReferenceNo = ocr.referenceNo ?? ocrReferenceNo
 
     try {
       const year      = new Date().getFullYear()
@@ -140,6 +173,8 @@ export default function PosPage() {
           gst_total:         gstTotal,
           grand_total:       grandTotal,
           payment_method:    paymentMethod,
+          payment_ref:       finalReferenceNo ?? null,
+          ocr_verify_id:     finalVerifyId    ?? null,
           digital_signature: signature,
           cart_id:           cartId,
           created_by:        user?.id,
@@ -151,16 +186,19 @@ export default function PosPage() {
 
       await supabase.from('order_items').insert(
         items.map(item => ({
-          order_id:   order.id,
-          product_id: item.product_id,
-          sku:        item.sku,
-          name:       item.name,
-          quantity:   item.quantity,
-          unit_price: item.unit_price,
-          discount:   item.discount ?? 0,
-          gst_5:      item.gst_5,
-          total:      item.total,
-          status:     'ACTIVE',
+          order_id:     order.id,
+          product_id:   item.product_id,
+          package_id:   item.package_id   ?? null,
+          package_name: item.package_id   ? item.name : null,
+          package_type: item.package_def?.package_type ?? null,
+          sku:          item.sku,
+          name:         item.name,
+          quantity:     item.quantity,
+          unit_price:   item.unit_price,
+          discount:     item.discount ?? 0,
+          gst_5:        item.gst_5,
+          total:        item.total,
+          status:       'ACTIVE',
         }))
       )
 
@@ -183,6 +221,8 @@ export default function PosPage() {
 
       await clearCart()
       setPaymentMethod(null)
+      setOcrVerifyId(null)
+      setOcrReferenceNo(null)
       router.push(`/pos/order/${order.id}?success=true`)
 
     } catch (err) {
@@ -306,6 +346,14 @@ export default function PosPage() {
           />
         </div>
       </div>
+
+      <PaymentScannerModal
+        open={showPaymentScan}
+        paymentMethod={paymentMethod}
+        expectedAmount={grandTotal}
+        onVerified={handlePaymentVerified}
+        onClose={() => setShowPaymentScan(false)}
+      />
 
       <FaceConsentModal
         open={showConsent}

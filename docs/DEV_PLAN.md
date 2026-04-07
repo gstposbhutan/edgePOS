@@ -54,7 +54,8 @@ Manual POS operations before AI integration.
 | # | Feature | Status | Details |
 |---|---------|--------|---------|
 | 2.1 | POS Layout (split-view) | ✅ Done | Products left, cart right, customer badge, inventory nav, sign out |
-| 2.2 | Product search & manual add | ⏳ Pending | Product catalogue management — add/edit products |
+| 2.2 | Product search & manual add | ✅ Done | Catalogue management — add/edit, barcode, reorder point, batch details |
+| 2.11 | Product packaging variants | 🔵 Scoped | Packages are first-class products (BULK/BUNDLE/MIXED), sold_as_package_only flag, `sellable_products` view, `package_available_qty()` — see [F-PKG-001](features/product-packaging.md) |
 | 2.3 | Shopping cart with GST | ✅ Done | 5% GST on taxable amount, discounts, price overrides, void — role-gated |
 | 2.4 | Transaction recording | ✅ Done | order + order_items, SHA-256 signature, stock deduction trigger |
 | 2.5 | Payment method selector | ✅ Done | mBoB, mPay, RTGS, Cash, Credit in cart panel |

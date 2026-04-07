@@ -79,6 +79,33 @@ export function useInventory(entityId) {
   const lowCount = products.filter(p => p.current_stock > 0 && p.current_stock <= (p.reorder_point ?? 10)).length
   const outCount = products.filter(p => p.current_stock <= 0).length
 
+  // Products that are bottlenecking an active package (component availability < 1 package)
+  // Computed at the hook level so the inventory page can show a dedicated alert
+  async function getPackageBottlenecks() {
+    const { data: activePackages } = await supabase
+      .from('product_packages')
+      .select('id, name, package_items(product_id, quantity)')
+      .eq('is_active', true)
+
+    if (!activePackages?.length) return []
+
+    const bottlenecks = []
+    for (const pkg of activePackages) {
+      for (const item of pkg.package_items ?? []) {
+        const product = products.find(p => p.id === item.product_id)
+        if (product && product.current_stock < item.quantity) {
+          bottlenecks.push({
+            packageName:  pkg.name,
+            productName:  product.name,
+            needed:       item.quantity,
+            available:    product.current_stock,
+          })
+        }
+      }
+    }
+    return bottlenecks
+  }
+
   return {
     products: filtered,
     allProducts: products,
@@ -90,6 +117,7 @@ export function useInventory(entityId) {
     outCount,
     adjustStock,
     fetchMovements,
+    getPackageBottlenecks,
     refresh: fetchProducts,
   }
 }

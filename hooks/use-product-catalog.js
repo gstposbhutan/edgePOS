@@ -164,9 +164,174 @@ export function useProductCatalog(entityId) {
     setProducts(prev => prev.map(p => p.id === productId ? { ...p, is_active: isActive } : p))
   }, [])
 
+  /**
+   * Toggle sold_as_package_only flag.
+   */
+  const togglePackageOnly = useCallback(async (productId, value) => {
+    await supabase.from('products').update({ sold_as_package_only: value }).eq('id', productId)
+    setProducts(prev => prev.map(p => p.id === productId ? { ...p, sold_as_package_only: value } : p))
+  }, [])
+
+  // ── Package CRUD ────────────────────────────────────────────────────────────
+
+  /**
+   * Fetch all packages created by this entity with their component items.
+   */
+  async function fetchPackages() {
+    const { data } = await supabase
+      .from('product_packages')
+      .select(`
+        id, name, package_type, barcode, qr_code, wholesale_price, mrp, hsn_code, is_active,
+        product:product_id (id, name, image_url),
+        package_items (
+          id, quantity,
+          product:product_id (id, name, sku, unit, current_stock)
+        )
+      `)
+      .eq('created_by', entityId)
+      .order('name')
+    return data ?? []
+  }
+
+  /**
+   * Create a new package.
+   * Creates the package product listing + package definition + component items.
+   * @param {object} formData  { name, package_type, mrp, wholesale_price, hsn_code, barcode, qr_code, image_url }
+   * @param {{ product_id: string, quantity: number }[]} componentItems
+   * @param {string[]} categoryIds
+   */
+  const createPackage = useCallback(async (formData, componentItems, categoryIds) => {
+    setSaving(true)
+
+    // 1. Create the package product listing (product_type = 'PACKAGE')
+    const { data: product, error: prodError } = await supabase
+      .from('products')
+      .insert({
+        name:            formData.name.trim(),
+        hsn_code:        formData.hsn_code?.trim() || '9999',
+        mrp:             parseFloat(formData.mrp) || 0,
+        wholesale_price: parseFloat(formData.wholesale_price) || 0,
+        image_url:       formData.image_url?.trim() || null,
+        product_type:    'PACKAGE',
+        is_active:       true,
+        created_by:      entityId,
+      })
+      .select('id').single()
+
+    if (prodError) { setSaving(false); return { error: prodError.message } }
+
+    // 2. Create the package definition
+    const { data: pkg, error: pkgError } = await supabase
+      .from('product_packages')
+      .insert({
+        product_id:      product.id,
+        name:            formData.name.trim(),
+        package_type:    formData.package_type || 'BUNDLE',
+        barcode:         formData.barcode?.trim() || null,
+        qr_code:         formData.qr_code?.trim() || null,
+        wholesale_price: parseFloat(formData.wholesale_price) || 0,
+        mrp:             parseFloat(formData.mrp) || 0,
+        hsn_code:        formData.hsn_code?.trim() || null,
+        is_active:       true,
+        created_by:      entityId,
+      })
+      .select('id').single()
+
+    if (pkgError) { setSaving(false); return { error: pkgError.message } }
+
+    // 3. Insert component items
+    if (componentItems.length > 0) {
+      const { error: itemsError } = await supabase
+        .from('package_items')
+        .insert(componentItems.map(c => ({
+          package_id: pkg.id,
+          product_id: c.product_id,
+          quantity:   c.quantity,
+        })))
+      if (itemsError) { setSaving(false); return { error: itemsError.message } }
+    }
+
+    // 4. Assign categories to the package product
+    if (categoryIds.length > 0) {
+      await supabase.from('product_categories').insert(
+        categoryIds.map(cid => ({ product_id: product.id, category_id: cid }))
+      )
+    }
+
+    // 5. Associate with entity
+    await supabase.from('entity_packages').insert({
+      entity_id: entityId, package_id: pkg.id, is_default: false,
+    })
+
+    await fetchProducts()
+    setSaving(false)
+    return { error: null, packageId: pkg.id }
+  }, [entityId])
+
+  /**
+   * Update an existing package definition and its components.
+   */
+  const updatePackage = useCallback(async (packageId, productId, formData, componentItems, categoryIds) => {
+    setSaving(true)
+
+    // Update package product listing
+    await supabase.from('products').update({
+      name:            formData.name.trim(),
+      hsn_code:        formData.hsn_code?.trim() || '9999',
+      mrp:             parseFloat(formData.mrp) || 0,
+      wholesale_price: parseFloat(formData.wholesale_price) || 0,
+      image_url:       formData.image_url?.trim() || null,
+    }).eq('id', productId)
+
+    // Update package definition
+    const { error } = await supabase.from('product_packages').update({
+      name:            formData.name.trim(),
+      package_type:    formData.package_type,
+      barcode:         formData.barcode?.trim() || null,
+      qr_code:         formData.qr_code?.trim() || null,
+      wholesale_price: parseFloat(formData.wholesale_price) || 0,
+      mrp:             parseFloat(formData.mrp) || 0,
+      hsn_code:        formData.hsn_code?.trim() || null,
+    }).eq('id', packageId)
+
+    if (error) { setSaving(false); return { error: error.message } }
+
+    // Replace component items
+    await supabase.from('package_items').delete().eq('package_id', packageId)
+    if (componentItems.length > 0) {
+      await supabase.from('package_items').insert(
+        componentItems.map(c => ({ package_id: packageId, product_id: c.product_id, quantity: c.quantity }))
+      )
+    }
+
+    // Replace categories
+    await supabase.from('product_categories').delete().eq('product_id', productId)
+    if (categoryIds.length > 0) {
+      await supabase.from('product_categories').insert(
+        categoryIds.map(cid => ({ product_id: productId, category_id: cid }))
+      )
+    }
+
+    await fetchProducts()
+    setSaving(false)
+    return { error: null }
+  }, [])
+
+  /**
+   * Deactivate a package.
+   */
+  const deactivatePackage = useCallback(async (packageId, productId) => {
+    await Promise.all([
+      supabase.from('product_packages').update({ is_active: false }).eq('id', packageId),
+      supabase.from('products').update({ is_active: false }).eq('id', productId),
+    ])
+    await fetchProducts()
+  }, [])
+
   return {
     products, categories, loading, saving,
-    createProduct, updateProduct, toggleActive,
+    createProduct, updateProduct, toggleActive, togglePackageOnly,
+    createPackage, updatePackage, deactivatePackage, fetchPackages,
     refresh: fetchProducts,
   }
 }

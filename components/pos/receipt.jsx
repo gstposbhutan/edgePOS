@@ -62,16 +62,23 @@ export function Receipt({ order, entity, items }) {
         </thead>
         <tbody>
           {items.map((item, i) => (
-            <tr key={item.id ?? i} className="border-b border-gray-100">
-              <td className="py-1.5 pr-2">
-                <p className="font-medium leading-tight">{item.name}</p>
-                {item.sku && <p className="text-gray-400">{item.sku}</p>}
-              </td>
-              <td className="text-center py-1.5">{item.quantity}</td>
-              <td className="text-right py-1.5">Nu.{parseFloat(item.unit_price).toFixed(2)}</td>
-              <td className="text-right py-1.5">Nu.{parseFloat(item.gst_5).toFixed(2)}</td>
-              <td className="text-right py-1.5 font-semibold">Nu.{parseFloat(item.total).toFixed(2)}</td>
-            </tr>
+            <>
+              <tr key={item.id ?? i} className="border-b border-gray-100">
+                <td className="py-1.5 pr-2">
+                  <p className="font-medium leading-tight">
+                    {item.package_name ?? item.name}
+                    {item.package_type && (
+                      <span className="text-gray-400 text-[9px] ml-1">[{item.package_type}]</span>
+                    )}
+                  </p>
+                  {item.sku && <p className="text-gray-400">{item.sku}</p>}
+                </td>
+                <td className="text-center py-1.5">{item.quantity}</td>
+                <td className="text-right py-1.5">Nu.{parseFloat(item.unit_price).toFixed(2)}</td>
+                <td className="text-right py-1.5">Nu.{parseFloat(item.gst_5).toFixed(2)}</td>
+                <td className="text-right py-1.5 font-semibold">Nu.{parseFloat(item.total).toFixed(2)}</td>
+              </tr>
+            </>
           ))}
         </tbody>
       </table>

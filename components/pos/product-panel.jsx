@@ -55,10 +55,23 @@ export function ProductPanel({ products, loading, onSearch, onAddItem }) {
 /**
  * Individual product card in the grid.
  */
+// Package type label config
+const PKG_LABELS = {
+  BULK:   { label: 'Bulk',   color: 'bg-blue-500/10 text-blue-600 border-blue-500/20' },
+  BUNDLE: { label: 'Bundle', color: 'bg-purple-500/10 text-purple-600 border-purple-500/20' },
+  MIXED:  { label: 'Mixed',  color: 'bg-amber-500/10 text-amber-600 border-amber-500/20' },
+  PALLET: { label: 'Pallet', color: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' },
+}
+
 function ProductCard({ product, onAdd }) {
   const price      = parseFloat(product.mrp ?? product.wholesale_price ?? 0)
-  const lowStock   = product.current_stock <= 5
-  const outOfStock = product.current_stock <= 0
+  // Use available_stock (view column) — handles both real stock and computed package qty
+  const stock      = product.available_stock ?? product.current_stock ?? 0
+  const threshold  = product.reorder_point ?? 5
+  const lowStock   = stock > 0 && stock <= threshold
+  const outOfStock = stock <= 0
+  const isPackage  = product.product_type === 'PACKAGE'
+  const pkgLabel   = isPackage ? PKG_LABELS[product.package_type] : null
 
   return (
     <button
@@ -74,11 +87,17 @@ function ProductCard({ product, onAdd }) {
       `}
     >
       {/* Product image / placeholder */}
-      <div className="h-14 w-full rounded-lg bg-muted flex items-center justify-center overflow-hidden">
+      <div className="h-14 w-full rounded-lg bg-muted flex items-center justify-center overflow-hidden relative">
         {product.image_url
           ? <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />
           : <Package className="h-6 w-6 text-muted-foreground/50" />
         }
+        {/* Package type badge on image */}
+        {pkgLabel && (
+          <span className={`absolute top-1 right-1 text-[9px] font-semibold px-1.5 py-0.5 rounded-full border ${pkgLabel.color}`}>
+            {pkgLabel.label}
+          </span>
+        )}
       </div>
 
       {/* Name */}
@@ -101,7 +120,12 @@ function ProductCard({ product, onAdd }) {
 
       {/* Stock count */}
       <p className="text-[10px] text-muted-foreground">
-        {outOfStock ? 'Out of stock' : `${product.current_stock} ${product.unit ?? 'pcs'} left`}
+        {outOfStock
+          ? 'Out of stock'
+          : isPackage
+            ? `${stock} ${product.package_type === 'PALLET' ? 'pallets' : 'pkgs'} available`
+            : `${stock} ${product.unit ?? 'pcs'} left`
+        }
       </p>
     </button>
   )

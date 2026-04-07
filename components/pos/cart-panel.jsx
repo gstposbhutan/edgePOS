@@ -158,13 +158,25 @@ export function CartPanel({
 
 // ─── Cart line item ──────────────────────────────────────────────────────────
 
-function CartItem({ item, canDiscount, onUpdateQty, onRemove, onApplyDiscount, onOverridePrice }) {
-  const [editMode,    setEditMode]    = useState(null) // 'discount' | 'price' | null
-  const [inputValue,  setInputValue]  = useState('')
+const PKG_TYPE_COLORS = {
+  BULK:   'text-blue-600',
+  BUNDLE: 'text-purple-600',
+  MIXED:  'text-amber-600',
+  PALLET: 'text-emerald-600',
+}
 
-  const unitPrice = parseFloat(item.unit_price)
-  const discount  = parseFloat(item.discount ?? 0)
-  const hasDiscount = discount > 0
+function CartItem({ item, canDiscount, onUpdateQty, onRemove, onApplyDiscount, onOverridePrice }) {
+  const [editMode,        setEditMode]        = useState(null)
+  const [inputValue,      setInputValue]      = useState('')
+  const [showComponents,  setShowComponents]  = useState(false)
+
+  const unitPrice    = parseFloat(item.unit_price)
+  const discount     = parseFloat(item.discount ?? 0)
+  const hasDiscount  = discount > 0
+  const isPackage    = !!item.package_id
+  const pkgDef       = item.package_def
+  const components   = pkgDef?.package_items ?? []
+  const pkgTypeColor = PKG_TYPE_COLORS[pkgDef?.package_type] ?? 'text-muted-foreground'
 
   function handleEditConfirm() {
     const val = parseFloat(inputValue)
@@ -185,7 +197,14 @@ function CartItem({ item, canDiscount, onUpdateQty, onRemove, onApplyDiscount, o
       {/* Top row — name + remove */}
       <div className="flex items-start gap-2">
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium text-foreground truncate">{item.name}</p>
+          <div className="flex items-center gap-1.5">
+            <p className="text-xs font-medium text-foreground truncate">{item.name}</p>
+            {isPackage && pkgDef?.package_type && (
+              <span className={`text-[9px] font-semibold shrink-0 ${pkgTypeColor}`}>
+                {pkgDef.package_type}
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
             <span className="text-xs text-muted-foreground">
               Nu. {unitPrice.toFixed(2)}
@@ -194,6 +213,15 @@ function CartItem({ item, canDiscount, onUpdateQty, onRemove, onApplyDiscount, o
               <Badge className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 text-[10px] px-1 py-0">
                 −Nu.{discount.toFixed(2)} off
               </Badge>
+            )}
+            {/* Toggle component breakdown for packages */}
+            {isPackage && components.length > 0 && (
+              <button
+                onClick={() => setShowComponents(v => !v)}
+                className="text-[10px] text-primary hover:underline"
+              >
+                {showComponents ? '▲ hide' : `▼ ${components.length} items`}
+              </button>
             )}
           </div>
         </div>
@@ -271,6 +299,18 @@ function CartItem({ item, canDiscount, onUpdateQty, onRemove, onApplyDiscount, o
           Nu. {parseFloat(item.total).toFixed(2)}
         </span>
       </div>
+
+      {/* Package component breakdown */}
+      {isPackage && showComponents && components.length > 0 && (
+        <div className="pl-2 border-l-2 border-primary/20 space-y-0.5">
+          {components.map((c, i) => (
+            <p key={i} className="text-[10px] text-muted-foreground">
+              {c.quantity * item.quantity}× {c.product?.name ?? '—'}
+              <span className="opacity-60"> ({c.quantity} per pkg)</span>
+            </p>
+          ))}
+        </div>
+      )}
 
       {/* GST breakdown per item */}
       <p className="text-[10px] text-muted-foreground">
