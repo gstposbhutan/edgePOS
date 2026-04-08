@@ -1,17 +1,27 @@
-# NEXUS BHUTAN — Development Plan
-**Version**: 1.3  
-**Last Updated**: 2026-04-07  
+# btGST-edgePOS — Technical Specification & Development Plan
+**Project Title**: btGST-edgePOS (Edge-Computing POS & Compliance Hub)
+**Version**: 2.1
+**Last Updated**: 2026-04-08
 **Status**: Phase 2 — Core POS In Progress
+**System Type**: Multi-tenant SaaS with Local-Edge Inference
+
+> **FINALIZED SPECIFICATION** — This document represents the absolute source of truth for the btGST-edgePOS project. No features should be added or modified without updating this specification.
+
+---
 
 ---
 
 ## CURRENT STATE SUMMARY
+
+### System Overview
+**btGST-edgePOS** operates on a **"Zero-Storage, Unified Identity"** model. Metadata is centralized in Supabase, while heavy assets (PDFs) are decentralized in user-owned Google Drives.
 
 ### What's Built
 - Next.js 16 (App Router) + JavaScript/JSDoc (migrated from TypeScript)
 - Tailwind CSS v4 + Shadcn/UI (10 base components, all converted to JSX)
 - Royal Bhutan Design System (colors, fonts, glassmorphism, animations)
 - Supabase schema live — 12 migrations, all tables, RLS, JWT claims hook
+- Clerk integration for OAuth 2.0 "Handshake" to obtain Google Drive tokens
 - Auth: login page, connectivity gate (offline hard-block), proxy route guard
 - POS terminal: split-view layout, product grid, persisted cart, GST calculation
 - Cart: discounts, price overrides, void items — role-gated (Manager/Owner)
@@ -21,18 +31,200 @@
 
 ### Tech Stack Locked In
 - **Frontend**: Next.js 16, React 19, **JavaScript (JSX) + JSDoc** — see [TD-001](TECH_DECISIONS.md#td-001)
+- **Auth & Permissions**: Clerk — OAuth 2.0 for Google Drive token retrieval
+- **Primary DB**: Supabase (PostgreSQL) with `pgvector` extension
+- **Storage**: User-Owned Google Drive (`drive.file` scope)
 - **Exception**: `/packages/accounting` (GST engine) remains TypeScript — compliance-critical
 - **Exception**: Supabase DB types remain TypeScript — auto-generated, zero maintenance
 - **Styling**: Tailwind CSS v4, Shadcn/UI (base-nova style), Lucide icons
-- **State/Offline**: PouchDB + IndexedDB (planned)
-- **Cloud DB**: Supabase + pgvector (planned)
-- **AI/Vision**: YOLO26 ONNX + MobileNet-V3 (planned)
-- **Payments**: mBoB / mPay APIs (planned)
-- **Messaging**: WhatsApp Business API via Meta Cloud (planned)
+- **AI/Vision**: YOLO26 ONNX + MobileNet-V3 (Edge-native dual-camera pipeline)
+- **Payments**: mBoB / mPay APIs with OCR verification
+- **Messaging**: WhatsApp Business API via Meta Cloud (Centralized btGST Official Bot)
 
 ---
 
-## PHASE ROADMAP
+## 1. SYSTEM ARCHITECTURE & FLOW
+
+The system operates on a **"Zero-Storage, Unified Identity"** model. Metadata is centralized in Supabase, while heavy assets (PDFs) are decentralized in user-owned Google Drives.
+
+### 1.1 The Checkout "Dual-Stream" Pipeline
+
+During checkout, the system initializes two concurrent video streams:
+
+* **Primary Stream (Payment OCR)**: Targeted at the customer's smartphone.
+    * **Model**: YOLO26 ONNX.
+    * **Task**: Detects the mBoB/mPay "Success" screen.
+    * **Logic**: Extract `journal_no`, `amount`, and `timestamp`. Cross-reference with the active cart total.
+* **Secondary Stream (Face-ID Hashtag)**: Targeted at the customer's face.
+    * **Model**: MobileNet-V3 + 512-d vectorization.
+    * **Task**: Generate a unique `face_hashtag`.
+    * **Logic**: Query the global `buyer_registry` in Supabase to retrieve the linked phone number for WhatsApp receipt delivery.
+
+---
+
+## 2. VISION: THE "THREE-PILLAR" ECONOMY
+
+**btGST-edgePOS** is a comprehensive national ecosystem encompassing:
+
+1.  **Merchant Pillar (edgePOS)**: AI-driven retail terminal for even the non-literate
+2.  **Transport Pillar (Taxi Portal)**: Real-time taxi hailing and inter-district package logistics
+3.  **Consumer Pillar (Marketplace)**: Amazon-style local shopping with daily commissions
+
+### 2.1 Taxi & Logistics Portal ("The Bhutan Uber")
+
+**Dual-Purpose Dispatch Engine** handling both human transport and package delivery:
+
+* **The 6 AM "Bus Station" Problem**: Merchants can "Pre-Book" a taxi for early morning pickups. The system prioritizes taxis already planning inter-district routes
+* **Face-ID Verification**: Drivers must perform a Face-ID scan to start their shift, ensuring the verified PDL holder is behind the wheel
+* **Offline Handshake**: In areas with no 4G, the Driver and Merchant perform a "QR Handshake" saved in **PouchDB** and synced when signal returns
+
+**Taxi Technical Stack:**
+| Component | Tech Logic |
+| :--- | :--- |
+| **Real-Time Map** | Mapbox GL JS with custom Bhutan terrain layers |
+| **Location Tracking** | `navigator.geolocation` + Service Workers (Wake Lock API) |
+| **Fare Calculation** | BCTA 2026 Revision rates auto-injected into the Fare Engine |
+| **Communication** | WhatsApp-First notifications via the btGST Official Bot |
+
+### 2.2 Marketplace & Revenue Engine
+
+**The RMA Split-Payment Flow** using RMA DPG API:
+
+* **Transaction**: Buyer pays Nu. 1,000 for product + Nu. 100 for Taxi Delivery
+* **Split A (Merchant)**: Nu. 950 (Product - 5% Commission)
+* **Split B (Rider/Taxi)**: Nu. 90 (Delivery - 10% Platform Fee)
+* **Split C (Platform)**: Nu. 60 (Daily Commission Revenue)
+* **Escrow**: Funds held until Rider-to-Buyer QR Handshake completion
+
+---
+
+## 3. TECHNICAL STACK (LOCKED)
+
+### 3.1 Core Framework
+
+* **Engine**: Next.js 16 (App Router) using React 19
+* **Language**: JavaScript (JSX) with JSDoc for type-hinting
+* **Styling**: Tailwind CSS v4 + Shadcn/UI (Nova Style)
+
+### 3.2 Backend & Data
+
+* **Auth & Permissions**: Clerk — OAuth 2.0 for Google Drive tokens
+* **Primary DB**: Supabase (PostgreSQL) with pgvector extension
+* **Vector DB**: pgvector for face_hashtag vectors
+* **Storage**: User-Owned Google Drive (drive.file scope)
+* **Offline**: PouchDB + IndexedDB with LWW conflict resolution
+
+### 3.3 Integration Layer
+
+* **WhatsApp API**: Centralized btGST Official Bot (Meta Cloud API)
+* **Storage API**: Google Drive API v3 via Clerk Access Tokens
+* **Payments**: mBoB/mPay APIs with RMA DPG split-payment
+* **OCR/Vision**: Gemini 1.5 Flash Vision (Fallback) / YOLO26 (Edge-native)
+* **Maps**: Mapbox GL JS with custom Bhutan terrain layers
+
+---
+
+## 4. "GHOST MODE" (OFFLINE-FIRST AI)
+
+The system must never "freeze" when the internet drops:
+
+1.  **Local Inference**: YOLO26 and Face-ID models run locally via WebGPU/WASM
+2.  **The Persistence Layer**: All "Unsynced" sales and taxi bookings stored in IndexedDB
+3.  **Conflict Resolution**: LWW (Last Write Wins) strategy to sync PouchDB with Supabase master ledger
+
+---
+
+## 5. DATABASE ARCHITECTURE (SUPABASE)
+
+### 5.1 entities (The Merchants)
+
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `id` | UUID | Primary Key (Shop ID) |
+| `clerk_id` | String | Links to Clerk User for Drive Token retrieval |
+| `drive_folder_id` | String | The ID of the `/btGST_Invoices` folder in their Drive |
+| `tpn_number` | String | Bhutanese Tax Personal Number |
+
+### 5.2 transactions (The Ledger)
+
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `id` | UUID | Order ID |
+| `entity_id` | UUID | Foreign Key to `entities` |
+| `buyer_phone` | String | Retrieved via Face-ID Hashtag |
+| `journal_no` | String | Extracted from mBoB/mPay screenshot |
+| `drive_file_id` | String | Unique ID of the PDF in merchant's Drive |
+| `signature` | String | SHA-256 hash of (order_id + amount + timestamp) |
+
+### 5.3 Extended Tables (Taxi & Marketplace)
+
+| Table | Purpose | Key Fields |
+| :--- | :--- | :--- |
+| `taxi_drivers` | Fleet Data | `id`, `face_vector` (vector), `license_no`, `is_active` |
+| `bookings` | Trip Ledger | `pickup_geo`, `dropoff_geo`, `fare_total`, `status` |
+| `marketplace_items` | Unified Catalog | `store_id`, `stock_count`, `safety_buffer` |
+| `sync_logs` | Offline Health | `last_sync_timestamp`, `pending_operations_count` |
+
+---
+
+## 6. SECURITY & PRIVACY PROTOCOL
+
+### 6.1 The Google Drive "Sandbox"
+
+* **Constraint**: App uses `drive.file` scope - cannot see merchant's personal files
+* **Sharing**: Invoices created with `role: reader` and `type: anyone`
+* **Safety**: Links served via Proxy Route: `https://btgst.bt/v/{short_code}`
+
+### 6.2 Face-ID Hashtag (Privacy)
+
+* **Hashing**: Store 512-dimensional numerical vector, not photos
+* **Anonymization**: Vector useless outside btGST-edgePOS ecosystem
+* **Consent**: Hard-block "Opt-In" modal required once per phone number
+
+---
+
+## 7. COMMUNICATIONS FLOW (WHATSAPP BOT)
+
+All communication centralized under **btGST-edgePOS official number**:
+
+1. **Event**: POS checkout completes
+2. **Action**: SaaS fetches PDF link from Merchant's Drive
+3. **Action**: SaaS fetches Merchant name and Order total from Supabase
+4. **Payload**: Meta Cloud API sends customized template
+
+---
+
+## 8. IMPLEMENTATION CHECKLIST
+
+### 8.1 Priority 1: Drive Integration
+* [ ] **Drive Init**: Server Action to check/create `/btGST_Ledger` in user's Drive
+* [ ] **PDF Storage**: Save GST invoices to merchant's Drive with proper sharing
+
+### 8.2 Priority 2: Vector Search & Face-ID
+* [ ] **Vector Search**: SQL function using `match_vectors` for Face-ID lookup
+* [ ] **Dual Canvas**: React 19 component with two webcam streams
+
+### 8.3 Priority 3: Taxi & Logistics
+* [ ] **Dispatcher**: `findNearestDriver` using PostGIS for 3km radius search
+* [ ] **Driver Verification**: Face-ID scan for shift start with PDL validation
+* [ ] **Offline Handshake**: QR transaction sync for areas without 4G
+
+### 8.4 Priority 4: Marketplace & Payments
+* [ ] **RMA Integration**: `generateRMASignature` using merchant's private `.pem` key
+* [ ] **Split-Payment**: RMA DPG API for automated commission distribution
+* [ ] **Stock Buffer**: Safety buffer to prevent walk-in/online conflicts
+
+---
+
+## 9. REVENUE SUMMARY (THE "300 STORES" GOAL)
+
+* **Fixed Revenue**: 300 stores × Nu. 12,000/yr = **Nu. 3,600,000/yr**
+* **Daily Commission**: 5% on Marketplace Sales + 10% on Taxi Bookings
+* **Growth**: Become exclusive delivery partner for all 300 stores
+
+---
+
+## 10. PHASE ROADMAP
 
 ### Phase 1 — Foundation ✅ COMPLETE
 Core framework, design system, and database schema.

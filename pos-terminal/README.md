@@ -110,14 +110,14 @@ This monorepo uses Turborepo for efficient code sharing:
 
 ## 🤝 Contributing
 
-This is an active development project for Bhutan's 2026 GST compliance initiative. For collaboration inquiries, please contact the development team.
+This is an active development project for Bhutan's 2026 GST compliance initiative.
 
-RAJIV PRADHAN : 17649720
-SHWAN O MANUEL : +91 99467 47688
+**Repository**: https://github.com/gstposbhutan/edgePOS  
+**Organization**: GST POS Bhutan  
 
 ## 📄 License
 
-Proprietary - Copyright © 2026 NEXUS BHUTAN
+Proprietary - Copyright © 2026 btGST-edgePOS
 
 ## 🙏 Acknowledgments
 
