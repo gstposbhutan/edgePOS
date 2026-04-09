@@ -92,6 +92,44 @@ supply:order        — Place wholesale restock orders
 
 ---
 
+## WhatsApp OTP Login
+
+There is no official "Login with WhatsApp" OAuth provider from Meta. The standard pattern — and the one used here — is phone-number + WhatsApp OTP:
+
+```
+1. User enters WhatsApp phone number on login screen
+2. whatsapp-gateway sends a 6-digit OTP via Meta Cloud API
+3. User enters OTP on the verification screen
+4. Server verifies OTP → issues Supabase custom JWT
+5. JWT carries entity_id, role, sub_role, permissions claims
+6. Session established — same RLS enforcement as email/password login
+```
+
+### When WhatsApp OTP Is Used
+
+| Trigger | Audience |
+|---------|----------|
+| **Primary login** | Marketplace consumers (no email/password needed) |
+| **Password reset** | Any user — alternative to Supabase magic link email |
+| **Driver shift start** | Taxi drivers — Face-ID + WhatsApp OTP dual verification |
+| **High-value action confirmation** | Refunds > Nu 5,000, credit limit overrides |
+
+### Implementation Notes
+
+- OTP generated server-side (cryptographically random 6-digit code)
+- Stored in Supabase with expiry (5 minutes), single-use, hashed
+- Delivered via `whatsapp-gateway` service using Meta Cloud API (same infrastructure as receipts and alerts — no additional third-party)
+- After successful verification, `supabase.auth.admin.createSession()` issues a signed JWT with custom claims
+- Failed attempts: max 3 tries → OTP invalidated, must request new code
+- Rate limiting: max 3 OTP requests per phone number per 10 minutes
+
+### What This Replaces
+
+- Clerk is **not needed** for WhatsApp OTP — the `whatsapp-gateway` service handles delivery directly via Meta Cloud API
+- Clerk remains relevant only for **Google OAuth** (Drive token) and **Facebook social login** (Marketplace)
+
+---
+
 ## Session Behaviour
 
 ### POS Terminal (Device-Bound)
@@ -186,6 +224,12 @@ CASHIER attempts to access /reports
 - [ ] Write RLS policies for all core tables — SUPER_ADMIN bypasses RLS via `BYPASSRLS` role
 - [ ] Test cross-tenant isolation (Retailer A cannot read Retailer B data)
 - [ ] Implement password reset — Email (Supabase magic link) + WhatsApp OTP via whatsapp_no
+- [ ] Build WhatsApp OTP login flow — phone number entry → OTP send → verify → custom JWT
+- [ ] OTP storage table: phone, hashed_otp, expires_at, used (in Supabase, not exposed via RLS)
+- [ ] Rate limiting: max 3 OTP requests per phone per 10 minutes
+- [ ] Max 3 verification attempts per OTP before invalidation
+- [ ] `POST /api/auth/whatsapp/send` — generate + send OTP via whatsapp-gateway
+- [ ] `POST /api/auth/whatsapp/verify` — verify OTP → issue Supabase custom JWT
 - [ ] Build Marketplace public route with GA4 instrumentation (impressions, scroll, CTA clicks)
 - [ ] Build Marketplace auth gate — lock search/filters/cart behind login prompt
 
