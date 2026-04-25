@@ -6,7 +6,24 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug",
+    "test:e2e:report": "playwright show-report",
+    "test:e2e:v1": "playwright test e2e/specs/v1-auth",
+    "test:e2e:v2": "playwright test e2e/specs/v2-pos-sale",
+    "test:e2e:v3": "playwright test e2e/specs/v3-order-management",
+    "test:e2e:v4": "playwright test e2e/specs/v4-inventory",
+    "test:e2e:v5": "playwright test e2e/specs/v5-photo-to-stock",
+    "test:e2e:v6": "playwright test e2e/specs/v6-khata-credit",
+    "test:e2e:v7": "playwright test e2e/specs/v7-stock-alerts",
+    "test:e2e:consumer": "playwright test e2e/specs/c*",
+    "test:e2e:system": "playwright test e2e/specs/system-*",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",
@@ -32,6 +49,7 @@
     "zhipuai": "^2.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.52.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

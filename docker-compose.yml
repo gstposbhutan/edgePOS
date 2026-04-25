@@ -1,0 +1,29 @@
+services:
+  pos-terminal:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file: .env
+    depends_on:
+      whatsapp-gateway:
+        condition: service_started
+    restart: unless-stopped
+
+  whatsapp-gateway:
+    build: ./services/whatsapp-gateway
+    ports:
+      - "3001:3001"
+    env_file: ./services/whatsapp-gateway/.env
+    restart: unless-stopped
+
+  logistics-bridge:
+    build: ./services/logistics-bridge
+    ports:
+      - "3002:3002"
+    env_file: ./services/logistics-bridge/.env
+    restart: unless-stopped
+
+  sync-worker:
+    build: ./services/sync-worker
+    env_file: ./services/sync-worker/.env
+    restart: unless-stopped

@@ -1,0 +1,31 @@
+sequenceDiagram
+    participant C as Consumer
+    participant APP as Login Page
+    participant API as Auth API
+    participant GW as Gateway :3001
+    participant META as Meta Cloud API
+    participant WA as WhatsApp
+
+    C->>APP: Switch to WhatsApp tab
+    C->>APP: Enter phone number
+    APP->>API: POST /api/auth/whatsapp/send
+    API->>API: Store OTP in whatsapp_otps table
+    API->>GW: POST /api/send-otp
+    GW->>META: Send template message
+    META->>WA: Deliver OTP
+    WA->>C: Your code is 482916 Valid for 5 minutes
+
+    C->>APP: Enter 6-digit code
+    APP->>API: POST /api/auth/whatsapp/verify
+
+    alt Valid OTP
+        API->>API: Create Supabase session
+        API-->>APP: Success and redirect
+        APP-->>C: Redirected to /pos
+    else Invalid OTP
+        API-->>APP: Error
+        APP-->>C: Invalid code retry
+    else Expired OTP
+        API-->>APP: Error
+        APP-->>C: Code expired resend
+    end

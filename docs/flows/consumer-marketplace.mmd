@@ -1,0 +1,9 @@
+flowchart LR
+    CONSUMER([Consumer]) --> BROWSE["/shop/store-slug"]
+    BROWSE --> STORE["Store header: name + logo + bio"]
+    STORE --> CATS[Products by category]
+    CATS --> PRODUCT["Product card: image + name + price"]
+    PRODUCT --> ORDER_BTN["Order via WhatsApp - gold button"]
+    ORDER_BTN --> WA_LINK[wa.me deep link opens]
+    WA_LINK --> MSG["Hi, order Product from Store. Ref: slug"]
+    MSG --> WHATSAPP([WhatsApp chat])

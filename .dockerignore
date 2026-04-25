@@ -1,0 +1,11 @@
+node_modules
+.next
+.git
+.gitignore
+e2e
+docs
+*.md
+.env
+.env.*
+.claude
+services

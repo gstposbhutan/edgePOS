@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output: 'standalone',
+
   // Allow ONNX Runtime WASM files to be served correctly
   async headers() {
     return [

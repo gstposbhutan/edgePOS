@@ -1,0 +1,49 @@
+flowchart TD
+    INV([Inventory Page]) --> TABS{Select Tab}
+
+    TABS --> |Stock Levels| STOCK_TAB[Stock Table]
+    TABS --> |Draft Purchases| DRAFT_TAB[Draft Purchases]
+    TABS --> |Predictions| PRED_TAB[Predictions]
+    TABS --> |Movement History| HIST_TAB[History]
+
+    STOCK_TAB --> ALERTS{Low/Out of stock?}
+    ALERTS --> |Yes| BANNER[Show alert banners]
+    ALERTS --> |No| TABLE
+    BANNER --> TABLE[Product stock table]
+    TABLE --> FILTER_STOCK[Filter: ALL LOW OUT]
+    TABLE --> SCAN_BTN[Scan Bill button]
+    TABLE --> ADJUST["Adjust Stock - Manager+"]
+    ADJUST --> ADJ_TYPE["Type: RESTOCK SALE DAMAGE LOSS RETURN"]
+    ADJ_TYPE --> MOVEMENT[Create inventory movement]
+    MOVEMENT --> UPDATE_STOCK[Trigger updates current_stock]
+
+    SCAN_BTN --> SCAN_MODAL[Scan Bill Modal]
+
+    DRAFT_TAB --> DRAFT_LIST[Draft List]
+    DRAFT_TAB --> SCAN_BTN2[Scan Bill Button]
+
+    DRAFT_LIST --> |Click DRAFT or REVIEWED| REVIEW[Draft Review Panel]
+    DRAFT_LIST --> |Click CONFIRMED or CANCELLED| VIEW_ONLY[Read-only view]
+
+    REVIEW --> CONF_TIERS{Confidence Tier}
+    CONF_TIERS --> |85%+ MATCHED| GREEN["Green - auto accepted"]
+    CONF_TIERS --> |70-84% PARTIAL| AMBER["Amber - review suggested"]
+    CONF_TIERS --> |60-69% PARTIAL| YELLOW["Yellow - likely wrong"]
+    CONF_TIERS --> |60% or less UNMATCHED| RED["Red - pick product manually"]
+
+    REVIEW --> EDIT_ITEMS["Edit qty / price / assign product"]
+    REVIEW --> |Confirm Restock| CONFIRM_D[Create RESTOCK movements]
+    CONFIRM_D --> STOCK_UP[Stock updated]
+    REVIEW --> |Cancel Draft| CANCEL_D[Status: CANCELLED]
+
+    PRED_TAB --> SUMMARY[Summary Cards]
+    SUMMARY --> CRIT[Critical]
+    SUMMARY --> RISK[At Risk]
+    SUMMARY --> HEALTHY[Healthy]
+    SUMMARY --> DEAD[Dead Stock]
+    PRED_TAB --> PRED_TABLE[Prediction Table]
+    PRED_TABLE --> LEAD_TIME[Set Lead Time]
+    PRED_TAB --> REFRESH_P[Refresh Predictions]
+
+    HIST_TAB --> MOV_LIST[Movement History List]
+    MOV_LIST --> MOV_TYPES["RESTOCK SALE DAMAGE LOSS RETURN ADJUSTMENT"]
