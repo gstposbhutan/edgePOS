@@ -2,20 +2,29 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Package, AlertTriangle, XCircle, History, RefreshCw } from "lucide-react"
+import { ArrowLeft, Package, AlertTriangle, XCircle, History, RefreshCw, TrendingUp, FileText, Camera } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { StockTable }        from "@/components/pos/inventory/stock-table"
 import { AdjustStockModal }  from "@/components/pos/inventory/adjust-stock-modal"
 import { MovementHistory }   from "@/components/pos/inventory/movement-history"
+import { PredictionTab }     from "@/components/pos/inventory/prediction-tab"
+import { LeadTimeModal }     from "@/components/pos/inventory/lead-time-modal"
+import { ScanBillModal }     from "@/components/pos/inventory/scan-bill-modal"
+import { DraftPurchaseReview } from "@/components/pos/inventory/draft-purchase-review"
+import { DraftPurchasesList }  from "@/components/pos/inventory/draft-purchases-list"
 import { useInventory }      from "@/hooks/use-inventory"
+import { useStockPredictions } from "@/hooks/use-stock-predictions"
+import { useDraftPurchases } from "@/hooks/use-draft-purchases"
 import { getUser, getRoleClaims } from "@/lib/auth"
 import { createClient } from "@/lib/supabase/client"
 
 const TABS = [
-  { id: 'stock',    label: 'Stock Levels', icon: Package },
-  { id: 'history',  label: 'Movement History', icon: History },
+  { id: 'stock',       label: 'Stock Levels', icon: Package },
+  { id: 'drafts',      label: 'Draft Purchases', icon: FileText },
+  { id: 'predictions', label: 'Predictions', icon: TrendingUp },
+  { id: 'history',     label: 'Movement History', icon: History },
 ]
 
 export default function InventoryPage() {
@@ -25,6 +34,10 @@ export default function InventoryPage() {
   const [entityId,        setEntityId]        = useState(null)
   const [activeTab,       setActiveTab]       = useState('stock')
   const [adjustProduct,   setAdjustProduct]   = useState(null) // product to adjust
+  const [leadTimeProduct, setLeadTimeProduct] = useState(null) // prediction for lead time
+  const [scanOpen,        setScanOpen]        = useState(false)
+  const [reviewingDraft,  setReviewingDraft]  = useState(null)
+  const [userId,          setUserId]          = useState(null)
   const [search,          setSearch]          = useState('')
 
   // Load entity on mount
@@ -34,6 +47,7 @@ export default function InventoryPage() {
       if (!user) return router.push('/login')
       const { entityId: eid } = getRoleClaims(user)
       setEntityId(eid)
+      setUserId(user.id)
     }
     load()
   }, [])
@@ -44,9 +58,21 @@ export default function InventoryPage() {
     adjustStock, fetchMovements, refresh,
   } = useInventory(entityId)
 
+  const {
+    predictions, summary: predSummary, calculatedAt,
+    loading: predLoading, refreshing,
+    fetchPredictions, refreshPredictions, setLeadTime,
+  } = useStockPredictions(entityId)
+
+  const {
+    drafts, loading: draftLoading, fetchDrafts, fetchDraft, updateDraft, confirmDraft, cancelDraft,
+  } = useDraftPurchases(entityId)
+
   // Load movements when tab switches
   useEffect(() => {
     if (activeTab === 'history' && entityId) fetchMovements()
+    if (activeTab === 'predictions' && entityId) fetchPredictions()
+    if (activeTab === 'drafts' && entityId) fetchDrafts()
   }, [activeTab, entityId])
 
   // Client-side search filter
@@ -152,6 +178,10 @@ export default function InventoryPage() {
                 className="flex-1"
               />
               <div className="flex gap-1">
+                <Button size="sm" variant="outline" onClick={() => setScanOpen(true)}
+                  className="border-primary/30 text-primary hover:bg-primary/5">
+                  <Camera className="h-4 w-4" />
+                </Button>
                 {['ALL', 'LOW', 'OUT'].map(f => (
                   <Button
                     key={f}
@@ -181,8 +211,39 @@ export default function InventoryPage() {
           </>
         )}
 
+        {activeTab === 'predictions' && (
+          <PredictionTab
+            predictions={predictions}
+            summary={predSummary}
+            calculatedAt={calculatedAt}
+            loading={predLoading}
+            refreshing={refreshing}
+            onRefresh={refreshPredictions}
+            onSetLeadTime={setLeadTimeProduct}
+          />
+        )}
+
         {activeTab === 'history' && (
           <MovementHistory movements={movements} loading={loading} />
+        )}
+
+        {activeTab === 'drafts' && (
+          reviewingDraft ? (
+            <DraftPurchaseReview
+              draft={reviewingDraft}
+              onUpdateItem={updateDraft}
+              onConfirm={confirmDraft}
+              onCancel={cancelDraft}
+              onBack={() => { setReviewingDraft(null); fetchDrafts() }}
+            />
+          ) : (
+            <DraftPurchasesList
+              drafts={drafts}
+              loading={draftLoading}
+              onSelectDraft={setReviewingDraft}
+              onScanBill={() => setScanOpen(true)}
+            />
+          )
         )}
       </div>
 
@@ -192,6 +253,34 @@ export default function InventoryPage() {
         product={adjustProduct}
         onAdjust={handleAdjust}
         onClose={() => setAdjustProduct(null)}
+      />
+
+      {/* Lead time modal */}
+      <LeadTimeModal
+        open={!!leadTimeProduct}
+        prediction={leadTimeProduct}
+        onSave={async (productId, supplierId, days, notes) => {
+          const result = await setLeadTime(productId, supplierId, days, notes)
+          if (!result.error) {
+            setLeadTimeProduct(null)
+            await refreshPredictions()
+          }
+          return result
+        }}
+        onClose={() => setLeadTimeProduct(null)}
+      />
+
+      {/* Scan bill modal */}
+      <ScanBillModal
+        open={scanOpen}
+        entityId={entityId}
+        createdBy={userId}
+        onDraftCreated={(draft) => {
+          setScanOpen(false)
+          setReviewingDraft(draft)
+          setActiveTab('drafts')
+        }}
+        onClose={() => setScanOpen(false)}
       />
     </div>
   )
