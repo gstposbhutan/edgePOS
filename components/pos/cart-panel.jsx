@@ -25,6 +25,7 @@ const PAYMENT_METHODS = [
  *   customer: object|null,
  *   paymentMethod: string|null,
  *   userSubRole: string,
+ *   khataAccount: object|null,
  *   onUpdateQty: (id, qty) => void,
  *   onRemoveItem: (id) => void,
  *   onApplyDiscount: (id, amount) => void,
@@ -36,7 +37,7 @@ const PAYMENT_METHODS = [
  */
 export function CartPanel({
   items, subtotal, discountTotal, taxableSubtotal, gstTotal, grandTotal,
-  customer, paymentMethod, userSubRole = 'CASHIER',
+  customer, paymentMethod, userSubRole = 'CASHIER', khataAccount,
   onUpdateQty, onRemoveItem, onApplyDiscount, onOverridePrice,
   onSelectPayment, onCheckout, checkoutLoading,
 }) {
@@ -118,11 +119,15 @@ export function CartPanel({
                 <button
                   key={method.id}
                   onClick={() => onSelectPayment(method.id)}
+                  disabled={method.id === 'CREDIT' && !customer?.whatsapp}
+                  title={method.id === 'CREDIT' && !customer?.whatsapp ? 'Customer identification required' : ''}
                   className={`
                     py-1.5 px-2 rounded-lg text-xs font-medium border transition-all
                     ${paymentMethod === method.id
                       ? `${method.color} text-white border-transparent`
-                      : 'border-border text-muted-foreground hover:border-primary/40 hover:text-foreground bg-card'
+                      : method.id === 'CREDIT' && !customer?.whatsapp
+                        ? 'border-border text-muted-foreground/40 bg-card cursor-not-allowed'
+                        : 'border-border text-muted-foreground hover:border-primary/40 hover:text-foreground bg-card'
                     }
                   `}
                 >
@@ -131,6 +136,40 @@ export function CartPanel({
               ))}
             </div>
           </div>
+
+          {/* Khata credit info */}
+          {paymentMethod === 'CREDIT' && (
+            <div className="p-2 rounded-lg bg-card border border-border text-xs space-y-1">
+              {khataAccount ? (
+                <>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Outstanding</span>
+                    <span className="tabular-nums">Nu. {parseFloat(khataAccount.outstanding_balance).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Credit Limit</span>
+                    <span className="tabular-nums">Nu. {parseFloat(khataAccount.credit_limit).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between font-medium">
+                    <span>After this sale</span>
+                    <span className={`tabular-nums ${
+                      parseFloat(khataAccount.outstanding_balance) + grandTotal > parseFloat(khataAccount.credit_limit)
+                        ? 'text-tibetan' : 'text-emerald-600'
+                    }`}>
+                      Nu. {(parseFloat(khataAccount.outstanding_balance) + grandTotal).toFixed(2)}
+                    </span>
+                  </div>
+                  {parseFloat(khataAccount.outstanding_balance) + grandTotal > parseFloat(khataAccount.credit_limit) && (
+                    <p className="text-tibetan font-medium">Credit limit exceeded</p>
+                  )}
+                </>
+              ) : customer?.whatsapp ? (
+                <p className="text-amber-600">No khata account found. Owner/Manager can create one.</p>
+              ) : (
+                <p className="text-amber-600">Customer identification required for credit</p>
+              )}
+            </div>
+          )}
 
           {/* Checkout */}
           <Button

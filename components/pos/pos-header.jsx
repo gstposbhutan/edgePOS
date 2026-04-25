@@ -1,6 +1,6 @@
 "use client"
 
-import { LogOut, RefreshCw, Wifi, Package, BookOpen, ClipboardList } from "lucide-react"
+import { LogOut, RefreshCw, Wifi, Package, BookOpen, ClipboardList, Wallet } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { FaceAuthBadge } from "./face-auth-badge"
@@ -69,6 +69,10 @@ export function PosHeader({ storeName, cashierName, customer, syncing, onEnrollF
 
         <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/inventory')} title="Inventory">
           <Package className="h-4 w-4" />
+        </Button>
+
+        <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/khata')} title="Khata (Credit)">
+          <Wallet className="h-4 w-4" />
         </Button>
 
         <Button variant="ghost" size="icon-sm" onClick={handleSignOut} title="Sign out">

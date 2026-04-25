@@ -7,6 +7,7 @@ import { ProductPanel }    from "@/components/pos/product-panel"
 import { CartPanel }       from "@/components/pos/cart-panel"
 import { CustomerIdModal } from "@/components/pos/customer-id-modal"
 import { StockGateModal }  from "@/components/pos/stock-gate-modal"
+import { CreateAccountModal } from "@/components/pos/khata/create-account-modal"
 import { CameraCanvas }      from "@/components/pos/camera/camera-canvas"
 import { FaceCamera }        from "@/components/pos/camera/face-camera"
 import { FaceConsentModal }  from "@/components/pos/face-consent-modal"
@@ -14,6 +15,7 @@ import { FaceStore }          from "@/lib/vision/face-store"
 import { PaymentScannerModal } from "@/components/pos/payment-scanner-modal"
 import { useCart }         from "@/hooks/use-cart"
 import { useProducts }     from "@/hooks/use-products"
+import { useKhata }        from "@/hooks/use-khata"
 import { getUser, getRoleClaims } from "@/lib/auth"
 import { createClient }    from "@/lib/supabase/client"
 
@@ -35,6 +37,9 @@ export default function PosPage() {
   const [showPaymentScan,   setShowPaymentScan]   = useState(false)
   const [ocrVerifyId,       setOcrVerifyId]       = useState(null)
   const [ocrReferenceNo,    setOcrReferenceNo]    = useState(null)
+  const [khataAccount,      setKhataAccount]      = useState(null)
+  const [showCreateKhata,   setShowCreateKhata]   = useState(false)
+  const [ownerOverride,     setOwnerOverride]     = useState(false)
 
   // Payment methods that require OCR verification
   const OCR_REQUIRED_METHODS = ['MBOB', 'MPAY', 'RTGS']
@@ -64,6 +69,7 @@ export default function PosPage() {
   } = useCart(entity?.id, user?.id)
 
   const { products, loading: productsLoading, search } = useProducts(entity?.id)
+  const { lookupAccount, createAccount } = useKhata(entity?.id)
 
   // ── Stock availability check ───────────────────────────────────────────────
   async function checkStockAvailability() {
@@ -101,6 +107,37 @@ export default function PosPage() {
       setShowCustomerModal(true)
       return
     }
+
+    // Khata lookup when CREDIT selected
+    if (paymentMethod === 'CREDIT' && customer?.whatsapp) {
+      const { account } = await lookupAccount(customer.whatsapp)
+      setKhataAccount(account)
+
+      if (!account) {
+        // No account — prompt creation (OWNER/MANAGER only)
+        if (['MANAGER', 'OWNER', 'ADMIN'].includes(subRole)) {
+          setShowCreateKhata(true)
+          return
+        }
+        setCheckoutError('No khata account found. Ask your manager or owner to create one.')
+        return
+      }
+
+      // Limit check
+      const balance = parseFloat(account.outstanding_balance)
+      const limit = parseFloat(account.credit_limit)
+      if (balance + grandTotal > limit && !ownerOverride) {
+        if (subRole === 'OWNER' || subRole === 'ADMIN') {
+          // Owner can override
+          setCheckoutError(`Credit limit exceeded (Nu. ${balance.toFixed(2)} / Nu. ${limit.toFixed(2)}). Tap checkout again to override.`)
+          setOwnerOverride(true)
+          return
+        }
+        setCheckoutError(`Credit limit exceeded. Outstanding: Nu. ${balance.toFixed(2)}, Limit: Nu. ${limit.toFixed(2)}`)
+        return
+      }
+    }
+
     await initiateCheckout()
   }
 
@@ -223,6 +260,26 @@ export default function PosPage() {
       setPaymentMethod(null)
       setOcrVerifyId(null)
       setOcrReferenceNo(null)
+      setKhataAccount(null)
+      setOwnerOverride(false)
+
+      // Auto-send receipt via WhatsApp gateway (fire-and-forget)
+      if (customer?.whatsapp) {
+        const gatewayUrl = process.env.NEXT_PUBLIC_WHATSAPP_GATEWAY_URL || 'http://localhost:3001'
+        fetch(`${gatewayUrl}/api/send-receipt`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phoneNumber: customer.whatsapp,
+            invoiceId: order.id,
+            orderNo: order.order_no,
+            entityName: entity?.name,
+            grandTotal,
+            gstTotal,
+          }),
+        }).catch(() => {}) // ignore failures
+      }
+
       router.push(`/pos/order/${order.id}?success=true`)
 
     } catch (err) {
@@ -244,7 +301,22 @@ export default function PosPage() {
   async function handleCustomerIdentified(whatsapp) {
     await setCustomerIdentity({ whatsapp, buyerHash: null })
     setShowCustomerModal(false)
+    // Look up khata account for the identified customer
+    if (paymentMethod === 'CREDIT') {
+      const { account } = await lookupAccount(whatsapp)
+      setKhataAccount(account)
+    }
     await initiateCheckout()
+  }
+
+  async function handleCreateKhata(data) {
+    const result = await createAccount(data)
+    if (!result.error) {
+      setKhataAccount(result.account)
+      setShowCreateKhata(false)
+      await initiateCheckout()
+    }
+    return result
   }
 
   if (!entity) {
@@ -336,6 +408,7 @@ export default function PosPage() {
             customer={customer}
             paymentMethod={paymentMethod}
             userSubRole={subRole}
+            khataAccount={khataAccount}
             onUpdateQty={updateQty}
             onRemoveItem={removeItem}
             onApplyDiscount={applyDiscount}
@@ -378,6 +451,13 @@ export default function PosPage() {
           setStockShortfalls(prev => prev.filter(s => s.item.id !== itemId))
         }}
         onClose={() => setStockShortfalls([])}
+      />
+
+      <CreateAccountModal
+        open={showCreateKhata}
+        onClose={() => setShowCreateKhata(false)}
+        onCreate={handleCreateKhata}
+        defaultPhone={customer?.whatsapp ?? ''}
       />
     </>
   )
