@@ -21,20 +21,20 @@ flowchart TD
     SUPA --> |Fail| ERR1[Show error]
     ERR1 --> LOGIN
     
-    WP --> SEND_OTP[POST /api/auth/whatsapp/send]
-    SEND_OTP --> META1[Gateway → Meta Cloud API]
+    WP --> SEND_OTP["POST /api/auth/whatsapp/send"]
+    SEND_OTP --> META1["Gateway -> Meta Cloud API"]
     META1 --> |OTP delivered| ENTER_OTP[Enter 6-digit code]
     META1 --> |Dev mode| LOG_OTP[Log OTP to console]
     LOG_OTP --> ENTER_OTP
     
-    ENTER_OTP --> VERIFY[POST /api/auth/whatsapp/verify]
+    ENTER_OTP --> VERIFY["POST /api/auth/whatsapp/verify"]
     VERIFY --> |Verified| ROLE
-    VERIFY --> |Invalid code| RETRY{Attempts < 3?}
+    VERIFY --> |Invalid code| RETRY{"Attempts < 3?"}
     RETRY --> |Yes| ENTER_OTP
     RETRY --> |No| LOGIN
     
-    ROLE --> |SUPER_ADMIN / DISTRIBUTOR| ADMIN[/admin hub - future]
-    ROLE --> |RETAILER / WHOLESALER| POS[/pos terminal]
+    ROLE --> |SUPER_ADMIN / DISTRIBUTOR| ADMIN["/admin hub - future"]
+    ROLE --> |RETAILER / WHOLESALER| POS["/pos terminal"]
 ```
 
 ---
@@ -53,7 +53,7 @@ flowchart TD
     FACE --> |No| PHONE
     AUTO_POP --> ADD_ITEMS
     
-    PHONE --> VALIDATE{E.164 valid?}
+    PHONE --> VALIDATE{"E.164 valid?"}
     VALIDATE --> |Yes| ADD_ITEMS[Add Products to Cart]
     VALIDATE --> |No| PHONE
     
@@ -69,13 +69,13 @@ flowchart TD
     
     SCAN_PAY --> CAPTURE[Camera captures screenshot]
     CAPTURE --> GEMINI_PAY[Gemini Vision verifies amount]
-    GEMINI_PAY --> |Verified ✓| STOCK_CHECK
-    GEMINI_PAY --> |Failed ✗| RETRY_PAY{Retries < 3?}
+    GEMINI_PAY --> |"Verified"| STOCK_CHECK
+    GEMINI_PAY --> |Failed| RETRY_PAY{"Retries < 3?"}
     RETRY_PAY --> |Yes| CAPTURE
     RETRY_PAY --> |No| PAYMENT
     
     KHATA_LOOK --> KHANA_FOUND{Account found?}
-    KHANA_FOUND --> |No| ROLE_CHECK1{Manager+?}
+    KHANA_FOUND --> |No| ROLE_CHECK1{"Manager+?"}
     ROLE_CHECK1 --> |Yes| CREATE_ACCT[Create Account Modal]
     ROLE_CHECK1 --> |No - Cashier| ERR_KHATA[Error: cannot proceed]
     ERR_KHATA --> PAYMENT
@@ -83,7 +83,7 @@ flowchart TD
     KHANA_FOUND --> |Yes| LIMIT_CHECK{Within credit limit?}
     
     LIMIT_CHECK --> |Yes| STOCK_CHECK
-    LIMIT_CHECK --> |No| ROLE_CHECK2{Owner/Admin?}
+    LIMIT_CHECK --> |No| ROLE_CHECK2{"Owner/Admin?"}
     ROLE_CHECK2 --> |Yes - Override| STOCK_CHECK
     ROLE_CHECK2 --> |No| ERR_LIMIT[Error: limit exceeded]
     ERR_LIMIT --> PAYMENT
@@ -96,14 +96,14 @@ flowchart TD
     
     CREATE_ORDER --> CONFIRM[Status: CONFIRMED]
     CONFIRM --> TRIGGER1[Stock deducted via trigger]
-    CONFIRM --> TRIGGER2[GST 5% recorded]
-    CONFIRM --> TRIGGER3[Digital signature SHA-256]
+    CONFIRM --> TRIGGER2["GST 5% recorded"]
+    CONFIRM --> TRIGGER3["Digital signature SHA-256"]
     CONFIRM --> TRIGGER4[Khata DEBIT - if CREDIT]
     CONFIRM --> TRIGGER5[WhatsApp receipt sent]
-    CONFIRM --> CONFIRM_PAGE[/pos/order/id?success=true]
+    CONFIRM --> CONFIRM_PAGE["/pos/order/id success=true"]
     
-    CONFIRM_PAGE --> |Download PDF| PDF[jsPDF + html2canvas]
-    CONFIRM_PAGE --> |Send WhatsApp| WA_SEND[Gateway /api/send-receipt]
+    CONFIRM_PAGE --> |Download PDF| PDF["jsPDF + html2canvas"]
+    CONFIRM_PAGE --> |Send WhatsApp| WA_SEND["Gateway /api/send-receipt"]
     CONFIRM_PAGE --> |New Sale| POS
 ```
 
@@ -113,11 +113,11 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    ORDERS([Orders Page]) --> FILTER[Filter: ALL WHATSAPP ACTIVE COMPLETED CANCELLED REFUNDS]
+    ORDERS([Orders Page]) --> FILTER["Filter: ALL WHATSAPP ACTIVE COMPLETED CANCELLED REFUNDS"]
     FILTER --> LIST[Order List]
-    LIST --> SEARCH[Search by order no. / phone]
+    LIST --> SEARCH["Search by order no. / phone"]
     LIST --> CLICK[Click order]
-    CLICK --> DETAIL[Order Detail /pos/orders/id]
+    CLICK --> DETAIL["Order Detail /pos/orders/id"]
     
     DETAIL --> VIEW_STATUS[Status badge + timeline]
     DETAIL --> VIEW_ITEMS[Items list]
@@ -127,20 +127,20 @@ flowchart TD
     VIEW_WA --> |No| SHOW_NORMAL[Standard item display]
     
     DETAIL --> ACTIONS{Actions available?}
-    ACTIONS --> |View Receipt| RECEIPT[/pos/order/id]
+    ACTIONS --> |View Receipt| RECEIPT["/pos/order/id"]
     
-    ACTIONS --> |Cancel| CAN_CHECK{Status ≤ DISPATCHED?}
+    ACTIONS --> |Cancel| CAN_CHECK{"Status <= DISPATCHED?"}
     CAN_CHECK --> |Yes| CAN_REASON[Enter cancellation reason]
     CAN_REASON --> CANCELLED[Status: CANCELLED]
     CANCELLED --> RESTORE[Stock restored by trigger]
     CAN_CHECK --> |No| NO_ACTION[No cancel available]
     
-    ACTIONS --> |Request Refund| REF_CHECK{Status ≥ CONFIRMED?}
+    ACTIONS --> |Request Refund| REF_CHECK{"Status >= CONFIRMED?"}
     REF_CHECK --> |Yes| REF_SELECT[Select items + reason]
     REF_SELECT --> REF_REQ[Status: REFUND_REQUESTED]
     REF_CHECK --> |No| NO_ACTION
     
-    ACTIONS --> |Approve Refund| APPROV{Manager+ AND REQUESTED?}
+    ACTIONS --> |Approve Refund| APPROV{"Manager+ AND REQUESTED?"}
     APPROV --> |Yes| REF_APP[Status: REFUND_APPROVED]
     REF_APP --> REF_PROC[Status: REFUND_PROCESSING]
     REF_PROC --> REFUNDED[Status: REFUNDED]
@@ -167,9 +167,9 @@ flowchart TD
     BANNER --> TABLE[Product stock table]
     TABLE --> FILTER_STOCK[Filter: ALL LOW OUT]
     TABLE --> SCAN_BTN[Scan Bill button]
-    TABLE --> ADJUST[Adjust Stock - Manager+]
-    ADJUST --> ADJ_TYPE[Type: RESTOCK SALE DAMAGE LOSS RETURN]
-    ADJ_TYPE --> MOVEMENT[Create inventory_movement]
+    TABLE --> ADJUST["Adjust Stock - Manager+"]
+    ADJUST --> ADJ_TYPE["Type: RESTOCK SALE DAMAGE LOSS RETURN"]
+    ADJ_TYPE --> MOVEMENT[Create inventory movement]
     MOVEMENT --> UPDATE_STOCK[Trigger updates current_stock]
     
     SCAN_BTN --> SCAN_MODAL[Scan Bill Modal]
@@ -177,16 +177,16 @@ flowchart TD
     DRAFT_TAB --> DRAFT_LIST[Draft List]
     DRAFT_TAB --> SCAN_BTN2[Scan Bill Button]
     
-    DRAFT_LIST --> |Click DRAFT/REVIEWED| REVIEW[Draft Review Panel]
-    DRAFT_LIST --> |Click CONFIRMED/CANCELLED| VIEW_ONLY[Read-only view]
+    DRAFT_LIST --> |Click DRAFT or REVIEWED| REVIEW[Draft Review Panel]
+    DRAFT_LIST --> |Click CONFIRMED or CANCELLED| VIEW_ONLY[Read-only view]
     
     REVIEW --> CONF_TIERS{Confidence Tier}
-    CONF_TIERS --> |≥85% MATCHED| GREEN[Green ✓ - auto accepted]
-    CONF_TIERS --> |70-84% PARTIAL| AMBER[Amber - review suggested]
-    CONF_TIERS --> |60-69% PARTIAL| YELLOW[Yellow - likely wrong]
-    CONF_TIERS --> |<60% UNMATCHED| RED[Red - pick product manually]
+    CONF_TIERS --> |85%+ MATCHED| GREEN["Green - auto accepted"]
+    CONF_TIERS --> |70-84% PARTIAL| AMBER["Amber - review suggested"]
+    CONF_TIERS --> |60-69% PARTIAL| YELLOW["Yellow - likely wrong"]
+    CONF_TIERS --> |60% or less UNMATCHED| RED["Red - pick product manually"]
     
-    REVIEW --> EDIT_ITEMS[Edit qty / price / assign product]
+    REVIEW --> EDIT_ITEMS["Edit qty / price / assign product"]
     REVIEW --> |Confirm Restock| CONFIRM_D[Create RESTOCK movements]
     CONFIRM_D --> STOCK_UP[Stock updated]
     REVIEW --> |Cancel Draft| CANCEL_D[Status: CANCELLED]
@@ -201,7 +201,7 @@ flowchart TD
     PRED_TAB --> REFRESH_P[Refresh Predictions]
     
     HIST_TAB --> MOV_LIST[Movement History List]
-    MOV_LIST --> MOV_TYPES[RESTOCK SALE DAMAGE LOSS RETURN ADJUSTMENT]
+    MOV_LIST --> MOV_TYPES["RESTOCK SALE DAMAGE LOSS RETURN ADJUSTMENT"]
 ```
 
 ---
@@ -213,7 +213,7 @@ flowchart TD
     START([Scan Bill button]) --> MODAL[ScanBillModal]
     MODAL --> CHOOSE{Choose input}
     
-    CHOOSE --> |Camera - PWA| CAM_START[getUserMedia facingMode: environment]
+    CHOOSE --> |Camera - PWA| CAM_START["getUserMedia facingMode environment"]
     CHOOSE --> |Upload - Desktop| FILE_PICK[File picker]
     
     CAM_START --> |Success| VIEWFINDER[Camera viewfinder]
@@ -229,19 +229,19 @@ flowchart TD
     TO_BASE64_1 --> API_CALL
     TO_BASE64_2 --> API_CALL
     
-    API_CALL[POST /api/bill-parse] --> HASH[Compute SHA-256 hash]
+    API_CALL["POST /api/bill-parse"] --> HASH["Compute SHA-256 hash"]
     HASH --> DUP_CHECK{Duplicate hash?}
     
     DUP_CHECK --> |Yes - existing DRAFT| RETURN_DUP[Return existing draft]
     DUP_CHECK --> |No| OCR_CALL
     
-    OCR_CALL[extractBillItems - Gemini Vision] --> PARSE[Parse structured JSON]
-    PARSE --> |Success| MATCH[fuzzyMatchItems - pg_trgm 0.6 threshold]
+    OCR_CALL["extractBillItems - Gemini Vision"] --> PARSE[Parse structured JSON]
+    PARSE --> |Success| MATCH["fuzzyMatchItems - pg_trgm 0.6 threshold"]
     PARSE --> |Fail - no items| ERR_PARSE[Error: No items found]
     PARSE --> |Fail - API error| ERR_API[Error: OCR failed]
     
     MATCH --> UPLOAD[Upload photo to Supabase Storage]
-    UPLOAD --> INSERT_DRAFT[Create draft_purchases row - DRAFT]
+    UPLOAD --> INSERT_DRAFT["Create draft_purchases row - DRAFT"]
     INSERT_DRAFT --> INSERT_ITEMS[Create draft_purchase_items rows]
     INSERT_ITEMS --> SUCCESS[Return draft + items]
     
@@ -254,14 +254,14 @@ flowchart TD
     RETRY --> |No| CLOSE([Close modal])
     
     REVIEW --> ITEMS[Items with confidence badges]
-    ITEMS --> EDIT[Edit qty / price / reassign product]
-    EDIT --> |Confirm| CONFIRM[POST /api/draft-purchases/id action: confirm]
-    EDIT --> |Cancel| CANCEL[POST /api/draft-purchases/id action: cancel]
+    ITEMS --> EDIT["Edit qty / price / reassign product"]
+    EDIT --> |Confirm| CONFIRM_DTL["POST confirm draft"]
+    EDIT --> |Cancel| CANCEL_DTL["POST cancel draft"]
     
-    CONFIRM --> RESTOCK[Insert inventory_movements RESTOCK]
-    RESTOCK --> TRIGGER[Trigger updates products.current_stock]
+    CONFIRM_DTL --> RESTOCK["Insert inventory_movements RESTOCK"]
+    RESTOCK --> TRIGGER["Trigger updates products.current_stock"]
     TRIGGER --> DONE([Draft confirmed - stock updated])
-    CANCEL --> CANCELLED([Draft cancelled - no changes])
+    CANCEL_DTL --> CANCELLED_END([Draft cancelled - no changes])
 ```
 
 ---
@@ -271,39 +271,39 @@ flowchart TD
 ```mermaid
 flowchart TD
     KHATA([Khata Page]) --> LIST[Account List]
-    LIST --> SEARCH[Search by name / phone]
+    LIST --> SEARCH["Search by name / phone"]
     LIST --> |Manager+| CREATE[Create Account]
     
-    CREATE --> FORM[Party type + Name + Phone + Limit + Term]
-    FORM --> SAVE[Save khata_accounts]
+    CREATE --> FORM["Party type + Name + Phone + Limit + Term"]
+    FORM --> SAVE["Save khata_accounts"]
     SAVE --> LIST
     
     LIST --> CLICK[Click account]
-    CLICK --> DETAIL[Account Detail /pos/khata/id]
+    CLICK --> DETAIL["Account Detail /pos/khata/id"]
     
-    DETAIL --> SUMMARY[Outstanding - Limit - Available]
+    DETAIL --> SUMMARY["Outstanding - Limit - Available"]
     
     DETAIL --> ACTIONS{Role-gated actions}
     
-    ACTIONS --> |Record Payment - Manager+| PAY_FORM[Amount + Method + Reference]
-    PAY_FORM --> PAY_SAVE[Status: PAYMENT_MADE]
-    PAY_SAVE --> TRIGGER_CREDIT[Trigger: CREDIT transaction]
+    ACTIONS --> |"Record Payment - Manager+"| PAY_FORM["Amount + Method + Reference"]
+    PAY_FORM --> PAY_SAVE["Status: PAYMENT_MADE"]
+    PAY_SAVE --> TRIGGER_CREDIT["Trigger: CREDIT transaction"]
     TRIGGER_CREDIT --> BAL_DOWN[Balance decreased]
     
-    ACTIONS --> |Set Limit - Owner+| LIMIT_FORM[New limit amount]
+    ACTIONS --> |"Set Limit - Owner+"| LIMIT_FORM[New limit amount]
     LIMIT_FORM --> LIMIT_SAVE[Update credit_limit]
     LIMIT_SAVE --> ADJUST_TXN[ADJUSTMENT transaction logged]
     
-    ACTIONS --> |Adjust Balance - Owner+| ADJ_FORM[WRITE_OFF or CORRECTION + Reason]
-    ADJ_FORM --> ADJ_SAVE[Update outstanding_balance]
+    ACTIONS --> |"Adjust Balance - Owner+"| ADJ_FORM["WRITE_OFF or CORRECTION + Reason"]
+    ADJ_FORM --> ADJ_SAVE["Update outstanding_balance"]
     ADJ_SAVE --> ADJUST_TXN2[ADJUSTMENT transaction logged]
     
-    ACTIONS --> |Freeze/Unfreeze - Owner+| FREEZE[Toggle ACTIVE ↔ FROZEN]
+    ACTIONS --> |"Freeze/Unfreeze - Owner+"| FREEZE["Toggle ACTIVE and FROZEN"]
     FREEZE --> FREEZE_SAVE[Status updated]
     FREEZE_SAVE --> BLOCK[Blocks new CREDIT sales at checkout]
     
     DETAIL --> LEDGER[Transaction Ledger]
-    LEDGER --> TXN_TYPES[DEBIT - sale / CREDIT - payment / ADJUSTMENT]
+    LEDGER --> TXN_TYPES["DEBIT sale / CREDIT payment / ADJUSTMENT"]
 ```
 
 ---
@@ -314,13 +314,13 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    CONSUMER([Consumer]) --> BROWSE[/shop/store-slug]
-    BROWSE --> STORE[Store header: name + logo + bio]
+    CONSUMER([Consumer]) --> BROWSE["/shop/store-slug"]
+    BROWSE --> STORE["Store header: name + logo + bio"]
     STORE --> CATS[Products by category]
-    CATS --> PRODUCT[Product card: image + name + price]
+    CATS --> PRODUCT["Product card: image + name + price"]
     PRODUCT --> ORDER_BTN["Order via WhatsApp - gold button"]
     ORDER_BTN --> WA_LINK[wa.me deep link opens]
-    WA_LINK --> MSG["Hi I'd like to order Product from Store Ref: slug"]
+    WA_LINK --> MSG["Hi, order Product from Store. Ref: slug"]
     MSG --> WHATSAPP([WhatsApp chat])
 ```
 
@@ -336,32 +336,32 @@ sequenceDiagram
     participant DB as Supabase
     participant S as Store Staff
 
-    C->>WA: Sends order message "2x Tata Salt Ref: store-slug"
+    C->>WA: Sends order message with items and store ref
     WA->>GW: POST /api/webhook
     
-    GW->>DB: Check rate limit 10 orders/day/phone
+    GW->>DB: Check rate limit 10 orders per day per phone
     alt Rate exceeded
-        GW->>WA: Reply: "Daily limit reached"
+        GW->>WA: Reply: Daily limit reached
         WA->>C: Limit message
     end
     
-    GW->>GW: parseOrderMessage - Extract items + quantities
+    GW->>GW: parseOrderMessage Extract items and quantities
     GW->>DB: Resolve store by shop_slug
-    GW->>DB: fuzzy_match_product RPC - pg_trgm 70% threshold
-    GW->>DB: Create DRAFT order - order_source=WHATSAPP
-    GW->>DB: Insert order_items - matched + unmatched
+    GW->>DB: fuzzy_match_product RPC pg_trgm 70pct threshold
+    GW->>DB: Create DRAFT order order_source WHATSAPP
+    GW->>DB: Insert order_items matched and unmatched
     GW->>DB: Upsert consumer_account
     
-    GW->>WA: Reply: order summary
-    WA->>C: "Order received! Store will confirm." Tata Salt x2 OK Maggi x5 NOT FOUND
-    
+    GW->>WA: Reply with order summary
+    WA->>C: Order received with matched and unmatched items
+
     Note over S: Staff reviews in /pos/orders WhatsApp filter
     S->>DB: Edit unmatched items
     S->>DB: Confirm order to CONFIRMED
-    DB->>DB: Stock deducted + GST recorded
+    DB->>DB: Stock deducted and GST recorded
     S->>GW: POST /api/send-receipt
     GW->>WA: Receipt message
-    WA->>C: "Receipt from Store Total: Nu. 525.00 GST: Nu. 25.00"
+    WA->>C: Receipt from Store with Total and GST amounts
 ```
 
 ---
@@ -384,21 +384,21 @@ sequenceDiagram
     API->>GW: POST /api/send-otp
     GW->>META: Send template message
     META->>WA: Deliver OTP
-    WA->>C: "Your code is: 482916 Valid for 5 minutes"
+    WA->>C: Your code is 482916 Valid for 5 minutes
     
     C->>APP: Enter 6-digit code
     APP->>API: POST /api/auth/whatsapp/verify
     
     alt Valid OTP
         API->>API: Create Supabase session
-        API-->>APP: Success + redirect
+        API-->>APP: Success and redirect
         APP-->>C: Redirected to /pos
     else Invalid OTP
         API-->>APP: Error
-        APP-->>C: "Invalid code" - retry
+        APP-->>C: Invalid code retry
     else Expired OTP
         API-->>APP: Error
-        APP-->>C: "Code expired" - resend
+        APP-->>C: Code expired resend
     end
 ```
 
@@ -419,13 +419,13 @@ sequenceDiagram
     S->>POS: Confirm sale
     POS->>DB: Create order CONFIRMED
     
-    POS->>GW: POST /api/send-receipt fire-and-forget
+    POS->>GW: POST /api/send-receipt fire and forget
     GW->>META: Send receipt template
     META->>WA: Deliver receipt
-    WA->>C: "Receipt from Store Invoice: STORE-2026-00123 Total: Nu. 525.00 GST: Nu. 25.00"
+    WA->>C: Receipt from Store with Invoice Total and GST
     
     WA->>META: Delivery status callback
-    META->>GW: POST /api/webhook - status update
+    META->>GW: POST /api/webhook status update
     GW->>DB: Update whatsapp_status SENT to DELIVERED to READ
     
     Note over POS: Confirmation page shows WhatsApp sent status
@@ -450,13 +450,13 @@ flowchart TD
     SCHEDULE([Scheduled check]) --> CHECK[Check khata_accounts]
     CHECK --> DUE_CHECK{Payment due?}
     
-    DUE_CHECK --> |3 days before| PRE_DUE["Hi Name your payment of Nu. X is due in 3 days"]
-    DUE_CHECK --> |Due today| DUE_TODAY["Hi Name your payment of Nu. X is due today. Please settle soon."]
-    DUE_CHECK --> |3 days overdue| OVERDUE_3D["Hi Name your payment of Nu. X was due 3 days ago."]
-    DUE_CHECK --> |30 days overdue| OVERDUE_30D["Name has overdue balance of Nu. X - 30+ days past due."]
-    DUE_CHECK --> |Monthly| MONTHLY["Hi Name your outstanding balance at Store is Nu. X."]
+    DUE_CHECK --> |3 days before| PRE_DUE["Hi Name, payment of Nu. X due in 3 days"]
+    DUE_CHECK --> |Due today| DUE_TODAY["Hi Name, payment of Nu. X due today"]
+    DUE_CHECK --> |3 days overdue| OVERDUE_3D["Hi Name, payment of Nu. X was due 3 days ago"]
+    DUE_CHECK --> |30 days overdue| OVERDUE_30D["Overdue balance of Nu. X, 30+ days past due"]
+    DUE_CHECK --> |Monthly| MONTHLY["Hi Name, outstanding balance at Store is Nu. X"]
     
-    PRE_DUE --> GW[POST /api/send-credit-alert]
+    PRE_DUE --> GW["POST /api/send-credit-alert"]
     DUE_TODAY --> GW
     OVERDUE_3D --> GW
     OVERDUE_30D --> GW
@@ -472,8 +472,8 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    PRED[Stock Prediction System] --> |Below threshold| API[POST /api/send-stock-alert]
-    API --> GW[Gateway :3001]
+    PRED[Stock Prediction System] --> |Below threshold| API["POST /api/send-stock-alert"]
+    API --> GW["Gateway :3001"]
     GW --> META[Meta Cloud API]
     META --> WA[WhatsApp delivered]
     WA --> RETAILER[Retailer phone]
@@ -486,12 +486,12 @@ flowchart LR
 ```mermaid
 stateDiagram-v2
     [*] --> DRAFT
-    DRAFT --> PENDING_PAYMENT : Customer identified + checkout
+    DRAFT --> PENDING_PAYMENT : Customer identified plus checkout
     PENDING_PAYMENT --> PAYMENT_VERIFYING : Digital payment selected
     PAYMENT_VERIFYING --> CONFIRMED : Payment verified
     PENDING_PAYMENT --> CONFIRMED : Cash payment
-    PENDING_PAYMENT --> CANCELLED : Payment failed / timeout
-    PAYMENT_VERIFYING --> CANCELLED : Verification failed / timeout
+    PENDING_PAYMENT --> CANCELLED : Payment failed or timeout
+    PAYMENT_VERIFYING --> CANCELLED : Verification failed or timeout
     
     CONFIRMED --> PROCESSING : Staff begins fulfillment
     PROCESSING --> DISPATCHED : Handed to delivery
@@ -501,8 +501,8 @@ stateDiagram-v2
     DRAFT --> CANCELLED : Staff cancels
     PENDING_PAYMENT --> CANCELLED : Staff cancels
     PAYMENT_VERIFYING --> CANCELLED : Staff cancels
-    CONFIRMED --> CANCELLED : Staff cancels - stock restored
-    PROCESSING --> CANCELLED : Staff cancels - stock restored
+    CONFIRMED --> CANCELLED : Staff cancels stock restored
+    PROCESSING --> CANCELLED : Staff cancels stock restored
     DISPATCHED --> CANCELLATION_REQUESTED : Customer requests
     CANCELLATION_REQUESTED --> CANCELLED : Approved
     
@@ -512,7 +512,7 @@ stateDiagram-v2
     REFUND_REQUESTED --> REFUND_APPROVED : Manager approves
     REFUND_REQUESTED --> REFUND_REJECTED : Manager rejects
     REFUND_APPROVED --> REFUND_PROCESSING : Processing refund
-    REFUND_PROCESSING --> REFUNDED : Refund complete - stock restored
+    REFUND_PROCESSING --> REFUNDED : Refund complete stock restored
     
     CONFIRMED --> REPLACEMENT_REQUESTED : Customer requests replacement
     DELIVERED --> REPLACEMENT_REQUESTED : Customer requests replacement
@@ -536,26 +536,26 @@ stateDiagram-v2
 graph TD
     subgraph CASHIER_ROLE[CASHIER]
         C1[Process sales]
-        C2[View orders / inventory]
+        C2["View orders and inventory"]
         C3[Cancel orders]
         C4[Request refunds]
     end
     
-    subgraph MANAGER_ROLE[MANAGER = Cashier +]
-        M1[Create / edit products]
+    subgraph MANAGER_ROLE["MANAGER equals Cashier plus"]
+        M1["Create and edit products"]
         M2[Adjust stock]
-        M3[Scan bills / confirm drafts]
-        M4[Apply discounts / override prices]
+        M3["Scan bills and confirm drafts"]
+        M4["Apply discounts and override prices"]
         M5[Create khata accounts]
         M6[Record khata payments]
         M7[Approve refunds]
         M8[Toggle marketplace visibility]
     end
     
-    subgraph OWNER_ROLE[OWNER / ADMIN = Manager +]
+    subgraph OWNER_ROLE["OWNER ADMIN equals Manager plus"]
         O1[Set credit limits]
-        O2[Adjust balances / write-off]
-        O3[Freeze / unfreeze accounts]
+        O2["Adjust balances and write-off"]
+        O3["Freeze and unfreeze accounts"]
         O4[Override credit limit at checkout]
     end
     
@@ -584,9 +584,9 @@ graph TB
     
     subgraph BACKEND[Backend Services]
         API[Next.js API Routes]
-        GW[WhatsApp Gateway :3001]
-        SUPA[(Supabase)]
-        STORE[(Supabase Storage bill-photos)]
+        GW["WhatsApp Gateway :3001"]
+        SUPA["Supabase Database"]
+        STORE["Supabase Storage bill-photos"]
     end
     
     subgraph EXTERNAL[External Services]
@@ -595,11 +595,11 @@ graph TB
         PGTRGM[pg_trgm Fuzzy Match]
     end
     
-    C1 --> |Browse /shop/slug| API
-    C2 <--> |Messages + OTP + Receipts| META
+    C1 --> |"Browse /shop/slug"| API
+    C2 <--> |"Messages + OTP + Receipts"| META
     META <--> GW
     
-    POS --> |Checkout + Stock gate| API
+    POS --> |"Checkout + Stock gate"| API
     POS --> |Payment OCR| GEMINI
     POS --> |Receipt send| GW
     
@@ -638,22 +638,22 @@ sequenceDiagram
     C->>WA: Open login page
     C->>GW: POST /api/send-otp
     GW->>WA: OTP delivered
-    WA->>C: "Your code is: 482916"
+    WA->>C: Your code is 482916
     C->>GW: POST /api/auth/whatsapp/verify
     GW-->>C: Session created
 
     Note over C,ST: 2. MARKETPLACE ORDER
-    C->>WA: Click "Order via WhatsApp" on /shop/slug
+    C->>WA: Click Order via WhatsApp on /shop/slug
     WA->>C: Opens chat with pre-filled message
 
     Note over C,ST: 3. WHATSAPP ORDERING
-    C->>WA: Sends "2x Tata Salt Ref: store-slug"
+    C->>WA: Sends order message with items and store ref
     WA->>GW: POST /api/webhook
     GW->>GW: Parse message
     GW->>DB: Fuzzy match products
     GW->>DB: Create DRAFT order
-    GW->>WA: Reply with matched/unmatched summary
-    WA->>C: "Order received!"
+    GW->>WA: Reply with matched and unmatched summary
+    WA->>C: Order received
 
     Note over C,ST: 4. STAFF REVIEW
     ST->>DB: View WhatsApp orders in /pos/orders
@@ -663,17 +663,17 @@ sequenceDiagram
     Note over C,ST: 5. RECEIPT DELIVERY
     ST->>GW: POST /api/send-receipt
     GW->>WA: Receipt message
-    WA->>C: "Receipt from Store Total: Nu. 525.00"
+    WA->>C: Receipt from Store with Total amount
 
     Note over C,ST: 6. DELIVERY STATUS
-    WA->>GW: POST /api/webhook status=delivered
+    WA->>GW: POST /api/webhook status delivered
     GW->>DB: Update whatsapp_status to DELIVERED
 
     Note over C,ST: 7. CREDIT REMINDERS
     GW->>WA: POST /api/send-credit-alert
-    WA->>C: "Hi Name your balance is Nu. X"
+    WA->>C: Hi Name your balance is Nu. X
 
     Note over C,ST: 8. STOCK ALERTS
     GW->>WA: POST /api/send-stock-alert
-    WA->>ST: "Low Stock: Product X = 3 units"
+    WA->>ST: Low Stock Product X equals 3 units
 ```
