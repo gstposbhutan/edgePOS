@@ -2,14 +2,14 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Search, RefreshCw, ShoppingBag } from "lucide-react"
+import { ArrowLeft, Search, RefreshCw, ShoppingBag, MessageCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { OrderStatusBadge } from "@/components/pos/orders/order-status-badge"
 import { useOrders } from "@/hooks/use-orders"
 import { getUser, getRoleClaims } from "@/lib/auth"
 
-const FILTERS = ['ALL', 'ACTIVE', 'COMPLETED', 'CANCELLED', 'REFUNDS']
+const FILTERS = ['ALL', 'WHATSAPP', 'ACTIVE', 'COMPLETED', 'CANCELLED', 'REFUNDS']
 
 export default function OrdersPage() {
   const router = useRouter()
@@ -101,11 +101,17 @@ export default function OrdersPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-sm font-mono font-medium text-foreground">{order.order_no}</p>
+                    {order.order_source === 'WHATSAPP' && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                        <MessageCircle className="h-3 w-3" /> WA
+                      </span>
+                    )}
                     <OrderStatusBadge status={order.status} size="sm" />
                   </div>
                   <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
                     <span>{new Date(order.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                     {order.buyer_whatsapp && <span>{order.buyer_whatsapp}</span>}
+                    {order.buyer_phone && !order.buyer_whatsapp && <span>{order.buyer_phone}</span>}
                     <span>{order.payment_method}</span>
                   </div>
                 </div>

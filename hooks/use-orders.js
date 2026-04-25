@@ -16,6 +16,7 @@ export function useOrders(entityId) {
 
   const STATUS_GROUPS = {
     ALL:       null,
+    WHATSAPP:  'WHATSAPP',
     ACTIVE:    ['PENDING_PAYMENT', 'PAYMENT_VERIFYING', 'CONFIRMED', 'PROCESSING', 'DISPATCHED'],
     COMPLETED: ['COMPLETED', 'DELIVERED'],
     CANCELLED: ['CANCELLED', 'PAYMENT_FAILED'],
@@ -31,13 +32,17 @@ export function useOrders(entityId) {
     setLoading(true)
     let query = supabase
       .from('orders')
-      .select('id, order_no, order_type, status, grand_total, gst_total, payment_method, buyer_whatsapp, created_at, updated_at')
+      .select('id, order_no, order_type, order_source, status, grand_total, gst_total, payment_method, buyer_whatsapp, buyer_phone, created_at, updated_at')
       .eq('seller_id', entityId)
       .order('created_at', { ascending: false })
       .limit(100)
 
-    const statuses = STATUS_GROUPS[filter]
-    if (statuses) query = query.in('status', statuses)
+    const filterVal = STATUS_GROUPS[filter]
+    if (filter === 'WHATSAPP') {
+      query = query.eq('order_source', 'WHATSAPP')
+    } else if (filterVal) {
+      query = query.in('status', filterVal)
+    }
 
     const { data } = await query
     setOrders(data ?? [])

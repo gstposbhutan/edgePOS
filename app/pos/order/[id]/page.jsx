@@ -24,6 +24,7 @@ export default function OrderConfirmationPage() {
   const [loading,    setLoading]    = useState(true)
   const [pdfLoading, setPdfLoading] = useState(false)
   const [waLoading,  setWaLoading]  = useState(false)
+  const [waSent,     setWaSent]     = useState(false)
 
   useEffect(() => {
     loadOrder()
@@ -100,9 +101,41 @@ export default function OrderConfirmationPage() {
   }
 
   async function handleSendWhatsApp() {
-    // Phase 4 — WhatsApp gateway integration
-    // For now, opens WhatsApp web with pre-filled message
     setWaLoading(true)
+    try {
+      // Try gateway service first
+      const gatewayUrl = process.env.NEXT_PUBLIC_WHATSAPP_GATEWAY_URL || 'http://localhost:3001'
+      const res = await fetch(`${gatewayUrl}/api/send-receipt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phoneNumber: order.buyer_whatsapp,
+          invoiceId: order.id,
+          orderNo: order.order_no,
+          entityName: entity?.name,
+          grandTotal: order.grand_total,
+          gstTotal: order.gst_total,
+        }),
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        setWaSent(true)
+        // Update local order status
+        setOrder(prev => ({ ...prev, whatsapp_status: 'SENT' }))
+      } else {
+        // Fallback to WhatsApp Web
+        fallbackWhatsAppWeb()
+      }
+    } catch {
+      // Gateway not reachable — fallback to WhatsApp Web
+      fallbackWhatsAppWeb()
+    } finally {
+      setWaLoading(false)
+    }
+  }
+
+  function fallbackWhatsAppWeb() {
     const phone   = order?.buyer_whatsapp?.replace('+', '') ?? ''
     const message = encodeURIComponent(
       `Your receipt from ${entity?.name ?? 'NEXUS BHUTAN'}\n` +
@@ -112,7 +145,6 @@ export default function OrderConfirmationPage() {
       `Thank you for your purchase!`
     )
     window.open(`https://wa.me/${phone}?text=${message}`, '_blank')
-    setWaLoading(false)
   }
 
   if (loading) {
@@ -174,13 +206,21 @@ export default function OrderConfirmationPage() {
 
           <Button
             onClick={handleSendWhatsApp}
-            disabled={waLoading || !order.buyer_whatsapp}
+            disabled={waLoading || waSent || !order.buyer_whatsapp}
             variant="outline"
-            className="flex flex-col gap-1.5 h-auto py-3 border-emerald-500/50 text-emerald-600 hover:bg-emerald-500/5"
-            title={!order.buyer_whatsapp ? 'No WhatsApp number on file' : ''}
+            className={`flex flex-col gap-1.5 h-auto py-3 ${
+              waSent ? 'border-emerald-500/50 text-emerald-600 bg-emerald-500/5' :
+              'border-emerald-500/50 text-emerald-600 hover:bg-emerald-500/5'
+            }`}
+            title={!order.buyer_whatsapp ? 'No WhatsApp number on file' : waSent ? 'Receipt sent' : ''}
           >
-            <MessageCircle className="h-5 w-5" />
-            <span className="text-xs">WhatsApp</span>
+            {waLoading
+              ? <Loader2 className="h-5 w-5 animate-spin" />
+              : waSent
+                ? <CheckCircle className="h-5 w-5" />
+                : <MessageCircle className="h-5 w-5" />
+            }
+            <span className="text-xs">{waSent ? 'Sent' : 'WhatsApp'}</span>
           </Button>
 
           <Button
