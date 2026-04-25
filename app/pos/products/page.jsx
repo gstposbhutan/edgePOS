@@ -43,7 +43,7 @@ export default function ProductsPage() {
 
   const {
     products, categories, loading, saving,
-    createProduct, updateProduct, toggleActive, togglePackageOnly,
+    createProduct, updateProduct, toggleActive, togglePackageOnly, toggleVisibleOnWeb,
     createPackage, updatePackage, deactivatePackage, fetchPackages,
     refresh,
   } = useProductCatalog(entityId)
@@ -186,6 +186,7 @@ export default function ProductsPage() {
                   onEdit={() => openEdit(product)}
                   onToggle={() => toggleActive(product.id, !product.is_active)}
                   onTogglePkgOnly={() => togglePackageOnly(product.id, !product.sold_as_package_only)}
+                  onToggleWeb={() => toggleVisibleOnWeb(product.id, !product.visible_on_web)}
                 />
               ))}
             </div>
@@ -289,7 +290,7 @@ function PackageRow({ pkg, canManage, onEdit, onDeactivate }) {
   )
 }
 
-function ProductRow({ product, canManage, onEdit, onToggle, onTogglePkgOnly }) {
+function ProductRow({ product, canManage, onEdit, onToggle, onTogglePkgOnly, onToggleWeb }) {
   const cats  = (product.product_categories ?? []).map(pc => pc.categories?.name).filter(Boolean)
   const price = parseFloat(product.mrp ?? 0)
   const cost  = parseFloat(product.wholesale_price ?? 0)
@@ -357,6 +358,17 @@ function ProductRow({ product, canManage, onEdit, onToggle, onTogglePkgOnly }) {
             }`}
           >
             PKG
+          </button>
+          <button
+            onClick={onToggleWeb}
+            title={product.visible_on_web ? 'Hide from marketplace' : 'Show on marketplace'}
+            className={`transition-colors text-[10px] font-medium px-1.5 py-0.5 rounded border ${
+              product.visible_on_web
+                ? 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/30'
+                : 'text-muted-foreground border-border hover:border-[#D4AF37]/30'
+            }`}
+          >
+            WEB
           </button>
         </div>
       )}

@@ -172,6 +172,16 @@ export function useProductCatalog(entityId) {
     setProducts(prev => prev.map(p => p.id === productId ? { ...p, sold_as_package_only: value } : p))
   }, [])
 
+  /**
+   * Toggle product visibility on marketplace page.
+   * @param {string} productId
+   * @param {boolean} visible
+   */
+  const toggleVisibleOnWeb = useCallback(async (productId, visible) => {
+    await supabase.from('products').update({ visible_on_web: visible }).eq('id', productId)
+    setProducts(prev => prev.map(p => p.id === productId ? { ...p, visible_on_web: visible } : p))
+  }, [])
+
   // ── Package CRUD ────────────────────────────────────────────────────────────
 
   /**
@@ -330,7 +340,7 @@ export function useProductCatalog(entityId) {
 
   return {
     products, categories, loading, saving,
-    createProduct, updateProduct, toggleActive, togglePackageOnly,
+    createProduct, updateProduct, toggleActive, togglePackageOnly, toggleVisibleOnWeb,
     createPackage, updatePackage, deactivatePackage, fetchPackages,
     refresh: fetchProducts,
   }
