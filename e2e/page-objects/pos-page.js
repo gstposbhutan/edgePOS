@@ -15,23 +15,23 @@ class PosPage {
     // Header
     this.storeNameText = page.locator('header p.font-serif')
 
-    // Camera toggle button — text reads "Camera On" or "Camera Off"
-    this.cameraToggleButton = page.locator('button', { hasText: /^Camera (On|Off)$/ })
+    // Camera toggle button — text reads "📷 Camera On" or "📷 Camera Off"
+    this.cameraToggleButton = page.locator('button', { hasText: /Camera (On|Off)/ })
 
     // Product search input
-    this.searchInput = page.locator('input[placeholder="Search products by name or SKU..."]')
+    this.searchInput = page.getByPlaceholder('Search products by name or SKU...')
 
     // Product grid container (the grid inside the scrollable area)
     this.productGrid = page.locator('.grid.grid-cols-2.sm\\:grid-cols-3')
 
     // Empty state
-    this.emptyProductsMessage = page.locator('text=No products found')
+    this.emptyProductsMessage = page.getByText('No products found')
 
     // Loading skeleton
     this.loadingSkeleton = page.locator('.animate-pulse')
 
-    // Cart panel (right side) — used only for verifying page layout loaded
-    this.cartHeader = page.locator('text=Cart')
+    // Cart panel header — exact match to avoid "Cart is empty" collision
+    this.cartHeader = page.getByText('Cart', { exact: true }).first()
   }
 
   // ── Navigation ──────────────────────────────────────────────────────
@@ -86,6 +86,11 @@ class PosPage {
 
   /** Number of visible product card <button> elements in the grid. */
   async getProductCount() {
+    // Wait for loading skeletons to clear
+    const hasSkeleton = await this.loadingSkeleton.isVisible().catch(() => false)
+    if (hasSkeleton) {
+      await this.loadingSkeleton.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {})
+    }
     return this.productGrid.locator('button').count()
   }
 
@@ -95,7 +100,7 @@ class PosPage {
    */
   async getProductPrice(name) {
     const card = this.getProductByName(name)
-    const priceText = await card.locator('span.text-primary.font-bold').textContent()
+    const priceText = await card.locator('span.font-bold').textContent()
     return parseFloat(priceText.replace('Nu.', '').trim())
   }
 

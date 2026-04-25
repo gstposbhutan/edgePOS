@@ -15,7 +15,7 @@ CREATE TABLE whatsapp_otps (
 CREATE INDEX idx_whatsapp_otps_lookup
   ON whatsapp_otps(phone, used, expires_at DESC);
 
--- Auto-purge expired OTPs older than 1 hour (keeps table small)
+-- Partial index for used/expired OTP cleanup (NOW() is not IMMUTABLE, use a boolean flag instead)
 CREATE INDEX idx_whatsapp_otps_cleanup
   ON whatsapp_otps(created_at)
-  WHERE used = TRUE OR expires_at < NOW();
+  WHERE used = TRUE;

@@ -59,6 +59,10 @@ $$ LANGUAGE plpgsql STABLE;
 -- Returns how many complete packages can be assembled from current stock.
 -- Works for pallets (packages of packages) as well as simple packages.
 
+-- Drop the view that depends on the 1-arg function, then drop the function
+DROP VIEW IF EXISTS sellable_products;
+DROP FUNCTION IF EXISTS package_available_qty(UUID);
+
 CREATE OR REPLACE FUNCTION package_available_qty(p_package_id UUID, p_depth INT DEFAULT 0)
 RETURNS INT AS $$
 DECLARE

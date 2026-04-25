@@ -7,10 +7,6 @@ const {
   TEST_KHATA_ACCOUNTS,
 } = require('./test-data')
 
-/**
- * Create a Supabase admin client using the service role key.
- * Requires SUPABASE_SERVICE_ROLE_KEY and NEXT_PUBLIC_SUPABASE_URL env vars.
- */
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -26,10 +22,6 @@ function getAdminClient() {
   })
 }
 
-/**
- * Seed the test database with deterministic fixture data.
- * Uses upsert so it is idempotent — safe to run multiple times.
- */
 async function seedDatabase() {
   const supabase = getAdminClient()
 
@@ -53,8 +45,8 @@ async function seedDatabase() {
     throw productsErr
   }
 
-  // ── 3. Upsert orders ───────────────────────────────────────────
-  const orders = TEST_ORDERS.map(({ items, ...order }) => order)
+  // ── 3. Upsert orders (keep items JSONB, use schema field names) ──
+  const orders = TEST_ORDERS.map((order) => order)
 
   const { error: ordersErr } = await supabase
     .from('orders')
@@ -65,14 +57,25 @@ async function seedDatabase() {
     throw ordersErr
   }
 
-  // ── 4. Upsert order items ──────────────────────────────────────
-  const orderItems = TEST_ORDERS.flatMap((order) =>
-    order.items.map((item, idx) => ({
-      id: `${order.id}-item-${idx}`,
-      order_id: order.id,
-      entity_id: order.entity_id,
-      ...item,
-    }))
+  // ── 4. Upsert order items (map test data to schema columns) ─────
+  const orderItems = TEST_ORDERS.flatMap((order, oIdx) =>
+    order.items.map((item, idx) => {
+      const seq = oIdx * 10 + idx + 1
+      const suffix = String(seq).padStart(4, '0')
+      return {
+        id: `00000000-0000-4000-8000-00000005${suffix}`,
+        order_id: order.id,
+        product_id: item.product_id,
+        sku: item.sku,
+        name: item.name,
+        quantity: item.qty,
+        unit_price: item.rate,
+        discount: item.discount || 0,
+        gst_5: item.gst_5,
+        total: item.total,
+        status: 'ACTIVE',
+      }
+    })
   )
 
   const { error: itemsErr } = await supabase
@@ -94,31 +97,69 @@ async function seedDatabase() {
     throw khataErr
   }
 
-  // ── 6. Create auth users (via admin API) ───────────────────────
-  for (const user of TEST_USERS) {
-    const { data, error: authErr } = await supabase.auth.admin.createUser({
-      uid: user.id,
-      email: user.email,
-      password: user.password,
-      email_confirm: true,
-      user_metadata: {
-        role: user.role,
-        sub_role: user.sub_role,
-        entity_id: user.entity_id,
-        permissions: user.permissions,
-      },
-    })
+  // ── 6. Create/update auth users and build ID map ───────────────
+  const authIdMap = {} // email → actual auth user ID
 
-    // Ignore "user already exists" errors for idempotency
-    if (authErr && !authErr.message.includes('already registered')) {
-      console.error(`[DB Seed] Auth user creation failed for ${user.email}:`, authErr.message)
-      throw authErr
+  for (const user of TEST_USERS) {
+    // Check if user already exists
+    const { data: { users: existing } } = await supabase.auth.admin.listUsers()
+    const found = existing.find(u => u.email === user.email)
+
+    if (found) {
+      authIdMap[user.email] = found.id
+      // Update app_metadata to keep claims in sync
+      await supabase.auth.admin.updateUserById(found.id, {
+        app_metadata: {
+          role: user.role,
+          sub_role: user.sub_role,
+          entity_id: user.entity_id,
+          permissions: user.permissions,
+        },
+      })
+    } else {
+      const { data, error: authErr } = await supabase.auth.admin.createUser({
+        email: user.email,
+        password: user.password,
+        email_confirm: true,
+        app_metadata: {
+          role: user.role,
+          sub_role: user.sub_role,
+          entity_id: user.entity_id,
+          permissions: user.permissions,
+        },
+      })
+
+      if (authErr) {
+        console.error(`[DB Seed] Auth user creation failed for ${user.email}:`, authErr.message || authErr.code)
+        throw authErr
+      }
+      authIdMap[user.email] = data.user.id
     }
   }
 
+  // ── 7. Upsert user profiles using actual auth IDs ──────────────
+  const profiles = TEST_USERS.map((user) => ({
+    id: authIdMap[user.email],
+    entity_id: user.entity_id,
+    role: user.role,
+    sub_role: user.sub_role,
+    permissions: user.permissions,
+    full_name: user.sub_role.charAt(0) + user.sub_role.slice(1).toLowerCase(),
+  }))
+
+  const { error: profileErr } = await supabase
+    .from('user_profiles')
+    .upsert(profiles, { onConflict: 'id' })
+
+  if (profileErr) {
+    console.error('[DB Seed] User profiles upsert failed:', profileErr.message)
+    throw profileErr
+  }
+
   console.log(
-    `[DB Seed] Seeded: 1 entity, ${TEST_PRODUCTS.length} products, ${TEST_ORDERS.length} orders, ${TEST_KHATA_ACCOUNTS.length} khata accounts, ${TEST_USERS.length} users`
+    `[DB Seed] Seeded: 1 entity, ${TEST_PRODUCTS.length} products, ${TEST_ORDERS.length} orders, ${TEST_KHATA_ACCOUNTS.length} khata accounts, ${TEST_USERS.length} users, ${profiles.length} profiles`
   )
+  console.log('[DB Seed] Auth ID map:', JSON.stringify(authIdMap, null, 2))
 }
 
 module.exports = { seedDatabase }

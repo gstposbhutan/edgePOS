@@ -28,9 +28,9 @@ class OrderDetailPage {
     this.paymentMethodText = page.locator('text=Payment').locator('..').locator('p.font-semibold')
 
     // Action buttons
-    this.viewReceiptButton = page.locator('button:has-text("View Receipt")')
-    this.cancelOrderButton = page.locator('button:has-text("Cancel Order")')
-    this.requestRefundButton = page.locator('button:has-text("Request Refund")')
+    this.viewReceiptButton = page.getByRole('button', { name: /View Receipt/i })
+    this.cancelOrderButton = page.getByRole('button', { name: /Cancel Order/i })
+    this.requestRefundButton = page.getByRole('button', { name: /Request Refund/i })
     this.refreshButton = page.locator('button[title="Refresh"]')
 
     // Unmatched items warning

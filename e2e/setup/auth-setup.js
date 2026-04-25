@@ -13,8 +13,11 @@ test.describe('Auth Setup', () => {
   for (const { key, user, file } of roles) {
     test(`sign in as ${key} and save storage state`, async ({ page }) => {
       await page.goto('/login')
-      await page.getByLabel('Email').fill(user.email)
-      await page.getByLabel('Password').fill(user.password)
+      // Wait for login form to render
+      await page.getByPlaceholder('you@business.bt').waitFor({ state: 'visible' })
+
+      await page.getByPlaceholder('you@business.bt').fill(user.email)
+      await page.getByPlaceholder('••••••••').fill(user.password)
       await page.getByRole('button', { name: /sign in/i }).click()
       await page.waitForURL('**/pos**', { timeout: 30000 })
       await page.context().storageState({ path: file })

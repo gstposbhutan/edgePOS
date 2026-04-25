@@ -43,7 +43,7 @@ class CartPanel {
    * Each cart item lives in a div with class "p-2.5 rounded-lg border".
    */
   getCartItemByName(name) {
-    return this.page.locator('.flex.flex-col.gap-1\\.5.p-2\\.5', { hasText: new RegExp(`^${escapeRegex(name)}`) }).first()
+    return this.page.locator('.flex.flex-col.gap-1\\.5.p-2\\.5.rounded-lg.border', { hasText: new RegExp(`^${escapeRegex(name)}`) }).first()
   }
 
   /**
@@ -55,11 +55,11 @@ class CartPanel {
    */
   async updateQuantity(itemName, delta) {
     const item = this.getCartItemByName(itemName)
-    // The qty controls are inside a div with Minus, span, Plus buttons
+    const qtyDiv = item.locator('div.flex.items-center.gap-1')
     if (delta > 0) {
-      await item.locator('button svg.lucide-plus').locator('..').click()
+      await qtyDiv.locator('button').nth(1).click()
     } else {
-      await item.locator('button svg.lucide-minus').locator('..').click()
+      await qtyDiv.locator('button').first().click()
     }
   }
 
@@ -161,7 +161,8 @@ class CartPanel {
 
   /** Count of item cards currently in the cart. */
   async getCartItemCount() {
-    return this.page.locator('.flex.flex-col.gap-1\\.5.p-2\\.5.rounded-lg').count()
+    await this.emptyCartMessage.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {})
+    return this.page.locator('.flex.flex-col.gap-1\\.5.p-2\\.5.rounded-lg.border').count()
   }
 
   /** Verify the empty cart message is visible. */

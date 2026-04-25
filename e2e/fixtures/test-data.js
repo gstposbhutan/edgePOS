@@ -20,6 +20,8 @@ const TEST_ENTITY = {
 }
 
 // ── Test products (10 items, varying stock) ──────────────────────────
+// Schema: id, name, sku, hsn_code, current_stock, mrp, wholesale_price,
+//         unit, is_active, created_by (FK entities), product_type, reorder_point
 const TEST_PRODUCTS = [
   {
     id: '00000000-0000-4000-8000-000000001001',
@@ -29,10 +31,10 @@ const TEST_PRODUCTS = [
     current_stock: 45,
     mrp: 35000.00,
     wholesale_price: 28000.00,
-    category: 'Electronics',
     unit: 'piece',
     is_active: true,
-    entity_id: TEST_ENTITY.id,
+    created_by: TEST_ENTITY.id,
+    product_type: 'SINGLE',
   },
   {
     id: '00000000-0000-4000-8000-000000001002',
@@ -42,10 +44,10 @@ const TEST_PRODUCTS = [
     current_stock: 120,
     mrp: 450.00,
     wholesale_price: 360.00,
-    category: 'Food',
     unit: 'pack',
     is_active: true,
-    entity_id: TEST_ENTITY.id,
+    created_by: TEST_ENTITY.id,
+    product_type: 'SINGLE',
   },
   {
     id: '00000000-0000-4000-8000-000000001003',
@@ -55,10 +57,10 @@ const TEST_PRODUCTS = [
     current_stock: 80,
     mrp: 85.00,
     wholesale_price: 68.00,
-    category: 'Dairy',
     unit: 'piece',
     is_active: true,
-    entity_id: TEST_ENTITY.id,
+    created_by: TEST_ENTITY.id,
+    product_type: 'SINGLE',
   },
   {
     id: '00000000-0000-4000-8000-000000001004',
@@ -68,10 +70,10 @@ const TEST_PRODUCTS = [
     current_stock: 200,
     mrp: 100.00,
     wholesale_price: 50.00,
-    category: 'Telecom',
     unit: 'piece',
     is_active: true,
-    entity_id: TEST_ENTITY.id,
+    created_by: TEST_ENTITY.id,
+    product_type: 'SINGLE',
   },
   {
     id: '00000000-0000-4000-8000-000000001005',
@@ -81,10 +83,10 @@ const TEST_PRODUCTS = [
     current_stock: 6,
     mrp: 120.00,
     wholesale_price: 95.00,
-    category: 'Beverages',
     unit: 'piece',
     is_active: true,
-    entity_id: TEST_ENTITY.id,
+    created_by: TEST_ENTITY.id,
+    product_type: 'SINGLE',
   },
   {
     id: '00000000-0000-4000-8000-000000001006',
@@ -94,10 +96,10 @@ const TEST_PRODUCTS = [
     current_stock: 3,
     mrp: 320.00,
     wholesale_price: 260.00,
-    category: 'Household',
     unit: 'piece',
     is_active: true,
-    entity_id: TEST_ENTITY.id,
+    created_by: TEST_ENTITY.id,
+    product_type: 'SINGLE',
   },
   {
     id: '00000000-0000-4000-8000-000000001007',
@@ -107,10 +109,10 @@ const TEST_PRODUCTS = [
     current_stock: 8,
     mrp: 180.00,
     wholesale_price: 140.00,
-    category: 'Personal Care',
     unit: 'pack',
     is_active: true,
-    entity_id: TEST_ENTITY.id,
+    created_by: TEST_ENTITY.id,
+    product_type: 'SINGLE',
   },
   {
     id: '00000000-0000-4000-8000-000000001008',
@@ -120,10 +122,10 @@ const TEST_PRODUCTS = [
     current_stock: 0,
     mrp: 80.00,
     wholesale_price: 62.00,
-    category: 'Food',
     unit: 'piece',
     is_active: true,
-    entity_id: TEST_ENTITY.id,
+    created_by: TEST_ENTITY.id,
+    product_type: 'SINGLE',
   },
   {
     id: '00000000-0000-4000-8000-000000001009',
@@ -133,10 +135,10 @@ const TEST_PRODUCTS = [
     current_stock: 0,
     mrp: 90.00,
     wholesale_price: 70.00,
-    category: 'Beverages',
     unit: 'piece',
     is_active: true,
-    entity_id: TEST_ENTITY.id,
+    created_by: TEST_ENTITY.id,
+    product_type: 'SINGLE',
   },
   {
     id: '00000000-0000-4000-8000-000000001010',
@@ -146,10 +148,10 @@ const TEST_PRODUCTS = [
     current_stock: 55,
     mrp: 60.00,
     wholesale_price: 42.00,
-    category: 'Stationery',
     unit: 'piece',
     is_active: true,
-    entity_id: TEST_ENTITY.id,
+    created_by: TEST_ENTITY.id,
+    product_type: 'SINGLE',
   },
 ]
 
@@ -199,12 +201,16 @@ const TEST_USERS = [
 ]
 
 // ── Test orders (6 orders across various statuses) ───────────────────
+// Schema: id, order_type, order_no, status, seller_id, buyer_id, items,
+//         subtotal, gst_total, grand_total, payment_method, order_source
 const TEST_ORDERS = [
   {
     id: '00000000-0000-4000-8000-000000003001',
-    entity_id: TEST_ENTITY.id,
+    order_type: 'POS_SALE',
+    order_no: 'TS-2026-0001',
+    seller_id: TEST_ENTITY.id,
     status: 'COMPLETED',
-    source: 'POS',
+    order_source: 'POS',
     subtotal: 565.00,
     gst_total: 28.25,
     grand_total: 593.25,
@@ -216,9 +222,11 @@ const TEST_ORDERS = [
   },
   {
     id: '00000000-0000-4000-8000-000000003002',
-    entity_id: TEST_ENTITY.id,
+    order_type: 'POS_SALE',
+    order_no: 'TS-2026-0002',
+    seller_id: TEST_ENTITY.id,
     status: 'CONFIRMED',
-    source: 'WHATSAPP',
+    order_source: 'WHATSAPP',
     subtotal: 85.00,
     gst_total: 4.25,
     grand_total: 89.25,
@@ -229,9 +237,11 @@ const TEST_ORDERS = [
   },
   {
     id: '00000000-0000-4000-8000-000000003003',
-    entity_id: TEST_ENTITY.id,
+    order_type: 'POS_SALE',
+    order_no: 'TS-2026-0003',
+    seller_id: TEST_ENTITY.id,
     status: 'DELIVERED',
-    source: 'POS',
+    order_source: 'POS',
     subtotal: 120.00,
     gst_total: 6.00,
     grand_total: 126.00,
@@ -242,9 +252,11 @@ const TEST_ORDERS = [
   },
   {
     id: '00000000-0000-4000-8000-000000003004',
-    entity_id: TEST_ENTITY.id,
+    order_type: 'POS_SALE',
+    order_no: 'TS-2026-0004',
+    seller_id: TEST_ENTITY.id,
     status: 'CANCELLED',
-    source: 'POS',
+    order_source: 'POS',
     subtotal: 320.00,
     gst_total: 16.00,
     grand_total: 336.00,
@@ -255,9 +267,11 @@ const TEST_ORDERS = [
   },
   {
     id: '00000000-0000-4000-8000-000000003005',
-    entity_id: TEST_ENTITY.id,
+    order_type: 'POS_SALE',
+    order_no: 'TS-2026-0005',
+    seller_id: TEST_ENTITY.id,
     status: 'REFUND_REQUESTED',
-    source: 'POS',
+    order_source: 'POS',
     subtotal: 90.00,
     gst_total: 4.50,
     grand_total: 94.50,
@@ -268,9 +282,11 @@ const TEST_ORDERS = [
   },
   {
     id: '00000000-0000-4000-8000-000000003006',
-    entity_id: TEST_ENTITY.id,
+    order_type: 'POS_SALE',
+    order_no: 'TS-2026-0006',
+    seller_id: TEST_ENTITY.id,
     status: 'DRAFT',
-    source: 'WHATSAPP',
+    order_source: 'WHATSAPP',
     subtotal: 180.00,
     gst_total: 9.00,
     grand_total: 189.00,
@@ -282,32 +298,40 @@ const TEST_ORDERS = [
 ]
 
 // ── Test khata (credit) accounts ─────────────────────────────────────
+// Schema: id, creditor_entity_id, party_type, debtor_name, debtor_phone,
+//         credit_limit, outstanding_balance, credit_term_days, status
 const TEST_KHATA_ACCOUNTS = [
   {
     id: '00000000-0000-4000-8000-000000004001',
-    entity_id: TEST_ENTITY.id,
-    contact_name: 'Karma Tshering',
-    contact_phone: '+97517100011',
+    creditor_entity_id: TEST_ENTITY.id,
+    party_type: 'CONSUMER',
+    debtor_name: 'Karma Tshering',
+    debtor_phone: '+97517100011',
     outstanding_balance: 500.00,
     credit_limit: 5000.00,
+    credit_term_days: 30,
     status: 'ACTIVE',
   },
   {
     id: '00000000-0000-4000-8000-000000004002',
-    entity_id: TEST_ENTITY.id,
-    contact_name: 'Pema Wangmo',
-    contact_phone: '+97517100012',
+    creditor_entity_id: TEST_ENTITY.id,
+    party_type: 'CONSUMER',
+    debtor_name: 'Pema Wangmo',
+    debtor_phone: '+97517100012',
     outstanding_balance: 0.00,
     credit_limit: 3000.00,
+    credit_term_days: 30,
     status: 'ACTIVE',
   },
   {
     id: '00000000-0000-4000-8000-000000004003',
-    entity_id: TEST_ENTITY.id,
-    contact_name: 'Sonam Dorji',
-    contact_phone: '+97517100013',
+    creditor_entity_id: TEST_ENTITY.id,
+    party_type: 'CONSUMER',
+    debtor_name: 'Sonam Dorji',
+    debtor_phone: '+97517100013',
     outstanding_balance: 1250.00,
     credit_limit: 2000.00,
+    credit_term_days: 30,
     status: 'FROZEN',
   },
 ]

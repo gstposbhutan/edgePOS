@@ -6,7 +6,7 @@
 ALTER TABLE products ADD COLUMN IF NOT EXISTS visible_on_web BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE INDEX IF NOT EXISTS idx_products_marketplace
-ON products (entity_id, visible_on_web, current_stock)
+ON products (created_by, visible_on_web, current_stock)
 WHERE visible_on_web = TRUE AND current_stock > 0;
 
 -- ─── ENTITIES: marketplace columns ─────────────────────────────────────────

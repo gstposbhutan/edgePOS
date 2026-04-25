@@ -29,15 +29,15 @@ class LoginPage extends BasePage {
 
     // Logo / header
     this.logo = page.getByText('NEXUS BHUTAN')
-    this.heading = page.getByRole('heading', { name: /sign in/i })
+    this.heading = page.getByText('Sign In', { exact: true }).first()
 
     // Tabs
     this.emailTab = page.getByRole('button', { name: /^email$/i })
     this.whatsAppTab = page.getByRole('button', { name: /^whatsapp$/i })
 
     // Email form
-    this.emailInput = page.getByLabel('Email')
-    this.passwordInput = page.getByLabel('Password')
+    this.emailInput = page.getByPlaceholder('you@business.bt')
+    this.passwordInput = page.getByPlaceholder('••••••••')
     this.passwordToggle = page.locator('button[type="button"]').filter({
       has: page.locator('svg.lucide-eye, svg.lucide-eye-off'),
     })
@@ -47,7 +47,7 @@ class LoginPage extends BasePage {
     this.forgotPasswordLink = page.getByRole('link', { name: /reset via email or whatsapp/i })
 
     // WhatsApp phone form
-    this.phoneInput = page.getByLabel('WhatsApp Number')
+    this.phoneInput = page.getByPlaceholder('+975 17 123 456')
     this.sendOtpButton = page.getByRole('button', { name: /send verification code/i })
 
     // OTP verification form
@@ -98,11 +98,11 @@ class LoginPage extends BasePage {
    * @param {object} [options]
    * @param {number} [options.timeout] - max wait for redirect (default 30 000 ms)
    */
-  async loginWithEmail(email, password, { timeout = 30000 } = {}) {
+  async loginWithEmail(email, password, { timeout = 10000 } = {}) {
     await this.emailInput.fill(email)
     await this.passwordInput.fill(password)
     await this.signInButton.click()
-    // Wait for redirect away from /login
+    // Wait for redirect away from /login (short timeout — errors won't redirect)
     await this.page.waitForURL('**/pos**', { timeout }).catch(() => {})
   }
 
@@ -154,7 +154,8 @@ class LoginPage extends BasePage {
   async fillOtp(code) {
     const inputs = await this.getOtpInputs()
     for (let i = 0; i < 6; i++) {
-      await inputs[i].fill(code[i] || '')
+      await inputs[i].click()
+      await inputs[i].pressSequentially(code[i] || '')
     }
   }
 

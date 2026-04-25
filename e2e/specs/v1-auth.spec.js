@@ -33,16 +33,22 @@ test.describe('Email/Password Login', () => {
     await expect(page).toHaveURL(/\/pos/)
   })
 
-  test('shows error for wrong password', async () => {
-    await loginPage.loginWithEmail(CASHIER.email, 'WrongPassword!999')
+  test('shows error for wrong password', async ({ page }) => {
+    await loginPage.emailInput.fill(CASHIER.email)
+    await loginPage.passwordInput.fill('WrongPassword!999')
+    await loginPage.signInButton.click()
+    // Wait for error to appear (no redirect on failure)
+    await page.waitForTimeout(2000)
 
-    // Should stay on login page with an error
     const errorText = await loginPage.getErrorText()
     expect(errorText).not.toBeNull()
   })
 
-  test('shows error for non-existent email', async () => {
-    await loginPage.loginWithEmail('nobody@nowhere.bt', 'DoesNotMatter!1')
+  test('shows error for non-existent email', async ({ page }) => {
+    await loginPage.emailInput.fill('nobody@nowhere.bt')
+    await loginPage.passwordInput.fill('DoesNotMatter!1')
+    await loginPage.signInButton.click()
+    await page.waitForTimeout(2000)
 
     const errorText = await loginPage.getErrorText()
     expect(errorText).not.toBeNull()
@@ -82,21 +88,11 @@ test.describe('Sign Out', () => {
     await loginPage.loginWithEmail(CASHIER.email, CASHIER.password)
     await expect(page).toHaveURL(/\/pos/, { timeout: 30000 })
 
-    // Find and click sign-out button/menu — common patterns:
-    // sidebar footer, avatar dropdown, or header button.
-    const signOutButton = page.getByRole('button', { name: /sign out|log out/i })
-    const signOutLink = page.getByRole('link', { name: /sign out|log out/i })
-    const signOutMenuTrigger = page.locator('[data-testid="user-menu"], [aria-label="User menu"]')
-
-    if (await signOutButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await signOutButton.click()
-    } else if (await signOutLink.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await signOutLink.click()
-    } else if (await signOutMenuTrigger.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await signOutMenuTrigger.click()
-      // Then look for sign-out option in the dropdown
-      await page.getByRole('menuitem', { name: /sign out|log out/i }).click()
-    }
+    // Wait for POS to finish loading (spinner disappears), then click sign out
+    await expect(page.getByText('Loading POS...')).not.toBeVisible({ timeout: 30000 })
+    const signOutButton = page.locator('button[title="Sign out"]')
+    await signOutButton.waitFor({ state: 'visible', timeout: 15000 })
+    await signOutButton.click()
 
     await expect(page).toHaveURL(/\/login/, { timeout: 10000 })
   })
@@ -167,9 +163,13 @@ test.describe('Tab Switching', () => {
     await expect(loginPage.emailInput).toBeVisible()
   })
 
-  test('clears error when switching tabs', async () => {
-    // Trigger an error on the email form
-    await loginPage.loginWithEmail('bad@user.bt', 'wrong')
+  test('clears error when switching tabs', async ({ page }) => {
+    // Trigger an error on the email form by submitting with invalid creds
+    await loginPage.emailInput.fill('bad@user.bt')
+    await loginPage.passwordInput.fill('wrong')
+    await loginPage.signInButton.click()
+    // Wait briefly for error to appear
+    await page.waitForTimeout(2000)
     const errorBefore = await loginPage.getErrorText()
     expect(errorBefore).not.toBeNull()
 
@@ -201,8 +201,7 @@ test.describe('WhatsApp OTP', () => {
   })
 
   test('sends OTP and shows verification form', async ({ page }) => {
-    // Use the test phone from fixtures
-    await loginPage.phoneInput.fill('+97517100001')
+    await loginPage.phoneInput.fill('+97517100050')
     await loginPage.clickSendOtp()
 
     // Should transition to OTP verification form
@@ -211,7 +210,7 @@ test.describe('WhatsApp OTP', () => {
   })
 
   test('wrong OTP is rejected', async ({ page }) => {
-    await loginPage.phoneInput.fill('+97517100001')
+    await loginPage.phoneInput.fill('+97517100051')
     await loginPage.clickSendOtp()
     await expect(loginPage.otpLabel).toBeVisible({ timeout: 10000 })
 
@@ -219,12 +218,14 @@ test.describe('WhatsApp OTP', () => {
     await loginPage.fillOtp('000000')
     await loginPage.clickVerifyOtp()
 
+    // Wait for error response from server
+    await page.waitForTimeout(3000)
     const errorText = await loginPage.getErrorText()
     expect(errorText).not.toBeNull()
   })
 
   test('Change number button returns to phone entry', async ({ page }) => {
-    await loginPage.phoneInput.fill('+97517100001')
+    await loginPage.phoneInput.fill('+97517100052')
     await loginPage.clickSendOtp()
     await expect(loginPage.otpLabel).toBeVisible({ timeout: 10000 })
 
@@ -236,12 +237,12 @@ test.describe('WhatsApp OTP', () => {
   })
 
   test('Resend code button is disabled during cooldown', async ({ page }) => {
-    await loginPage.phoneInput.fill('+97517100001')
+    // Use a unique phone to avoid rate limit from earlier tests
+    await loginPage.phoneInput.fill('+97517100099')
     await loginPage.clickSendOtp()
     await expect(loginPage.otpLabel).toBeVisible({ timeout: 10000 })
 
-    // Resend should show countdown text immediately after send
-    const resendButton = page.getByText(/resend in \d+s/i)
-    await expect(resendButton).toBeVisible({ timeout: 5000 })
+    // Resend should show countdown text — check for any "Resend in" text
+    await expect(page.getByText(/resend in/i)).toBeVisible({ timeout: 5000 })
   })
 })

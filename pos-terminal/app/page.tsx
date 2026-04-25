@@ -24,7 +24,7 @@ export default function Home() {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <Badge variant="outline" className="border-emerald-500 text-emerald-600">
+              <Badge variant="outline" className="border-emerald-500 text-emerald-600" render="span">
                 ● System Online
               </Badge>
               <Avatar className="h-8 w-8">

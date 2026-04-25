@@ -1,7 +1,7 @@
 const { defineConfig, devices } = require('@playwright/test')
 
 module.exports = defineConfig({
-  testDir: './e2e/specs',
+  testDir: './e2e',
   timeout: 60000,
   expect: { timeout: 15000 },
   fullyParallel: false,
@@ -22,19 +22,19 @@ module.exports = defineConfig({
     },
     {
       name: 'retailer',
-      testMatch: /v[1-7]-.*\.spec\.js|c[1-5]-.*\.spec\.js|system-.*\.spec\.js/,
+      testMatch: /v[1-7][a-z]?-.*\.spec\.js|c[1-5]-.*\.spec\.js|system-.*\.spec\.js/,
       use: { ...devices['Desktop Chrome'], storageState: 'e2e/storage/retailer-auth.json' },
       dependencies: ['auth-setup'],
     },
     {
       name: 'manager',
-      testMatch: /v[2-7]-.*\.spec\.js|c[4-5]-.*\.spec\.js|system-.*\.spec\.js/,
+      testMatch: /v[2-7][a-z]?-.*\.spec\.js|c[4-5]-.*\.spec\.js|system-.*\.spec\.js/,
       use: { ...devices['Desktop Chrome'], storageState: 'e2e/storage/manager-auth.json' },
       dependencies: ['auth-setup'],
     },
     {
       name: 'owner',
-      testMatch: /v[2-7]-.*\.spec\.js|c[4-5]-.*\.spec\.js|system-.*\.spec\.js/,
+      testMatch: /v[2-7][a-z]?-.*\.spec\.js|c[4-5]-.*\.spec\.js|system-.*\.spec\.js/,
       use: { ...devices['Desktop Chrome'], storageState: 'e2e/storage/owner-auth.json' },
       dependencies: ['auth-setup'],
     },
