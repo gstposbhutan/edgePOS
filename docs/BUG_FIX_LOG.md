@@ -47,10 +47,10 @@ This document tracks bugs found and fixed after feature code changes are committ
 ## Active Bugs
 
 ### Bug #001 - HSN Triggers Don't Fire When Using hsn_code Instead of hsn_master_id
-**Date Found**: 2026-04-27  
-**Feature**: HSN-based Category Inheritance (commit 7f4e424)  
-**Severity**: High  
-**Status**: In Progress  
+**Date Found**: 2026-04-27
+**Feature**: HSN-based Category Inheritance (commit 7f4e424)
+**Severity**: High
+**Status**: Fixed
 
 **Description**:
 The category inheritance triggers (`trigger_sync_product_category_from_hsn` and `trigger_sync_entity_product_category_from_hsn`) only fire when `hsn_master_id` (UUID) is set. However, the EntityProductForm stores `hsn_code` (TEXT) directly from the HSN selector, which doesn't trigger the automatic category inheritance.
@@ -116,8 +116,8 @@ Triggers don't fire because they check `hsn_master_id`, not `hsn_code`.
 
 - **Total Bugs**: 1
 - **Open**: 0
-- **In Progress**: 1
-- **Fixed**: 0
+- **In Progress**: 0
+- **Fixed**: 1
 - **Verified**: 0
 
 ---
