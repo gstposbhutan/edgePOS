@@ -19,9 +19,27 @@ const TEST_ENTITY = {
   is_active: true,
 }
 
+// ── Test wholesaler entity ─────────────────────────────────────────────
+const TEST_WHOLESALER = {
+  id: '00000000-0000-4000-8000-000000000010',
+  name: 'Test Wholesaler',
+  role: 'WHOLESALER',
+  tpn_gstin: 'TPN0000010',
+  whatsapp_no: '+97517100010',
+  shop_slug: 'test-wholesaler',
+  is_active: true,
+}
+
+// ── Test category ───────────────────────────────────────────────────────
+const TEST_CATEGORY = {
+  id: '00000000-0000-4000-8000-000000000020',
+  name: 'Test Category',
+  distributor_id: null, // Not needed for E2E
+}
+
 // ── Test products (10 items, varying stock) ──────────────────────────
 // Schema: id, name, sku, hsn_code, current_stock, mrp, wholesale_price,
-//         unit, is_active, created_by (FK entities), product_type, reorder_point
+//         unit, is_active, visible_on_web, created_by (FK entities), product_type, reorder_point
 const TEST_PRODUCTS = [
   {
     id: '00000000-0000-4000-8000-000000001001',
@@ -33,8 +51,10 @@ const TEST_PRODUCTS = [
     wholesale_price: 28000.00,
     unit: 'piece',
     is_active: true,
+    visible_on_web: true,
     created_by: TEST_ENTITY.id,
     product_type: 'SINGLE',
+    category: 'Electronics',
   },
   {
     id: '00000000-0000-4000-8000-000000001002',
@@ -46,8 +66,10 @@ const TEST_PRODUCTS = [
     wholesale_price: 360.00,
     unit: 'pack',
     is_active: true,
+    visible_on_web: true,
     created_by: TEST_ENTITY.id,
     product_type: 'SINGLE',
+    category: 'Food & Grocery',
   },
   {
     id: '00000000-0000-4000-8000-000000001003',
@@ -59,8 +81,10 @@ const TEST_PRODUCTS = [
     wholesale_price: 68.00,
     unit: 'piece',
     is_active: true,
+    visible_on_web: true,
     created_by: TEST_ENTITY.id,
     product_type: 'SINGLE',
+    category: 'Food & Grocery',
   },
   {
     id: '00000000-0000-4000-8000-000000001004',
@@ -72,8 +96,10 @@ const TEST_PRODUCTS = [
     wholesale_price: 50.00,
     unit: 'piece',
     is_active: true,
+    visible_on_web: true,
     created_by: TEST_ENTITY.id,
     product_type: 'SINGLE',
+    category: 'Electronics',
   },
   {
     id: '00000000-0000-4000-8000-000000001005',
@@ -85,8 +111,10 @@ const TEST_PRODUCTS = [
     wholesale_price: 95.00,
     unit: 'piece',
     is_active: true,
+    visible_on_web: true,
     created_by: TEST_ENTITY.id,
     product_type: 'SINGLE',
+    category: 'Food & Grocery',
   },
   {
     id: '00000000-0000-4000-8000-000000001006',
@@ -98,8 +126,10 @@ const TEST_PRODUCTS = [
     wholesale_price: 260.00,
     unit: 'piece',
     is_active: true,
+    visible_on_web: true,
     created_by: TEST_ENTITY.id,
     product_type: 'SINGLE',
+    category: 'General Merchandise',
   },
   {
     id: '00000000-0000-4000-8000-000000001007',
@@ -111,8 +141,10 @@ const TEST_PRODUCTS = [
     wholesale_price: 140.00,
     unit: 'pack',
     is_active: true,
+    visible_on_web: true,
     created_by: TEST_ENTITY.id,
     product_type: 'SINGLE',
+    category: 'Health & Pharmacy',
   },
   {
     id: '00000000-0000-4000-8000-000000001008',
@@ -124,8 +156,10 @@ const TEST_PRODUCTS = [
     wholesale_price: 62.00,
     unit: 'piece',
     is_active: true,
+    visible_on_web: true,
     created_by: TEST_ENTITY.id,
     product_type: 'SINGLE',
+    category: 'Food & Grocery',
   },
   {
     id: '00000000-0000-4000-8000-000000001009',
@@ -137,8 +171,10 @@ const TEST_PRODUCTS = [
     wholesale_price: 70.00,
     unit: 'piece',
     is_active: true,
+    visible_on_web: false,
     created_by: TEST_ENTITY.id,
     product_type: 'SINGLE',
+    category: 'Food & Grocery',
   },
   {
     id: '00000000-0000-4000-8000-000000001010',
@@ -150,8 +186,10 @@ const TEST_PRODUCTS = [
     wholesale_price: 42.00,
     unit: 'piece',
     is_active: true,
+    visible_on_web: true,
     created_by: TEST_ENTITY.id,
     product_type: 'SINGLE',
+    category: 'Stationery & Office',
   },
 ]
 
@@ -336,11 +374,108 @@ const TEST_KHATA_ACCOUNTS = [
   },
 ]
 
+// ── Retailer-Wholesaler connection ───────────────────────────────────────
+const TEST_RETAILER_WHOLESALER = {
+  retailer_id: TEST_ENTITY.id,
+  wholesaler_id: TEST_WHOLESALER.id,
+  category_id: TEST_CATEGORY.id,
+  is_primary: true,
+  active: true,
+}
+
+// ── Wholesaler products ─────────────────────────────────────────────────
+const TEST_WHOLESALER_PRODUCTS = [
+  {
+    id: '00000000-0000-4000-8000-000000001011',
+    name: 'Wholesale Druk 1100 Generator',
+    sku: 'WHL-DRK-1100',
+    hsn_code: '8501',
+    current_stock: 150,
+    mrp: 35000.00,
+    wholesale_price: 25000.00,
+    unit: 'piece',
+    is_active: true,
+    visible_on_web: false,
+    created_by: TEST_WHOLESALER.id,
+    product_type: 'SINGLE',
+    category: 'Electronics',
+  },
+  {
+    id: '00000000-0000-4000-8000-000000001012',
+    name: 'Wholesale Wai Wai Noodles',
+    sku: 'WHL-WAI-100',
+    hsn_code: '1902',
+    current_stock: 500,
+    mrp: 450.00,
+    wholesale_price: 300.00,
+    unit: 'pack',
+    is_active: true,
+    visible_on_web: false,
+    created_by: TEST_WHOLESALER.id,
+    product_type: 'SINGLE',
+    category: 'Food & Grocery',
+  },
+  {
+    id: '00000000-0000-4000-8000-000000001013',
+    name: 'Wholesale Surf Excel Detergent',
+    sku: 'WHL-SRF-001',
+    hsn_code: '3402',
+    current_stock: 200,
+    mrp: 320.00,
+    wholesale_price: 220.00,
+    unit: 'piece',
+    is_active: true,
+    visible_on_web: false,
+    created_by: TEST_WHOLESALER.id,
+    product_type: 'SINGLE',
+    category: 'General Merchandise',
+  },
+]
+
+// ── Retailer-Wholesaler Khata account ───────────────────────────────────
+const TEST_WHOLESALER_KHATA = {
+  id: '00000000-0000-4000-8000-000000004010',
+  creditor_entity_id: TEST_WHOLESALER.id,
+  party_type: 'RETAILER',
+  debtor_entity_id: TEST_ENTITY.id,
+  debtor_name: TEST_ENTITY.name,
+  debtor_phone: null,
+  credit_limit: 50000.00,
+  outstanding_balance: 0.00,
+  credit_term_days: 30,
+  status: 'ACTIVE',
+}
+
 module.exports = {
   TEST_PHONE,
   TEST_ENTITY,
+  TEST_WHOLESALER,
+  TEST_CATEGORY,
   TEST_PRODUCTS,
+  TEST_WHOLESALER_PRODUCTS,
   TEST_USERS,
   TEST_ORDERS,
   TEST_KHATA_ACCOUNTS,
+  TEST_RETAILER_WHOLESALER,
+  TEST_WHOLESALER_KHATA,
+  // User role aliases
+  CASHIER_USER: TEST_USERS[0],
+  MANAGER_USER: TEST_USERS[1],
+  OWNER_USER: TEST_USERS[2],
 }
+
+// Also export individual constants for easier importing in tests
+module.exports.TEST_PHONE = TEST_PHONE
+module.exports.TEST_ENTITY = TEST_ENTITY
+module.exports.TEST_WHOLESALER = TEST_WHOLESALER
+module.exports.TEST_CATEGORY = TEST_CATEGORY
+module.exports.TEST_PRODUCTS = TEST_PRODUCTS
+module.exports.TEST_WHOLESALER_PRODUCTS = TEST_WHOLESALER_PRODUCTS
+module.exports.TEST_USERS = TEST_USERS
+module.exports.TEST_ORDERS = TEST_ORDERS
+module.exports.TEST_KHATA_ACCOUNTS = TEST_KHATA_ACCOUNTS
+module.exports.TEST_RETAILER_WHOLESALER = TEST_RETAILER_WHOLESALER
+module.exports.TEST_WHOLESALER_KHATA = TEST_WHOLESALER_KHATA
+module.exports.CASHIER_USER = TEST_USERS[0]
+module.exports.MANAGER_USER = TEST_USERS[1]
+module.exports.OWNER_USER = TEST_USERS[2]

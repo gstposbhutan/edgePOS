@@ -6,16 +6,55 @@
 
 ## Done
 - [x] Phase 1 Foundation: Next.js 16, JS/JSDoc, Tailwind v4, Shadcn/UI, Royal Bhutan theme
-- [x] Supabase schema: 20 migrations, all tables, RLS, JWT claims hook
-- [x] Auth: Login page (email/password), connectivity gate, proxy route guard
-- [x] Products: CRUD with Supabase, categories, batches
+- [x] Supabase schema: 29 migrations, all tables, RLS, JWT claims hook
+- [x] Auth: Login page (email/password), connectivity gate, proxy route guard, WhatsApp OTP
+- [x] Products: CRUD with Supabase, categories, batches, packages (BULK/BUNDLE/MIXED/PALLET)
 - [x] Cart: Persisted to carts/cart_items tables, discounts, quantity management
-- [x] Checkout: Order creation, stock deduction, digital signature
-- [x] Inventory: Stock adjustments, movement history
+- [x] Checkout: Order creation, stock deduction, digital signature, stock gate modal
+- [x] Inventory: Stock adjustments, movement history, photo-to-stock (bill OCR), stock predictions
 - [x] Orders: CRUD, cancellations, refunds, replacements, status timeline
 - [x] Receipt PDF generation (jsPDF + html2canvas on order confirmation page)
+- [x] Khata: Unified credit system (CONSUMER/RETAILER/WHOLESALER), account management, ledger, repayments
+- [x] Marketplace: Public shop pages (`/shop/[slug]`) with WhatsApp ordering integration
+- [x] Admin Hub: Wholesaler dashboard, team management, settings
+- [x] Wholesale Ordering: Retailer restock UI, wholesaler catalog, purchase orders with CREDIT
+- [x] Vendor Restock Modal: Full wholesale ordering flow in POS (wholesaler list → catalog → cart → order)
+  - Restock button added to POS header (ShoppingBag icon) — MANAGER/OWNER only
+  - Two-step flow: select wholesaler → browse catalog → add to cart → place order
+  - Orders created with `payment_method=CREDIT`, automatically debiting retailer's khata with wholesaler
+- [x] Flow Diagrams: Mermaid charts for wholesaler signup, admin dashboard, and vendor restock
+  - `docs/flows/wholesaler-signup.mmd` — Wholesaler registration flow
+  - `docs/flows/wholesaler-admin-dashboard.mmd` — Admin dashboard navigation and actions
+  - `docs/flows/vendor-restock.mmd` — Retailer restock flow with role-based access control
+- [x] E2E Tests: `v8-vendor-restock.spec.js` — Tests for role-based access, wholesaler selection, catalog browsing, cart management, order placement
+  - Test data: `TEST_WHOLESALER`, `TEST_WHOLESALER_PRODUCTS`, `TEST_RETAILER_WHOLESALER`, `TEST_WHOLESALER_KHATA`
+  - Page object: `RestockModal` with selectors for all UI components
+  - [ ] Testing: Requires database seeding with wholesaler data + retailer-wholesaler connection
 
 ## In Progress
+- [x] **Admin Hub (Wholesaler Dashboard)** — NEW
+  - [x] Admin dashboard page (`app/admin/page.jsx`) with stats cards (team, products, orders, revenue)
+  - [x] Admin sidebar navigation (`components/admin/admin-sidebar.jsx`)
+  - [x] Admin header with sign out (`components/admin/admin-header.jsx`)
+  - [x] Team management: list, create modal (`components/admin/create-team-member-modal.jsx`)
+  - [x] API routes: `GET/POST /api/admin/team`, `PATCH/DELETE /api/admin/team/[id]`, `PATCH /api/admin/settings`
+  - [x] Hook: `use-admin-auth.js` for auth guard
+  - [x] RLS policies (migration 028): team read/create/update/delete, wholesaler entity update
+  - [ ] Testing: requires admin role user + entity setup
+
+- [x] **Wholesale Ordering System** — NEW
+  - [x] Wholesaler signup page (`app/(auth)/signup/wholesaler/page.jsx`) with business + owner account creation
+  - [x] API: `POST /api/auth/signup/wholesaler` — creates entity + auth user + user profile
+  - [x] Wholesale catalog API: `GET /api/wholesale/catalog?wholesaler_id=X` — products for retailer restock
+  - [x] Wholesale orders API: `POST /api/wholesale/orders` — creates WHOLESALE orders with CREDIT payment
+  - [x] Hook: `use-wholesale-orders.js` for wholesaler order management
+  - [x] Hook: `use-restock.js` for retailer restock operations
+  - [x] Restock components: wholesaler-list, wholesaler-catalog, restock-cart
+  - [x] Restock modal (`components/pos/restock/restock-modal.jsx`) — full vendor restock UI
+  - [x] RLS policies (migration 029): buyer-side orders, order_items, status_log, retailer connections
+  - [x] Restock trigger: auto-create RESTOCK movements for buyer on delivery
+  - [ ] Testing: requires retailer-wholesaler connections + wholesaler products
+
 - [x] **WhatsApp OTP Login** — [F-AUTH-001](features/auth-role-based.md) ✅ CODE COMPLETE
   - [x] Migration: `whatsapp_otps` table (021_whatsapp_otps.sql)
   - [x] API: `/api/auth/whatsapp/send` + `/api/auth/whatsapp/verify`
@@ -106,12 +145,26 @@
 ---
 
 ## Desktop-Only (Future — Not in Web Build)
-- Desktop Shell (F-DESKTOP-001)
-- Keyboard Checkout (F-KBD-001)
-- Bank Reconciliation (F-BANK-001)
-- Shift Management (F-SHIFT-001)
-- Vision-to-Bill Audit (F-AUDIT-001)
-- Offline Sync (F-SYNC-001)
+- Desktop Shell (F-DESKTOP-001) — Desktop app wrapper for Windows
+- Keyboard Checkout (F-KBD-001) — Numpad-based checkout flow
+- Bank Reconciliation (F-BANK-001) — OCR bank statement parsing, auto-match to khata repayments
+- Shift Management (F-SHIFT-001) — Opening/closing floats, cashier handovers
+- Vision-to-Bill Audit (F-AUDIT-001) — AI-powered bill verification and fraud detection
+- Offline Sync (F-SYNC-001) — PouchDB + IndexedDB for offline operations
+
+### Bank Reconciliation (F-BANK-001) — Pending Implementation
+Desktop-only feature for wholesalers to upload mBoB/BNB bank statements and auto-match payments to retailer khata accounts.
+
+**Planned Components:**
+- `bank_statements` table — uploaded statement files tracking
+- `bank_statement_rows` table — OCR-extracted transaction rows
+- OCR pipeline using Gemini Vision (same infrastructure as payment screenshot verification)
+- Auto-match engine: Journal Number + amount tolerance (+/- Nu. 1)
+- Reconciliation dashboard with color-coded rows (Green/Matched, Yellow/Unmatched, Blue/Bank Only, Red/Mismatch)
+- Manual actions: dismiss entries, link bank rows to orders, investigate unmatched
+- WhatsApp end-of-day summary to owner
+
+**Status:** Full spec in `docs/features/bank-reconciliation.md`, Phase 6 (Admin Hub & Marketplace)
 
 ---
 

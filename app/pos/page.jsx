@@ -13,6 +13,7 @@ import { FaceCamera }        from "@/components/pos/camera/face-camera"
 import { FaceConsentModal }  from "@/components/pos/face-consent-modal"
 import { FaceStore }          from "@/lib/vision/face-store"
 import { PaymentScannerModal } from "@/components/pos/payment-scanner-modal"
+import { RestockModal }       from "@/components/pos/restock/restock-modal"
 import { useCart }         from "@/hooks/use-cart"
 import { useProducts }     from "@/hooks/use-products"
 import { useKhata }        from "@/hooks/use-khata"
@@ -40,6 +41,7 @@ export default function PosPage() {
   const [khataAccount,      setKhataAccount]      = useState(null)
   const [showCreateKhata,   setShowCreateKhata]   = useState(false)
   const [ownerOverride,     setOwnerOverride]     = useState(false)
+  const [showRestock,       setShowRestock]       = useState(false)
 
   // Payment methods that require OCR verification
   const OCR_REQUIRED_METHODS = ['MBOB', 'MPAY', 'RTGS']
@@ -337,7 +339,9 @@ export default function PosPage() {
         cashierName={user?.email ?? ''}
         customer={customer}
         syncing={false}
+        userSubRole={subRole}
         onEnrollFace={() => setShowConsent(true)}
+        onRestock={() => setShowRestock(true)}
         faceCamera={
           <FaceCamera
             entityId={entity?.id}
@@ -458,6 +462,11 @@ export default function PosPage() {
         onClose={() => setShowCreateKhata(false)}
         onCreate={handleCreateKhata}
         defaultPhone={customer?.whatsapp ?? ''}
+      />
+
+      <RestockModal
+        open={showRestock}
+        onClose={() => setShowRestock(false)}
       />
     </>
   )

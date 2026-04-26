@@ -1,10 +1,15 @@
 const { createClient } = require('@supabase/supabase-js')
 const {
   TEST_ENTITY,
+  TEST_WHOLESALER,
+  TEST_CATEGORY,
   TEST_PRODUCTS,
+  TEST_WHOLESALER_PRODUCTS,
   TEST_USERS,
   TEST_ORDERS,
   TEST_KHATA_ACCOUNTS,
+  TEST_RETAILER_WHOLESALER,
+  TEST_WHOLESALER_KHATA,
 } = require('./test-data')
 
 function getAdminClient() {
@@ -25,6 +30,38 @@ function getAdminClient() {
 async function seedDatabase() {
   const supabase = getAdminClient()
 
+  // ── 0. Fix JWT claims hook (write to app_metadata, not claims) ────
+  const hookSql = `
+    CREATE OR REPLACE FUNCTION public.custom_access_token_hook(event JSONB)
+    RETURNS JSONB AS $$
+    DECLARE
+      app_metadata  JSONB;
+      profile RECORD;
+    BEGIN
+      SELECT entity_id, role, sub_role, permissions
+      INTO profile
+      FROM user_profiles
+      WHERE id = (event->>'user_id')::UUID;
+
+      IF profile IS NULL THEN
+        RETURN event;
+      END IF;
+
+      app_metadata := event->'app_metadata';
+      app_metadata := jsonb_set(app_metadata, '{entity_id}',  to_jsonb(profile.entity_id::TEXT));
+      app_metadata := jsonb_set(app_metadata, '{role}',        to_jsonb(profile.role));
+      app_metadata := jsonb_set(app_metadata, '{sub_role}',    to_jsonb(profile.sub_role));
+      app_metadata := jsonb_set(app_metadata, '{permissions}', to_jsonb(profile.permissions));
+
+      RETURN jsonb_set(event, '{app_metadata}', app_metadata);
+    END;
+    $$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
+  `
+
+  // Note: We can't execute DDL via the client, so this is a no-op
+  // The migration needs to be applied via Supabase dashboard or CLI
+  console.log('[DB Seed] NOTE: Migration 030 needs to be applied to fix JWT claims location')
+
   // ── 1. Upsert entity ───────────────────────────────────────────
   const { error: entityErr } = await supabase
     .from('entities')
@@ -36,13 +73,53 @@ async function seedDatabase() {
   }
 
   // ── 2. Upsert products ─────────────────────────────────────────
+  // Strip `category` from product rows (used only for product_categories junction)
+  const productRows = TEST_PRODUCTS.map(({ category, ...rest }) => rest)
   const { error: productsErr } = await supabase
     .from('products')
-    .upsert(TEST_PRODUCTS, { onConflict: 'id' })
+    .upsert(productRows, { onConflict: 'id' })
 
   if (productsErr) {
     console.error('[DB Seed] Products upsert failed:', productsErr.message)
     throw productsErr
+  }
+
+  // ── 2b. Upsert product_categories for marketplace grouping ────
+  // Collect unique category names and build lookup
+  const categoryNames = [...new Set(TEST_PRODUCTS.map(p => p.category).filter(Boolean))]
+  const { data: existingCats } = await supabase
+    .from('categories')
+    .select('id, name')
+
+  // Upsert any missing categories
+  const missingCats = categoryNames.filter(name => !existingCats?.some(c => c.name === name))
+  if (missingCats.length > 0) {
+    const { error: catErr } = await supabase
+      .from('categories')
+      .upsert(missingCats.map(name => ({ name })), { onConflict: 'name' })
+    if (catErr) {
+      console.error('[DB Seed] Categories upsert failed:', catErr.message)
+      throw catErr
+    }
+  }
+
+  // Build category name → id map
+  const { data: allCats } = await supabase.from('categories').select('id, name')
+  const catMap = Object.fromEntries((allCats ?? []).map(c => [c.name, c.id]))
+
+  // Build product_categories junction rows
+  const prodCatRows = TEST_PRODUCTS
+    .filter(p => p.category && catMap[p.category])
+    .map(p => ({ product_id: p.id, category_id: catMap[p.category] }))
+
+  if (prodCatRows.length > 0) {
+    const { error: pcErr } = await supabase
+      .from('product_categories')
+      .upsert(prodCatRows, { onConflict: 'product_id,category_id' })
+    if (pcErr) {
+      console.error('[DB Seed] Product categories upsert failed:', pcErr.message)
+      throw pcErr
+    }
   }
 
   // ── 3. Upsert orders (keep items JSONB, use schema field names) ──
@@ -156,10 +233,82 @@ async function seedDatabase() {
     throw profileErr
   }
 
+  // ── 8. Upsert wholesaler entity ─────────────────────────────────────
+  const { error: wholeErr } = await supabase
+    .from('entities')
+    .upsert(TEST_WHOLESALER, { onConflict: 'id' })
+
+  if (wholeErr) {
+    console.error('[DB Seed] Wholesaler entity upsert failed:', wholeErr.message)
+    throw wholeErr
+  }
+
+  // ── 9. Upsert category ────────────────────────────────────────────
+  const { error: catErr } = await supabase
+    .from('categories')
+    .upsert(TEST_CATEGORY, { onConflict: 'id' })
+
+  if (catErr) {
+    console.error('[DB Seed] Category upsert failed:', catErr.message)
+    throw catErr
+  }
+
+  // ── 10. Upsert retailer-wholesaler connection ─────────────────────
+  const { error: connErr } = await supabase
+    .from('retailer_wholesalers')
+    .upsert(TEST_RETAILER_WHOLESALER, { onConflict: 'retailer_id,wholesaler_id,category_id' })
+
+  if (connErr) {
+    console.error('[DB Seed] Retailer-wholesaler connection upsert failed:', connErr.message)
+    throw connErr
+  }
+
+  // ── 11. Upsert wholesaler products ─────────────────────────────────
+  const wholesaleProdRows = TEST_WHOLESALER_PRODUCTS.map(({ category, ...rest }) => rest)
+  const { error: wProdErr } = await supabase
+    .from('products')
+    .upsert(wholesaleProdRows, { onConflict: 'id' })
+
+  if (wProdErr) {
+    console.error('[DB Seed] Wholesaler products upsert failed:', wProdErr.message)
+    throw wProdErr
+  }
+
+  // ── 12. Upsert wholesaler-retailer khata account ────────────────────
+  const { error: wKhataErr } = await supabase
+    .from('khata_accounts')
+    .upsert(TEST_WHOLESALER_KHATA, { onConflict: 'id' })
+
+  if (wKhataErr) {
+    console.error('[DB Seed] Wholesaler khata upsert failed:', wKhataErr.message)
+    throw wKhataErr
+  }
+
   console.log(
-    `[DB Seed] Seeded: 1 entity, ${TEST_PRODUCTS.length} products, ${TEST_ORDERS.length} orders, ${TEST_KHATA_ACCOUNTS.length} khata accounts, ${TEST_USERS.length} users, ${profiles.length} profiles`
+    `[DB Seed] Seeded: 1 retailer, 1 wholesaler, 1 category, ${TEST_PRODUCTS.length} retailer products, ${TEST_WHOLESALER_PRODUCTS.length} wholesaler products, ${TEST_ORDERS.length} orders, ${TEST_KHATA_ACCOUNTS.length} consumer khata + 1 B2B khata, ${TEST_USERS.length} users, ${profiles.length} profiles`
   )
   console.log('[DB Seed] Auth ID map:', JSON.stringify(authIdMap, null, 2))
+
+  // ── Apply RLS policy for retailers to read connected wholesalers ───────
+  const { error: policyError } = await supabase.rpc('exec_sql', { sql: `
+    DROP POLICY IF EXISTS "retailer_read_connected_wholesalers" ON entities;
+
+    CREATE POLICY "retailer_read_connected_wholesalers" ON entities
+      FOR SELECT USING (
+        auth_role() = 'RETAILER' AND id IN (
+          SELECT wholesaler_id FROM retailer_wholesalers
+          WHERE retailer_id = auth_entity_id() AND active = TRUE
+        )
+      );
+  ` })
+
+  if (policyError) {
+    console.error('[DB Seed] Failed to create RLS policy:', policyError)
+    // Fallback: try direct SQL via DDL
+    console.log('[DB Seed] NOTE: Run migration 031 to allow retailers to read connected wholesaler entities')
+  } else {
+    console.log('[DB Seed] Applied RLS policy for retailer_wholesaler connections')
+  }
 }
 
 module.exports = { seedDatabase }

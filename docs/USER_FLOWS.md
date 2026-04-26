@@ -1,13 +1,13 @@
 # NEXUS BHUTAN — User Flow Diagrams
 
-**Last Updated**: 2026-04-25
-**Scope**: All vendor (POS staff) and consumer flows including WhatsApp interactions.
+**Last Updated**: 2026-04-26
+**Scope**: All vendor (POS staff), wholesaler, and consumer flows including WhatsApp interactions.
 
 > All diagrams are `.mmd` files. Install the **Mermaid Editor** or **Markdown Preview Mermaid Support** extension in VS Code to preview them.
 
 ---
 
-## VENDOR FLOWS
+## VENDOR FLOWS (Retailer POS)
 
 - [V1. Authentication](flows/vendor-auth.mmd)
 - [V2. POS Sale (Main Checkout)](flows/vendor-pos-sale.mmd)
@@ -16,6 +16,14 @@
 - [V5. Photo-to-Stock Detail Flow](flows/vendor-photo-to-stock.mmd)
 - [V6. Khata Credit Management](flows/vendor-khata.mmd)
 - [V7. Stock Alerts](flows/vendor-stock-alerts.mmd)
+- [V8. Vendor Restock from Wholesaler](flows/vendor-restock.mmd) — **NEW**
+
+---
+
+## WHOLESALER FLOWS (Admin Hub)
+
+- [W1. Wholesaler Signup](flows/wholesaler-signup.mmd) — **NEW**
+- [W2. Admin Dashboard](flows/wholesaler-admin-dashboard.mmd) — **NEW**
 
 ---
 

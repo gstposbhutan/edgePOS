@@ -2,7 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 
 // Routes that don't require authentication
-const PUBLIC_ROUTES = ['/login', '/offline']
+const PUBLIC_ROUTES = ['/login', '/signup', '/offline', '/shop']
 
 // Role → home route mapping
 const ROLE_HOME = {
@@ -17,7 +17,7 @@ export async function proxy(request) {
 
   // Pass through public routes and Next.js internals
   if (
-    PUBLIC_ROUTES.includes(pathname) ||
+    PUBLIC_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/')) ||
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api') ||
     pathname === '/favicon.ico'

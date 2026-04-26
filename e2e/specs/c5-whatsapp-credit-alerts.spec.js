@@ -20,8 +20,8 @@ test.describe('WhatsApp Credit Alerts', () => {
 
     const response = await request.post(`${GATEWAY_URL}/api/send-credit-alert`, {
       data: {
-        debtorPhone: account.contact_phone,
-        debtorName: account.contact_name,
+        debtorPhone: account.debtor_phone,
+        debtorName: account.debtor_name,
         outstandingBalance: account.outstanding_balance,
         alertType: 'PRE_DUE_3D',
         entityName: 'Test Store',
@@ -39,8 +39,8 @@ test.describe('WhatsApp Credit Alerts', () => {
 
     const response = await request.post(`${GATEWAY_URL}/api/send-credit-alert`, {
       data: {
-        debtorPhone: account.contact_phone,
-        debtorName: account.contact_name,
+        debtorPhone: account.debtor_phone,
+        debtorName: account.debtor_name,
         outstandingBalance: account.outstanding_balance,
         alertType: 'DUE_TODAY',
         entityName: 'Test Store',
@@ -58,8 +58,8 @@ test.describe('WhatsApp Credit Alerts', () => {
 
     const response = await request.post(`${GATEWAY_URL}/api/send-credit-alert`, {
       data: {
-        debtorPhone: account.contact_phone,
-        debtorName: account.contact_name,
+        debtorPhone: account.debtor_phone,
+        debtorName: account.debtor_name,
         outstandingBalance: account.outstanding_balance,
         alertType: 'OVERDUE_3D',
         entityName: 'Test Store',
@@ -77,8 +77,8 @@ test.describe('WhatsApp Credit Alerts', () => {
 
     const response = await request.post(`${GATEWAY_URL}/api/send-credit-alert`, {
       data: {
-        debtorPhone: account.contact_phone,
-        debtorName: account.contact_name,
+        debtorPhone: account.debtor_phone,
+        debtorName: account.debtor_name,
         outstandingBalance: account.outstanding_balance,
         alertType: 'OVERDUE_30D',
         entityName: 'Test Store',
@@ -95,8 +95,8 @@ test.describe('WhatsApp Credit Alerts', () => {
 
     const response = await request.post(`${GATEWAY_URL}/api/send-credit-alert`, {
       data: {
-        debtorPhone: account.contact_phone,
-        debtorName: account.contact_name,
+        debtorPhone: account.debtor_phone,
+        debtorName: account.debtor_name,
         outstandingBalance: account.outstanding_balance,
         alertType: 'MONTHLY_REMINDER',
         entityName: 'Test Store',
@@ -113,8 +113,8 @@ test.describe('WhatsApp Credit Alerts', () => {
 
     const response = await request.post(`${GATEWAY_URL}/api/send-credit-alert`, {
       data: {
-        debtorPhone: account.contact_phone,
-        debtorName: account.contact_name,
+        debtorPhone: account.debtor_phone,
+        debtorName: account.debtor_name,
         outstandingBalance: account.outstanding_balance,
         alertType: 'PRE_DUE_3D',
         entityName: 'Test Store',
@@ -149,8 +149,8 @@ test.describe('WhatsApp Credit Alerts', () => {
 
     const response = await request.post(`${GATEWAY_URL}/api/send-credit-alert`, {
       data: {
-        debtorPhone: account.contact_phone,
-        debtorName: account.contact_name,
+        debtorPhone: account.debtor_phone,
+        debtorName: account.debtor_name,
         outstandingBalance: account.outstanding_balance,
         alertType: 'UNKNOWN_TYPE',
         entityName: 'Test Store',

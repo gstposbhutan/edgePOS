@@ -3,29 +3,32 @@ import { createServiceClient } from '@/lib/supabase/server'
 
 export const revalidate = 300 // 5-minute ISR
 
-async function getStoreData(slug) {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL?.replace('/rest/v1', '') || 'http://localhost:3456'}/api/marketplace/${slug}`, {
-    cache: 'no-store',
-  })
-  if (!res.ok) return null
-  return res.json()
+async function getStoreEntity(slug) {
+  const supabase = createServiceClient()
+  const { data } = await supabase
+    .from('entities')
+    .select('id, name, whatsapp_no, marketplace_bio, marketplace_logo_url, shop_slug')
+    .eq('shop_slug', slug)
+    .eq('is_active', true)
+    .single()
+  return data
 }
 
 export async function generateMetadata({ params }) {
   const { slug } = await params
-  const data = await getStoreData(slug)
+  const store = await getStoreEntity(slug)
 
-  if (!data?.store) {
+  if (!store) {
     return { title: 'Store not found — innovates.bt' }
   }
 
   return {
-    title: `${data.store.name} — innovates.bt`,
-    description: data.store.bio?.slice(0, 160) || `Browse products from ${data.store.name}`,
+    title: `${store.name} — innovates.bt`,
+    description: store.marketplace_bio?.slice(0, 160) || `Browse products from ${store.name}`,
     openGraph: {
-      title: data.store.name,
-      description: data.store.bio?.slice(0, 160) || '',
-      images: data.store.logo_url ? [data.store.logo_url] : [],
+      title: store.name,
+      description: store.marketplace_bio?.slice(0, 160) || '',
+      images: store.marketplace_logo_url ? [store.marketplace_logo_url] : [],
       url: `https://${slug}.innovates.bt`,
     },
   }
@@ -36,23 +39,17 @@ export default async function ShopPage({ params }) {
   let data
 
   try {
-    const supabase = createServiceClient()
-
-    const { data: entity } = await supabase
-      .from('entities')
-      .select('id, name, whatsapp_no, marketplace_bio, marketplace_logo_url, shop_slug')
-      .eq('shop_slug', slug)
-      .eq('is_active', true)
-      .single()
+    const entity = await getStoreEntity(slug)
 
     if (!entity) {
       return <NotFound />
     }
 
+    const supabase = createServiceClient()
     const { data: products } = await supabase
       .from('products')
       .select('id, name, mrp, unit, image_url, product_categories(categories(id, name))')
-      .eq('entity_id', entity.id)
+      .eq('created_by', entity.id)
       .eq('is_active', true)
       .eq('visible_on_web', true)
       .gt('current_stock', 0)

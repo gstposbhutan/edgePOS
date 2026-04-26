@@ -8,7 +8,7 @@
  *   POST /api/auth/whatsapp/send  — sends OTP
  *   POST /api/auth/whatsapp/verify — verifies OTP and creates session
  *
- * No pre-existing auth state required — this tests the login flow itself.
+ * Each test uses a unique phone number to avoid rate limit cross-contamination.
  */
 
 const { test, expect } = require('@playwright/test')
@@ -16,6 +16,22 @@ const { createClient } = require('@supabase/supabase-js')
 const { TEST_ENTITY } = require('../fixtures/test-data')
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000'
+
+// Load .env.local if env vars are missing
+function loadEnv() {
+  if (process.env.NEXT_PUBLIC_SUPABASE_URL) return
+  try {
+    const fs = require('fs')
+    const path = require('path')
+    const envPath = path.join(__dirname, '..', '..', '.env.local')
+    const envContent = fs.readFileSync(envPath, 'utf-8')
+    for (const line of envContent.split('\n')) {
+      const match = line.match(/^([^#=\s][^=]*)=(.*)$/)
+      if (match) process.env[match[1].trim()] = match[2].trim()
+    }
+  } catch {}
+}
+loadEnv()
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -28,15 +44,34 @@ function getAdminClient() {
   })
 }
 
+// Unique phones per test to avoid rate limit pollution
+const phones = {
+  sendSuccess: '+97517100060',
+  storedInDb: '+97517100061',
+  prevInvalid: '+97517100062',
+  rateLimit: '+97517100063',
+  verifyUI: TEST_ENTITY.whatsapp_no,
+  wrongOtp: '+97517100064',
+  lockout: '+97517100065',
+  expired: '+97517100066',
+}
+
 test.describe('WhatsApp OTP Auth', () => {
-  const testPhone = TEST_ENTITY.whatsapp_no // +97517100001
+  // Clean up all test OTPs before running to avoid rate limit pollution
+  test.beforeAll(async () => {
+    const supabase = getAdminClient()
+    const allPhones = Object.values(phones)
+    await supabase
+      .from('whatsapp_otps')
+      .delete()
+      .in('phone', allPhones)
+  })
 
   test('send OTP via API returns success', async ({ request }) => {
     const response = await request.post(`${BASE_URL}/api/auth/whatsapp/send`, {
-      data: { phone: testPhone },
+      data: { phone: phones.sendSuccess },
     })
 
-    // The API always returns 200 to avoid phone enumeration
     expect(response.status()).toBe(200)
     const body = await response.json()
     expect(body.success).toBe(true)
@@ -49,14 +84,14 @@ test.describe('WhatsApp OTP Auth', () => {
     await fetch(`${BASE_URL}/api/auth/whatsapp/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: testPhone }),
+      body: JSON.stringify({ phone: phones.storedInDb }),
     })
 
     // Check the database for the OTP record
     const { data, error } = await supabase
       .from('whatsapp_otps')
       .select('*')
-      .eq('phone', testPhone)
+      .eq('phone', phones.storedInDb)
       .order('created_at', { ascending: false })
       .limit(1)
 
@@ -64,7 +99,7 @@ test.describe('WhatsApp OTP Auth', () => {
     expect(data.length).toBeGreaterThan(0)
 
     const otp = data[0]
-    expect(otp.phone).toBe(testPhone)
+    expect(otp.phone).toBe(phones.storedInDb)
     expect(otp.otp_hash).toBeTruthy()
     expect(otp.used).toBe(false)
     expect(new Date(otp.expires_at).getTime()).toBeGreaterThan(Date.now())
@@ -77,7 +112,7 @@ test.describe('WhatsApp OTP Auth', () => {
     await fetch(`${BASE_URL}/api/auth/whatsapp/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: testPhone }),
+      body: JSON.stringify({ phone: phones.prevInvalid }),
     })
 
     await new Promise((r) => setTimeout(r, 500))
@@ -86,7 +121,7 @@ test.describe('WhatsApp OTP Auth', () => {
     await fetch(`${BASE_URL}/api/auth/whatsapp/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: testPhone }),
+      body: JSON.stringify({ phone: phones.prevInvalid }),
     })
 
     await new Promise((r) => setTimeout(r, 500))
@@ -95,7 +130,7 @@ test.describe('WhatsApp OTP Auth', () => {
     const { data } = await supabase
       .from('whatsapp_otps')
       .select('*')
-      .eq('phone', testPhone)
+      .eq('phone', phones.prevInvalid)
       .order('created_at', { ascending: false })
       .limit(2)
 
@@ -110,44 +145,27 @@ test.describe('WhatsApp OTP Auth', () => {
     // Send 3 OTPs rapidly
     for (let i = 0; i < 3; i++) {
       const res = await request.post(`${BASE_URL}/api/auth/whatsapp/send`, {
-        data: { phone: testPhone },
+        data: { phone: phones.rateLimit },
       })
       expect(res.status()).toBe(200)
     }
 
     // The 4th should be rate-limited (429)
     const response = await request.post(`${BASE_URL}/api/auth/whatsapp/send`, {
-      data: { phone: testPhone },
+      data: { phone: phones.rateLimit },
     })
 
-    // May be 429 or 200 depending on timing — the rate limit window is 10 minutes
-    // In a clean test environment, this should trigger 429
     expect([200, 429]).toContain(response.status())
   })
 
   test('verify correct OTP creates session and redirects to /pos', async ({ page }) => {
-    const supabase = getAdminClient()
-
-    // Send OTP via API
-    await fetch(`${BASE_URL}/api/auth/whatsapp/send`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: testPhone }),
-    })
-
-    // In test/dev mode, the OTP is logged to console. We need to extract it from the DB.
-    // Since we can't easily get the plain OTP from the hash, we need to use the service
-    // role to read it. In dev mode, the OTP is logged; in E2E we read from the console log.
-    // For this test, we'll verify the API structure works by checking the verify endpoint
-    // with a wrong OTP first, then the test infrastructure would provide the real OTP.
-
     // Navigate to login page and switch to WhatsApp tab
     await page.goto('/login')
     await page.locator('button:has-text("WhatsApp")').click()
 
     // Enter phone number
     const phoneInput = page.locator('input[type="tel"]')
-    await phoneInput.fill(testPhone)
+    await phoneInput.fill(phones.verifyUI)
 
     // Click send code
     await page.locator('button:has-text("Send Verification Code")').click()
@@ -155,26 +173,20 @@ test.describe('WhatsApp OTP Auth', () => {
     // Wait for OTP input to appear
     await page.waitForSelector('text=Enter 6-digit code', { timeout: 10000 })
 
-    // Extract the OTP from the database (dev mode logs it, but we can read via admin API)
-    // We'll attempt verification with a dummy code to test the flow
+    // Type a 6-digit code (will be wrong, testing error handling)
     const otpInputs = page.locator('input[inputmode="numeric"][maxlength="1"]')
-
-    // Type a 6-digit code
     await otpInputs.first().fill('1')
     for (let i = 1; i < 6; i++) {
       await otpInputs.nth(i).fill('0')
     }
 
-    // This will likely fail (wrong OTP), which tests the error handling
     await page.locator('button:has-text("Verify")').click()
 
     // Should show error (invalid OTP) or redirect (if by chance correct)
     const pageUrl = page.url()
     if (pageUrl.includes('/pos')) {
-      // Successful verification (unlikely with dummy code)
       expect(pageUrl).toContain('/pos')
     } else {
-      // Expected: error message about invalid OTP
       await expect(page.locator('p.text-tibetan')).toBeVisible({ timeout: 5000 })
     }
   })
@@ -182,15 +194,14 @@ test.describe('WhatsApp OTP Auth', () => {
   test('wrong OTP rejected with remaining attempts', async ({ request }) => {
     // First send an OTP
     await request.post(`${BASE_URL}/api/auth/whatsapp/send`, {
-      data: { phone: testPhone },
+      data: { phone: phones.wrongOtp },
     })
 
     // Verify with a wrong code
     const response = await request.post(`${BASE_URL}/api/auth/whatsapp/verify`, {
-      data: { phone: testPhone, otp: '000000' },
+      data: { phone: phones.wrongOtp, otp: '000000' },
     })
 
-    // Should be rejected
     expect(response.status()).toBe(400)
     const body = await response.json()
     expect(body.error).toContain('Invalid OTP')
@@ -200,22 +211,21 @@ test.describe('WhatsApp OTP Auth', () => {
   test('lockout after 3 failed attempts', async ({ request }) => {
     // Send an OTP
     await request.post(`${BASE_URL}/api/auth/whatsapp/send`, {
-      data: { phone: testPhone },
+      data: { phone: phones.lockout },
     })
 
     // Make 3 failed attempts
     for (let i = 0; i < 3; i++) {
       await request.post(`${BASE_URL}/api/auth/whatsapp/verify`, {
-        data: { phone: testPhone, otp: `00000${i}` },
+        data: { phone: phones.lockout, otp: `00000${i}` },
       })
     }
 
     // 4th attempt should be locked out
     const response = await request.post(`${BASE_URL}/api/auth/whatsapp/verify`, {
-      data: { phone: testPhone, otp: '000000' },
+      data: { phone: phones.lockout, otp: '000000' },
     })
 
-    // Should indicate lockout
     expect(response.status()).toBe(400)
     const body = await response.json()
     expect(body.error).toMatch(/too many|failed attempts/i)
@@ -225,18 +235,18 @@ test.describe('WhatsApp OTP Auth', () => {
     const supabase = getAdminClient()
 
     // Insert an already-expired OTP directly
-    const expiredAt = new Date(Date.now() - 60000).toISOString() // 1 minute ago
+    const expiredAt = new Date(Date.now() - 60000).toISOString()
     await supabase
       .from('whatsapp_otps')
       .insert({
-        phone: testPhone,
+        phone: phones.expired,
         otp_hash: '$2a$10$dummyhashfore2etest0000000000000000000000000000000',
         expires_at: expiredAt,
         used: false,
       })
 
     const response = await request.post(`${BASE_URL}/api/auth/whatsapp/verify`, {
-      data: { phone: testPhone, otp: '123456' },
+      data: { phone: phones.expired, otp: '123456' },
     })
 
     expect(response.status()).toBe(400)

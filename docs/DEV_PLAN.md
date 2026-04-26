@@ -520,6 +520,7 @@ SaaS management and accountant portal.
 | 6.4 | Accountant Portal | ⏳ Pending | BIT-ready reports for 300+ clients, zero data entry |
 | 6.5 | Marketplace Analytics | ⏳ Pending | Real-time sales, trending products, revenue insights |
 | 6.6 | ITC Tracking System | ⏳ Pending | B2B tax credit ledger and reconciliation |
+| 6.7 | Bank Reconciliation (Wholesaler Desktop) | ⏳ Pending | OCR bank statement parsing, auto-match to retailer khata repayments |
 
 ---
 
@@ -527,6 +528,29 @@ SaaS management and accountant portal.
 *Features to be scoped through stakeholder discussion — details to be added below as they are collected.*
 
 <!-- NEW FEATURES WILL BE ADDED HERE -->
+
+### Bank Statement Reconciliation (Wholesaler Desktop)
+**Feature ID**: F-BANK-001
+**Phase**: 6 (Admin Hub & Marketplace)
+**Status**: Scoped — Full spec in `docs/features/bank-reconciliation.md`
+
+Desktop-only feature for wholesalers to upload mBoB/BNB bank statements (PDF/images), OCR-parse transactions via Gemini Vision, and auto-match bank credits to retailer khata repayments. Provides a single-screen reconciliation dashboard showing matched/unmatched entries with color-coded status (Green=Matched, Yellow=Unmatched Order, Blue=Unmatched Bank Entry, Red=Amount Mismatch).
+
+**User Stories:**
+- As a wholesaler owner, I want to upload my daily/weekly bank statement and automatically match received payments to retailer khata accounts
+- As a wholesaler owner, I want to see which retailers have paid vs. which have outstanding balances at a glance
+- As a wholesaler owner, I want to manually link bank entries to khata repayments when auto-match fails
+- As a wholesaler owner, I want to dismiss personal bank entries (salary, transfers) from the reconciliation view
+
+**Key Components:**
+- `bank_statements` and `bank_statement_rows` tables
+- OCR pipeline using Gemini Vision (same infrastructure as payment screenshot verification)
+- Auto-match engine: Journal Number + amount tolerance (+/- Nu. 1)
+- Reconciliation dashboard with filters and color-coded rows
+- Manual actions: dismiss, manual link, unmatched order investigation
+- WhatsApp end-of-day summary to owner
+
+**Implementation Checklist:** ~30 items including database schema, OCR pipeline, auto-match engine, dashboard UI, API routes, RLS policies. See full spec for details.
 
 ---
 

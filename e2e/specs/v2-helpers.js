@@ -4,11 +4,14 @@ const { CartPanel } = require('../page-objects/cart-panel')
 const { PaymentScannerModal } = require('../page-objects/payment-scanner-modal')
 const { CustomerIdModal } = require('../page-objects/customer-id-modal')
 const { StockGateModal } = require('../page-objects/stock-gate-modal')
+const { RestockModal } = require('../page-objects/restock-modal')
 const { createClient } = require('@supabase/supabase-js')
 const {
   TEST_PRODUCTS,
+  TEST_WHOLESALER_PRODUCTS,
   TEST_USERS,
   TEST_KHATA_ACCOUNTS,
+  TEST_WHOLESALER,
 } = require('../fixtures/test-data')
 
 // ── Product aliases ────────────────────────────────────────────────────
@@ -64,10 +67,11 @@ async function clearCart() {
 
 module.exports = {
   test, expect,
-  PosPage, CartPanel, PaymentScannerModal, CustomerIdModal, StockGateModal,
+  PosPage, CartPanel, PaymentScannerModal, CustomerIdModal, StockGateModal, RestockModal,
   IN_STOCK_PRODUCT, CHEAP_PRODUCT, DAIRY_PRODUCT, LOW_STOCK_PRODUCT,
   OUT_OF_STOCK, NOODLES_PRODUCT, SOAP_PRODUCT,
   CASHIER_USER, MANAGER_USER, OWNER_USER,
   KHATA_ACCOUNT, KHATA_FROZEN, TEST_PHONE,
+  TEST_WHOLESALER, TEST_WHOLESALER_PRODUCTS,
   clearCart,
 }

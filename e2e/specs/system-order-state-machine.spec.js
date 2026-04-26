@@ -23,6 +23,22 @@ const { TEST_ENTITY, TEST_PRODUCTS, TEST_ORDERS } = require('../fixtures/test-da
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000'
 const GATEWAY_URL = process.env.WHATSAPP_GATEWAY_URL || 'http://localhost:3001'
 
+// Load .env.local if env vars are missing
+function loadEnv() {
+  if (process.env.NEXT_PUBLIC_SUPABASE_URL) return
+  try {
+    const fs = require('fs')
+    const path = require('path')
+    const envPath = path.join(__dirname, '..', '..', '.env.local')
+    const envContent = fs.readFileSync(envPath, 'utf-8')
+    for (const line of envContent.split('\n')) {
+      const match = line.match(/^([^#=\s][^=]*)=(.*)$/)
+      if (match) process.env[match[1].trim()] = match[2].trim()
+    }
+  } catch {}
+}
+loadEnv()
+
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -43,7 +59,6 @@ test.describe('Order State Machine — Transitions', () => {
     const { data: order } = await supabase
       .from('orders')
       .insert({
-        entity_id: TEST_ENTITY.id,
         order_type: 'POS_SALE',
         order_no: `E2E-SM-${Date.now()}`,
         status: 'DRAFT',
@@ -82,7 +97,6 @@ test.describe('Order State Machine — Transitions', () => {
     const { data: order } = await supabase
       .from('orders')
       .insert({
-        entity_id: TEST_ENTITY.id,
         order_type: 'POS_SALE',
         order_no: `E2E-SM-${Date.now()}`,
         status: 'DRAFT',
@@ -117,7 +131,6 @@ test.describe('Order State Machine — Transitions', () => {
     const { data: order } = await supabase
       .from('orders')
       .insert({
-        entity_id: TEST_ENTITY.id,
         order_type: 'POS_SALE',
         order_no: `E2E-SM-${Date.now()}`,
         status: 'PENDING_PAYMENT',
@@ -152,7 +165,6 @@ test.describe('Order State Machine — Transitions', () => {
     const { data: order } = await supabase
       .from('orders')
       .insert({
-        entity_id: TEST_ENTITY.id,
         order_type: 'POS_SALE',
         order_no: `E2E-SM-${Date.now()}`,
         status: 'PENDING_PAYMENT',
@@ -187,7 +199,6 @@ test.describe('Order State Machine — Transitions', () => {
     const { data: order } = await supabase
       .from('orders')
       .insert({
-        entity_id: TEST_ENTITY.id,
         order_type: 'POS_SALE',
         order_no: `E2E-SM-${Date.now()}`,
         status: 'CONFIRMED',
@@ -231,7 +242,6 @@ test.describe('Order State Machine — Transitions', () => {
     const { data: order } = await supabase
       .from('orders')
       .insert({
-        entity_id: TEST_ENTITY.id,
         order_type: 'POS_SALE',
         order_no: `E2E-SM-${Date.now()}`,
         status: 'CONFIRMED',
@@ -289,7 +299,6 @@ test.describe('Order State Machine — Transitions', () => {
     const { data: order } = await supabase
       .from('orders')
       .insert({
-        entity_id: TEST_ENTITY.id,
         order_type: 'POS_SALE',
         order_no: `E2E-SM-${Date.now()}`,
         status: 'CONFIRMED',
@@ -324,7 +333,6 @@ test.describe('Order State Machine — Transitions', () => {
     const { data: order } = await supabase
       .from('orders')
       .insert({
-        entity_id: TEST_ENTITY.id,
         order_type: 'POS_SALE',
         order_no: `E2E-SM-${Date.now()}`,
         status: 'REFUND_REQUESTED',
@@ -359,7 +367,6 @@ test.describe('Order State Machine — Transitions', () => {
     const { data: order } = await supabase
       .from('orders')
       .insert({
-        entity_id: TEST_ENTITY.id,
         order_type: 'POS_SALE',
         order_no: `E2E-SM-${Date.now()}`,
         status: 'REFUND_REQUESTED',
@@ -394,7 +401,6 @@ test.describe('Order State Machine — Transitions', () => {
     const { data: order } = await supabase
       .from('orders')
       .insert({
-        entity_id: TEST_ENTITY.id,
         order_type: 'POS_SALE',
         order_no: `E2E-SM-${Date.now()}`,
         status: 'REFUND_APPROVED',
@@ -476,7 +482,6 @@ test.describe('Order State Machine — Transitions', () => {
     const { data: order } = await supabase
       .from('orders')
       .insert({
-        entity_id: TEST_ENTITY.id,
         order_type: 'POS_SALE',
         order_no: `E2E-SM-LOG-${Date.now()}`,
         status: 'DRAFT',
@@ -575,7 +580,6 @@ test.describe('Order State Machine — Transitions', () => {
     const { data: order } = await supabase
       .from('orders')
       .insert({
-        entity_id: TEST_ENTITY.id,
         order_type: 'POS_SALE',
         order_no: `E2E-SM-NP-${Date.now()}`,
         status: 'PENDING_PAYMENT',
@@ -629,7 +633,6 @@ test.describe('Order State Machine — Transitions', () => {
     const { data: order } = await supabase
       .from('orders')
       .insert({
-        entity_id: TEST_ENTITY.id,
         order_type: 'POS_SALE',
         order_no: `E2E-SM-RS-${Date.now()}`,
         status: 'CONFIRMED',

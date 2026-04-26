@@ -353,6 +353,13 @@ function LoginForm() {
       <p className="text-center text-xs text-muted-foreground mt-6">
         © 2026 NEXUS BHUTAN · GST 2026 Compliant
       </p>
+
+      <p className="text-center text-xs text-muted-foreground mt-2">
+        Wholesaler?{' '}
+        <a href="/signup/wholesaler" className="text-primary hover:underline underline-offset-4">
+          Create your business account
+        </a>
+      </p>
     </div>
   )
 }

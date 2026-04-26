@@ -1,6 +1,6 @@
 "use client"
 
-import { LogOut, RefreshCw, Wifi, Package, BookOpen, ClipboardList, Wallet } from "lucide-react"
+import { LogOut, RefreshCw, Wifi, Package, BookOpen, ClipboardList, Wallet, ShoppingBag } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { FaceAuthBadge } from "./face-auth-badge"
@@ -8,9 +8,9 @@ import { signOut } from "@/lib/auth"
 import { useRouter } from "next/navigation"
 
 /**
- * @param {{ storeName: string, cashierName: string, customer: object|null, syncing: boolean, onEnrollFace: () => void, faceCamera: React.ReactNode }} props
+ * @param {{ storeName: string, cashierName: string, customer: object|null, syncing: boolean, onEnrollFace: () => void, onRestock: () => void, userSubRole: string, faceCamera: React.ReactNode }} props
  */
-export function PosHeader({ storeName, cashierName, customer, syncing, onEnrollFace, faceCamera }) {
+export function PosHeader({ storeName, cashierName, customer, syncing, onEnrollFace, onRestock, userSubRole, faceCamera }) {
   const router = useRouter()
 
   async function handleSignOut() {
@@ -74,6 +74,12 @@ export function PosHeader({ storeName, cashierName, customer, syncing, onEnrollF
         <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/khata')} title="Khata (Credit)">
           <Wallet className="h-4 w-4" />
         </Button>
+
+        {['MANAGER', 'OWNER'].includes(userSubRole) && (
+          <Button variant="ghost" size="icon-sm" onClick={onRestock} title="Restock from Wholesaler" data-testid="restock-btn">
+            <ShoppingBag className="h-4 w-4" />
+          </Button>
+        )}
 
         <Button variant="ghost" size="icon-sm" onClick={handleSignOut} title="Sign out">
           <LogOut className="h-4 w-4" />

@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(npx next:*)",
+      "WebFetch(domain:clerk.com)",
+      "Bash(npm install *)",
+      "Bash(git add *)",
+      "Bash(docker exec supabase_db_edgePOS *)",
+      "Bash(node *)",
+      "Bash(npx playwright *)",
+      "Read(//tmp/**)"
+    ]
+  }
+}
