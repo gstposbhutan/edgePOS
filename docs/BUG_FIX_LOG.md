@@ -46,6 +46,68 @@ This document tracks bugs found and fixed after feature code changes are committ
 
 ## Active Bugs
 
+### Bug #002 - Retailer Cashier Cannot Create Order
+**Date Found**: 2026-04-27
+**Feature**: POS Order Creation
+**Severity**: Critical
+**Status**: Fixed
+
+**Description**:
+Retailer cashiers are unable to create orders in the POS system due to missing RLS policy WITH CHECK clause.
+
+**Root Cause**:
+- The `seller_own_orders` RLS policy only has `USING` clause: `FOR ALL USING (seller_id = auth_entity_id())`
+- `USING` clause applies to SELECT, UPDATE, DELETE operations
+- INSERT operations require `WITH CHECK` clause
+- Without `WITH CHECK`, inserts fail with "new row violates row-level security policy"
+
+**Steps to Reproduce**:
+1. Login as retailer cashier
+2. Navigate to POS page
+3. Add products to cart
+4. Attempt to create order/checkout
+5. Order creation fails with RLS violation error
+
+**Expected Behavior**:
+Retailer cashier should be able to create orders with products, apply payments, and complete transactions.
+
+**Actual Behavior**:
+Order insertion fails due to RLS policy blocking INSERT operations.
+
+**Environment**:
+- Browser/OS: All
+- Related Files: `supabase/migrations/010_rls.sql`
+- Error Message: "new row violates row-level security policy for table orders"
+
+**Fix**:
+- **Date Fixed**: 2026-04-27
+- **Files Changed**: `supabase/migrations/037_fix_orders_rls_insert_policy.sql`
+- **Commit**: TBD
+- **Solution**:
+  1. Dropped existing `seller_own_orders` policy
+  2. Recreated policy with both `USING` and `WITH CHECK` clauses:
+     ```sql
+     CREATE POLICY seller_own_orders ON orders
+       FOR ALL
+       USING (seller_id = auth_entity_id())
+       WITH CHECK (seller_id = auth_entity_id());
+     ```
+  3. `USING` clause controls SELECT/UPDATE/DELETE
+  4. `WITH CHECK` clause controls INSERT
+
+**Verification**:
+- **Date Verified**: TBD
+- **Test Steps**:
+  1. Login as retailer cashier
+  2. Create order through POS
+  3. Verify order is created successfully
+  4. Verify order appears in order history
+- **Notes**: Apply migration and test with real retailer account
+
+---
+
+## Fixed Bugs
+
 ### Bug #001 - HSN Triggers Don't Fire When Using hsn_code Instead of hsn_master_id
 **Date Found**: 2026-04-27
 **Feature**: HSN-based Category Inheritance (commit 7f4e424)
@@ -85,7 +147,7 @@ Triggers don't fire because they check `hsn_master_id`, not `hsn_code`.
 - **Files Changed**:
   - `supabase/migrations/036_fix_hsn_trigger_on_code.sql`
   - `components/pos/products/entity-product-form.jsx`
-- **Commit**: TBD
+- **Commit**: 7a59648
 - **Solution**:
   1. Created migration 036 with new triggers that fire on `hsn_code` change:
      - `trigger_sync_hsn_master_id_from_code_products` for products table
@@ -106,18 +168,12 @@ Triggers don't fire because they check `hsn_master_id`, not `hsn_code`.
 
 ---
 
-## Fixed Bugs
-
-*No bugs fixed yet.*
-
----
-
 ## Statistics
 
-- **Total Bugs**: 1
+- **Total Bugs**: 2
 - **Open**: 0
 - **In Progress**: 0
-- **Fixed**: 1
+- **Fixed**: 2
 - **Verified**: 0
 
 ---
