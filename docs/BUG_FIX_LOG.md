@@ -46,6 +46,12 @@ This document tracks bugs found and fixed after feature code changes are committ
 
 ## Active Bugs
 
+*No active bugs.*
+
+---
+
+## Fixed Bugs
+
 ### Bug #002 - Retailer Cashier Cannot Create Order
 **Date Found**: 2026-04-27
 **Feature**: POS Order Creation
@@ -82,7 +88,7 @@ Order insertion fails due to RLS policy blocking INSERT operations.
 **Fix**:
 - **Date Fixed**: 2026-04-27
 - **Files Changed**: `supabase/migrations/037_fix_orders_rls_insert_policy.sql`
-- **Commit**: TBD
+- **Commit**: 0219b98
 - **Solution**:
   1. Dropped existing `seller_own_orders` policy
   2. Recreated policy with both `USING` and `WITH CHECK` clauses:
@@ -105,8 +111,6 @@ Order insertion fails due to RLS policy blocking INSERT operations.
 - **Notes**: Apply migration and test with real retailer account
 
 ---
-
-## Fixed Bugs
 
 ### Bug #001 - HSN Triggers Don't Fire When Using hsn_code Instead of hsn_master_id
 **Date Found**: 2026-04-27
