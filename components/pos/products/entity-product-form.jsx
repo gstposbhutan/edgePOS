@@ -72,6 +72,7 @@ export default function EntityProductForm({
   useEffect(() => {
     if (entityProduct) {
       setFormData({
+        hsn_code: entityProduct.hsn_code || '',
         sku: entityProduct.sku || '',
         display_name: entityProduct.display_name || masterProduct?.name || '',
         barcode: entityProduct.barcode || '',
