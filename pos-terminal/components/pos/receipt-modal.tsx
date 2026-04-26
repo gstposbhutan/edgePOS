@@ -8,8 +8,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Printer, CheckCircle } from "lucide-react";
+import { toast } from "sonner";
+import { Printer, CheckCircle, Zap } from "lucide-react";
 import type { Settings } from "@/hooks/use-settings";
+import { usePlatform } from "@/hooks/use-platform";
+import { useState, useEffect } from "react";
 
 interface ReceiptModalProps {
   open: boolean;
@@ -20,6 +23,24 @@ interface ReceiptModalProps {
 
 export function ReceiptModal({ open, onClose, order, settings }: ReceiptModalProps) {
   const receiptRef = useRef<HTMLDivElement>(null);
+  const { isElectron, api } = usePlatform();
+  const [printerStatus, setPrinterStatus] = useState<{ connected: boolean; name: string } | null>(null);
+
+  useEffect(() => {
+    if (isElectron && api) {
+      api.printer.getStatus().then(setPrinterStatus);
+    }
+  }, [isElectron, api, open]);
+
+  const handleThermalPrint = async () => {
+    if (!api) return;
+    const result = await api.printer.print(order, settings);
+    if (result.success) {
+      toast.success("Receipt printed");
+    } else {
+      toast.error(result.error || "Print failed");
+    }
+  };
 
   const handlePrint = () => {
     const content = receiptRef.current;
@@ -141,13 +162,19 @@ export function ReceiptModal({ open, onClose, order, settings }: ReceiptModalPro
             </div>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <Button variant="outline" className="flex-1" onClick={onClose}>
               Close
             </Button>
+            {isElectron && printerStatus?.connected && (
+              <Button className="flex-1" variant="secondary" onClick={handleThermalPrint}>
+                <Zap className="h-4 w-4 mr-2" />
+                Thermal Print
+              </Button>
+            )}
             <Button className="flex-1" onClick={handlePrint}>
               <Printer className="h-4 w-4 mr-2" />
-              Print Receipt
+              Browser Print
             </Button>
           </div>
         </div>

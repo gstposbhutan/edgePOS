@@ -104,6 +104,7 @@ migrate(
         { name: "refund_amount", type: "number", required: false, options: { default: 0 } },
         { name: "refund_reason", type: "text", required: false },
         { name: "receipt_pdf", type: "file", required: false, options: { maxSelect: 1, maxSize: 10485760 } },
+        { name: "is_synced", type: "bool", required: false, options: { default: false } },
       ],
       indexes: [
         "CREATE UNIQUE INDEX idx_orders_order_no ON orders (order_no)",

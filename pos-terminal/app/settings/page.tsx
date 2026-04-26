@@ -4,15 +4,18 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useSettings } from "@/hooks/use-settings";
 import { useAuth } from "@/hooks/use-auth";
+import { usePlatform } from "@/hooks/use-platform";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { ArrowLeft, Settings, Store, Save } from "lucide-react";
+import { ArrowLeft, Settings, Store, Save, Printer, Wifi, Server } from "lucide-react";
 
 export default function SettingsPage() {
   const { user, signOut } = useAuth();
   const { settings, loading, updateSettings } = useSettings();
+  const { isElectron, api } = usePlatform();
   const [form, setForm] = useState({
     store_name: "",
     store_address: "",
@@ -22,6 +25,14 @@ export default function SettingsPage() {
     receipt_footer: "",
     gst_rate: 5,
   });
+  const [pbUrl, setPbUrl] = useState("http://127.0.0.1:8090");
+  const [syncConfig, setSyncConfig] = useState({
+    remoteUrl: "",
+    apiKey: "",
+    intervalMinutes: 5,
+    enabled: false,
+  });
+  const [printerStatus, setPrinterStatus] = useState<any>(null);
 
   useEffect(() => {
     if (settings) {
@@ -37,12 +48,48 @@ export default function SettingsPage() {
     }
   }, [settings]);
 
+  useEffect(() => {
+    if (isElectron && api) {
+      api.printer.getStatus().then(setPrinterStatus);
+      api.pb.getUrl().then(setPbUrl);
+      api.sync.getStatus().then((s: any) => {
+        if (s.config) setSyncConfig(s.config);
+      });
+    }
+  }, [isElectron, api]);
+
   const handleSave = async () => {
     const result = await updateSettings(form);
     if (result.success) {
       toast.success("Settings saved");
     } else {
       toast.error(result.error);
+    }
+  };
+
+  const handleTestPrinter = async () => {
+    if (!api) return;
+    const result = await api.printer.test();
+    if (result.success) toast.success("Test print sent");
+    else toast.error(result.error);
+  };
+
+  const handleSavePbUrl = async () => {
+    if (!api) return;
+    await api.pb.setUrl(pbUrl);
+    toast.success("Server URL updated");
+  };
+
+  const handleToggleSync = async () => {
+    if (!api) return;
+    if (syncConfig.enabled) {
+      await api.sync.stop();
+      setSyncConfig((c) => ({ ...c, enabled: false }));
+      toast.success("Sync stopped");
+    } else {
+      await api.sync.start(syncConfig);
+      setSyncConfig((c) => ({ ...c, enabled: true }));
+      toast.success("Sync started");
     }
   };
 
@@ -142,6 +189,115 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
+        {/* Server / Multi-Terminal */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Server className="h-5 w-5" />
+              PocketBase Server
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              For multi-terminal mode, enter the IP of the computer running PocketBase.
+              For single-terminal, leave as localhost.
+            </p>
+            <div className="flex gap-2">
+              <Input
+                value={pbUrl}
+                onChange={(e) => setPbUrl(e.target.value)}
+                placeholder="http://127.0.0.1:8090"
+              />
+              <Button variant="outline" onClick={handleSavePbUrl} disabled={!isElectron}>
+                Save
+              </Button>
+            </div>
+            {!isElectron && (
+              <p className="text-xs text-muted-foreground">
+                Server URL can only be changed in the desktop app.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Printer */}
+        {isElectron && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Printer className="h-5 w-5" />
+                Thermal Printer
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm">Status</span>
+                <Badge variant={printerStatus?.connected ? "default" : "destructive"}>
+                  {printerStatus?.connected ? "Connected" : "Not Found"}
+                </Badge>
+              </div>
+              {printerStatus?.name && (
+                <p className="text-xs text-muted-foreground">{printerStatus.name}</p>
+              )}
+              <Button variant="outline" size="sm" onClick={handleTestPrinter} disabled={!printerStatus?.connected}>
+                Test Print
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Central Sync */}
+        {isElectron && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Wifi className="h-5 w-5" />
+                Central Sync
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Push orders to a central PocketBase server for backup and multi-store reporting.
+              </p>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Remote URL</label>
+                <Input
+                  value={syncConfig.remoteUrl}
+                  onChange={(e) => setSyncConfig({ ...syncConfig, remoteUrl: e.target.value })}
+                  placeholder="https://cloud.pocketbase.io"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">API Key</label>
+                <Input
+                  type="password"
+                  value={syncConfig.apiKey}
+                  onChange={(e) => setSyncConfig({ ...syncConfig, apiKey: e.target.value })}
+                  placeholder="pb_api_..."
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Interval (minutes)</label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={syncConfig.intervalMinutes}
+                  onChange={(e) => setSyncConfig({ ...syncConfig, intervalMinutes: parseInt(e.target.value) || 5 })}
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant={syncConfig.enabled ? "destructive" : "default"}
+                  onClick={handleToggleSync}
+                  disabled={!syncConfig.remoteUrl}
+                >
+                  {syncConfig.enabled ? "Stop Sync" : "Start Sync"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Actions */}
         <div className="flex gap-2">
           <Button className="flex-1" onClick={handleSave} disabled={loading}>
@@ -174,8 +330,9 @@ export default function SettingsPage() {
             <CardTitle>System</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
-            <p>PocketBase URL: {process.env.NEXT_PUBLIC_POCKETBASE_URL || "http://127.0.0.1:8090"}</p>
-            <p>Mode: Offline-first (local SQLite)</p>
+            <p>PocketBase URL: {pbUrl}</p>
+            <p>Mode: {isElectron ? "Desktop App" : "Browser"}</p>
+            <p>Platform: {isElectron ? api?.app?.platform : "web"}</p>
             <p>Version: 1.0.0</p>
           </CardContent>
         </Card>

@@ -16,6 +16,8 @@ import { BarcodeScanner } from "@/components/pos/barcode-scanner";
 import { PaymentModal, type PaymentMethod } from "@/components/pos/payment-modal";
 import { CustomerModal } from "@/components/pos/customer-modal";
 import { ReceiptModal } from "@/components/pos/receipt-modal";
+import { ZReportModal } from "@/components/pos/z-report-modal";
+import { useShifts } from "@/hooks/use-shifts";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -28,6 +30,9 @@ import {
   ScanLine,
   Wifi,
   WifiOff,
+  DoorOpen,
+  DoorClosed,
+  FileBarChart,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -68,13 +73,17 @@ export default function PosPage() {
   const { customers, createCustomer } = useCustomers();
   const { createOrder } = useOrders();
   const { settings } = useSettings();
+  const { activeShift, openShift, closeShift } = useShifts();
 
   const [showScanner, setShowScanner] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
   const [showCustomer, setShowCustomer] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
+  const [showZReport, setShowZReport] = useState(false);
   const [lastOrder, setLastOrder] = useState<any>(null);
   const [online, setOnline] = useState(true);
+  const [shiftFloat, setShiftFloat] = useState("");
+  const [shiftCloseCount, setShiftCloseCount] = useState("");
 
   // Auth guard
   useEffect(() => {
@@ -297,6 +306,32 @@ export default function PosPage() {
               <span className="hidden sm:inline">Customers</span>
             </Button>
           </Link>
+          {!activeShift ? (
+            <Button variant="outline" size="sm" onClick={() => {
+              const val = prompt("Enter opening cash float:");
+              if (val) openShift(user!.id, parseFloat(val) || 0).then((r) => {
+                if (r.success) toast.success("Shift opened");
+                else toast.error(r.error);
+              });
+            }}>
+              <DoorOpen className="h-4 w-4 mr-1" />
+              Open Shift
+            </Button>
+          ) : (
+            <Button variant="outline" size="sm" onClick={() => {
+              const val = prompt("Enter cash count in drawer (blind close):");
+              if (val) closeShift(activeShift.id, user!.id, parseFloat(val) || 0).then((r) => {
+                if (r.success) toast.success("Shift closed");
+                else toast.error(r.error);
+              });
+            }}>
+              <DoorClosed className="h-4 w-4 mr-1" />
+              Close Shift
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" onClick={() => setShowZReport(true)}>
+            <FileBarChart className="h-4 w-4" />
+          </Button>
           <Link href="/settings">
             <Button variant="ghost" size="sm">
               <Settings className="h-4 w-4" />
@@ -385,6 +420,11 @@ export default function PosPage() {
         onClose={() => setShowReceipt(false)}
         order={lastOrder}
         settings={settings}
+      />
+
+      <ZReportModal
+        open={showZReport}
+        onClose={() => setShowZReport(false)}
       />
     </div>
   );
