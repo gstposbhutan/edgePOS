@@ -32,6 +32,18 @@ export function getPB(): PocketBase {
       }
     }
 
+    // Validate restored token against server. If the token was issued by a
+    // different PocketBase instance (or is otherwise invalid), the authRefresh
+    // will fail and the SDK auto-clears the auth store. This prevents 400
+    // errors caused by stale/invalid tokens that pass client-side `isValid`.
+    if (pb.authStore.isValid) {
+      pb.collection('users').authRefresh().catch(() => {
+        // Token invalid — SDK already cleared authStore via its internal
+        // error handler. We also clean localStorage for good measure.
+        localStorage.removeItem(AUTH_KEY);
+      });
+    }
+
     // Persist auth changes back to localStorage
     pb.authStore.onChange((token, record) => {
       if (token) {
