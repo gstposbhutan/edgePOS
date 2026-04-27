@@ -12,23 +12,18 @@ import { AlertCircle } from "lucide-react";
 export default function LoginPage() {
   const router = useRouter();
   const { login, loading } = useAuth();
-  const [email, setEmail] = useState("admin@pos.local");
-  const [password, setPassword] = useState("admin12345");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    console.log("[login] submitting...");
     const result = await login(email, password);
-    console.log("[login] result:", result);
     if (result.success) {
-      console.log("[login] pushing to /");
       try {
         await router.push("/");
-        console.log("[login] router.push done");
-      } catch (err) {
-        console.error("[login] router.push failed:", err);
+      } catch {
         // Fallback for static export
         window.location.href = "/";
       }
@@ -79,9 +74,7 @@ export default function LoginPage() {
               {loading ? "Signing in..." : "Sign In"}
             </Button>
           </form>
-          <p className="text-xs text-muted-foreground text-center mt-4">
-            Default: admin@pos.local / admin12345
-          </p>
+
         </CardContent>
       </Card>
     </div>

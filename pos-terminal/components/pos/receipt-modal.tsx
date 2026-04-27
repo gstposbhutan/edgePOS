@@ -47,6 +47,7 @@ export function ReceiptModal({ open, onClose, order, settings }: ReceiptModalPro
     if (!content) return;
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
+    const clone = content.cloneNode(true) as HTMLElement;
     printWindow.document.write(`
       <html>
         <head>
@@ -61,10 +62,11 @@ export function ReceiptModal({ open, onClose, order, settings }: ReceiptModalPro
             .signature { font-size: 10px; word-break: break-all; color: #666; margin-top: 12px; }
           </style>
         </head>
-        <body>${content.innerHTML}</body>
+        <body></body>
       </html>
     `);
     printWindow.document.close();
+    printWindow.document.body.appendChild(clone);
     printWindow.focus();
     setTimeout(() => {
       printWindow.print();
@@ -151,7 +153,7 @@ export function ReceiptModal({ open, onClose, order, settings }: ReceiptModalPro
 
             {order.digital_signature && (
               <div className="signature border-t border-gray-200 pt-2">
-                <p className="text-gray-500 mb-0.5">Digital Signature (SHA-256)</p>
+                <p className="text-gray-500 mb-0.5">Transaction Reference</p>
                 <p className="font-mono">{order.digital_signature}</p>
               </div>
             )}

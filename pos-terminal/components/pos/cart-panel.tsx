@@ -1,8 +1,10 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { useState } from "react";
 import {
   Minus,
   Plus,
@@ -53,6 +55,8 @@ export function CartPanel({
   onCheckout,
   onSelectCustomer,
 }: CartPanelProps) {
+  const [editDiscount, setEditDiscount] = useState<string | null>(null);
+  const [editPrice, setEditPrice] = useState<string | null>(null);
   return (
     <div className="flex flex-col h-full bg-card border-l border-border">
       {/* Header */}
@@ -141,26 +145,68 @@ export function CartPanel({
 
               {isManager && (
                 <div className="flex gap-2 text-xs">
-                  <button
-                    onClick={() => {
-                      const val = prompt("Discount per unit:", String(item.discount));
-                      if (val !== null) onApplyDiscount(item.id, parseFloat(val) || 0);
-                    }}
-                    className="text-muted-foreground hover:text-primary"
-                  >
-                    <Tag className="h-3 w-3 inline mr-0.5" />
-                    Disc
-                  </button>
-                  <button
-                    onClick={() => {
-                      const val = prompt("New unit price:", String(item.unit_price));
-                      if (val !== null) onOverridePrice(item.id, parseFloat(val) || 0);
-                    }}
-                    className="text-muted-foreground hover:text-primary"
-                  >
-                    <CreditCard className="h-3 w-3 inline mr-0.5" />
-                    Price
-                  </button>
+                  {editDiscount === item.id ? (
+                    <div className="flex items-center gap-1">
+                      <Input
+                        type="number"
+                        min={0}
+                        step={0.01}
+                        defaultValue={item.discount}
+                        className="h-6 w-20 text-xs"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            onApplyDiscount(item.id, parseFloat((e.target as HTMLInputElement).value) || 0);
+                            setEditDiscount(null);
+                          }
+                          if (e.key === "Escape") setEditDiscount(null);
+                        }}
+                        onBlur={(e) => {
+                          onApplyDiscount(item.id, parseFloat(e.target.value) || 0);
+                          setEditDiscount(null);
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setEditDiscount(item.id)}
+                      className="text-muted-foreground hover:text-primary"
+                    >
+                      <Tag className="h-3 w-3 inline mr-0.5" />
+                      Disc
+                    </button>
+                  )}
+                  {editPrice === item.id ? (
+                    <div className="flex items-center gap-1">
+                      <Input
+                        type="number"
+                        min={0}
+                        step={0.01}
+                        defaultValue={item.unit_price}
+                        className="h-6 w-20 text-xs"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            onOverridePrice(item.id, parseFloat((e.target as HTMLInputElement).value) || 0);
+                            setEditPrice(null);
+                          }
+                          if (e.key === "Escape") setEditPrice(null);
+                        }}
+                        onBlur={(e) => {
+                          onOverridePrice(item.id, parseFloat(e.target.value) || 0);
+                          setEditPrice(null);
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setEditPrice(item.id)}
+                      className="text-muted-foreground hover:text-primary"
+                    >
+                      <CreditCard className="h-3 w-3 inline mr-0.5" />
+                      Price
+                    </button>
+                  )}
                 </div>
               )}
 

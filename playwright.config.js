@@ -43,9 +43,14 @@ module.exports = defineConfig({
       testMatch: /v1-auth\.spec\.js|c1-marketplace\.spec\.js|c3-whatsapp-otp\.spec\.js/,
       use: { ...devices['Desktop Chrome'] },
     },
+    {
+      name: 'pocketbase',
+      testMatch: /p0-.*\.spec\.js/,
+      use: { ...devices['Desktop Chrome'] },
+    },
   ],
   webServer: {
-    command: 'npm run dev',
+    command: 'cd pos-terminal && npm run dev',
     port: 3000,
     reuseExistingServer: !process.env.CI,
     timeout: 120000,

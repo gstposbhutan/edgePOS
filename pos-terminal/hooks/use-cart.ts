@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { getPB } from "@/lib/pb-client";
 import { calcItemTotals, calcCartTotals } from "@/lib/gst";
 import type { Product } from "./use-products";
@@ -33,6 +33,8 @@ export function useCart() {
   const [cart, setCart] = useState<Cart | null>(null);
   const [items, setItems] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
 
   const fetchActiveCart = useCallback(async () => {
     if (!pb.authStore.isValid) {
@@ -82,11 +84,49 @@ export function useCart() {
     return () => unsubscribeAuth();
   }, [fetchActiveCart, pb]);
 
+  const removeItem = useCallback(
+    async (itemId: string) => {
+      try {
+        await pb.collection("cart_items").delete(itemId, { requestKey: null });
+        setItems((prev) => prev.filter((i) => i.id !== itemId));
+      } catch (err) {
+        console.error("Remove item error:", err);
+      }
+    },
+    [pb]
+  );
+
+  const updateQty = useCallback(
+    async (itemId: string, newQty: number) => {
+      if (newQty < 1) return removeItem(itemId);
+      const item = itemsRef.current.find((i) => i.id === itemId);
+      if (!item) return;
+
+      const { gstAmount, total } = calcItemTotals({
+        unitPrice: item.unit_price,
+        discount: item.discount,
+        quantity: newQty,
+      });
+
+      try {
+        const updated = await pb.collection("cart_items").update(itemId, {
+          quantity: newQty,
+          gst_amount: gstAmount,
+          total,
+        }, { requestKey: null });
+        setItems((prev) => prev.map((i) => (i.id === itemId ? (updated as unknown as CartItem) : i)));
+      } catch (err) {
+        console.error("Update qty error:", err);
+      }
+    },
+    [pb, removeItem]
+  );
+
   const addItem = useCallback(
     async (product: Product) => {
       if (!cart) return;
       const unitPrice = product.sale_price || product.mrp || 0;
-      const existing = items.find((i) => i.product === product.id);
+      const existing = itemsRef.current.find((i) => i.product === product.id);
 
       if (existing) {
         return updateQty(existing.id, existing.quantity + 1);
@@ -111,38 +151,12 @@ export function useCart() {
         console.error("Add item error:", err);
       }
     },
-    [cart, items, pb]
-  );
-
-  const updateQty = useCallback(
-    async (itemId: string, newQty: number) => {
-      if (newQty < 1) return removeItem(itemId);
-      const item = items.find((i) => i.id === itemId);
-      if (!item) return;
-
-      const { gstAmount, total } = calcItemTotals({
-        unitPrice: item.unit_price,
-        discount: item.discount,
-        quantity: newQty,
-      });
-
-      try {
-        const updated = await pb.collection("cart_items").update(itemId, {
-          quantity: newQty,
-          gst_amount: gstAmount,
-          total,
-        }, { requestKey: null });
-        setItems((prev) => prev.map((i) => (i.id === itemId ? (updated as unknown as CartItem) : i)));
-      } catch (err) {
-        console.error("Update qty error:", err);
-      }
-    },
-    [items, pb]
+    [cart, updateQty, pb]
   );
 
   const applyDiscount = useCallback(
     async (itemId: string, discountPerUnit: number) => {
-      const item = items.find((i) => i.id === itemId);
+      const item = itemsRef.current.find((i) => i.id === itemId);
       if (!item) return;
       const clamped = Math.min(Math.max(0, discountPerUnit), item.unit_price);
       const { gstAmount, total } = calcItemTotals({
@@ -162,12 +176,12 @@ export function useCart() {
         console.error("Discount error:", err);
       }
     },
-    [items, pb]
+    [pb]
   );
 
   const overridePrice = useCallback(
     async (itemId: string, newUnitPrice: number) => {
-      const item = items.find((i) => i.id === itemId);
+      const item = itemsRef.current.find((i) => i.id === itemId);
       if (!item) return;
       const price = Math.max(0, newUnitPrice);
       const { gstAmount, total } = calcItemTotals({
@@ -187,29 +201,16 @@ export function useCart() {
         console.error("Price override error:", err);
       }
     },
-    [items, pb]
-  );
-
-  const removeItem = useCallback(
-    async (itemId: string) => {
-      try {
-        await pb.collection("cart_items").delete(itemId, { requestKey: null });
-        setItems((prev) => prev.filter((i) => i.id !== itemId));
-      } catch (err) {
-        console.error("Remove item error:", err);
-      }
-    },
     [pb]
   );
 
   const clearCart = useCallback(async () => {
     if (!cart) return;
     try {
-      // Delete all cart items
-      for (const item of items) {
-        await pb.collection("cart_items").delete(item.id);
-      }
-      // Mark cart as abandoned and create new one
+      const currentItems = itemsRef.current;
+      await Promise.all(currentItems.map((item) =>
+        pb.collection("cart_items").delete(item.id).catch(() => {})
+      ));
       await pb.collection("carts").update(cart.id, { status: "abandoned" });
       const newCart = await pb.collection("carts").create({ status: "active" });
       setCart(newCart as unknown as Cart);
@@ -217,7 +218,7 @@ export function useCart() {
     } catch (err) {
       console.error("Clear cart error:", err);
     }
-  }, [cart, items, pb]);
+  }, [cart, pb]);
 
   const setCustomer = useCallback(
     async (customerId: string | null) => {

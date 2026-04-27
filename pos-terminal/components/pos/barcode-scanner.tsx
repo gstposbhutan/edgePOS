@@ -49,7 +49,10 @@ export function BarcodeScanner({ open, onClose, onScan }: BarcodeScannerProps) {
       });
 
     return () => {
-      scanner.stop().catch(() => {});
+      if (scannerRef.current) {
+        scannerRef.current.stop().catch(() => {});
+        scannerRef.current = null;
+      }
     };
   }, [open, onScan, onClose]);
 

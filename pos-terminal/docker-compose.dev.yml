@@ -15,6 +15,16 @@ services:
       timeout: 5s
       retries: 5
 
+  setup:
+    image: node:20-alpine
+    command: sh -c "npm install -g pocketbase@0.26.8 && PB_URL=http://pocketbase:8090 NODE_PATH=/usr/local/lib/node_modules node /app/setup-pb.js"
+    volumes:
+      - ./setup-pb.js:/app/setup-pb.js:ro
+    depends_on:
+      pocketbase:
+        condition: service_healthy
+    restart: "no"
+
   pos:
     image: node:20-alpine
     working_dir: /app
@@ -27,8 +37,8 @@ services:
     environment:
       - NODE_ENV=development
     depends_on:
-      pocketbase:
-        condition: service_healthy
+      setup:
+        condition: service_completed_successfully
     restart: unless-stopped
 
 volumes:

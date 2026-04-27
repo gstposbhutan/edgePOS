@@ -9,7 +9,6 @@ import { useCustomers } from "@/hooks/use-customers";
 import { useOrders } from "@/hooks/use-orders";
 import { useSettings } from "@/hooks/use-settings";
 import { getPB } from "@/lib/pb-client";
-import { generateOrderNo, calcCartTotals } from "@/lib/gst";
 import { ProductGrid } from "@/components/pos/product-grid";
 import { CartPanel } from "@/components/pos/cart-panel";
 import { BarcodeScanner } from "@/components/pos/barcode-scanner";
@@ -17,6 +16,7 @@ import { PaymentModal, type PaymentMethod } from "@/components/pos/payment-modal
 import { CustomerModal } from "@/components/pos/customer-modal";
 import { ReceiptModal } from "@/components/pos/receipt-modal";
 import { ZReportModal } from "@/components/pos/z-report-modal";
+import { ShiftModal } from "@/components/pos/shift-modal";
 import { useShifts } from "@/hooks/use-shifts";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -80,16 +80,23 @@ export default function PosPage() {
   const [showCustomer, setShowCustomer] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
   const [showZReport, setShowZReport] = useState(false);
+  const [showShiftModal, setShowShiftModal] = useState<"open" | "close" | null>(null);
   const [lastOrder, setLastOrder] = useState<any>(null);
   const [online, setOnline] = useState(true);
-  const [shiftFloat, setShiftFloat] = useState("");
-  const [shiftCloseCount, setShiftCloseCount] = useState("");
+
+  const handleShiftAction = useCallback(async (amount: number) => {
+    if (!user) return { success: false, error: "Not authenticated" };
+    if (showShiftModal === "open") {
+      return await openShift(user.id, amount);
+    } else {
+      if (!activeShift) return { success: false, error: "No active shift" };
+      return await closeShift(activeShift.id, user.id, amount);
+    }
+  }, [user, showShiftModal, openShift, activeShift, closeShift]);
 
   // Auth guard
   useEffect(() => {
-    console.log("[page] auth guard check:", { isAuthenticated, user: user?.email, authLoading });
     if (!authLoading && !isAuthenticated && !user) {
-      console.log("[page] redirecting to /login");
       router.push("/login");
     }
   }, [isAuthenticated, user, authLoading, router]);
@@ -159,16 +166,21 @@ export default function PosPage() {
       if (!user) return;
 
       try {
-        // Generate order number
         const today = new Date().toISOString().split("T")[0].replace(/-/g, "");
         const count = await pb.collection("orders").getList(1, 1, {
-          filter: `created >= "${new Date().toISOString().split("T")[0]} 00:00:00"`,
+          filter: `order_no ~ "POS-${today}-"`,
           sort: "-created",
         });
         const seq = (count.totalItems || 0) + 1;
         const orderNo = `POS-${today}-${String(seq).padStart(4, "0")}`;
 
         const customer = cart?.expand?.customer;
+        const timestamp = new Date().toISOString();
+        const sigPayload = `${orderNo}:${grandTotal}:${settings?.tpn_gstin || ""}:${timestamp}`;
+        const sigBytes = new TextEncoder().encode(sigPayload);
+        const hashBuffer = await crypto.subtle.digest("SHA-256", sigBytes);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const digitalSignature = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 
         // Build order payload
         const orderPayload = {
@@ -194,7 +206,7 @@ export default function PosPage() {
           customer_name: customer?.name || "",
           customer_phone: customer?.phone || "",
           cashier: user.id,
-          digital_signature: `${orderNo}:${grandTotal}:${settings?.tpn_gstin || ""}:${new Date().toISOString()}`,
+          digital_signature: digitalSignature,
         };
 
         // Create order
@@ -318,24 +330,12 @@ export default function PosPage() {
             </Button>
           </Link>
           {!activeShift ? (
-            <Button variant="outline" size="sm" onClick={() => {
-              const val = prompt("Enter opening cash float:");
-              if (val) openShift(user!.id, parseFloat(val) || 0).then((r) => {
-                if (r.success) toast.success("Shift opened");
-                else toast.error(r.error);
-              });
-            }}>
+            <Button variant="outline" size="sm" onClick={() => setShowShiftModal("open")}>
               <DoorOpen className="h-4 w-4 mr-1" />
               Open Shift
             </Button>
           ) : (
-            <Button variant="outline" size="sm" onClick={() => {
-              const val = prompt("Enter cash count in drawer (blind close):");
-              if (val) closeShift(activeShift.id, user!.id, parseFloat(val) || 0).then((r) => {
-                if (r.success) toast.success("Shift closed");
-                else toast.error(r.error);
-              });
-            }}>
+            <Button variant="outline" size="sm" onClick={() => setShowShiftModal("close")}>
               <DoorClosed className="h-4 w-4 mr-1" />
               Close Shift
             </Button>
@@ -436,6 +436,13 @@ export default function PosPage() {
       <ZReportModal
         open={showZReport}
         onClose={() => setShowZReport(false)}
+      />
+
+      <ShiftModal
+        open={showShiftModal !== null}
+        onClose={() => setShowShiftModal(null)}
+        mode={showShiftModal || "open"}
+        onConfirm={handleShiftAction}
       />
     </div>
   );

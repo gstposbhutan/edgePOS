@@ -82,10 +82,10 @@ export function useCustomers() {
   const recordRepayment = useCallback(
     async (customerId: string, amount: number, method: string, notes?: string) => {
       try {
-        const customer = customers.find((c) => c.id === customerId);
-        if (!customer) return { success: false, error: "Customer not found" };
-
-        const newBalance = Math.max(0, customer.credit_balance - amount);
+        // Fetch current balance atomically from PocketBase to avoid stale React state
+        const record = await pb.collection("customers").getOne(customerId);
+        const currentBalance = (record as Record<string, unknown>).credit_balance as number || 0;
+        const newBalance = Math.max(0, currentBalance - amount);
         await pb.collection("customers").update(customerId, { credit_balance: newBalance });
 
         await pb.collection("khata_transactions").create({
@@ -97,11 +97,12 @@ export function useCustomers() {
 
         await fetchCustomers();
         return { success: true };
-      } catch (err: any) {
-        return { success: false, error: err.message };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Repayment failed";
+        return { success: false, error: msg };
       }
     },
-    [pb, customers, fetchCustomers]
+    [pb, fetchCustomers]
   );
 
   return {

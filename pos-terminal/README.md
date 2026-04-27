@@ -23,7 +23,7 @@ Everything runs in containers. No local Node.js or PocketBase binary required.
 ```bash
 cd pos-terminal
 
-# Production stack — builds static app + runs PocketBase
+# Production stack — builds static app + runs PocketBase + runs setup
 docker compose up -d
 
 # Open http://localhost:3000 and sign in:
@@ -31,15 +31,15 @@ docker compose up -d
 # Password: admin12345
 ```
 
-The setup container runs automatically on first start. Data persists in the `pb_data` Docker volume.
+The `setup` container runs automatically on first start — adds all collection fields, sets access rules, and seeds default data. Data persists in the `pb_data` Docker volume.
 
 For development with hot reload:
 
 ```bash
 docker compose -f docker-compose.dev.yml up -d
-# Then run setup manually:
-docker compose -f docker-compose.dev.yml exec pos npm run pb:setup
 ```
+
+The dev compose now includes an automatic setup step — no manual `npm run pb:setup` needed. The setup runs before the Next.js dev server starts.
 
 ### Option B — Local Development
 
@@ -153,8 +153,9 @@ pos-terminal/
 │   │   ├── payment-modal.tsx
 │   │   ├── customer-modal.tsx
 │   │   ├── receipt-modal.tsx
-│   │   └── z-report-modal.tsx
-│   └── ui/                  # Shadcn/UI components
+│   │   ├── z-report-modal.tsx
+│   │   └── shift-modal.tsx     # Open/close shift with validation
+│   └── ui/                     # Shadcn/UI components
 ├── hooks/
 │   ├── use-auth.ts
 │   ├── use-products.ts
@@ -221,7 +222,32 @@ For shops with multiple POS terminals:
 - PocketBase auth with password + JWT sessions
 - Role-based UI gating (Owner / Manager / Cashier)
 - Immutable order snapshots for audit compliance
-- SHA-256 digital signatures on every receipt
+- SHA-256 digital signatures on every receipt (via Web Crypto API)
+- No hardcoded credentials in source — defaults removed from login form
+- XSS-safe receipt printing (DOM cloneNode, not innerHTML)
+
+## 🧪 E2E Testing
+
+Playwright tests for the PocketBase POS flow. Requires services running (`docker compose up`).
+
+```bash
+# Run all PocketBase E2E tests
+npm run test:e2e
+
+# Run with visible browser
+npm run test:e2e:headed
+
+# Run from project root
+cd .. && npm run test:e2e:pocketbase
+```
+
+**Test coverage** (13 tests):
+- Login page renders and validates credentials
+- Auth guard redirects unauthenticated users
+- POS dashboard loads with header, navigation, product grid
+- Cart panel visible, product search and filtering
+- Add product to cart, session persistence across refresh
+- Logout, settings navigation, online status badge
 
 ## 🛠️ Tech Stack
 

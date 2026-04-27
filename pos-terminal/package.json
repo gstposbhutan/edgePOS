@@ -11,6 +11,8 @@
     "test": "vitest",
     "pb:serve": "./pb/pocketbase serve --http=127.0.0.1:8090 --dir=./pb_data --migrationsDir=./pb/pb_migrations",
     "pb:setup": "node setup-pb.js",
+    "test:e2e": "playwright test --project=pocketbase",
+    "test:e2e:headed": "playwright test --project=pocketbase --headed",
     "electron:dev": "concurrently \"next dev\" \"wait-on http://localhost:3000 && electron .\"",
     "electron:build": "next build && electron-builder",
     "electron:pack": "next build && electron-builder --dir"

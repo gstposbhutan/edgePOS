@@ -116,6 +116,7 @@ export function useShifts() {
         const shift = await pb.collection("shifts").getOne<Shift>(shiftId);
         const orders = await pb.collection("orders").getFullList({
           filter: `created >= "${shift.opened_at}" && status = "confirmed"`,
+          requestKey: null,
         });
 
         let cashSales = 0;
@@ -163,14 +164,17 @@ export function useShifts() {
       try {
         const orders = await pb.collection("orders").getFullList({
           filter: `created >= "${targetDate} 00:00:00" && created <= "${targetDate} 23:59:59" && status = "confirmed"`,
+          requestKey: null,
         });
 
         const cancelled = await pb.collection("orders").getFullList({
           filter: `created >= "${targetDate} 00:00:00" && created <= "${targetDate} 23:59:59" && status = "cancelled"`,
+          requestKey: null,
         });
 
         const refunded = await pb.collection("orders").getFullList({
           filter: `created >= "${targetDate} 00:00:00" && created <= "${targetDate} 23:59:59" && status = "refunded"`,
+          requestKey: null,
         });
 
         const report = {

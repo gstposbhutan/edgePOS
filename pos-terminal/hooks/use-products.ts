@@ -37,6 +37,10 @@ export function useProducts() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   const fetchProducts = useCallback(async () => {
+    if (!pb.authStore.isValid) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const records = await pb.collection("products").getFullList<Product>({
