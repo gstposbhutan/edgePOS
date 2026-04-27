@@ -1,7 +1,5 @@
-/**
- * Bhutan GST 2026 calculation utilities.
- * Flat 5% rate on taxable (discounted) amount.
- */
+import { DEFAULT_GST_RATE } from "./constants";
+import { todayCompact } from "./date-utils";
 
 export interface CartItemInput {
   unitPrice: number;
@@ -15,18 +13,23 @@ export interface CartItemTotals {
   total: number;
 }
 
-export function calcItemTotals(input: CartItemInput): CartItemTotals {
+export function calcItemTotals(input: CartItemInput, gstRate: number = DEFAULT_GST_RATE): CartItemTotals {
+  const rate = gstRate / 100;
   const taxable = Math.max(0, input.unitPrice - input.discount);
-  const gstAmount = parseFloat((taxable * 0.05 * input.quantity).toFixed(2));
-  const total = parseFloat(((taxable * 1.05) * input.quantity).toFixed(2));
+  const gstAmount = parseFloat((taxable * rate * input.quantity).toFixed(2));
+  const total = parseFloat(((taxable * (1 + rate)) * input.quantity).toFixed(2));
   return { taxable, gstAmount, total };
 }
 
-export function calcCartTotals(items: { unitPrice: number; discount: number; quantity: number }[]) {
+export function calcCartTotals(
+  items: { unitPrice: number; discount: number; quantity: number }[],
+  gstRate: number = DEFAULT_GST_RATE
+) {
+  const rate = gstRate / 100;
   const subtotal = items.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
   const discountTotal = items.reduce((s, i) => s + i.discount * i.quantity, 0);
   const taxableSubtotal = subtotal - discountTotal;
-  const gstTotal = parseFloat((taxableSubtotal * 0.05).toFixed(2));
+  const gstTotal = parseFloat((taxableSubtotal * rate).toFixed(2));
   const grandTotal = parseFloat((taxableSubtotal + gstTotal).toFixed(2));
   return {
     subtotal: parseFloat(subtotal.toFixed(2)),
@@ -37,19 +40,31 @@ export function calcCartTotals(items: { unitPrice: number; discount: number; qua
   };
 }
 
-export function generateOrderSignature(orderNo: string, grandTotal: number, tpnGstin: string, timestamp: string): string {
-  const payload = `${orderNo}:${grandTotal}:${tpnGstin}:${timestamp}`;
-  // In browser we use SubtleCrypto; server-side could use crypto
-  // Return a simple hash string for now (proper SHA-256 done at save time via PB hook)
-  return payload;
-}
-
 export function formatCurrency(amount: number): string {
   return `Nu. ${amount.toFixed(2)}`;
 }
 
-export function generateOrderNo(sequence: number): string {
-  const year = new Date().getFullYear();
-  const seq = String(sequence).padStart(5, '0');
-  return `POS-${year}-${seq}`;
+/**
+ * Generate digital signature for order integrity.
+ * Uses SubtleCrypto SHA-256 in browser.
+ */
+export async function generateOrderSignature(
+  orderNo: string,
+  grandTotal: number,
+  tpnGstin: string,
+  timestamp: string
+): Promise<string> {
+  const payload = `${orderNo}:${grandTotal}:${tpnGstin}:${timestamp}`;
+  const sigBytes = new TextEncoder().encode(payload);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", sigBytes);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Generate POS order number: POS-YYYYMMDD-NNNN
+ * Sequence is obtained from PocketBase count for the day.
+ */
+export function generateOrderNo(date: string, sequence: number): string {
+  return `POS-${date}-${String(sequence).padStart(4, "0")}`;
 }

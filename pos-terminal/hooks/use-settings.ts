@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { getPB } from "@/lib/pb-client";
+import { getPB, PB_REQ } from "@/lib/pb-client";
 
 export interface Settings {
   id: string;
@@ -39,7 +39,7 @@ export function useSettings() {
           receipt_header: "",
           receipt_footer: "Thank you for your business!",
           gst_rate: 5,
-        }, REQ);
+        }, PB_REQ);
         setSettings(defaultSettings as unknown as Settings);
       }
     } catch (err) {
@@ -66,7 +66,7 @@ export function useSettings() {
     async (data: Partial<Settings>) => {
       if (!settings) return { success: false, error: "No settings found" };
       try {
-        const updated = await pb.collection("settings").update(settings.id, data, REQ);
+        const updated = await pb.collection("settings").update(settings.id, data, PB_REQ);
         setSettings(updated as unknown as Settings);
         return { success: true, error: null };
       } catch (err: any) {

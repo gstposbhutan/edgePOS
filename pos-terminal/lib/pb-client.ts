@@ -1,4 +1,5 @@
 import PocketBase from 'pocketbase';
+import { PB_REQ } from './constants';
 
 const DEFAULT_URL = process.env.NEXT_PUBLIC_POCKETBASE_URL || 'http://127.0.0.1:8090';
 const AUTH_KEY = 'pb_auth';
@@ -96,3 +97,5 @@ export function logout() {
     localStorage.removeItem(AUTH_KEY);
   }
 }
+
+export { PB_REQ };

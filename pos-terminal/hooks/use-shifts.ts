@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { getPB } from "@/lib/pb-client";
+import { getPB, PB_REQ } from "@/lib/pb-client";
 
 export interface Shift {
   id: string;
@@ -92,7 +92,7 @@ export function useShifts() {
           filter: 'status = "active"',
         });
         for (const s of stale) {
-          await pb.collection("shifts").update(s.id, { status: "closed", closed_at: new Date().toISOString() }, REQ);
+          await pb.collection("shifts").update(s.id, { status: "closed", closed_at: new Date().toISOString() }, PB_REQ);
         }
 
         const record = await pb.collection("shifts").create({
@@ -100,7 +100,7 @@ export function useShifts() {
           opening_float: openingFloat,
           status: "active",
           opened_at: new Date().toISOString(),
-        }, REQ);
+        }, PB_REQ);
         await fetchActiveShift();
         return { success: true, shift: record as unknown as Shift };
       } catch (err: any) {
@@ -114,7 +114,7 @@ export function useShifts() {
     async (shiftId: string, userId: string, closingCount: number) => {
       try {
         // Calculate expected from orders during shift
-        const shift = await pb.collection("shifts").getOne<Shift>(shiftId, REQ);
+        const shift = await pb.collection("shifts").getOne<Shift>(shiftId, PB_REQ);
         const orders = await pb.collection("orders").getFullList({
           filter: `created_at >= "${shift.opened_at}" && status = "CONFIRMED"`,
           requestKey: null,
@@ -147,7 +147,7 @@ export function useShifts() {
           credit_sales: creditSales,
           refund_total: refundTotal,
           transaction_count: orders.length,
-        }, REQ);
+        }, PB_REQ);
 
         await fetchActiveShift();
         await fetchShiftHistory();

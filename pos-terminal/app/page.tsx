@@ -11,7 +11,12 @@ import { useSettings } from "@/hooks/use-settings";
 import { useFavorites } from "@/hooks/use-favorites";
 import { useHeldCarts } from "@/hooks/use-held-carts";
 import { useKeyboardRegistry } from "@/hooks/use-keyboard-registry";
-import { getPB } from "@/lib/pb-client";
+import { useUndo } from "@/hooks/use-undo";
+import { useLayoutPreset } from "@/hooks/use-layout-preset";
+import { getPB, PB_REQ } from "@/lib/pb-client";
+import { generateOrderNo, generateOrderSignature } from "@/lib/gst";
+import { todayCompact } from "@/lib/date-utils";
+import { LAYOUT_PRESETS, LS_KEYS, SCREEN_LG, CART_WIDTH, MAX_UNDO_STACK } from "@/lib/constants";
 import { ProductGrid } from "@/components/pos/product-grid";
 import { CartPanel } from "@/components/pos/cart-panel";
 import { BarcodeScanner } from "@/components/pos/barcode-scanner";
@@ -42,10 +47,6 @@ import {
   ArrowRight,
 } from "lucide-react";
 import Link from "next/link";
-
-const REQ = { requestKey: null };
-
-type LayoutPreset = "standard" | "compact" | "fullcart";
 
 export default function PosPage() {
   const router = useRouter();
@@ -104,6 +105,8 @@ export default function PosPage() {
   const { favorites, toggleFavorite, isFavorite } = useFavorites(user?.id);
   const { heldCarts, loadHeld, holdCart, recallCart, discardHeld } = useHeldCarts();
   const { registerShortcut } = useKeyboardRegistry();
+  const undoStack = useUndo();
+  const { layoutPreset, setLayout } = useLayoutPreset();
 
   const [showScanner, setShowScanner] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
@@ -118,37 +121,13 @@ export default function PosPage() {
   const [online, setOnline] = useState(true);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [currentTime, setCurrentTime] = useState("");
-  const [layoutPreset, setLayoutPreset] = useState<LayoutPreset>("standard");
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [screenWidth, setScreenWidth] = useState(typeof window !== "undefined" ? window.innerWidth : SCREEN_LG);
   const [showCart, setShowCart] = useState(true);
-
-  const [screenWidth, setScreenWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 1024);
-
-  useEffect(() => {
-    const handler = () => setScreenWidth(window.innerWidth);
-    window.addEventListener("resize", handler);
-    return () => window.removeEventListener("resize", handler);
-  }, []);
-
   const anyModalOpen =
     showScanner || showPayment || showCustomer || showReceipt || showZReport ||
     showShiftModal !== null || showHeldCarts || showHelp;
-
-  // Layout preset from localStorage
-  useEffect(() => {
-    try {
-      const preset = localStorage.getItem("nexus_pos_layout");
-      if (preset && ["standard", "compact", "fullcart"].includes(preset)) {
-        setLayoutPreset(preset as LayoutPreset);
-      }
-    } catch { /* ignore */ }
-  }, []);
-
-  const setLayout = useCallback((preset: LayoutPreset) => {
-    setLayoutPreset(preset);
-    try { localStorage.setItem("nexus_pos_layout", preset); } catch { /* ignore */ }
-  }, []);
 
   // Clock
   useEffect(() => {
@@ -167,11 +146,18 @@ export default function PosPage() {
   // Load held carts on mount
   useEffect(() => { loadHeld(); }, [loadHeld]);
 
+  // Screen width tracking
+  useEffect(() => {
+    const handler = () => setScreenWidth(window.innerWidth);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
+
   // Undo stack
   const undoStackRef = useRef<Array<() => void>>([]);
   const pushUndo = useCallback((undo: () => void) => {
     undoStackRef.current.push(undo);
-    if (undoStackRef.current.length > 20) undoStackRef.current.shift();
+    if (undoStackRef.current.length > MAX_UNDO_STACK) undoStackRef.current.shift();
   }, []);
 
   // Ref to avoid stale closure in handleRecallCart
@@ -285,21 +271,20 @@ export default function PosPage() {
       if (!user) return;
 
       try {
-        const today = new Date().toISOString().split("T")[0].replace(/-/g, "");
+        const today = todayCompact();
         const count = await pb.collection("orders").getList(1, 1, {
           filter: `order_no ~ "POS-${today}-"`,
           sort: "-created_at",
           requestKey: null,
         });
-        const seq = (count.totalItems || 0) + 1;
-        const orderNo = `POS-${today}-${String(seq).padStart(4, "0")}`;
+        const orderNo = generateOrderNo(today, (count.totalItems || 0) + 1);
 
-        const timestamp = new Date().toISOString();
-        const sigPayload = `${orderNo}:${taxExempt ? grandTotalExempt : grandTotal}:${settings?.tpn_gstin || ""}:${timestamp}`;
-        const sigBytes = new TextEncoder().encode(sigPayload);
-        const hashBuffer = await crypto.subtle.digest("SHA-256", sigBytes);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        const digitalSignature = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+        const digitalSignature = await generateOrderSignature(
+          orderNo,
+          taxExempt ? grandTotalExempt : grandTotal,
+          settings?.tpn_gstin || "",
+          new Date().toISOString()
+        );
 
         const effectiveGstTotal = taxExempt ? 0 : gstTotal;
         const effectiveGrandTotal = taxExempt ? grandTotalExempt : grandTotal;
@@ -330,32 +315,32 @@ export default function PosPage() {
           digital_signature: digitalSignature,
         };
 
-        const result = await pb.collection("orders").create(orderPayload, REQ);
+        const result = await pb.collection("orders").create(orderPayload, PB_REQ);
 
         for (const item of items) {
           const product = products.find((p) => p.id === item.product);
           if (!product) continue;
           const newStock = product.current_stock - item.quantity;
-          await pb.collection("products").update(product.id, { current_stock: newStock }, REQ);
+          await pb.collection("products").update(product.id, { current_stock: newStock }, PB_REQ);
           await pb.collection("inventory_movements").create({
             product: product.id,
             movement_type: "SALE",
             quantity: -item.quantity,
             reference_id: result.id,
             notes: `Sale: ${orderNo}`,
-          }, REQ);
+          }, PB_REQ);
         }
 
         if (method === "credit" && selectedCustomer) {
           const newBalance = selectedCustomer.outstanding_balance + effectiveGrandTotal;
-          await pb.collection("khata_accounts").update(selectedCustomer.id, { outstanding_balance: newBalance }, REQ);
+          await pb.collection("khata_accounts").update(selectedCustomer.id, { outstanding_balance: newBalance }, PB_REQ);
           await pb.collection("khata_transactions").create({
             khata_account: selectedCustomer.id,
             transaction_type: "DEBIT",
             amount: effectiveGrandTotal,
             reference_id: result.id,
             notes: `Purchase on credit — ${orderNo}`,
-          }, REQ);
+          }, PB_REQ);
         }
 
         await clearCart();
@@ -589,7 +574,7 @@ export default function PosPage() {
 
   const totalItemsCount = items.reduce((sum, i) => sum + i.quantity, 0);
 
-  const cartColumnWidth = layoutPreset === "fullcart" ? "w-[480px]" : layoutPreset === "compact" ? "w-[340px]" : "w-[380px]";
+  const cartColumnWidth = layoutPreset === "fullcart" ? CART_WIDTH.FULL : layoutPreset === "compact" ? CART_WIDTH.COMPACT : CART_WIDTH.STANDARD;
 
   return (
     <div className="h-screen flex flex-col bg-background">
@@ -635,26 +620,26 @@ export default function PosPage() {
           {/* Layout preset toggles */}
           <div className="hidden lg:flex items-center gap-0.5 ml-2">
             <Button
-              variant={layoutPreset === "standard" ? "default" : "ghost"}
+              variant={layoutPreset === LAYOUT_PRESETS.STANDARD ? "default" : "ghost"}
               size="sm"
               className="text-[10px] h-6 px-2"
-              onClick={() => setLayout("standard")}
+              onClick={() => setLayout(LAYOUT_PRESETS.STANDARD)}
             >
               Std
             </Button>
             <Button
-              variant={layoutPreset === "compact" ? "default" : "ghost"}
+              variant={layoutPreset === LAYOUT_PRESETS.COMPACT ? "default" : "ghost"}
               size="sm"
               className="text-[10px] h-6 px-2"
-              onClick={() => setLayout("compact")}
+              onClick={() => setLayout(LAYOUT_PRESETS.COMPACT)}
             >
               Cpt
             </Button>
             <Button
-              variant={layoutPreset === "fullcart" ? "default" : "ghost"}
+              variant={layoutPreset === LAYOUT_PRESETS.FULLCART ? "default" : "ghost"}
               size="sm"
               className="text-[10px] h-6 px-2"
-              onClick={() => setLayout("fullcart")}
+              onClick={() => setLayout(LAYOUT_PRESETS.FULLCART)}
             >
               Full
             </Button>
@@ -744,7 +729,7 @@ export default function PosPage() {
         </div>
 
         {/* Cart Panel — always visible on lg+, slide-over on md */}
-        {(showCart || screenWidth >= 1024) && (
+        {(showCart || screenWidth >= SCREEN_LG) && (
           <div className={`${cartColumnWidth} shrink-0 hidden md:block ${layoutPreset === "fullcart" && !showCart ? "hidden" : ""}`}>
             <CartPanel
               items={items}

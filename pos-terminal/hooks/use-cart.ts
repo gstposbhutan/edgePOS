@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { getPB } from "@/lib/pb-client";
-import { calcItemTotals, calcCartTotals } from "@/lib/gst";
+import { getPB, PB_REQ } from "@/lib/pb-client";
+import { calcItemTotals, calcCartTotals, formatCurrency } from "@/lib/gst";
+import { CART_STATUS } from "@/lib/constants";
 import type { Product } from "./use-products";
 
 export interface CartItem {
@@ -23,7 +24,6 @@ export interface Cart {
   status: string;
 }
 
-const REQ = { requestKey: null };
 
 export function useCart() {
   const pb = getPB();
@@ -56,7 +56,7 @@ export function useCart() {
         });
         setItems(itemRecords);
       } else {
-        const newCart = await pb.collection("carts").create({ status: "ACTIVE" }, REQ);
+        const newCart = await pb.collection("carts").create({ status: "ACTIVE" }, PB_REQ);
         setCart(newCart as unknown as Cart);
         setItems([]);
       }
@@ -82,7 +82,7 @@ export function useCart() {
   const removeItem = useCallback(
     async (itemId: string) => {
       try {
-        await pb.collection("cart_items").delete(itemId, REQ);
+        await pb.collection("cart_items").delete(itemId, PB_REQ);
         setItems((prev) => prev.filter((i) => i.id !== itemId));
       } catch (err) {
         console.error("Remove item error:", err);
@@ -108,7 +108,7 @@ export function useCart() {
           quantity: newQty,
           gst_5: gstAmount,
           total,
-        }, REQ);
+        }, PB_REQ);
         setItems((prev) => prev.map((i) => (i.id === itemId ? (updated as unknown as CartItem) : i)));
       } catch (err) {
         console.error("Update qty error:", err);
@@ -140,7 +140,7 @@ export function useCart() {
           discount: 0,
           gst_5: gstAmount,
           total,
-        }, REQ);
+        }, PB_REQ);
         setItems((prev) => [...prev, newItem as unknown as CartItem]);
       } catch (err) {
         console.error("Add item error:", err);
@@ -165,7 +165,7 @@ export function useCart() {
           discount: clamped,
           gst_5: gstAmount,
           total,
-        }, REQ);
+        }, PB_REQ);
         setItems((prev) => prev.map((i) => (i.id === itemId ? (updated as unknown as CartItem) : i)));
       } catch (err) {
         console.error("Discount error:", err);
@@ -190,7 +190,7 @@ export function useCart() {
           unit_price: price,
           gst_5: gstAmount,
           total,
-        }, REQ);
+        }, PB_REQ);
         setItems((prev) => prev.map((i) => (i.id === itemId ? (updated as unknown as CartItem) : i)));
       } catch (err) {
         console.error("Price override error:", err);
@@ -204,10 +204,10 @@ export function useCart() {
     try {
       const currentItems = itemsRef.current;
       await Promise.all(currentItems.map((item) =>
-        pb.collection("cart_items").delete(item.id, REQ).catch(() => {})
+        pb.collection("cart_items").delete(item.id, PB_REQ).catch(() => {})
       ));
-      await pb.collection("carts").update(cart.id, { status: "ABANDONED" }, REQ);
-      const newCart = await pb.collection("carts").create({ status: "ACTIVE" }, REQ);
+      await pb.collection("carts").update(cart.id, { status: "ABANDONED" }, PB_REQ);
+      const newCart = await pb.collection("carts").create({ status: "ACTIVE" }, PB_REQ);
       setCart(newCart as unknown as Cart);
       setItems([]);
     } catch (err) {
@@ -216,10 +216,17 @@ export function useCart() {
   }, [cart, pb]);
 
   const setCustomer = useCallback(
-    (_customerId: string | null) => {
-      setCart((prev) => (prev ? { ...prev } : null));
+    async (customerId: string | null) => {
+      if (!cart) return;
+      try {
+        await pb.collection("carts").update(cart.id, {
+          customer_whatsapp: customerId || "",
+        }, PB_REQ);
+      } catch {
+        // Non-critical — cart operates fine without customer link
+      }
     },
-    []
+    [cart, pb]
   );
 
   const totals = calcCartTotals(

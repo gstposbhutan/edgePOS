@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { getPB } from "@/lib/pb-client";
+import { getPB, PB_REQ } from "@/lib/pb-client";
 
 export interface Order {
   id: string;
@@ -22,19 +22,18 @@ export interface Order {
   expand?: { buyer_id?: any; created_by?: any };
 }
 
-const REQ = { requestKey: null };
 
 async function restoreStockAndReverseCredit(pb: ReturnType<typeof getPB>, orderId: string) {
-  const order = await pb.collection("orders").getOne(orderId, REQ);
+  const order = await pb.collection("orders").getOne(orderId, PB_REQ);
   const items: any[] = order.items || [];
 
   for (const item of items) {
     if (!item.product) continue;
 
-    const product = await pb.collection("products").getOne(item.product, REQ).catch(() => null);
+    const product = await pb.collection("products").getOne(item.product, PB_REQ).catch(() => null);
     if (product) {
       const restoredStock = (product.current_stock || 0) + (item.quantity || 0);
-      await pb.collection("products").update(item.product, { current_stock: restoredStock }, REQ);
+      await pb.collection("products").update(item.product, { current_stock: restoredStock }, PB_REQ);
     }
 
     await pb.collection("inventory_movements").create({
@@ -43,7 +42,7 @@ async function restoreStockAndReverseCredit(pb: ReturnType<typeof getPB>, orderI
       quantity: item.quantity || 0,
       reference_id: orderId,
       notes: `Return — order ${order.order_no}`,
-    }, REQ);
+    }, PB_REQ);
   }
 
   // Reverse credit/khata if payment was via credit
@@ -56,14 +55,14 @@ async function restoreStockAndReverseCredit(pb: ReturnType<typeof getPB>, orderI
     if (accounts.length > 0) {
       const acct = accounts[0] as any;
       const newBalance = Math.max(0, (acct.outstanding_balance || 0) - (order.grand_total || 0));
-      await pb.collection("khata_accounts").update(acct.id, { outstanding_balance: newBalance }, REQ);
+      await pb.collection("khata_accounts").update(acct.id, { outstanding_balance: newBalance }, PB_REQ);
       await pb.collection("khata_transactions").create({
         khata_account: acct.id,
         transaction_type: "CREDIT",
         amount: order.grand_total || 0,
         reference_id: orderId,
         notes: `Reversal — order ${order.order_no}`,
-      }, REQ);
+      }, PB_REQ);
     }
   }
 }
@@ -122,7 +121,7 @@ export function useOrders() {
   const createOrder = useCallback(
     async (data: Partial<Order>) => {
       try {
-        const record = await pb.collection("orders").create(data, REQ);
+        const record = await pb.collection("orders").create(data, PB_REQ);
         await fetchOrders();
         return { success: true, order: record as unknown as Order };
       } catch (err: any) {
@@ -140,7 +139,7 @@ export function useOrders() {
         await pb.collection("orders").update(orderId, {
           status: "CANCELLED",
           cancellation_reason: reason,
-        }, REQ);
+        }, PB_REQ);
 
         await fetchOrders();
         return { success: true };
@@ -154,7 +153,7 @@ export function useOrders() {
   const refundOrder = useCallback(
     async (orderId: string, refundItems: { itemId: string; qty: number }[], reason: string) => {
       try {
-        const order = await pb.collection("orders").getOne(orderId, REQ);
+        const order = await pb.collection("orders").getOne(orderId, PB_REQ);
         const items: any[] = order.items || [];
 
         // If no specific items provided, do a full refund (restore all stock)
@@ -166,7 +165,7 @@ export function useOrders() {
             status: "REFUNDED",
             refund_amount: order.grand_total || 0,
             refund_reason: reason,
-          }, REQ);
+          }, PB_REQ);
 
           await fetchOrders();
           return { success: true };
@@ -181,10 +180,10 @@ export function useOrders() {
             refundAmount += item.total * ratio;
 
             if (item.product && ri.qty > 0) {
-              const product = await pb.collection("products").getOne(item.product, REQ).catch(() => null);
+              const product = await pb.collection("products").getOne(item.product, PB_REQ).catch(() => null);
               if (product) {
                 const restoredStock = (product.current_stock || 0) + ri.qty;
-                await pb.collection("products").update(item.product, { current_stock: restoredStock }, REQ);
+                await pb.collection("products").update(item.product, { current_stock: restoredStock }, PB_REQ);
               }
               await pb.collection("inventory_movements").create({
                 product: item.product,
@@ -192,7 +191,7 @@ export function useOrders() {
                 quantity: ri.qty,
                 reference_id: orderId,
                 notes: `Partial refund — ${order.order_no}`,
-              }, REQ);
+              }, PB_REQ);
             }
           }
         }
@@ -201,7 +200,7 @@ export function useOrders() {
           status: "REFUNDED",
           refund_amount: refundAmount,
           refund_reason: reason,
-        }, REQ);
+        }, PB_REQ);
 
         await fetchOrders();
         return { success: true };

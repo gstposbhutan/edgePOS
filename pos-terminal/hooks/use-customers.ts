@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { getPB } from "@/lib/pb-client";
+import { getPB, PB_REQ } from "@/lib/pb-client";
 
 export interface Customer {
   id: string;
@@ -57,7 +57,7 @@ export function useCustomers() {
           credit_limit: 0,
           outstanding_balance: 0,
           ...data,
-        }, REQ);
+        }, PB_REQ);
         await fetchCustomers();
         return { success: true, record: record as unknown as Customer };
       } catch (err: any) {
@@ -70,7 +70,7 @@ export function useCustomers() {
   const updateCustomer = useCallback(
     async (id: string, data: Partial<Customer>) => {
       try {
-        await pb.collection("khata_accounts").update(id, data, REQ);
+        await pb.collection("khata_accounts").update(id, data, PB_REQ);
         await fetchCustomers();
         return { success: true };
       } catch (err: any) {
@@ -84,17 +84,17 @@ export function useCustomers() {
     async (customerId: string, amount: number, method: string, notes?: string) => {
       try {
         // Fetch current balance atomically from PocketBase to avoid stale React state
-        const record = await pb.collection("khata_accounts").getOne(customerId, REQ);
+        const record = await pb.collection("khata_accounts").getOne(customerId, PB_REQ);
         const currentBalance = (record as Record<string, unknown>).outstanding_balance as number || 0;
         const newBalance = Math.max(0, currentBalance - amount);
-        await pb.collection("khata_accounts").update(customerId, { outstanding_balance: newBalance }, REQ);
+        await pb.collection("khata_accounts").update(customerId, { outstanding_balance: newBalance }, PB_REQ);
 
         await pb.collection("khata_transactions").create({
           khata_account: customerId,
           transaction_type: "CREDIT",
           amount,
           notes: notes || `Repayment via ${method}`,
-        }, REQ);
+        }, PB_REQ);
 
         await fetchCustomers();
         return { success: true };

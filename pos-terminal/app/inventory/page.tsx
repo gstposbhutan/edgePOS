@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useProducts } from "@/hooks/use-products";
 import { useAuth } from "@/hooks/use-auth";
-import { getPB } from "@/lib/pb-client";
+import { getPB, PB_REQ } from "@/lib/pb-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -26,7 +26,6 @@ import {
   AlertTriangle,
 } from "lucide-react";
 
-const REQ = { requestKey: null };
 
 const ADJUSTMENT_TYPES: { value: string; label: string }[] = [
   { value: "RESTOCK", label: "Restock" },
@@ -66,13 +65,13 @@ export default function InventoryPage() {
       if (!product) return;
 
       const newStock = Math.max(0, product.current_stock + adjustQty);
-      await pb.collection("products").update(productId, { current_stock: newStock }, REQ);
+      await pb.collection("products").update(productId, { current_stock: newStock }, PB_REQ);
       await pb.collection("inventory_movements").create({
         product: productId,
         movement_type: adjustReason,
         quantity: adjustQty,
         notes: `Manual adjustment by ${user?.name || "staff"}`,
-      }, REQ);
+      }, PB_REQ);
 
       toast.success("Stock adjusted");
       setShowAdjust(null);

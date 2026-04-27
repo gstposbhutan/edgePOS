@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { getPB } from "@/lib/pb-client";
+import { getPB, PB_REQ } from "@/lib/pb-client";
 
 export interface Product {
   id: string;
@@ -138,7 +138,7 @@ export function useProducts() {
   const createProduct = useCallback(
     async (data: Partial<Product>) => {
       try {
-        const record = await pb.collection("products").create(data, REQ);
+        const record = await pb.collection("products").create(data, PB_REQ);
         await fetchProducts();
         return { success: true, record };
       } catch (err: any) {
@@ -151,7 +151,7 @@ export function useProducts() {
   const updateProduct = useCallback(
     async (id: string, data: Partial<Product>) => {
       try {
-        const record = await pb.collection("products").update(id, data, REQ);
+        const record = await pb.collection("products").update(id, data, PB_REQ);
         await fetchProducts();
         return { success: true, record };
       } catch (err: any) {
