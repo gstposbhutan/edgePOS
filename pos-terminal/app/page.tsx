@@ -14,6 +14,7 @@ import { useKeyboardRegistry } from "@/hooks/use-keyboard-registry";
 import { useUndo } from "@/hooks/use-undo";
 import { useLayoutPreset } from "@/hooks/use-layout-preset";
 import { usePosShortcuts } from "@/hooks/use-pos-shortcuts";
+import { useCheckout } from "@/hooks/use-checkout";
 import { getPB, PB_REQ } from "@/lib/pb-client";
 import { generateOrderNo, generateOrderSignature } from "@/lib/gst";
 import { todayCompact } from "@/lib/date-utils";
@@ -107,7 +108,7 @@ export default function PosPage() {
   const { heldCarts, loadHeld, holdCart, recallCart, discardHeld } = useHeldCarts();
   const { registerShortcut } = useKeyboardRegistry();
   const undoStack = useUndo();
-  const { layoutPreset, setLayout } = useLayoutPreset();
+    const { layoutPreset, setLayout } = useLayoutPreset();
 
   const [showScanner, setShowScanner] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
@@ -127,6 +128,25 @@ export default function PosPage() {
   const [screenWidth, setScreenWidth] = useState(typeof window !== "undefined" ? window.innerWidth : SCREEN_LG);
   const [showCart, setShowCart] = useState(true);
   const anyModalOpen =
+    showScanner || showPayment || showCustomer || showReceipt || showZReport ||
+    showShiftModal !== null || showHeldCarts || showHelp;
+
+  const { validateStock, confirmPayment } = useCheckout({
+    pb,
+    user,
+    items,
+    products,
+    subtotal,
+    gstTotal,
+    grandTotal,
+    taxExempt,
+    grandTotalExempt,
+    settings,
+    selectedCustomer,
+    clearCart,
+    refreshProducts,
+    clearUndoStack: () => undoStack.clear(),
+  });
     showScanner || showPayment || showCustomer || showReceipt || showZReport ||
     showShiftModal !== null || showHeldCarts || showHelp;
 
@@ -154,30 +174,15 @@ export default function PosPage() {
     return () => window.removeEventListener("resize", handler);
   }, []);
 
-  // Undo stack
-  const undoStackRef = useRef<Array<() => void>>([]);
-  const pushUndo = useCallback((undo: () => void) => {
-    undoStackRef.current.push(undo);
-    if (undoStackRef.current.length > MAX_UNDO_STACK) undoStackRef.current.shift();
-  }, []);
-
   // Ref to avoid stale closure in handleRecallCart
   const itemsRefForRecall = useRef(items);
   itemsRefForRecall.current = items;
 
   const handleUndo = useCallback(async () => {
-    const undo = undoStackRef.current.pop();
-    if (undo) {
-      try {
-        await undo();
-        toast.success("Undone");
-      } catch {
-        toast.error("Undo failed");
-      }
-    } else {
-      toast("Nothing to undo");
-    }
-  }, []);
+    const result = await undoStack.undo();
+    if (result.ok) toast.success("Undone");
+    else toast("Nothing to undo");
+  }, [undoStack]);
 
   const handleShiftAction = useCallback(async (amount: number) => {
     if (!user) return { success: false, error: "Not authenticated" };
@@ -233,9 +238,9 @@ export default function PosPage() {
         return;
       }
       await addItem(product);
-      pushUndo(() => removeItem(product.id));
+      undoStack.push(() => removeItem(product.id));
     },
-    [addItem, removeItem, pushUndo]
+    [addItem, removeItem, undoStack]
   );
 
   const handleVoidLast = useCallback(async () => {
@@ -248,116 +253,25 @@ export default function PosPage() {
     await removeItem(lastItem.id);
     toast.success(`Voided ${lastItem.name}`);
     if (originalProduct) {
-      pushUndo(() => addItem(originalProduct));
+      undoStack.push(() => addItem(originalProduct));
     }
-  }, [items, products, removeItem, addItem, pushUndo]);
+  }, [items, products, removeItem, addItem, undoStack]);
 
   const handleCheckout = useCallback(async () => {
-    if (items.length === 0) return;
-
-    for (const item of items) {
-      const product = products.find((p) => p.id === item.product);
-      if (!product) continue;
-      if (product.current_stock < item.quantity) {
-        toast.error(`Insufficient stock for ${item.name}. Available: ${product.current_stock}`);
-        return;
-      }
+    if (validateStock()) {
+      setShowPayment(true);
     }
-
-    setShowPayment(true);
-  }, [items, products]);
+  }, [validateStock]);
 
   const handlePaymentConfirm = useCallback(
-    async (method: PaymentMethod, ref: string, tendered?: number) => {
-      if (!user) return;
-
-      try {
-        const today = todayCompact();
-        const count = await pb.collection("orders").getList(1, 1, {
-          filter: `order_no ~ "POS-${today}-"`,
-          sort: "-created_at",
-          requestKey: null,
-        });
-        const orderNo = generateOrderNo(today, (count.totalItems || 0) + 1);
-
-        const digitalSignature = await generateOrderSignature(
-          orderNo,
-          taxExempt ? grandTotalExempt : grandTotal,
-          settings?.tpn_gstin || "",
-          new Date().toISOString()
-        );
-
-        const effectiveGstTotal = taxExempt ? 0 : gstTotal;
-        const effectiveGrandTotal = taxExempt ? grandTotalExempt : grandTotal;
-
-        const orderPayload = {
-          order_type: "POS_SALE",
-          order_no: orderNo,
-          status: "CONFIRMED",
-          items: items.map((i) => ({
-            id: i.id,
-            product: i.product,
-            name: i.name,
-            sku: i.sku,
-            quantity: i.quantity,
-            unit_price: i.unit_price,
-            discount: i.discount,
-            gst_5: taxExempt ? 0 : i.gst_5,
-            total: i.total,
-          })),
-          subtotal,
-          gst_total: effectiveGstTotal,
-          grand_total: effectiveGrandTotal,
-          payment_method: method,
-          payment_ref: ref || "",
-          customer_name: selectedCustomer?.debtor_name || "",
-          customer_phone: selectedCustomer?.debtor_phone || "",
-          created_by: user.id,
-          digital_signature: digitalSignature,
-        };
-
-        const result = await pb.collection("orders").create(orderPayload, PB_REQ);
-
-        for (const item of items) {
-          const product = products.find((p) => p.id === item.product);
-          if (!product) continue;
-          const newStock = product.current_stock - item.quantity;
-          await pb.collection("products").update(product.id, { current_stock: newStock }, PB_REQ);
-          await pb.collection("inventory_movements").create({
-            product: product.id,
-            movement_type: MOVEMENT_TYPE.SALE,
-            quantity: -item.quantity,
-            reference_id: result.id,
-            notes: `Sale: ${orderNo}`,
-          }, PB_REQ);
-        }
-
-        if (method === "credit" && selectedCustomer) {
-          const newBalance = selectedCustomer.outstanding_balance + effectiveGrandTotal;
-          await pb.collection("khata_accounts").update(selectedCustomer.id, { outstanding_balance: newBalance }, PB_REQ);
-          await pb.collection("khata_transactions").create({
-            khata_account: selectedCustomer.id,
-            transaction_type: KHATA_TXN.DEBIT,
-            amount: effectiveGrandTotal,
-            reference_id: result.id,
-            notes: `Purchase on credit — ${orderNo}`,
-          }, PB_REQ);
-        }
-
-        await clearCart();
-        await refreshProducts();
-
+    async (method: string, ref: string, tendered?: number) => {
+      await confirmPayment(method, ref, tendered, (orderPayload, _orderId) => {
         setShowPayment(false);
-        setLastOrder({ ...orderPayload, id: result.id, created_at: result.created_at });
+        setLastOrder(orderPayload);
         setShowReceipt(true);
-        undoStackRef.current = [];
-        toast.success(`Order ${orderNo} confirmed`);
-      } catch (err: any) {
-        console.error("Checkout error:", err);
-        toast.error(err.message || "Checkout failed");
-      }
+      });
     },
-    [user, items, products, subtotal, gstTotal, grandTotal, subtotalExTax, gstTotalExempt, grandTotalExempt, taxExempt, settings, pb, clearCart, refreshProducts, selectedCustomer]
+    [confirmPayment]
   );
 
   const handleSelectCustomer = useCallback(
@@ -385,7 +299,7 @@ export default function PosPage() {
     const confirmed = window.confirm("Clear cart and start new transaction?");
     if (confirmed) {
       await clearCart();
-      undoStackRef.current = [];
+      undoStack.clear();
       toast.success("New transaction started");
     }
   }, [items, clearCart]);
