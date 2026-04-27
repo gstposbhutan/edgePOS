@@ -43,6 +43,7 @@ export function useProducts() {
         sort: "name",
         filter: "is_active = true",
         expand: "category",
+        requestKey: null,
       });
       setProducts(records);
     } catch (err) {
@@ -56,6 +57,7 @@ export function useProducts() {
     try {
       const records = await pb.collection("categories").getFullList<Category>({
         sort: "name",
+        requestKey: null,
       });
       setCategories(records);
     } catch (err) {
@@ -67,13 +69,30 @@ export function useProducts() {
     fetchProducts();
     fetchCategories();
 
-    // Real-time subscription
-    const unsubscribe = pb.collection("products").subscribe("*", () => {
-      fetchProducts();
+    // Re-fetch when auth becomes valid (handles Next.js keeping component in memory across redirects)
+    const unsubscribeAuth = pb.authStore.onChange(() => {
+      if (pb.authStore.isValid) {
+        fetchProducts();
+        fetchCategories();
+      }
     });
 
+    // Real-time subscription
+    let unsubscribe: (() => void) | null = null;
+    pb.collection("products")
+      .subscribe("*", () => {
+        fetchProducts();
+      })
+      .then((fn) => {
+        unsubscribe = fn;
+      })
+      .catch(() => {
+        // Silent fail — subscription is optional for POS operation
+      });
+
     return () => {
-      unsubscribe.then((fn) => fn());
+      unsubscribeAuth();
+      if (unsubscribe) unsubscribe();
     };
   }, [pb, fetchProducts, fetchCategories]);
 

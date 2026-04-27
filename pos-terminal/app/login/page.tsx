@@ -13,15 +13,25 @@ export default function LoginPage() {
   const router = useRouter();
   const { login, loading } = useAuth();
   const [email, setEmail] = useState("admin@pos.local");
-  const [password, setPassword] = useState("admin123");
+  const [password, setPassword] = useState("admin12345");
   const [error, setError] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    console.log("[login] submitting...");
     const result = await login(email, password);
+    console.log("[login] result:", result);
     if (result.success) {
-      router.push("/");
+      console.log("[login] pushing to /");
+      try {
+        await router.push("/");
+        console.log("[login] router.push done");
+      } catch (err) {
+        console.error("[login] router.push failed:", err);
+        // Fallback for static export
+        window.location.href = "/";
+      }
     } else {
       setError(result.error || "Login failed");
     }
@@ -70,7 +80,7 @@ export default function LoginPage() {
             </Button>
           </form>
           <p className="text-xs text-muted-foreground text-center mt-4">
-            Default: admin@pos.local / admin123
+            Default: admin@pos.local / admin12345
           </p>
         </CardContent>
       </Card>

@@ -10,11 +10,14 @@ export function useAuth() {
 
   useEffect(() => {
     const u = getCurrentUser();
+    console.log("[useAuth] init getCurrentUser:", u ? u.email : "null", "isValid:", pb.authStore.isValid);
     setUser(u);
     setLoading(false);
 
     const unsubscribe = pb.authStore.onChange(() => {
-      setUser(getCurrentUser());
+      const next = getCurrentUser();
+      console.log("[useAuth] onChange:", next ? next.email : "null");
+      setUser(next);
     });
 
     return () => unsubscribe();
@@ -23,10 +26,13 @@ export function useAuth() {
   const login = useCallback(async (email: string, password: string) => {
     setLoading(true);
     try {
+      console.log("[useAuth] login start", email);
       const auth = await pb.collection("users").authWithPassword(email, password);
+      console.log("[useAuth] login success", auth.record?.email, "token valid:", pb.authStore.isValid);
       setUser(auth.record as unknown as PBUser);
       return { success: true, error: null };
     } catch (err: any) {
+      console.error("[useAuth] login error:", err.message);
       return { success: false, error: err.message || "Login failed" };
     } finally {
       setLoading(false);

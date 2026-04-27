@@ -4,11 +4,13 @@
   "private": true,
   "main": "electron/main.js",
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -H 0.0.0.0",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest",
+    "pb:serve": "./pb/pocketbase serve --http=127.0.0.1:8090 --dir=./pb_data --migrationsDir=./pb/pb_migrations",
+    "pb:setup": "node setup-pb.js",
     "electron:dev": "concurrently \"next dev\" \"wait-on http://localhost:3000 && electron .\"",
     "electron:build": "next build && electron-builder",
     "electron:pack": "next build && electron-builder --dir"

@@ -1,0 +1,13 @@
+node_modules
+npm-debug.log
+.next
+out
+pb_data
+.git
+.github
+*.md
+.e2e
+playwright-report
+test-results
+Dockerfile*
+docker-compose*

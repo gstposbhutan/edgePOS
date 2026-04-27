@@ -35,6 +35,10 @@ export function useCart() {
   const [loading, setLoading] = useState(true);
 
   const fetchActiveCart = useCallback(async () => {
+    if (!pb.authStore.isValid) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const records = await pb.collection("carts").getFullList<Cart>({
@@ -54,7 +58,7 @@ export function useCart() {
         setItems(itemRecords);
       } else {
         // Create new active cart
-        const newCart = await pb.collection("carts").create({ status: "active" });
+        const newCart = await pb.collection("carts").create({ status: "active" }, { requestKey: null });
         setCart(newCart as unknown as Cart);
         setItems([]);
       }
@@ -67,7 +71,16 @@ export function useCart() {
 
   useEffect(() => {
     fetchActiveCart();
-  }, [fetchActiveCart]);
+
+    // Re-fetch when auth becomes valid (handles Next.js keeping component in memory across redirects)
+    const unsubscribeAuth = pb.authStore.onChange(() => {
+      if (pb.authStore.isValid) {
+        fetchActiveCart();
+      }
+    });
+
+    return () => unsubscribeAuth();
+  }, [fetchActiveCart, pb]);
 
   const addItem = useCallback(
     async (product: Product) => {
@@ -92,7 +105,7 @@ export function useCart() {
           discount: 0,
           gst_amount: gstAmount,
           total,
-        });
+        }, { requestKey: null });
         setItems((prev) => [...prev, newItem as unknown as CartItem]);
       } catch (err) {
         console.error("Add item error:", err);
@@ -118,7 +131,7 @@ export function useCart() {
           quantity: newQty,
           gst_amount: gstAmount,
           total,
-        });
+        }, { requestKey: null });
         setItems((prev) => prev.map((i) => (i.id === itemId ? (updated as unknown as CartItem) : i)));
       } catch (err) {
         console.error("Update qty error:", err);
@@ -143,7 +156,7 @@ export function useCart() {
           discount: clamped,
           gst_amount: gstAmount,
           total,
-        });
+        }, { requestKey: null });
         setItems((prev) => prev.map((i) => (i.id === itemId ? (updated as unknown as CartItem) : i)));
       } catch (err) {
         console.error("Discount error:", err);
@@ -168,7 +181,7 @@ export function useCart() {
           unit_price: price,
           gst_amount: gstAmount,
           total,
-        });
+        }, { requestKey: null });
         setItems((prev) => prev.map((i) => (i.id === itemId ? (updated as unknown as CartItem) : i)));
       } catch (err) {
         console.error("Price override error:", err);
@@ -180,7 +193,7 @@ export function useCart() {
   const removeItem = useCallback(
     async (itemId: string) => {
       try {
-        await pb.collection("cart_items").delete(itemId);
+        await pb.collection("cart_items").delete(itemId, { requestKey: null });
         setItems((prev) => prev.filter((i) => i.id !== itemId));
       } catch (err) {
         console.error("Remove item error:", err);
@@ -210,7 +223,7 @@ export function useCart() {
     async (customerId: string | null) => {
       if (!cart) return;
       try {
-        await pb.collection("carts").update(cart.id, { customer: customerId });
+        await pb.collection("carts").update(cart.id, { customer: customerId }, { requestKey: null });
         setCart((prev) => (prev ? { ...prev, customer: customerId || undefined } : null));
       } catch (err) {
         console.error("Set customer error:", err);

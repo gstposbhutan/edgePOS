@@ -29,6 +29,10 @@ export function useOrders() {
   const [filter, setFilter] = useState("all"); // all, today, confirmed, cancelled, refunded
 
   const fetchOrders = useCallback(async () => {
+    if (!pb.authStore.isValid) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       let filterStr = "";
@@ -47,6 +51,7 @@ export function useOrders() {
         sort: "-created",
         filter: filterStr || undefined,
         expand: "customer,cashier",
+        requestKey: null,
       });
       setOrders(records);
     } catch (err) {
@@ -58,12 +63,21 @@ export function useOrders() {
 
   useEffect(() => {
     fetchOrders();
-  }, [fetchOrders]);
+
+    // Re-fetch when auth becomes valid (handles Next.js keeping component in memory across redirects)
+    const unsubscribeAuth = pb.authStore.onChange(() => {
+      if (pb.authStore.isValid) {
+        fetchOrders();
+      }
+    });
+
+    return () => unsubscribeAuth();
+  }, [fetchOrders, pb]);
 
   const createOrder = useCallback(
     async (data: Partial<Order>) => {
       try {
-        const record = await pb.collection("orders").create(data);
+        const record = await pb.collection("orders").create(data, { requestKey: null });
         await fetchOrders();
         return { success: true, order: record as unknown as Order };
       } catch (err: any) {
@@ -79,7 +93,7 @@ export function useOrders() {
         await pb.collection("orders").update(orderId, {
           status: "cancelled",
           cancellation_reason: reason,
-        });
+        }, { requestKey: null });
         await fetchOrders();
         return { success: true };
       } catch (err: any) {

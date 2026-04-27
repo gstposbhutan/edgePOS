@@ -1,39 +1,34 @@
 /// <reference path="../pb_data/types.d.ts" />
 
 migrate(
-  (db) => {
+  (app) => {
     // ── Shift Records ────────────────────────────────────────────────────────
     const shifts = new Collection({
       name: "shifts",
       type: "base",
-      schema: [
-        { name: "opened_by", type: "relation", required: true, options: { collectionId: "_pb_users_auth_", maxSelect: 1 } },
-        { name: "closed_by", type: "relation", required: false, options: { collectionId: "_pb_users_auth_", maxSelect: 1 } },
-        { name: "opening_float", type: "number", required: true, options: { default: 0, min: 0 } },
-        { name: "closing_count", type: "number", required: false, options: { default: 0, min: 0 } },
+      fields: [
+        { name: "opened_by", type: "relation", required: true, collectionId: "_pb_users_auth_", maxSelect: 1 },
+        { name: "closed_by", type: "relation", required: false, collectionId: "_pb_users_auth_", maxSelect: 1 },
+        { name: "opening_float", type: "number", required: true, min: 0, options: { default: 0 } },
+        { name: "closing_count", type: "number", required: false, min: 0, options: { default: 0 } },
         { name: "expected_total", type: "number", required: false, options: { default: 0 } },
         { name: "discrepancy", type: "number", required: false, options: { default: 0 } },
-        { name: "status", type: "select", required: true, options: { values: ["active", "closing", "closed"], default: "active" } },
-        { name: "opened_at", type: "date", required: true, options: { default: "now" } },
+        { name: "status", type: "select", required: true, values: ["active", "closing", "closed"], options: { default: "active" } },
+        { name: "opened_at", type: "date", required: true },
         { name: "closed_at", type: "date", required: false },
         { name: "cash_sales", type: "number", required: false, options: { default: 0 } },
         { name: "digital_sales", type: "number", required: false, options: { default: 0 } },
         { name: "credit_sales", type: "number", required: false, options: { default: 0 } },
         { name: "refund_total", type: "number", required: false, options: { default: 0 } },
         { name: "transaction_count", type: "number", required: false, options: { default: 0 } },
-      ],
-      indexes: [
-        "CREATE INDEX idx_shifts_status ON shifts (status)",
-        "CREATE INDEX idx_shifts_date ON shifts (opened_at)",
+        { name: "created", type: "autodate", onCreate: true },
+        { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
       ],
     });
-    db.saveCollection(shifts);
-
-    // ── Shift Orders junction ────────────────────────────────────────────────
-    // We link orders to shifts via an order field update, but for now we can
-    // query orders by date range. No separate junction needed.
+    app.save(shifts);
   },
-  (db) => {
-    db.deleteCollection("shifts");
+  (app) => {
+    const c = app.findCollectionByNameOrId("shifts");
+    if (c) app.delete(c);
   }
 );

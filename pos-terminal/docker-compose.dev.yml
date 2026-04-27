@@ -1,0 +1,36 @@
+services:
+  pocketbase:
+    build:
+      context: .
+      dockerfile: Dockerfile.pocketbase
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./pb/pb_migrations:/app/pb_migrations:ro
+      - pb_data:/app/pb_data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8090/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pos:
+    image: node:20-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run dev"
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+    environment:
+      - NODE_ENV=development
+    depends_on:
+      pocketbase:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pb_data:
+  node_modules:

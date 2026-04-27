@@ -38,6 +38,7 @@ export function useShifts() {
         sort: "-opened_at",
         limit: 1,
         expand: "opened_by",
+        requestKey: null,
       });
       setActiveShift(records[0] || null);
     } catch {
@@ -57,6 +58,7 @@ export function useShifts() {
         sort: "-opened_at",
         limit: 50,
         expand: "opened_by,closed_by",
+        requestKey: null,
       });
       setShiftHistory(records);
     } catch (err) {
@@ -69,7 +71,17 @@ export function useShifts() {
   useEffect(() => {
     fetchActiveShift();
     fetchShiftHistory();
-  }, [fetchActiveShift, fetchShiftHistory]);
+
+    // Re-fetch when auth becomes valid (handles Next.js keeping component in memory across redirects)
+    const unsubscribeAuth = pb.authStore.onChange(() => {
+      if (pb.authStore.isValid) {
+        fetchActiveShift();
+        fetchShiftHistory();
+      }
+    });
+
+    return () => unsubscribeAuth();
+  }, [fetchActiveShift, fetchShiftHistory, pb]);
 
   const openShift = useCallback(
     async (userId: string, openingFloat: number) => {
@@ -87,7 +99,7 @@ export function useShifts() {
           opening_float: openingFloat,
           status: "active",
           opened_at: new Date().toISOString(),
-        });
+        }, { requestKey: null });
         await fetchActiveShift();
         return { success: true, shift: record as unknown as Shift };
       } catch (err: any) {
@@ -133,7 +145,7 @@ export function useShifts() {
           credit_sales: creditSales,
           refund_total: refundTotal,
           transaction_count: orders.length,
-        });
+        }, { requestKey: null });
 
         await fetchActiveShift();
         await fetchShiftHistory();

@@ -18,10 +18,15 @@ export function useCustomers() {
   const [loading, setLoading] = useState(true);
 
   const fetchCustomers = useCallback(async () => {
+    if (!pb.authStore.isValid) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const records = await pb.collection("customers").getFullList<Customer>({
         sort: "name",
+        requestKey: null,
       });
       setCustomers(records);
     } catch (err) {
@@ -33,7 +38,16 @@ export function useCustomers() {
 
   useEffect(() => {
     fetchCustomers();
-  }, [fetchCustomers]);
+
+    // Re-fetch when auth becomes valid (handles Next.js keeping component in memory across redirects)
+    const unsubscribeAuth = pb.authStore.onChange(() => {
+      if (pb.authStore.isValid) {
+        fetchCustomers();
+      }
+    });
+
+    return () => unsubscribeAuth();
+  }, [fetchCustomers, pb]);
 
   const createCustomer = useCallback(
     async (data: Partial<Customer>) => {
@@ -42,7 +56,7 @@ export function useCustomers() {
           credit_limit: 0,
           credit_balance: 0,
           ...data,
-        });
+        }, { requestKey: null });
         await fetchCustomers();
         return { success: true, record: record as unknown as Customer };
       } catch (err: any) {
@@ -55,7 +69,7 @@ export function useCustomers() {
   const updateCustomer = useCallback(
     async (id: string, data: Partial<Customer>) => {
       try {
-        await pb.collection("customers").update(id, data);
+        await pb.collection("customers").update(id, data, { requestKey: null });
         await fetchCustomers();
         return { success: true };
       } catch (err: any) {

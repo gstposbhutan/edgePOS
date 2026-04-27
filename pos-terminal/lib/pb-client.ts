@@ -1,24 +1,61 @@
 import PocketBase from 'pocketbase';
 
-const PB_URL = process.env.NEXT_PUBLIC_POCKETBASE_URL || 'http://127.0.0.1:8090';
+const DEFAULT_URL = process.env.NEXT_PUBLIC_POCKETBASE_URL || 'http://127.0.0.1:8090';
+const AUTH_KEY = 'pb_auth';
 
-let pb: PocketBase;
+let pb: PocketBase | null = null;
+let currentUrl: string | null = null;
 
 export function getPB(): PocketBase {
   if (typeof window === 'undefined') {
     // Server-side: create a fresh instance (no auth persistence)
-    return new PocketBase(PB_URL);
+    return new PocketBase(DEFAULT_URL);
   }
-  if (!pb) {
-    pb = new PocketBase(PB_URL);
-    // Load auth from localStorage on init
-    pb.authStore.loadFromCookie(document.cookie);
-    // Keep cookie in sync
-    pb.authStore.onChange(() => {
-      document.cookie = pb.authStore.exportToCookie({ httpOnly: false });
+
+  const url = localStorage.getItem('pb_url') || DEFAULT_URL;
+
+  // Re-initialize if URL changed or first time
+  if (!pb || currentUrl !== url) {
+    pb = new PocketBase(url);
+    currentUrl = url;
+
+    // Restore auth from localStorage so navigation between pages doesn't lose it
+    const saved = localStorage.getItem(AUTH_KEY);
+    if (saved) {
+      try {
+        const data = JSON.parse(saved);
+        if (data.token && data.record) {
+          pb.authStore.save(data.token, data.record);
+        }
+      } catch {
+        // ignore corrupt localStorage
+      }
+    }
+
+    // Persist auth changes back to localStorage
+    pb.authStore.onChange((token, record) => {
+      if (token) {
+        localStorage.setItem(AUTH_KEY, JSON.stringify({ token, record }));
+      } else {
+        localStorage.removeItem(AUTH_KEY);
+      }
     });
   }
+
   return pb;
+}
+
+export function setPBUrl(url: string): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem('pb_url', url);
+  // Force re-initialization on next getPB() call
+  pb = null;
+  currentUrl = null;
+}
+
+export function getPBUrl(): string {
+  if (typeof window === 'undefined') return DEFAULT_URL;
+  return localStorage.getItem('pb_url') || DEFAULT_URL;
 }
 
 export type UserRole = 'owner' | 'manager' | 'cashier';
@@ -43,4 +80,7 @@ export function isAuthenticated(): boolean {
 
 export function logout() {
   getPB().authStore.clear();
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem(AUTH_KEY);
+  }
 }

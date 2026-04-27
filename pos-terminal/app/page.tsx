@@ -39,7 +39,7 @@ import Link from "next/link";
 export default function PosPage() {
   const router = useRouter();
   const pb = getPB();
-  const { user, isAuthenticated, signOut, isManager } = useAuth();
+  const { user, isAuthenticated, signOut, isManager, loading: authLoading } = useAuth();
   const {
     products,
     categories,
@@ -87,10 +87,15 @@ export default function PosPage() {
 
   // Auth guard
   useEffect(() => {
-    if (!isAuthenticated && !user) {
+    console.log("[page] auth guard check:", { isAuthenticated, user: user?.email, authLoading });
+    if (!authLoading && !isAuthenticated && !user) {
+      console.log("[page] redirecting to /login");
       router.push("/login");
     }
-  }, [isAuthenticated, user, router]);
+  }, [isAuthenticated, user, authLoading, router]);
+
+  // Hooks now listen to pb.authStore.onChange and auto-refresh when auth
+  // becomes valid — no manual refresh trigger needed.
 
   // Online status
   useEffect(() => {
@@ -257,12 +262,18 @@ export default function PosPage() {
     [createCustomer, setCartCustomer]
   );
 
-  if (!isAuthenticated) {
+  // Wait for auth initialization before deciding what to render
+  if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <p className="text-muted-foreground">Loading...</p>
       </div>
     );
+  }
+
+  // Not authenticated — redirect handled by useEffect above
+  if (!isAuthenticated) {
+    return null;
   }
 
   return (

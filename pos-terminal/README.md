@@ -16,39 +16,59 @@ A focused, offline-first Point of Sale system for Bhutanese retail. Runs entirel
 
 ## 🚀 Quick Start
 
-### 1. Install dependencies
+### Option A — Docker (Recommended)
+
+Everything runs in containers. No local Node.js or PocketBase binary required.
+
+```bash
+cd pos-terminal
+
+# Production stack — builds static app + runs PocketBase
+docker compose up -d
+
+# Open http://localhost:3000 and sign in:
+# Email: admin@pos.local
+# Password: admin12345
+```
+
+The setup container runs automatically on first start. Data persists in the `pb_data` Docker volume.
+
+For development with hot reload:
+
+```bash
+docker compose -f docker-compose.dev.yml up -d
+# Then run setup manually:
+docker compose -f docker-compose.dev.yml exec pos npm run pb:setup
+```
+
+### Option B — Local Development
+
+#### 1. Install dependencies
 
 ```bash
 cd pos-terminal
 npm install
 ```
 
-### 2. Start PocketBase
+#### 2. Start PocketBase
 
-Download the PocketBase binary for your platform from [pocketbase.io](https://pocketbase.io/docs/) and place it in `pos-terminal/pb/pocketbase`.
-
-```bash
-# Linux / macOS
-chmod +x pb/pocketbase
-./pb/pocketbase serve
-
-# Windows
-pb\pocketbase.exe serve
-```
-
-PocketBase will start on `http://127.0.0.1:8090`. The admin UI is at `http://127.0.0.1:8090/_/admin`.
-
-### 3. Apply schema migrations
-
-Copy the migration files into PocketBase:
+The PocketBase binary is already included at `pos-terminal/pb/pocketbase`. Start it with:
 
 ```bash
-cp pb/pb_migrations/*.js ./pb_migrations/
+npm run pb:serve
 ```
 
-Restart PocketBase to apply the migrations and seed data.
+This starts PocketBase on `http://127.0.0.1:8090`, auto-applies migrations, and creates the default superuser.
 
-### 4. Run the POS App
+#### 3. Run setup
+
+One-time setup to configure the `users` collection and seed demo data:
+
+```bash
+npm run pb:setup
+```
+
+#### 4. Run the POS App
 
 ```bash
 # Browser mode
@@ -60,7 +80,7 @@ npm run electron:dev
 
 Open [http://localhost:3000](http://localhost:3000) and sign in with:
 - **Email**: `admin@pos.local`
-- **Password**: `admin123`
+- **Password**: `admin12345`
 
 ## 🖨️ Thermal Printer Setup (Optional)
 

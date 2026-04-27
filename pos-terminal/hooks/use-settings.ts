@@ -20,8 +20,12 @@ export function useSettings() {
   const [loading, setLoading] = useState(true);
 
   const fetchSettings = useCallback(async () => {
+    if (!pb.authStore.isValid) {
+      setLoading(false);
+      return;
+    }
     try {
-      const records = await pb.collection("settings").getFullList<Settings>({ limit: 1 });
+      const records = await pb.collection("settings").getFullList<Settings>({ limit: 1, requestKey: null });
       if (records.length > 0) {
         setSettings(records[0]);
       } else {
@@ -34,7 +38,7 @@ export function useSettings() {
           receipt_header: "",
           receipt_footer: "Thank you for your business!",
           gst_rate: 5,
-        });
+        }, { requestKey: null });
         setSettings(defaultSettings as unknown as Settings);
       }
     } catch (err) {
@@ -46,13 +50,22 @@ export function useSettings() {
 
   useEffect(() => {
     fetchSettings();
-  }, [fetchSettings]);
+
+    // Re-fetch when auth becomes valid (handles Next.js keeping component in memory across redirects)
+    const unsubscribeAuth = pb.authStore.onChange(() => {
+      if (pb.authStore.isValid) {
+        fetchSettings();
+      }
+    });
+
+    return () => unsubscribeAuth();
+  }, [fetchSettings, pb]);
 
   const updateSettings = useCallback(
     async (data: Partial<Settings>) => {
       if (!settings) return { success: false, error: "No settings found" };
       try {
-        const updated = await pb.collection("settings").update(settings.id, data);
+        const updated = await pb.collection("settings").update(settings.id, data, { requestKey: null });
         setSettings(updated as unknown as Settings);
         return { success: true, error: null };
       } catch (err: any) {
