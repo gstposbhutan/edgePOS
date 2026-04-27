@@ -3,22 +3,15 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
-import { useProducts } from "@/hooks/use-products";
-import { useCart } from "@/hooks/use-cart";
-import { useCustomers } from "@/hooks/use-customers";
-import type { Customer } from "@/hooks/use-customers";
 import { useSettings } from "@/hooks/use-settings";
-import { useFavorites } from "@/hooks/use-favorites";
 import { useHeldCarts } from "@/hooks/use-held-carts";
-import { useKeyboardRegistry } from "@/hooks/use-keyboard-registry";
 import { useUndo } from "@/hooks/use-undo";
-import { useLayoutPreset } from "@/hooks/use-layout-preset";
 import { usePosShortcuts } from "@/hooks/use-pos-shortcuts";
 import { useCheckout } from "@/hooks/use-checkout";
-import { getPB, PB_REQ } from "@/lib/pb-client";
-import { generateOrderNo, generateOrderSignature } from "@/lib/gst";
-import { todayCompact } from "@/lib/date-utils";
-import { LAYOUT_PRESETS, LS_KEYS, SCREEN_LG, CART_WIDTH, MAX_UNDO_STACK, MOVEMENT_TYPE, KHATA_TXN } from "@/lib/constants";
+import { usePos, PosProvider } from "@/hooks/use-pos-context";
+import type { Customer } from "@/hooks/use-customers";
+import { getPB } from "@/lib/pb-client";
+import { LAYOUT_PRESETS, SCREEN_LG, CART_WIDTH } from "@/lib/constants";
 import { ProductGrid } from "@/components/pos/product-grid";
 import { CartPanel } from "@/components/pos/cart-panel";
 import { BarcodeScanner } from "@/components/pos/barcode-scanner";
@@ -52,63 +45,58 @@ import Link from "next/link";
 
 export default function PosPage() {
   const router = useRouter();
-  const pb = getPB();
   const { user, isAuthenticated, signOut, isManager, loading: authLoading } = useAuth();
+
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated && !user) {
+      router.push("/login");
+    }
+  }, [isAuthenticated, user, authLoading, router]);
+
+  if (authLoading) {
+    return <div className="min-h-screen flex items-center justify-center"><p className="text-muted-foreground">Loading...</p></div>;
+  }
+
+  if (!isAuthenticated) return null;
+
+  return (
+    <PosProvider userId={user?.id}>
+      <PosTerminal user={user} isManager={isManager} signOut={signOut} />
+    </PosProvider>
+  );
+}
+
+function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boolean; signOut: () => void }) {
+  const pb = getPB();
+  const pos = usePos()!;
   const {
     products,
-    categories,
     loading: productsLoading,
-    searchQuery,
-    setSearchQuery,
-    selectedCategory,
-    setSelectedCategory,
-    selectedLetter,
-    setSelectedLetter,
+    searchQuery, setSearchQuery,
+    selectedCategory, setSelectedCategory,
+    selectedLetter, setSelectedLetter,
     availableLetters,
-    stockFilter,
-    setStockFilter,
-    priceMin,
-    setPriceMin,
-    priceMax,
-    setPriceMax,
-    sortField,
-    setSortField,
-    sortOrder,
-    setSortOrder,
-    findByBarcode,
-    refresh: refreshProducts,
-    lowStockCount,
-    outOfStockCount,
-  } = useProducts();
+    stockFilter, setStockFilter,
+    priceMin, setPriceMin, priceMax, setPriceMax,
+    sortField, setSortField, sortOrder, setSortOrder,
+    findByBarcode, refresh: refreshProducts,
+    lowStockCount, outOfStockCount,
+  } = pos.products;
   const {
-    items,
-    loading: cartLoading,
-    subtotal,
-    discountTotal,
-    taxableSubtotal,
-    gstTotal,
-    grandTotal,
-    taxExempt,
-    setTaxExempt,
-    subtotalExTax,
-    gstTotalExempt,
-    grandTotalExempt,
-    addItem,
-    updateQty,
-    applyDiscount,
-    overridePrice,
-    removeItem,
-    clearCart,
+    items, loading: cartLoading,
+    subtotal, discountTotal, taxableSubtotal, gstTotal, grandTotal,
+    taxExempt, setTaxExempt,
+    subtotalExTax, gstTotalExempt, grandTotalExempt,
+    addItem, updateQty, applyDiscount, overridePrice, removeItem, clearCart,
     setCustomer: setCartCustomer,
-  } = useCart();
-  const { customers, createCustomer } = useCustomers();
+  } = pos.cart;
+  const { customers, createCustomer } = pos.customers;
   const { settings } = useSettings();
   const { activeShift, openShift, closeShift } = useShifts();
-  const { favorites, toggleFavorite, isFavorite } = useFavorites(user?.id);
+  const { favorites, toggleFavorite, isFavorite } = pos.favorites;
   const { heldCarts, loadHeld, holdCart, recallCart, discardHeld } = useHeldCarts();
-  const { registerShortcut } = useKeyboardRegistry();
   const undoStack = useUndo();
-    const { layoutPreset, setLayout } = useLayoutPreset();
+  const { layoutPreset, setLayout } = pos;
 
   const [showScanner, setShowScanner] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
@@ -193,13 +181,6 @@ export default function PosPage() {
       return await closeShift(activeShift.id, user.id, amount);
     }
   }, [user, showShiftModal, openShift, activeShift, closeShift]);
-
-  // Auth guard
-  useEffect(() => {
-    if (!authLoading && !isAuthenticated && !user) {
-      router.push("/login");
-    }
-  }, [isAuthenticated, user, authLoading, router]);
 
   // Online status
   useEffect(() => {
@@ -443,24 +424,12 @@ export default function PosPage() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [anyModalOpen, products, highlightedIndex, setSearchQuery, handleAddProduct]);
 
-  // Auth loading
-  if (authLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted-foreground">Loading...</p>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return null;
-  }
-
   const totalItemsCount = items.reduce((sum, i) => sum + i.quantity, 0);
 
   const cartColumnWidth = layoutPreset === "fullcart" ? CART_WIDTH.FULL : layoutPreset === "compact" ? CART_WIDTH.COMPACT : CART_WIDTH.STANDARD;
 
   return (
+    <PosProvider userId={user?.id}>
     <div className="h-screen flex flex-col bg-background">
       {/* Top Navigation */}
       <header className="border-b border-border bg-card/80 backdrop-blur-sm px-4 py-2.5 flex items-center justify-between shrink-0">
@@ -582,31 +551,8 @@ export default function PosPage() {
         {/* Product Grid */}
         <div className={`flex-1 min-w-0 ${layoutPreset === "fullcart" && !showCart ? "hidden" : ""}`}>
           <ProductGrid
-            products={products}
-            categories={categories}
-            loading={productsLoading}
-            searchQuery={searchQuery}
-            setSearchQuery={setSearchQuery}
-            selectedCategory={selectedCategory}
-            setSelectedCategory={setSelectedCategory}
-            selectedLetter={selectedLetter}
-            setSelectedLetter={setSelectedLetter}
-            availableLetters={availableLetters}
-            stockFilter={stockFilter}
-            setStockFilter={setStockFilter}
-            priceMin={priceMin}
-            setPriceMin={setPriceMin}
-            priceMax={priceMax}
-            setPriceMax={setPriceMax}
-            sortField={sortField}
-            setSortField={setSortField}
-            sortOrder={sortOrder}
-            setSortOrder={setSortOrder}
             onAddProduct={handleAddProduct}
             onScan={() => setShowScanner(true)}
-            favorites={favorites}
-            toggleFavorite={toggleFavorite}
-            isFavorite={isFavorite}
             highlightedIndex={highlightedIndex}
             setHighlightedIndex={setHighlightedIndex}
           />
@@ -616,23 +562,8 @@ export default function PosPage() {
         {(showCart || screenWidth >= SCREEN_LG) && (
           <div className={`${cartColumnWidth} shrink-0 hidden md:block ${layoutPreset === "fullcart" && !showCart ? "hidden" : ""}`}>
             <CartPanel
-              items={items}
               customer={selectedCustomer}
-              subtotal={subtotal}
-              discountTotal={discountTotal}
-              taxableSubtotal={taxableSubtotal}
-              gstTotal={gstTotal}
-              grandTotal={grandTotal}
-              taxExempt={taxExempt}
-              setTaxExempt={setTaxExempt}
-              grandTotalExempt={grandTotalExempt}
-              loading={cartLoading}
               isManager={isManager}
-              onUpdateQty={updateQty}
-              onRemove={removeItem}
-              onApplyDiscount={applyDiscount}
-              onOverridePrice={overridePrice}
-              onClear={clearCart}
               onCheckout={handleCheckout}
               onSelectCustomer={() => setShowCustomer(true)}
             />
@@ -645,23 +576,8 @@ export default function PosPage() {
             <div className="absolute inset-0 bg-black/50" onClick={() => setShowTabletCart(false)} />
             <div className="absolute right-0 top-0 bottom-0 w-[360px] max-w-[85vw]">
               <CartPanel
-                items={items}
                 customer={selectedCustomer}
-                subtotal={subtotal}
-                discountTotal={discountTotal}
-                taxableSubtotal={taxableSubtotal}
-                gstTotal={gstTotal}
-                grandTotal={grandTotal}
-                taxExempt={taxExempt}
-                setTaxExempt={setTaxExempt}
-                grandTotalExempt={grandTotalExempt}
-                loading={cartLoading}
                 isManager={isManager}
-                onUpdateQty={updateQty}
-                onRemove={removeItem}
-                onApplyDiscount={applyDiscount}
-                onOverridePrice={overridePrice}
-                onClear={clearCart}
                 onCheckout={handleCheckout}
                 onSelectCustomer={() => setShowCustomer(true)}
               />
@@ -759,5 +675,6 @@ export default function PosPage() {
         onClose={() => setShowHelp(false)}
       />
     </div>
+    </PosProvider>
   );
 }

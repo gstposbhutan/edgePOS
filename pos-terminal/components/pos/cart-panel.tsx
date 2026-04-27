@@ -9,53 +9,28 @@ import {
 } from "lucide-react";
 import { CartItemRow } from "./cart-item-row";
 import { CartTotals } from "./cart-totals";
+import { usePos } from "@/hooks/use-pos-context";
 import type { CartItem } from "@/hooks/use-cart";
 import type { Customer } from "@/hooks/use-customers";
 
 interface CartPanelProps {
-  items: CartItem[];
   customer: Customer | null;
-  subtotal: number;
-  discountTotal: number;
-  taxableSubtotal: number;
-  gstTotal: number;
-  grandTotal: number;
-  taxExempt: boolean;
-  setTaxExempt: (v: boolean) => void;
-  grandTotalExempt: number;
-  loading: boolean;
   isManager: boolean;
-  onUpdateQty: (itemId: string, qty: number) => void;
-  onRemove: (itemId: string) => void;
-  onApplyDiscount: (itemId: string, discount: number) => void;
-  onOverridePrice: (itemId: string, price: number) => void;
-  onClear: () => void;
   onCheckout: () => void;
   onSelectCustomer: () => void;
 }
 
 export function CartPanel({
-  items,
   customer,
-  subtotal,
-  discountTotal,
-  taxableSubtotal,
-  gstTotal,
-  grandTotal,
-  taxExempt,
-  setTaxExempt,
-  grandTotalExempt,
-  loading,
   isManager,
-  onUpdateQty,
-  onRemove,
-  onApplyDiscount,
-  onOverridePrice,
-  onClear,
   onCheckout,
   onSelectCustomer,
 }: CartPanelProps) {
-  const totalItems = items.reduce((sum, i) => sum + i.quantity, 0);
+  const pos = usePos();
+  if (!pos) return <div className="w-[380px] shrink-0 hidden md:block" />;
+  const { cart } = pos;
+  const { items, loading, subtotal, discountTotal, taxableSubtotal, gstTotal, grandTotal, taxExempt, setTaxExempt, grandTotalExempt, updateQty, removeItem, applyDiscount, overridePrice, clearCart } = cart;
+  const totalItems = items.reduce((sum: number, i: CartItem) => sum + i.quantity, 0);
 
   return (
     <div className="flex flex-col h-full bg-card border-l border-border">
@@ -72,7 +47,7 @@ export function CartPanel({
             )}
           </h2>
           {items.length > 0 && (
-            <Button variant="ghost" size="sm" onClick={onClear} className="text-destructive hover:bg-destructive/10">
+            <Button variant="ghost" size="sm" onClick={clearCart} className="text-destructive hover:bg-destructive/10">
               <Trash2 className="h-4 w-4 mr-1" />
               Clear
             </Button>
@@ -116,10 +91,10 @@ export function CartPanel({
               key={item.id}
               item={item}
               isManager={isManager}
-              onUpdateQty={onUpdateQty}
-              onRemove={onRemove}
-              onApplyDiscount={onApplyDiscount}
-              onOverridePrice={onOverridePrice}
+              onUpdateQty={updateQty}
+              onRemove={removeItem}
+              onApplyDiscount={applyDiscount}
+              onOverridePrice={overridePrice}
             />
           ))
         )}

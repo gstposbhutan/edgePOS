@@ -19,34 +19,12 @@ import {
   Star,
 } from "lucide-react";
 import { ProductImage } from "./product-image";
+import { usePos } from "@/hooks/use-pos-context";
 import type { Product, Category, StockFilter, SortField, SortOrder } from "@/hooks/use-products";
 
 interface ProductGridProps {
-  products: Product[];
-  categories: Category[];
-  loading: boolean;
-  searchQuery: string;
-  setSearchQuery: (q: string) => void;
-  selectedCategory: string | null;
-  setSelectedCategory: (id: string | null) => void;
-  selectedLetter: string | null;
-  setSelectedLetter: (letter: string | null) => void;
-  availableLetters: string[];
-  stockFilter: StockFilter;
-  setStockFilter: (f: StockFilter) => void;
-  priceMin: string;
-  setPriceMin: (v: string) => void;
-  priceMax: string;
-  setPriceMax: (v: string) => void;
-  sortField: SortField;
-  setSortField: (f: SortField) => void;
-  sortOrder: SortOrder;
-  setSortOrder: (o: SortOrder) => void;
   onAddProduct: (product: Product) => void;
   onScan: () => void;
-  favorites: string[];
-  toggleFavorite: (productId: string) => void;
-  isFavorite: (productId: string) => boolean;
   highlightedIndex: number;
   setHighlightedIndex: (i: number) => void;
 }
@@ -59,34 +37,16 @@ const STOCK_OPTIONS: { value: StockFilter; label: string }[] = [
 ];
 
 export function ProductGrid({
-  products,
-  categories,
-  loading,
-  searchQuery,
-  setSearchQuery,
-  selectedCategory,
-  setSelectedCategory,
-  selectedLetter,
-  setSelectedLetter,
-  availableLetters,
-  stockFilter,
-  setStockFilter,
-  priceMin,
-  setPriceMin,
-  priceMax,
-  setPriceMax,
-  sortField,
-  setSortField,
-  sortOrder,
-  setSortOrder,
   onAddProduct,
   onScan,
-  favorites,
-  toggleFavorite,
-  isFavorite,
   highlightedIndex,
   setHighlightedIndex,
 }: ProductGridProps) {
+  const pos = usePos();
+  if (!pos) return <div className="flex-1" />;
+  const { products: posData, favorites: favObj } = pos;
+  const { products, categories, loading, searchQuery, setSearchQuery, selectedCategory, setSelectedCategory, selectedLetter, setSelectedLetter, availableLetters, stockFilter, setStockFilter, priceMin, setPriceMin, priceMax, setPriceMax, sortField, setSortField, sortOrder, setSortOrder } = posData;
+  const { favorites, toggleFavorite, isFavorite } = favObj;
   const [view, setView] = useState<"grid" | "list">("grid");
   const [showFilters, setShowFilters] = useState(false);
   const [showFavorites, setShowFavorites] = useState(false);
