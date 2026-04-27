@@ -18,6 +18,7 @@ import {
   List,
   Star,
 } from "lucide-react";
+import { ProductImage } from "./product-image";
 import type { Product, Category, StockFilter, SortField, SortOrder } from "@/hooks/use-products";
 
 interface ProductGridProps {
@@ -56,42 +57,6 @@ const STOCK_OPTIONS: { value: StockFilter; label: string }[] = [
   { value: "low_stock", label: "Low Stock" },
   { value: "out_of_stock", label: "Out of Stock" },
 ];
-
-function ProductImage({ product, category }: { product: Product; category?: Category }) {
-  const catColor = category?.color || "#6b7280";
-
-  if (product.image_url) {
-    return (
-      <img
-        src={product.image_url}
-        alt={product.name}
-        className="h-full w-full object-cover"
-        loading="lazy"
-      />
-    );
-  }
-
-  const initials = product.name
-    .split(" ")
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-
-  return (
-    <div
-      className="h-full w-full flex items-center justify-center"
-      style={{ background: `linear-gradient(135deg, ${catColor}22, ${catColor}44)` }}
-    >
-      <span
-        className="text-2xl font-bold opacity-40"
-        style={{ color: catColor }}
-      >
-        {initials}
-      </span>
-    </div>
-  );
-}
 
 export function ProductGrid({
   products,
