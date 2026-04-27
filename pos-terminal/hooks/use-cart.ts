@@ -13,7 +13,7 @@ export interface CartItem {
   quantity: number;
   unit_price: number;
   discount: number;
-  gst_amount: number;
+  gst_5: number;
   total: number;
   expand?: { product?: Product };
 }
@@ -21,12 +21,7 @@ export interface CartItem {
 export interface Cart {
   id: string;
   status: string;
-  customer?: string;
-  expand?: { customer?: Customer };
 }
-
-import type { Customer } from "./use-customers";
-export type { Customer };
 
 export function useCart() {
   const pb = getPB();
@@ -44,9 +39,8 @@ export function useCart() {
     setLoading(true);
     try {
       const records = await pb.collection("carts").getFullList<Cart>({
-        filter: 'status = "active"',
+        filter: 'status = "ACTIVE"',
         sort: "-created_at",
-        expand: "customer",
         requestKey: null,
       });
       if (records.length > 0) {
@@ -60,7 +54,7 @@ export function useCart() {
         setItems(itemRecords);
       } else {
         // Create new active cart
-        const newCart = await pb.collection("carts").create({ status: "active" }, { requestKey: null });
+        const newCart = await pb.collection("carts").create({ status: "ACTIVE" }, { requestKey: null });
         setCart(newCart as unknown as Cart);
         setItems([]);
       }
@@ -111,7 +105,7 @@ export function useCart() {
       try {
         const updated = await pb.collection("cart_items").update(itemId, {
           quantity: newQty,
-          gst_amount: gstAmount,
+          gst_5: gstAmount,
           total,
         }, { requestKey: null });
         setItems((prev) => prev.map((i) => (i.id === itemId ? (updated as unknown as CartItem) : i)));
@@ -143,7 +137,7 @@ export function useCart() {
           quantity: 1,
           unit_price: unitPrice,
           discount: 0,
-          gst_amount: gstAmount,
+          gst_5: gstAmount,
           total,
         }, { requestKey: null });
         setItems((prev) => [...prev, newItem as unknown as CartItem]);
@@ -168,7 +162,7 @@ export function useCart() {
       try {
         const updated = await pb.collection("cart_items").update(itemId, {
           discount: clamped,
-          gst_amount: gstAmount,
+          gst_5: gstAmount,
           total,
         }, { requestKey: null });
         setItems((prev) => prev.map((i) => (i.id === itemId ? (updated as unknown as CartItem) : i)));
@@ -193,7 +187,7 @@ export function useCart() {
       try {
         const updated = await pb.collection("cart_items").update(itemId, {
           unit_price: price,
-          gst_amount: gstAmount,
+          gst_5: gstAmount,
           total,
         }, { requestKey: null });
         setItems((prev) => prev.map((i) => (i.id === itemId ? (updated as unknown as CartItem) : i)));
@@ -211,8 +205,8 @@ export function useCart() {
       await Promise.all(currentItems.map((item) =>
         pb.collection("cart_items").delete(item.id).catch(() => {})
       ));
-      await pb.collection("carts").update(cart.id, { status: "abandoned" });
-      const newCart = await pb.collection("carts").create({ status: "active" });
+      await pb.collection("carts").update(cart.id, { status: "ABANDONED" });
+      const newCart = await pb.collection("carts").create({ status: "ACTIVE" });
       setCart(newCart as unknown as Cart);
       setItems([]);
     } catch (err) {
@@ -221,16 +215,10 @@ export function useCart() {
   }, [cart, pb]);
 
   const setCustomer = useCallback(
-    async (customerId: string | null) => {
-      if (!cart) return;
-      try {
-        await pb.collection("carts").update(cart.id, { customer: customerId }, { requestKey: null });
-        setCart((prev) => (prev ? { ...prev, customer: customerId || undefined } : null));
-      } catch (err) {
-        console.error("Set customer error:", err);
-      }
+    (customerId: string | null) => {
+      setCart((prev) => (prev ? { ...prev } : null));
     },
-    [cart, pb]
+    []
   );
 
   const totals = calcCartTotals(

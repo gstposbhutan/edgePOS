@@ -14,9 +14,12 @@ export interface Product {
   mrp: number;
   cost_price: number;
   sale_price: number;
+  wholesale_price: number;
+  entity_id?: string;
+  created_by?: string;
   current_stock: number;
   reorder_point: number;
-  image: string;
+  image_url: string;
   is_active: boolean;
   category: string;
   expand?: { category?: Category };

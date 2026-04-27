@@ -6,7 +6,6 @@ import { useAuth } from "@/hooks/use-auth";
 import { useProducts } from "@/hooks/use-products";
 import { useCart } from "@/hooks/use-cart";
 import { useCustomers } from "@/hooks/use-customers";
-import { useOrders } from "@/hooks/use-orders";
 import { useSettings } from "@/hooks/use-settings";
 import { getPB } from "@/lib/pb-client";
 import { ProductGrid } from "@/components/pos/product-grid";
@@ -54,7 +53,6 @@ export default function PosPage() {
     outOfStockCount,
   } = useProducts();
   const {
-    cart,
     items,
     loading: cartLoading,
     subtotal,
@@ -71,7 +69,6 @@ export default function PosPage() {
     setCustomer: setCartCustomer,
   } = useCart();
   const { customers, createCustomer } = useCustomers();
-  const { createOrder } = useOrders();
   const { settings } = useSettings();
   const { activeShift, openShift, closeShift } = useShifts();
 
@@ -174,7 +171,6 @@ export default function PosPage() {
         const seq = (count.totalItems || 0) + 1;
         const orderNo = `POS-${today}-${String(seq).padStart(4, "0")}`;
 
-        const customer = cart?.expand?.customer;
         const timestamp = new Date().toISOString();
         const sigPayload = `${orderNo}:${grandTotal}:${settings?.tpn_gstin || ""}:${timestamp}`;
         const sigBytes = new TextEncoder().encode(sigPayload);
@@ -185,7 +181,7 @@ export default function PosPage() {
         // Build order payload
         const orderPayload = {
           order_no: orderNo,
-          status: "confirmed",
+          status: "CONFIRMED",
           items: items.map((i) => ({
             id: i.id,
             product: i.product,
@@ -194,7 +190,7 @@ export default function PosPage() {
             quantity: i.quantity,
             unit_price: i.unit_price,
             discount: i.discount,
-            gst_amount: i.gst_amount,
+            gst_5: i.gst_5,
             total: i.total,
           })),
           subtotal,
@@ -202,10 +198,10 @@ export default function PosPage() {
           grand_total: grandTotal,
           payment_method: method,
           payment_ref: ref || "",
-          customer: customer?.id || null,
-          customer_name: customer?.name || "",
-          customer_phone: customer?.phone || "",
-          cashier: user.id,
+          buyer_id: null,
+          customer_name: "",
+          customer_phone: "",
+          created_by: user.id,
           digital_signature: digitalSignature,
         };
 
@@ -220,25 +216,15 @@ export default function PosPage() {
           await pb.collection("products").update(product.id, { current_stock: newStock });
           await pb.collection("inventory_movements").create({
             product: product.id,
-            movement_type: "sale",
+            movement_type: "SALE",
             quantity: -item.quantity,
-            order: result.id,
+            reference_id: result.id,
             notes: `Sale: ${orderNo}`,
           });
         }
 
-        // Credit / Khata handling
-        if (method === "credit" && customer) {
-          const newBalance = customer.credit_balance + grandTotal;
-          await pb.collection("customers").update(customer.id, { credit_balance: newBalance });
-          await pb.collection("khata_transactions").create({
-            customer: customer.id,
-            transaction_type: "debit",
-            amount: grandTotal,
-            order: result.id,
-            notes: `Purchase on credit — ${orderNo}`,
-          });
-        }
+        // Credit / Khata handling — requires buyer_id from cart
+        // TODO: re-enable when buyer selection is implemented via khata_accounts modal
 
         // Clear cart
         await clearCart();
@@ -253,7 +239,7 @@ export default function PosPage() {
         toast.error(err.message || "Checkout failed");
       }
     },
-    [user, cart, items, products, subtotal, gstTotal, grandTotal, settings, pb, clearCart, refreshProducts]
+    [user, items, products, subtotal, gstTotal, grandTotal, settings, pb, clearCart, refreshProducts]
   );
 
   const handleSelectCustomer = useCallback(
@@ -264,7 +250,7 @@ export default function PosPage() {
   );
 
   const handleCreateCustomer = useCallback(
-    async (data: { name: string; phone: string }) => {
+    async (data: { debtor_name: string; debtor_phone: string }) => {
       const result = await createCustomer(data);
       if (result.success && result.record) {
         await setCartCustomer(result.record.id);
@@ -375,7 +361,7 @@ export default function PosPage() {
         <div className="w-[380px] shrink-0 hidden lg:block">
           <CartPanel
             items={items}
-            customer={cart?.expand?.customer || null}
+            customer={null}
             subtotal={subtotal}
             discountTotal={discountTotal}
             taxableSubtotal={taxableSubtotal}
@@ -413,7 +399,7 @@ export default function PosPage() {
         open={showPayment}
         onClose={() => setShowPayment(false)}
         grandTotal={grandTotal}
-        customer={cart?.expand?.customer || null}
+        customer={null}
         onConfirm={handlePaymentConfirm}
       />
 
@@ -421,7 +407,7 @@ export default function PosPage() {
         open={showCustomer}
         onClose={() => setShowCustomer(false)}
         customers={customers}
-        selectedCustomer={cart?.expand?.customer || null}
+        selectedCustomer={null}
         onSelect={handleSelectCustomer}
         onCreate={handleCreateCustomer}
       />

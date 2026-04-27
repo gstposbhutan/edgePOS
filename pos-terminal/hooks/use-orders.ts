@@ -13,13 +13,13 @@ export interface Order {
   grand_total: number;
   payment_method: string;
   payment_ref: string;
-  customer: string;
+  buyer_id: string;
   customer_name: string;
   customer_phone: string;
-  cashier: string;
+  created_by: string;
   digital_signature: string;
   created_at: string;
-  expand?: { customer?: any; cashier?: any };
+  expand?: { buyer_id?: any; created_by?: any };
 }
 
 export function useOrders() {
@@ -40,17 +40,17 @@ export function useOrders() {
         const today = new Date().toISOString().split("T")[0];
         filterStr = `created_at >= "${today} 00:00:00"`;
       } else if (filter === "confirmed") {
-        filterStr = 'status = "confirmed"';
+        filterStr = 'status = "CONFIRMED"';
       } else if (filter === "cancelled") {
-        filterStr = 'status = "cancelled"';
+        filterStr = 'status = "CANCELLED"';
       } else if (filter === "refunded") {
-        filterStr = 'status = "refunded"';
+        filterStr = 'status = "REFUNDED"';
       }
 
       const records = await pb.collection("orders").getFullList<Order>({
         sort: "-created_at",
         filter: filterStr || undefined,
-        expand: "customer,cashier",
+        expand: "buyer_id,created_by",
         requestKey: null,
       });
       setOrders(records);
@@ -91,7 +91,7 @@ export function useOrders() {
     async (orderId: string, reason: string) => {
       try {
         await pb.collection("orders").update(orderId, {
-          status: "cancelled",
+          status: "CANCELLED",
           cancellation_reason: reason,
         }, { requestKey: null });
         await fetchOrders();
@@ -121,7 +121,7 @@ export function useOrders() {
         }
 
         await pb.collection("orders").update(orderId, {
-          status: "refunded",
+          status: "REFUNDED",
           refund_amount: refundAmount,
           refund_reason: reason,
         });

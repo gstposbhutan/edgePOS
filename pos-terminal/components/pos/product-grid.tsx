@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Search, ScanLine, Package } from "lucide-react";
-import { getPBUrl } from "@/lib/pb-client";
 import type { Product, Category } from "@/hooks/use-products";
 
 interface ProductGridProps {
@@ -105,9 +104,9 @@ export function ProductGrid({
                   </Badge>
                 )}
                 <div className="aspect-square rounded-md bg-muted mb-2 flex items-center justify-center overflow-hidden">
-                  {product.image ? (
+                  {product.image_url ? (
                     <img
-                      src={`${getPBUrl()}/api/files/products/${product.id}/${product.image}`}
+                      src={product.image_url}
                       alt={product.name}
                       className="h-full w-full object-cover"
                     />

@@ -4,7 +4,6 @@ const PB_URL = process.env.PB_URL || 'http://127.0.0.1:8090';
 const ADMIN_EMAIL = 'admin@pos.local';
 const ADMIN_PASS = 'admin12345';
 
-// Allow any authenticated POS user to read/write records
 const AUTH_RULE = "@request.auth.id != ''";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -56,27 +55,31 @@ async function addFields(pb, collectionName, fields) {
 async function setup() {
   const pb = new PocketBase(PB_URL);
 
-  // Superuser auth (PocketBase 0.22+)
   await pb.collection('_superusers').authWithPassword(ADMIN_EMAIL, ADMIN_PASS);
   console.log('🔑 Superuser authenticated');
 
-  // ── users fields ───────────────────────────────────────────────────────────
-  // name is not guaranteed by all PocketBase auth defaults, add if missing
+  // ── users ──────────────────────────────────────────────────────────────────
   await addField(pb, 'users', { name: 'name', type: 'text', required: false });
   await addField(pb, 'users', {
-    name: 'role',
-    type: 'select',
-    required: true,
+    name: 'role', type: 'select', required: true,
     values: ['owner', 'manager', 'cashier'],
     options: { default: 'cashier' },
   });
+
+  // ── entities ───────────────────────────────────────────────────────────────
+  await addFields(pb, 'entities', [
+    { name: 'name', type: 'text', required: true },
+    { name: 'role', type: 'text', required: false },
+    { name: 'tpn_gstin', type: 'text', required: false },
+    { name: 'whatsapp_no', type: 'text', required: false },
+    { name: 'shop_slug', type: 'text', required: false },
+    { name: 'is_active', type: 'bool', required: false, options: { default: true } },
+  ]);
 
   // ── categories ─────────────────────────────────────────────────────────────
   await addFields(pb, 'categories', [
     { name: 'name', type: 'text', required: true },
     { name: 'color', type: 'text', required: false },
-    { name: 'created_at', type: 'date', required: false },
-    { name: 'updated_at', type: 'date', required: false },
   ]);
 
   // ── products ───────────────────────────────────────────────────────────────
@@ -90,31 +93,40 @@ async function setup() {
     { name: 'mrp', type: 'number', required: false, options: { default: 0 } },
     { name: 'cost_price', type: 'number', required: false, options: { default: 0 } },
     { name: 'sale_price', type: 'number', required: false, options: { default: 0 } },
+    { name: 'wholesale_price', type: 'number', required: false, options: { default: 0 } },
     { name: 'current_stock', type: 'number', required: false, options: { default: 0 } },
     { name: 'reorder_point', type: 'number', required: false, options: { default: 10 } },
-    { name: 'image', type: 'text', required: false },
+    { name: 'image_url', type: 'text', required: false },
+    { name: 'image_embedding', type: 'text', required: false },
     { name: 'is_active', type: 'bool', required: false, options: { default: true } },
     { name: 'category', type: 'relation', target: 'categories', required: false },
-    { name: 'created_at', type: 'date', required: false },
-    { name: 'updated_at', type: 'date', required: false },
+    { name: 'entity_id', type: 'relation', target: 'entities', required: false },
+    { name: 'created_by', type: 'relation', target: 'users', required: false },
   ]);
 
-  // ── customers ──────────────────────────────────────────────────────────────
-  await addFields(pb, 'customers', [
-    { name: 'name', type: 'text', required: true },
-    { name: 'phone', type: 'text', required: false },
+  // ── khata_accounts ─────────────────────────────────────────────────────────
+  await addFields(pb, 'khata_accounts', [
+    { name: 'debtor_name', type: 'text', required: true },
+    { name: 'debtor_phone', type: 'text', required: false },
     { name: 'credit_limit', type: 'number', required: false, options: { default: 0 } },
-    { name: 'credit_balance', type: 'number', required: false, options: { default: 0 } },
-    { name: 'created_at', type: 'date', required: false },
-    { name: 'updated_at', type: 'date', required: false },
+    { name: 'outstanding_balance', type: 'number', required: false, options: { default: 0 } },
+    { name: 'creditor_entity_id', type: 'relation', target: 'entities', required: false },
+    { name: 'party_type', type: 'text', required: false },
+    { name: 'debtor_entity_id', type: 'relation', target: 'entities', required: false },
+    { name: 'debtor_face_id_hash', type: 'text', required: false },
+    { name: 'credit_term_days', type: 'number', required: false, options: { default: 30 } },
+    { name: 'status', type: 'text', required: false },
+    { name: 'last_payment_at', type: 'date', required: false },
+    { name: 'created_by', type: 'relation', target: 'users', required: false },
   ]);
 
   // ── carts ──────────────────────────────────────────────────────────────────
   await addFields(pb, 'carts', [
     { name: 'status', type: 'text', required: true },
-    { name: 'customer', type: 'relation', target: 'customers', required: false },
-    { name: 'created_at', type: 'date', required: false },
-    { name: 'updated_at', type: 'date', required: false },
+    { name: 'entity_id', type: 'relation', target: 'entities', required: false },
+    { name: 'customer_whatsapp', type: 'text', required: false },
+    { name: 'buyer_hash', type: 'text', required: false },
+    { name: 'created_by', type: 'relation', target: 'users', required: false },
   ]);
 
   // ── cart_items ─────────────────────────────────────────────────────────────
@@ -126,14 +138,13 @@ async function setup() {
     { name: 'quantity', type: 'number', required: true, options: { default: 1 } },
     { name: 'unit_price', type: 'number', required: true, options: { default: 0 } },
     { name: 'discount', type: 'number', required: false, options: { default: 0 } },
-    { name: 'gst_amount', type: 'number', required: false, options: { default: 0 } },
+    { name: 'gst_5', type: 'number', required: false, options: { default: 0 } },
     { name: 'total', type: 'number', required: false, options: { default: 0 } },
-    { name: 'created_at', type: 'date', required: false },
-    { name: 'updated_at', type: 'date', required: false },
   ]);
 
   // ── orders ─────────────────────────────────────────────────────────────────
   await addFields(pb, 'orders', [
+    { name: 'order_type', type: 'text', required: false },
     { name: 'order_no', type: 'text', required: true },
     { name: 'status', type: 'text', required: true },
     { name: 'items', type: 'json', required: false },
@@ -142,16 +153,25 @@ async function setup() {
     { name: 'grand_total', type: 'number', required: false, options: { default: 0 } },
     { name: 'payment_method', type: 'text', required: false },
     { name: 'payment_ref', type: 'text', required: false },
-    { name: 'customer', type: 'relation', target: 'customers', required: false },
+    { name: 'seller_id', type: 'relation', target: 'entities', required: false },
+    { name: 'buyer_id', type: 'relation', target: 'entities', required: false },
+    { name: 'buyer_whatsapp', type: 'text', required: false },
+    { name: 'buyer_hash', type: 'text', required: false },
+    { name: 'created_by', type: 'relation', target: 'users', required: false },
     { name: 'customer_name', type: 'text', required: false },
     { name: 'customer_phone', type: 'text', required: false },
-    { name: 'cashier', type: 'relation', target: 'users', required: false },
     { name: 'digital_signature', type: 'text', required: false },
+    { name: 'payment_verified_at', type: 'date', required: false },
+    { name: 'ocr_verify_id', type: 'text', required: false },
+    { name: 'retry_count', type: 'number', required: false, options: { default: 0 } },
+    { name: 'max_retries', type: 'number', required: false, options: { default: 3 } },
+    { name: 'whatsapp_status', type: 'text', required: false },
     { name: 'cancellation_reason', type: 'text', required: false },
     { name: 'refund_amount', type: 'number', required: false, options: { default: 0 } },
     { name: 'refund_reason', type: 'text', required: false },
-    { name: 'created_at', type: 'date', required: false },
-    { name: 'updated_at', type: 'date', required: false },
+    { name: 'completed_at', type: 'date', required: false },
+    { name: 'cancelled_at', type: 'date', required: false },
+    { name: 'cart_id', type: 'relation', target: 'carts', required: false },
   ]);
 
   // ── inventory_movements ────────────────────────────────────────────────────
@@ -159,21 +179,23 @@ async function setup() {
     { name: 'product', type: 'relation', target: 'products', required: true },
     { name: 'movement_type', type: 'text', required: true },
     { name: 'quantity', type: 'number', required: true },
-    { name: 'order', type: 'relation', target: 'orders', required: false },
+    { name: 'reference_id', type: 'relation', target: 'orders', required: false },
     { name: 'notes', type: 'text', required: false },
-    { name: 'created_at', type: 'date', required: false },
-    { name: 'updated_at', type: 'date', required: false },
+    { name: 'entity_id', type: 'relation', target: 'entities', required: false },
+    { name: 'created_by', type: 'relation', target: 'users', required: false },
   ]);
 
   // ── khata_transactions ─────────────────────────────────────────────────────
   await addFields(pb, 'khata_transactions', [
-    { name: 'customer', type: 'relation', target: 'customers', required: true },
+    { name: 'khata_account', type: 'relation', target: 'khata_accounts', required: true },
     { name: 'transaction_type', type: 'text', required: true },
     { name: 'amount', type: 'number', required: true, options: { default: 0 } },
-    { name: 'order', type: 'relation', target: 'orders', required: false },
+    { name: 'balance_after', type: 'number', required: false, options: { default: 0 } },
+    { name: 'reference_id', type: 'relation', target: 'orders', required: false },
+    { name: 'payment_method', type: 'text', required: false },
     { name: 'notes', type: 'text', required: false },
-    { name: 'created_at', type: 'date', required: false },
-    { name: 'updated_at', type: 'date', required: false },
+    { name: 'entity_id', type: 'relation', target: 'entities', required: false },
+    { name: 'created_by', type: 'relation', target: 'users', required: false },
   ]);
 
   // ── settings ───────────────────────────────────────────────────────────────
@@ -185,8 +207,7 @@ async function setup() {
     { name: 'receipt_header', type: 'text', required: false },
     { name: 'receipt_footer', type: 'text', required: false },
     { name: 'gst_rate', type: 'number', required: false, options: { default: 5 } },
-    { name: 'created_at', type: 'date', required: false },
-    { name: 'updated_at', type: 'date', required: false },
+    { name: 'entity_id', type: 'relation', target: 'entities', required: false },
   ]);
 
   // ── shifts ─────────────────────────────────────────────────────────────────
@@ -205,20 +226,17 @@ async function setup() {
     { name: 'credit_sales', type: 'number', required: false, options: { default: 0 } },
     { name: 'refund_total', type: 'number', required: false, options: { default: 0 } },
     { name: 'transaction_count', type: 'number', required: false, options: { default: 0 } },
-    { name: 'created_at', type: 'date', required: false },
-    { name: 'updated_at', type: 'date', required: false },
   ]);
 
-  // ── Set access rules on all collections ──────────────────────────────────
+  // ── Access rules ───────────────────────────────────────────────────────────
   const collectionNames = [
-    'categories', 'products', 'customers', 'carts', 'cart_items',
+    'entities', 'categories', 'products', 'khata_accounts', 'carts', 'cart_items',
     'orders', 'inventory_movements', 'khata_transactions', 'settings', 'shifts'
   ];
   console.log('\n🔒 Access rules:');
   for (const name of collectionNames) {
     try {
       const col = await pb.collections.getOne(name);
-      // Only update if rules are not already set
       if (col.listRule !== AUTH_RULE || col.createRule !== AUTH_RULE) {
         col.listRule = AUTH_RULE;
         col.viewRule = AUTH_RULE;

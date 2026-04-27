@@ -115,7 +115,7 @@ export function useShifts() {
         // Calculate expected from orders during shift
         const shift = await pb.collection("shifts").getOne<Shift>(shiftId);
         const orders = await pb.collection("orders").getFullList({
-          filter: `created_at >= "${shift.opened_at}" && status = "confirmed"`,
+          filter: `created_at >= "${shift.opened_at}" && status = "CONFIRMED"`,
           requestKey: null,
         });
 
@@ -163,17 +163,17 @@ export function useShifts() {
       const targetDate = date || new Date().toISOString().split("T")[0];
       try {
         const orders = await pb.collection("orders").getFullList({
-          filter: `created_at >= "${targetDate} 00:00:00" && created_at <= "${targetDate} 23:59:59" && status = "confirmed"`,
+          filter: `created_at >= "${targetDate} 00:00:00" && created_at <= "${targetDate} 23:59:59" && status = "CONFIRMED"`,
           requestKey: null,
         });
 
         const cancelled = await pb.collection("orders").getFullList({
-          filter: `created_at >= "${targetDate} 00:00:00" && created_at <= "${targetDate} 23:59:59" && status = "cancelled"`,
+          filter: `created_at >= "${targetDate} 00:00:00" && created_at <= "${targetDate} 23:59:59" && status = "CANCELLED"`,
           requestKey: null,
         });
 
         const refunded = await pb.collection("orders").getFullList({
-          filter: `created_at >= "${targetDate} 00:00:00" && created_at <= "${targetDate} 23:59:59" && status = "refunded"`,
+          filter: `created_at >= "${targetDate} 00:00:00" && created_at <= "${targetDate} 23:59:59" && status = "REFUNDED"`,
           requestKey: null,
         });
 

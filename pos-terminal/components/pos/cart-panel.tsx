@@ -16,7 +16,8 @@ import {
   Banknote,
   ArrowRight,
 } from "lucide-react";
-import type { CartItem, Customer } from "@/hooks/use-cart";
+import type { CartItem } from "@/hooks/use-cart";
+import type { Customer } from "@/hooks/use-customers";
 
 interface CartPanelProps {
   items: CartItem[];
@@ -85,8 +86,8 @@ export function CartPanel({
           <User className="h-4 w-4 text-muted-foreground" />
           {customer ? (
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{customer.name}</p>
-              {customer.phone && <p className="text-xs text-muted-foreground">{customer.phone}</p>}
+              <p className="text-sm font-medium truncate">{customer.debtor_name}</p>
+              {customer.debtor_phone && <p className="text-xs text-muted-foreground">{customer.debtor_phone}</p>}
             </div>
           ) : (
             <span className="text-sm text-muted-foreground">Add customer (optional)</span>

@@ -5,10 +5,10 @@ import { getPB } from "@/lib/pb-client";
 
 export interface Customer {
   id: string;
-  name: string;
-  phone: string;
+  debtor_name: string;
+  debtor_phone: string;
   credit_limit: number;
-  credit_balance: number;
+  outstanding_balance: number;
   created_at: string;
 }
 
@@ -24,8 +24,8 @@ export function useCustomers() {
     }
     setLoading(true);
     try {
-      const records = await pb.collection("customers").getFullList<Customer>({
-        sort: "name",
+      const records = await pb.collection("khata_accounts").getFullList<Customer>({
+        sort: "debtor_name",
         requestKey: null,
       });
       setCustomers(records);
@@ -52,9 +52,9 @@ export function useCustomers() {
   const createCustomer = useCallback(
     async (data: Partial<Customer>) => {
       try {
-        const record = await pb.collection("customers").create({
+        const record = await pb.collection("khata_accounts").create({
           credit_limit: 0,
-          credit_balance: 0,
+          outstanding_balance: 0,
           ...data,
         }, { requestKey: null });
         await fetchCustomers();
@@ -69,7 +69,7 @@ export function useCustomers() {
   const updateCustomer = useCallback(
     async (id: string, data: Partial<Customer>) => {
       try {
-        await pb.collection("customers").update(id, data, { requestKey: null });
+        await pb.collection("khata_accounts").update(id, data, { requestKey: null });
         await fetchCustomers();
         return { success: true };
       } catch (err: any) {
@@ -83,14 +83,14 @@ export function useCustomers() {
     async (customerId: string, amount: number, method: string, notes?: string) => {
       try {
         // Fetch current balance atomically from PocketBase to avoid stale React state
-        const record = await pb.collection("customers").getOne(customerId);
-        const currentBalance = (record as Record<string, unknown>).credit_balance as number || 0;
+        const record = await pb.collection("khata_accounts").getOne(customerId);
+        const currentBalance = (record as Record<string, unknown>).outstanding_balance as number || 0;
         const newBalance = Math.max(0, currentBalance - amount);
-        await pb.collection("customers").update(customerId, { credit_balance: newBalance });
+        await pb.collection("khata_accounts").update(customerId, { outstanding_balance: newBalance });
 
         await pb.collection("khata_transactions").create({
-          customer: customerId,
-          type: "credit",
+          khata_account: customerId,
+          transaction_type: "CREDIT",
           amount,
           notes: notes || `Repayment via ${method}`,
         });

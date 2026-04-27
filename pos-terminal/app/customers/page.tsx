@@ -35,23 +35,23 @@ export default function CustomersPage() {
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [showRepay, setShowRepay] = useState<string | null>(null);
-  const [newCustomer, setNewCustomer] = useState({ name: "", phone: "" });
+  const [newCustomer, setNewCustomer] = useState({ debtor_name: "", debtor_phone: "" });
   const [repayAmount, setRepayAmount] = useState(0);
   const [repayMethod, setRepayMethod] = useState("cash");
 
   const filtered = customers.filter(
     (c) =>
-      c.name.toLowerCase().includes(search.toLowerCase()) ||
-      c.phone.toLowerCase().includes(search.toLowerCase())
+      c.debtor_name.toLowerCase().includes(search.toLowerCase()) ||
+      c.debtor_phone.toLowerCase().includes(search.toLowerCase())
   );
 
   const handleCreate = async () => {
-    if (!newCustomer.name.trim()) return;
+    if (!newCustomer.debtor_name.trim()) return;
     const result = await createCustomer(newCustomer);
     if (result.success) {
       toast.success("Customer created");
       setShowCreate(false);
-      setNewCustomer({ name: "", phone: "" });
+      setNewCustomer({ debtor_name: "", debtor_phone: "" });
       refresh();
     } else {
       toast.error(result.error);
@@ -117,28 +117,28 @@ export default function CustomersPage() {
               <TableBody>
                 {filtered.map((customer) => (
                   <TableRow key={customer.id}>
-                    <TableCell className="font-medium">{customer.name}</TableCell>
-                    <TableCell className="text-muted-foreground text-sm">{customer.phone}</TableCell>
+                    <TableCell className="font-medium">{customer.debtor_name}</TableCell>
+                    <TableCell className="text-muted-foreground text-sm">{customer.debtor_phone}</TableCell>
                     <TableCell className="text-right">
                       {customer.credit_limit > 0 ? `Nu. ${customer.credit_limit.toFixed(0)}` : "—"}
                     </TableCell>
                     <TableCell className="text-right">
-                      {customer.credit_balance > 0 ? (
+                      {customer.outstanding_balance > 0 ? (
                         <Badge variant="destructive" className="text-xs">
-                          Nu. {customer.credit_balance.toFixed(2)}
+                          Nu. {customer.outstanding_balance.toFixed(2)}
                         </Badge>
                       ) : (
                         <span className="text-muted-foreground text-sm">—</span>
                       )}
                     </TableCell>
                     <TableCell className="text-right">
-                      {customer.credit_balance > 0 && (
+                      {customer.outstanding_balance > 0 && (
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => {
                             setShowRepay(customer.id);
-                            setRepayAmount(Math.min(customer.credit_balance, 1000));
+                            setRepayAmount(Math.min(customer.outstanding_balance, 1000));
                           }}
                         >
                           <ArrowDownCircle className="h-4 w-4 mr-1" />
@@ -164,20 +164,20 @@ export default function CustomersPage() {
             <div className="space-y-2">
               <label className="text-sm font-medium">Name</label>
               <Input
-                value={newCustomer.name}
-                onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })}
+                value={newCustomer.debtor_name}
+                onChange={(e) => setNewCustomer({ ...newCustomer, debtor_name: e.target.value })}
                 placeholder="Customer name"
               />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Phone</label>
               <Input
-                value={newCustomer.phone}
-                onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })}
+                value={newCustomer.debtor_phone}
+                onChange={(e) => setNewCustomer({ ...newCustomer, debtor_phone: e.target.value })}
                 placeholder="+975-12345678"
               />
             </div>
-            <Button className="w-full" onClick={handleCreate} disabled={!newCustomer.name.trim()}>
+            <Button className="w-full" onClick={handleCreate} disabled={!newCustomer.debtor_name.trim()}>
               Create Customer
             </Button>
           </div>
@@ -198,17 +198,17 @@ export default function CustomersPage() {
                 return (
                   <>
                     <p className="text-sm text-muted-foreground">
-                      Customer: <span className="font-medium text-foreground">{customer.name}</span>
+                      Customer: <span className="font-medium text-foreground">{customer.debtor_name}</span>
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      Outstanding: <span className="font-medium text-destructive">Nu. {customer.credit_balance.toFixed(2)}</span>
+                      Outstanding: <span className="font-medium text-destructive">Nu. {customer.outstanding_balance.toFixed(2)}</span>
                     </p>
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Amount</label>
                       <Input
                         type="number"
                         min={1}
-                        max={customer.credit_balance}
+                        max={customer.outstanding_balance}
                         value={repayAmount}
                         onChange={(e) => setRepayAmount(parseFloat(e.target.value) || 0)}
                       />
@@ -229,7 +229,7 @@ export default function CustomersPage() {
                     <Button
                       className="w-full"
                       onClick={() => handleRepay(showRepay)}
-                      disabled={repayAmount <= 0 || repayAmount > customer.credit_balance}
+                      disabled={repayAmount <= 0 || repayAmount > customer.outstanding_balance}
                     >
                       Record Repayment
                     </Button>

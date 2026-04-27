@@ -19,7 +19,7 @@ interface CustomerModalProps {
   customers: Customer[];
   selectedCustomer: Customer | null;
   onSelect: (customer: Customer) => void;
-  onCreate: (data: { name: string; phone: string }) => void;
+  onCreate: (data: { debtor_name: string; debtor_phone: string }) => void;
 }
 
 export function CustomerModal({
@@ -37,13 +37,13 @@ export function CustomerModal({
 
   const filtered = customers.filter(
     (c) =>
-      c.name.toLowerCase().includes(search.toLowerCase()) ||
-      c.phone.toLowerCase().includes(search.toLowerCase())
+      c.debtor_name.toLowerCase().includes(search.toLowerCase()) ||
+      c.debtor_phone.toLowerCase().includes(search.toLowerCase())
   );
 
   const handleCreate = () => {
     if (!newName.trim()) return;
-    onCreate({ name: newName.trim(), phone: newPhone.trim() });
+    onCreate({ debtor_name: newName.trim(), debtor_phone: newPhone.trim() });
     setShowCreate(false);
     setNewName("");
     setNewPhone("");
@@ -84,9 +84,9 @@ export function CustomerModal({
                 >
                   <User className="h-5 w-5 text-muted-foreground shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm">{customer.name}</p>
-                    {customer.phone && (
-                      <p className="text-xs text-muted-foreground">{customer.phone}</p>
+                    <p className="font-medium text-sm">{customer.debtor_name}</p>
+                    {customer.debtor_phone && (
+                      <p className="text-xs text-muted-foreground">{customer.debtor_phone}</p>
                     )}
                   </div>
                   {customer.credit_limit > 0 && (

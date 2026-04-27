@@ -18,7 +18,7 @@ import {
   Landmark,
   AlertTriangle,
 } from "lucide-react";
-import type { Customer } from "@/hooks/use-cart";
+import type { Customer } from "@/hooks/use-customers";
 
 export type PaymentMethod = "cash" | "mbob" | "mpay" | "credit" | "rtgs";
 
@@ -54,9 +54,9 @@ export function PaymentModal({ open, onClose, grandTotal, customer, onConfirm }:
         setError("Customer is required for credit payment");
         return;
       }
-      if (customer.credit_balance + grandTotal > customer.credit_limit) {
+      if (customer.outstanding_balance + grandTotal > customer.credit_limit) {
         setError(
-          `Credit limit exceeded. Outstanding: Nu. ${customer.credit_balance.toFixed(2)}, Limit: Nu. ${customer.credit_limit.toFixed(2)}`
+          `Credit limit exceeded. Outstanding: Nu. ${customer.outstanding_balance.toFixed(2)}, Limit: Nu. ${customer.credit_limit.toFixed(2)}`
         );
         return;
       }
@@ -142,13 +142,13 @@ export function PaymentModal({ open, onClose, grandTotal, customer, onConfirm }:
                 <CreditCard className="h-4 w-4" />
                 <span className="font-medium">Credit Account</span>
               </div>
-              <p>Customer: {customer.name}</p>
+              <p>Customer: {customer.debtor_name}</p>
               <p>
                 Limit: Nu. {customer.credit_limit.toFixed(2)} | Outstanding: Nu.{" "}
-                {customer.credit_balance.toFixed(2)}
+                {customer.outstanding_balance.toFixed(2)}
               </p>
               <p>
-                After this: Nu. {(customer.credit_balance + grandTotal).toFixed(2)}
+                After this: Nu. {(customer.outstanding_balance + grandTotal).toFixed(2)}
               </p>
             </div>
           )}
