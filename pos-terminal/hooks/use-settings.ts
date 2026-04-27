@@ -18,6 +18,7 @@ export function useSettings() {
   const pb = getPB();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [loading, setLoading] = useState(true);
+  const REQ = { requestKey: null };
 
   const fetchSettings = useCallback(async () => {
     if (!pb.authStore.isValid) {
@@ -38,7 +39,7 @@ export function useSettings() {
           receipt_header: "",
           receipt_footer: "Thank you for your business!",
           gst_rate: 5,
-        });
+        }, REQ);
         setSettings(defaultSettings as unknown as Settings);
       }
     } catch (err) {
@@ -65,7 +66,7 @@ export function useSettings() {
     async (data: Partial<Settings>) => {
       if (!settings) return { success: false, error: "No settings found" };
       try {
-        const updated = await pb.collection("settings").update(settings.id, data);
+        const updated = await pb.collection("settings").update(settings.id, data, REQ);
         setSettings(updated as unknown as Settings);
         return { success: true, error: null };
       } catch (err: any) {

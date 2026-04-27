@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { getPB } from "@/lib/pb-client";
 
 export interface Product {
@@ -31,6 +31,10 @@ export interface Category {
   color: string;
 }
 
+export type SortField = "name" | "price";
+export type SortOrder = "asc" | "desc";
+export type StockFilter = "all" | "in_stock" | "low_stock" | "out_of_stock";
+
 export function useProducts() {
   const pb = getPB();
   const [products, setProducts] = useState<Product[]>([]);
@@ -38,6 +42,13 @@ export function useProducts() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedLetter, setSelectedLetter] = useState<string | null>(null);
+  const [stockFilter, setStockFilter] = useState<StockFilter>("all");
+  const [priceMin, setPriceMin] = useState("");
+  const [priceMax, setPriceMax] = useState("");
+  const [sortField, setSortField] = useState<SortField>("name");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
+  const REQ = { requestKey: null };
 
   const fetchProducts = useCallback(async () => {
     if (!pb.authStore.isValid) {
@@ -76,7 +87,6 @@ export function useProducts() {
     fetchProducts();
     fetchCategories();
 
-    // Re-fetch when auth becomes valid (handles Next.js keeping component in memory across redirects)
     const unsubscribeAuth = pb.authStore.onChange(() => {
       if (pb.authStore.isValid) {
         fetchProducts();
@@ -84,7 +94,6 @@ export function useProducts() {
       }
     });
 
-    // Real-time subscription
     let unsubscribe: (() => void) | null = null;
     pb.collection("products")
       .subscribe("*", () => {
@@ -93,9 +102,7 @@ export function useProducts() {
       .then((fn) => {
         unsubscribe = fn;
       })
-      .catch(() => {
-        // Silent fail — subscription is optional for POS operation
-      });
+      .catch(() => {});
 
     return () => {
       unsubscribeAuth();
@@ -108,7 +115,7 @@ export function useProducts() {
       try {
         const record = await pb
           .collection("products")
-          .getFirstListItem<Product>(`barcode = "${barcode}" && is_active = true`);
+          .getFirstListItem<Product>(`barcode = "${barcode}" && is_active = true`, { requestKey: null });
         return record;
       } catch {
         return null;
@@ -120,7 +127,7 @@ export function useProducts() {
   const findById = useCallback(
     async (id: string): Promise<Product | null> => {
       try {
-        return await pb.collection("products").getOne<Product>(id, { expand: "category" });
+        return await pb.collection("products").getOne<Product>(id, { expand: "category", requestKey: null });
       } catch {
         return null;
       }
@@ -131,7 +138,7 @@ export function useProducts() {
   const createProduct = useCallback(
     async (data: Partial<Product>) => {
       try {
-        const record = await pb.collection("products").create(data);
+        const record = await pb.collection("products").create(data, REQ);
         await fetchProducts();
         return { success: true, record };
       } catch (err: any) {
@@ -144,7 +151,7 @@ export function useProducts() {
   const updateProduct = useCallback(
     async (id: string, data: Partial<Product>) => {
       try {
-        const record = await pb.collection("products").update(id, data);
+        const record = await pb.collection("products").update(id, data, REQ);
         await fetchProducts();
         return { success: true, record };
       } catch (err: any) {
@@ -154,16 +161,56 @@ export function useProducts() {
     [pb, fetchProducts]
   );
 
-  const filteredProducts = products.filter((p) => {
-    const matchesCategory = selectedCategory ? p.category === selectedCategory : true;
-    const q = searchQuery.toLowerCase();
-    const matchesSearch =
-      !q ||
-      p.name.toLowerCase().includes(q) ||
-      p.sku.toLowerCase().includes(q) ||
-      p.barcode.toLowerCase().includes(q);
-    return matchesCategory && matchesSearch;
-  });
+  const availableLetters = useMemo(() => {
+    const letters = new Set<string>();
+    products.forEach((p) => {
+      const first = p.name.charAt(0).toUpperCase();
+      if (/[A-Z]/.test(first)) letters.add(first);
+    });
+    return Array.from(letters).sort();
+  }, [products]);
+
+  const filteredProducts = useMemo(() => {
+    const minPrice = priceMin ? parseFloat(priceMin) : null;
+    const maxPrice = priceMax ? parseFloat(priceMax) : null;
+
+    let filtered = products.filter((p) => {
+      const matchesCategory = selectedCategory ? p.category === selectedCategory : true;
+      const matchesLetter = selectedLetter
+        ? p.name.charAt(0).toUpperCase() === selectedLetter
+        : true;
+
+      const q = searchQuery.toLowerCase();
+      const matchesSearch =
+        !q ||
+        p.name.toLowerCase().includes(q) ||
+        p.sku.toLowerCase().includes(q) ||
+        p.barcode.toLowerCase().includes(q);
+
+      const price = p.sale_price || p.mrp || 0;
+      const matchesPriceMin = minPrice !== null ? price >= minPrice : true;
+      const matchesPriceMax = maxPrice !== null ? price <= maxPrice : true;
+
+      const matchesStock =
+        stockFilter === "all" ||
+        (stockFilter === "in_stock" && p.current_stock > p.reorder_point) ||
+        (stockFilter === "low_stock" && p.current_stock > 0 && p.current_stock <= p.reorder_point) ||
+        (stockFilter === "out_of_stock" && p.current_stock <= 0);
+
+      return matchesCategory && matchesLetter && matchesSearch && matchesPriceMin && matchesPriceMax && matchesStock;
+    });
+
+    filtered.sort((a, b) => {
+      const aPrice = a.sale_price || a.mrp || 0;
+      const bPrice = b.sale_price || b.mrp || 0;
+      if (sortField === "name") {
+        return sortOrder === "asc" ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
+      }
+      return sortOrder === "asc" ? aPrice - bPrice : bPrice - aPrice;
+    });
+
+    return filtered;
+  }, [products, searchQuery, selectedCategory, selectedLetter, priceMin, priceMax, stockFilter, sortField, sortOrder]);
 
   const lowStockCount = products.filter(
     (p) => p.current_stock > 0 && p.current_stock <= p.reorder_point
@@ -179,6 +226,19 @@ export function useProducts() {
     setSearchQuery,
     selectedCategory,
     setSelectedCategory,
+    selectedLetter,
+    setSelectedLetter,
+    availableLetters,
+    stockFilter,
+    setStockFilter,
+    priceMin,
+    setPriceMin,
+    priceMax,
+    setPriceMax,
+    sortField,
+    setSortField,
+    sortOrder,
+    setSortOrder,
     findByBarcode,
     findById,
     createProduct,

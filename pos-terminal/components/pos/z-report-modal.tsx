@@ -76,7 +76,7 @@ export function ZReportModal({ open, onClose }: ZReportModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
@@ -86,12 +86,12 @@ export function ZReportModal({ open, onClose }: ZReportModalProps) {
 
         <div className="space-y-4">
           <div className="flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <Calendar className="h-5 w-5 text-muted-foreground shrink-0" />
             <Input
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="flex-1"
+              className="flex-1 h-10"
             />
           </div>
 
@@ -152,11 +152,11 @@ export function ZReportModal({ open, onClose }: ZReportModalProps) {
                 </div>
               </div>
 
-              <div className="flex gap-2 pt-2">
-                <Button variant="outline" className="flex-1" onClick={onClose}>
+              <div className="flex gap-3 pt-2">
+                <Button variant="outline" className="flex-1 h-11" onClick={onClose}>
                   Close
                 </Button>
-                <Button className="flex-1" onClick={handlePrint}>
+                <Button className="flex-1 h-11" onClick={handlePrint}>
                   <Printer className="h-4 w-4 mr-2" />
                   Print
                 </Button>

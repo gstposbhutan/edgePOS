@@ -50,7 +50,7 @@ export function ShiftModal({ open, onClose, mode, onConfirm }: ShiftModalProps) 
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {mode === "open" ? (
@@ -68,7 +68,7 @@ export function ShiftModal({ open, onClose, mode, onConfirm }: ShiftModalProps) 
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="shift-amount">
+            <Label htmlFor="shift-amount" className="text-sm">
               {mode === "open" ? "Opening Float (Nu.)" : "Cash Count (Nu.)"}
             </Label>
             <Input
@@ -80,22 +80,23 @@ export function ShiftModal({ open, onClose, mode, onConfirm }: ShiftModalProps) 
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") handleConfirm(); }}
+              className="h-12 text-lg text-center"
               autoFocus
             />
           </div>
 
           {error && (
-            <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 p-3 rounded-md">
-              <AlertTriangle className="h-4 w-4" />
+            <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 p-3 rounded-lg">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
               {error}
             </div>
           )}
 
-          <div className="flex gap-2">
-            <Button variant="outline" className="flex-1" onClick={onClose} disabled={submitting}>
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1 h-11" onClick={onClose} disabled={submitting}>
               Cancel
             </Button>
-            <Button className="flex-1" onClick={handleConfirm} disabled={submitting || !amount}>
+            <Button className="flex-1 h-11" onClick={handleConfirm} disabled={submitting || !amount}>
               {submitting ? "Processing..." : "Confirm"}
             </Button>
           </div>

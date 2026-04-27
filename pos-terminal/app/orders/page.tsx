@@ -6,6 +6,8 @@ import { useOrders } from "@/hooks/use-orders";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -19,6 +21,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import {
@@ -28,12 +31,20 @@ import {
   Printer,
   RotateCcw,
   XCircle,
+  CheckSquare,
+  Square,
+  Minus,
+  Plus,
 } from "lucide-react";
+
+type RefundSelection = Record<string, number>;
 
 export default function OrdersPage() {
   const { orders, loading, filter, setFilter, cancelOrder, refundOrder, refresh } = useOrders();
   const [search, setSearch] = useState("");
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
+  const [refundSelections, setRefundSelections] = useState<RefundSelection>({});
+  const [showRefundUI, setShowRefundUI] = useState(false);
 
   const filtered = orders.filter(
     (o) =>
@@ -41,13 +52,90 @@ export default function OrdersPage() {
       o.customer_name?.toLowerCase().includes(search.toLowerCase())
   );
 
+  const openOrder = (order: any) => {
+    setSelectedOrder(order);
+    setRefundSelections({});
+    setShowRefundUI(false);
+  };
+
+  const toggleRefundItem = (itemId: string, maxQty: number) => {
+    setRefundSelections((prev) => {
+      const next = { ...prev };
+      if (next[itemId]) {
+        delete next[itemId];
+      } else {
+        next[itemId] = maxQty;
+      }
+      return next;
+    });
+  };
+
+  const setRefundQty = (itemId: string, qty: number, maxQty: number) => {
+    const clamped = Math.min(Math.max(1, qty), maxQty);
+    setRefundSelections((prev) => ({ ...prev, [itemId]: clamped }));
+  };
+
+  const selectedRefundItems = Object.entries(refundSelections).map(([itemId, qty]) => ({
+    itemId,
+    qty,
+  }));
+
+  const refundSubtotal = selectedOrder
+    ? selectedRefundItems.reduce((sum: number, ri: { itemId: string; qty: number }) => {
+        const item = (selectedOrder.items || []).find((i: any) => i.id === ri.itemId);
+        if (item) {
+          const ratio = ri.qty / item.quantity;
+          return sum + item.total * ratio;
+        }
+        return sum;
+      }, 0)
+    : 0;
+
   const handleCancel = async (orderId: string) => {
     const reason = prompt("Cancellation reason:");
     if (!reason) return;
     const result = await cancelOrder(orderId, reason);
     if (result.success) {
-      toast.success("Order cancelled");
+      toast.success("Order cancelled — stock restored");
       refresh();
+    } else {
+      toast.error(result.error);
+    }
+  };
+
+  const handleFullRefund = async (orderId: string) => {
+    const reason = prompt("Refund reason:");
+    if (!reason) return;
+    const result = await refundOrder(orderId, [], reason);
+    if (result.success) {
+      toast.success("Full refund — stock restored");
+      refresh();
+      setSelectedOrder(null);
+    } else {
+      toast.error(result.error);
+    }
+  };
+
+  const handlePartialRefund = async () => {
+    if (!selectedOrder) return;
+    if (selectedRefundItems.length === 0) {
+      toast.error("Select at least one item to refund");
+      return;
+    }
+    const reason = prompt("Refund reason:");
+    if (!reason) return;
+    const result = await refundOrder(selectedOrder.id, selectedRefundItems, reason);
+    if (result.success) {
+      const itemNames = selectedRefundItems
+        .map((ri) => {
+          const item = selectedOrder.items.find((i: any) => i.id === ri.itemId);
+          return item ? `${item.name} (x${ri.qty})` : "";
+        })
+        .filter(Boolean)
+        .join(", ");
+      toast.success(`Partial refund: ${itemNames} — stock restored`);
+      refresh();
+      setSelectedOrder(null);
     } else {
       toast.error(result.error);
     }
@@ -156,7 +244,7 @@ export default function OrdersPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => setSelectedOrder(order)}
+                          onClick={() => openOrder(order)}
                         >
                           View
                         </Button>
@@ -181,19 +269,7 @@ export default function OrdersPage() {
                               variant="ghost"
                               size="sm"
                               className="text-warning"
-                              onClick={() => {
-                                const reason = prompt("Refund reason:");
-                                if (reason) {
-                                  refundOrder(order.id, [], reason).then((r) => {
-                                    if (r.success) {
-                                      toast.success("Order refunded");
-                                      refresh();
-                                    } else {
-                                      toast.error(r.error);
-                                    }
-                                  });
-                                }
-                              }}
+                              onClick={() => handleFullRefund(order.id)}
                             >
                               <RotateCcw className="h-4 w-4" />
                             </Button>
@@ -214,9 +290,12 @@ export default function OrdersPage() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Order {selectedOrder?.order_no}</DialogTitle>
+            <DialogDescription>
+              {selectedOrder?.status === "CONFIRMED" && "Use checkboxes to select items for partial refund"}
+            </DialogDescription>
           </DialogHeader>
           {selectedOrder && (
-            <div className="space-y-3 text-sm">
+            <div className="space-y-4 text-sm">
               <div className="grid grid-cols-2 gap-2 text-muted-foreground">
                 <span>Date:</span>
                 <span>{selectedOrder.created_at ? new Date(selectedOrder.created_at).toLocaleString() : ""}</span>
@@ -227,10 +306,15 @@ export default function OrdersPage() {
                 <span>Reference:</span>
                 <span>{selectedOrder.payment_ref || "—"}</span>
               </div>
+
+              {/* Items table with checkboxes for partial refund */}
               <div className="border rounded-lg overflow-hidden">
                 <table className="w-full text-sm">
                   <thead className="bg-muted">
                     <tr>
+                      {selectedOrder.status === "CONFIRMED" && (
+                        <th className="w-8 p-2"></th>
+                      )}
                       <th className="text-left p-2">Item</th>
                       <th className="text-right p-2">Qty</th>
                       <th className="text-right p-2">Price</th>
@@ -238,22 +322,123 @@ export default function OrdersPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(selectedOrder.items || []).map((item: any, i: number) => (
-                      <tr key={i} className="border-t">
-                        <td className="p-2">{item.name}</td>
-                        <td className="text-right p-2">{item.quantity}</td>
-                        <td className="text-right p-2">{item.unit_price.toFixed(2)}</td>
-                        <td className="text-right p-2 font-medium">{item.total.toFixed(2)}</td>
-                      </tr>
-                    ))}
+                    {(selectedOrder.items || []).map((item: any, i: number) => {
+                      const isSelected = !!refundSelections[item.id];
+                      const refundQty = refundSelections[item.id] || item.quantity;
+
+                      return (
+                        <tr key={i} className={`border-t ${isSelected ? "bg-warning/5" : ""}`}>
+                          {selectedOrder.status === "CONFIRMED" && (
+                            <td className="p-2">
+                              <button
+                                onClick={() => toggleRefundItem(item.id, item.quantity)}
+                                className="w-6 h-6 flex items-center justify-center hover:text-warning"
+                              >
+                                {isSelected ? (
+                                  <CheckSquare className="h-4 w-4 text-warning" />
+                                ) : (
+                                  <Square className="h-4 w-4 text-muted-foreground" />
+                                )}
+                              </button>
+                            </td>
+                          )}
+                          <td className="p-2">
+                            <span className={isSelected ? "line-through text-muted-foreground" : ""}>
+                              {item.name}
+                            </span>
+                            {isSelected && (
+                              <span className="text-warning text-xs ml-2">(refunding)</span>
+                            )}
+                          </td>
+                          <td className="text-right p-2">
+                            {isSelected && item.quantity > 1 ? (
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  onClick={() => setRefundQty(item.id, refundQty - 1, item.quantity)}
+                                  className="w-5 h-5 rounded bg-muted flex items-center justify-center hover:bg-warning/20"
+                                >
+                                  <Minus className="h-2.5 w-2.5" />
+                                </button>
+                                <span className="w-5 text-center text-xs font-medium">{refundQty}</span>
+                                <button
+                                  onClick={() => setRefundQty(item.id, refundQty + 1, item.quantity)}
+                                  className="w-5 h-5 rounded bg-muted flex items-center justify-center hover:bg-warning/20"
+                                >
+                                  <Plus className="h-2.5 w-2.5" />
+                                </button>
+                                <span className="text-muted-foreground text-[10px]">/ {item.quantity}</span>
+                              </div>
+                            ) : (
+                              <span className={isSelected ? "text-warning font-medium" : ""}>
+                                {isSelected ? refundQty : item.quantity}
+                              </span>
+                            )}
+                          </td>
+                          <td className="text-right p-2">
+                            Nu. {item.unit_price.toFixed(2)}
+                          </td>
+                          <td className="text-right p-2 font-medium">
+                            Nu. {item.total.toFixed(2)}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
+
               <div className="space-y-1 text-right">
                 <p>Subtotal: Nu. {selectedOrder.subtotal.toFixed(2)}</p>
                 <p>GST: Nu. {selectedOrder.gst_total.toFixed(2)}</p>
                 <p className="text-lg font-bold">Total: Nu. {selectedOrder.grand_total.toFixed(2)}</p>
+                {selectedRefundItems.length > 0 && (
+                  <>
+                    <Separator className="my-2" />
+                    <p className="text-sm text-warning">
+                      Refunding: {selectedRefundItems.length} item(s)
+                    </p>
+                    <p className="text-sm text-warning font-medium">
+                      Refund Amount: Nu. {refundSubtotal.toFixed(2)}
+                    </p>
+                  </>
+                )}
               </div>
+
+              {/* Action buttons */}
+              {selectedOrder.status === "CONFIRMED" && (
+                <div className="flex gap-2 pt-2">
+                  {selectedRefundItems.length > 0 ? (
+                    <Button
+                      className="flex-1"
+                      variant="default"
+                      onClick={handlePartialRefund}
+                    >
+                      <RotateCcw className="h-4 w-4 mr-2" />
+                      Refund Selected ({selectedRefundItems.length} items)
+                    </Button>
+                  ) : (
+                    <Button
+                      className="flex-1"
+                      variant="outline"
+                      onClick={() => handleFullRefund(selectedOrder.id)}
+                    >
+                      <RotateCcw className="h-4 w-4 mr-2" />
+                      Full Refund
+                    </Button>
+                  )}
+                  <Button
+                    variant="destructive"
+                    className="flex-1"
+                    onClick={() => {
+                      handleCancel(selectedOrder.id);
+                      setSelectedOrder(null);
+                    }}
+                  >
+                    <XCircle className="h-4 w-4 mr-2" />
+                    Cancel Order
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </DialogContent>

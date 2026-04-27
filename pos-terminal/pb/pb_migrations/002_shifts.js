@@ -6,6 +6,11 @@ migrate(
     const shifts = new Collection({
       name: "shifts",
       type: "base",
+      listRule: "@request.auth.id != ''",
+      viewRule: "@request.auth.id != ''",
+      createRule: "@request.auth.id != ''",
+      updateRule: "@request.auth.id != ''",
+      deleteRule: "@request.auth.id != ''",
       fields: [
         { name: "opened_by", type: "relation", required: true, collectionId: "_pb_users_auth_", maxSelect: 1 },
         { name: "closed_by", type: "relation", required: false, collectionId: "_pb_users_auth_", maxSelect: 1 },

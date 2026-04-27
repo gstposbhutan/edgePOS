@@ -26,12 +26,20 @@ import {
   AlertTriangle,
 } from "lucide-react";
 
+const REQ = { requestKey: null };
+
+const ADJUSTMENT_TYPES: { value: string; label: string }[] = [
+  { value: "RESTOCK", label: "Restock" },
+  { value: "LOSS", label: "Loss" },
+  { value: "DAMAGED", label: "Damaged" },
+  { value: "TRANSFER", label: "Transfer" },
+];
+
 export default function InventoryPage() {
   const { user } = useAuth();
   const pb = getPB();
   const {
     allProducts,
-    categories,
     loading,
     refresh,
     lowStockCount,
@@ -40,7 +48,7 @@ export default function InventoryPage() {
   const [search, setSearch] = useState("");
   const [showAdjust, setShowAdjust] = useState<string | null>(null);
   const [adjustQty, setAdjustQty] = useState(0);
-  const [adjustReason, setAdjustReason] = useState("restock");
+  const [adjustReason, setAdjustReason] = useState("RESTOCK");
 
   const filtered = allProducts.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -48,25 +56,30 @@ export default function InventoryPage() {
   );
 
   const handleAdjust = async (productId: string) => {
+    if (adjustQty === 0) {
+      toast.error("Quantity cannot be zero");
+      return;
+    }
+
     try {
       const product = allProducts.find((p) => p.id === productId);
       if (!product) return;
 
       const newStock = Math.max(0, product.current_stock + adjustQty);
-      await pb.collection("products").update(productId, { current_stock: newStock });
+      await pb.collection("products").update(productId, { current_stock: newStock }, REQ);
       await pb.collection("inventory_movements").create({
         product: productId,
-        type: adjustReason,
+        movement_type: adjustReason,
         quantity: adjustQty,
         notes: `Manual adjustment by ${user?.name || "staff"}`,
-      });
+      }, REQ);
 
       toast.success("Stock adjusted");
       setShowAdjust(null);
       setAdjustQty(0);
       refresh();
     } catch (err: any) {
-      toast.error(err.message);
+      toast.error(err.message || "Adjustment failed");
     }
   };
 
@@ -142,7 +155,7 @@ export default function InventoryPage() {
                           <Input
                             type="number"
                             className="w-20 h-8"
-                            value={adjustQty}
+                            value={adjustQty || ""}
                             onChange={(e) => setAdjustQty(parseInt(e.target.value) || 0)}
                             placeholder="Qty"
                           />
@@ -151,10 +164,9 @@ export default function InventoryPage() {
                             onChange={(e) => setAdjustReason(e.target.value)}
                             className="h-8 text-xs rounded-md border border-border bg-background px-2"
                           >
-                            <option value="restock">Restock</option>
-                            <option value="adjustment">Adjustment</option>
-                            <option value="loss">Loss</option>
-                            <option value="damaged">Damaged</option>
+                            {ADJUSTMENT_TYPES.map((t) => (
+                              <option key={t.value} value={t.value}>{t.label}</option>
+                            ))}
                           </select>
                           <Button size="sm" className="h-8" onClick={() => handleAdjust(product.id)}>
                             Save

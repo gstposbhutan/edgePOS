@@ -23,11 +23,14 @@ export interface Cart {
   status: string;
 }
 
+const REQ = { requestKey: null };
+
 export function useCart() {
   const pb = getPB();
   const [cart, setCart] = useState<Cart | null>(null);
   const [items, setItems] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [taxExempt, setTaxExempt] = useState(false);
   const itemsRef = useRef(items);
   itemsRef.current = items;
 
@@ -53,8 +56,7 @@ export function useCart() {
         });
         setItems(itemRecords);
       } else {
-        // Create new active cart
-        const newCart = await pb.collection("carts").create({ status: "ACTIVE" });
+        const newCart = await pb.collection("carts").create({ status: "ACTIVE" }, REQ);
         setCart(newCart as unknown as Cart);
         setItems([]);
       }
@@ -68,7 +70,6 @@ export function useCart() {
   useEffect(() => {
     fetchActiveCart();
 
-    // Re-fetch when auth becomes valid (handles Next.js keeping component in memory across redirects)
     const unsubscribeAuth = pb.authStore.onChange(() => {
       if (pb.authStore.isValid) {
         fetchActiveCart();
@@ -81,7 +82,7 @@ export function useCart() {
   const removeItem = useCallback(
     async (itemId: string) => {
       try {
-        await pb.collection("cart_items").delete(itemId);
+        await pb.collection("cart_items").delete(itemId, REQ);
         setItems((prev) => prev.filter((i) => i.id !== itemId));
       } catch (err) {
         console.error("Remove item error:", err);
@@ -107,7 +108,7 @@ export function useCart() {
           quantity: newQty,
           gst_5: gstAmount,
           total,
-        });
+        }, REQ);
         setItems((prev) => prev.map((i) => (i.id === itemId ? (updated as unknown as CartItem) : i)));
       } catch (err) {
         console.error("Update qty error:", err);
@@ -139,7 +140,7 @@ export function useCart() {
           discount: 0,
           gst_5: gstAmount,
           total,
-        });
+        }, REQ);
         setItems((prev) => [...prev, newItem as unknown as CartItem]);
       } catch (err) {
         console.error("Add item error:", err);
@@ -164,7 +165,7 @@ export function useCart() {
           discount: clamped,
           gst_5: gstAmount,
           total,
-        });
+        }, REQ);
         setItems((prev) => prev.map((i) => (i.id === itemId ? (updated as unknown as CartItem) : i)));
       } catch (err) {
         console.error("Discount error:", err);
@@ -189,7 +190,7 @@ export function useCart() {
           unit_price: price,
           gst_5: gstAmount,
           total,
-        });
+        }, REQ);
         setItems((prev) => prev.map((i) => (i.id === itemId ? (updated as unknown as CartItem) : i)));
       } catch (err) {
         console.error("Price override error:", err);
@@ -203,10 +204,10 @@ export function useCart() {
     try {
       const currentItems = itemsRef.current;
       await Promise.all(currentItems.map((item) =>
-        pb.collection("cart_items").delete(item.id).catch(() => {})
+        pb.collection("cart_items").delete(item.id, REQ).catch(() => {})
       ));
-      await pb.collection("carts").update(cart.id, { status: "ABANDONED" });
-      const newCart = await pb.collection("carts").create({ status: "ACTIVE" });
+      await pb.collection("carts").update(cart.id, { status: "ABANDONED" }, REQ);
+      const newCart = await pb.collection("carts").create({ status: "ACTIVE" }, REQ);
       setCart(newCart as unknown as Cart);
       setItems([]);
     } catch (err) {
@@ -215,7 +216,7 @@ export function useCart() {
   }, [cart, pb]);
 
   const setCustomer = useCallback(
-    (customerId: string | null) => {
+    (_customerId: string | null) => {
       setCart((prev) => (prev ? { ...prev } : null));
     },
     []
@@ -225,11 +226,20 @@ export function useCart() {
     items.map((i) => ({ unitPrice: i.unit_price, discount: i.discount, quantity: i.quantity }))
   );
 
+  const subtotalExTax = totals.taxableSubtotal;
+  const gstTotalExempt = taxExempt ? 0 : totals.gstTotal;
+  const grandTotalExempt = taxExempt ? totals.taxableSubtotal : totals.grandTotal;
+
   return {
     cart,
     items,
     loading,
     ...totals,
+    taxExempt,
+    setTaxExempt,
+    subtotalExTax,
+    gstTotalExempt,
+    grandTotalExempt,
     addItem,
     updateQty,
     applyDiscount,
