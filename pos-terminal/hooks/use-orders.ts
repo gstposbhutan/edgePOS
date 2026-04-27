@@ -18,7 +18,7 @@ export interface Order {
   customer_phone: string;
   cashier: string;
   digital_signature: string;
-  created: string;
+  created_at: string;
   expand?: { customer?: any; cashier?: any };
 }
 
@@ -38,7 +38,7 @@ export function useOrders() {
       let filterStr = "";
       if (filter === "today") {
         const today = new Date().toISOString().split("T")[0];
-        filterStr = `created >= "${today} 00:00:00"`;
+        filterStr = `created_at >= "${today} 00:00:00"`;
       } else if (filter === "confirmed") {
         filterStr = 'status = "confirmed"';
       } else if (filter === "cancelled") {
@@ -48,7 +48,7 @@ export function useOrders() {
       }
 
       const records = await pb.collection("orders").getFullList<Order>({
-        sort: "-created",
+        sort: "-created_at",
         filter: filterStr || undefined,
         expand: "customer,cashier",
         requestKey: null,

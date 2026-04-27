@@ -21,8 +21,8 @@ migrate(
         { name: "credit_sales", type: "number", required: false, options: { default: 0 } },
         { name: "refund_total", type: "number", required: false, options: { default: 0 } },
         { name: "transaction_count", type: "number", required: false, options: { default: 0 } },
-        { name: "created", type: "autodate", onCreate: true },
-        { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
+        { name: "created_at", type: "autodate", onCreate: true },
+        { name: "updated_at", type: "autodate", onCreate: true, onUpdate: true },
       ],
     });
     app.save(shifts);

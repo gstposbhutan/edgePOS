@@ -75,6 +75,8 @@ async function setup() {
   await addFields(pb, 'categories', [
     { name: 'name', type: 'text', required: true },
     { name: 'color', type: 'text', required: false },
+    { name: 'created_at', type: 'date', required: false },
+    { name: 'updated_at', type: 'date', required: false },
   ]);
 
   // ── products ───────────────────────────────────────────────────────────────
@@ -93,6 +95,8 @@ async function setup() {
     { name: 'image', type: 'text', required: false },
     { name: 'is_active', type: 'bool', required: false, options: { default: true } },
     { name: 'category', type: 'relation', target: 'categories', required: false },
+    { name: 'created_at', type: 'date', required: false },
+    { name: 'updated_at', type: 'date', required: false },
   ]);
 
   // ── customers ──────────────────────────────────────────────────────────────
@@ -101,12 +105,16 @@ async function setup() {
     { name: 'phone', type: 'text', required: false },
     { name: 'credit_limit', type: 'number', required: false, options: { default: 0 } },
     { name: 'credit_balance', type: 'number', required: false, options: { default: 0 } },
+    { name: 'created_at', type: 'date', required: false },
+    { name: 'updated_at', type: 'date', required: false },
   ]);
 
   // ── carts ──────────────────────────────────────────────────────────────────
   await addFields(pb, 'carts', [
     { name: 'status', type: 'text', required: true },
     { name: 'customer', type: 'relation', target: 'customers', required: false },
+    { name: 'created_at', type: 'date', required: false },
+    { name: 'updated_at', type: 'date', required: false },
   ]);
 
   // ── cart_items ─────────────────────────────────────────────────────────────
@@ -120,6 +128,8 @@ async function setup() {
     { name: 'discount', type: 'number', required: false, options: { default: 0 } },
     { name: 'gst_amount', type: 'number', required: false, options: { default: 0 } },
     { name: 'total', type: 'number', required: false, options: { default: 0 } },
+    { name: 'created_at', type: 'date', required: false },
+    { name: 'updated_at', type: 'date', required: false },
   ]);
 
   // ── orders ─────────────────────────────────────────────────────────────────
@@ -140,24 +150,30 @@ async function setup() {
     { name: 'cancellation_reason', type: 'text', required: false },
     { name: 'refund_amount', type: 'number', required: false, options: { default: 0 } },
     { name: 'refund_reason', type: 'text', required: false },
+    { name: 'created_at', type: 'date', required: false },
+    { name: 'updated_at', type: 'date', required: false },
   ]);
 
   // ── inventory_movements ────────────────────────────────────────────────────
   await addFields(pb, 'inventory_movements', [
     { name: 'product', type: 'relation', target: 'products', required: true },
-    { name: 'type', type: 'text', required: true },
+    { name: 'movement_type', type: 'text', required: true },
     { name: 'quantity', type: 'number', required: true },
     { name: 'order', type: 'relation', target: 'orders', required: false },
     { name: 'notes', type: 'text', required: false },
+    { name: 'created_at', type: 'date', required: false },
+    { name: 'updated_at', type: 'date', required: false },
   ]);
 
   // ── khata_transactions ─────────────────────────────────────────────────────
   await addFields(pb, 'khata_transactions', [
     { name: 'customer', type: 'relation', target: 'customers', required: true },
-    { name: 'type', type: 'text', required: true },
+    { name: 'transaction_type', type: 'text', required: true },
     { name: 'amount', type: 'number', required: true, options: { default: 0 } },
     { name: 'order', type: 'relation', target: 'orders', required: false },
     { name: 'notes', type: 'text', required: false },
+    { name: 'created_at', type: 'date', required: false },
+    { name: 'updated_at', type: 'date', required: false },
   ]);
 
   // ── settings ───────────────────────────────────────────────────────────────
@@ -169,6 +185,8 @@ async function setup() {
     { name: 'receipt_header', type: 'text', required: false },
     { name: 'receipt_footer', type: 'text', required: false },
     { name: 'gst_rate', type: 'number', required: false, options: { default: 5 } },
+    { name: 'created_at', type: 'date', required: false },
+    { name: 'updated_at', type: 'date', required: false },
   ]);
 
   // ── shifts ─────────────────────────────────────────────────────────────────
@@ -187,6 +205,8 @@ async function setup() {
     { name: 'credit_sales', type: 'number', required: false, options: { default: 0 } },
     { name: 'refund_total', type: 'number', required: false, options: { default: 0 } },
     { name: 'transaction_count', type: 'number', required: false, options: { default: 0 } },
+    { name: 'created_at', type: 'date', required: false },
+    { name: 'updated_at', type: 'date', required: false },
   ]);
 
   // ── Set access rules on all collections ──────────────────────────────────

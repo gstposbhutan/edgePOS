@@ -45,7 +45,7 @@ export function useCart() {
     try {
       const records = await pb.collection("carts").getFullList<Cart>({
         filter: 'status = "active"',
-        sort: "-created",
+        sort: "-created_at",
         expand: "customer",
         requestKey: null,
       });
@@ -54,7 +54,7 @@ export function useCart() {
         const itemRecords = await pb.collection("cart_items").getFullList<CartItem>({
           filter: `cart = "${records[0].id}"`,
           expand: "product",
-          sort: "created",
+          sort: "created_at",
           requestKey: null,
         });
         setItems(itemRecords);

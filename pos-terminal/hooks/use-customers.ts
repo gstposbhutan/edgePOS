@@ -9,7 +9,7 @@ export interface Customer {
   phone: string;
   credit_limit: number;
   credit_balance: number;
-  created: string;
+  created_at: string;
 }
 
 export function useCustomers() {

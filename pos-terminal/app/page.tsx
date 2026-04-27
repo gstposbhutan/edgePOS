@@ -169,7 +169,7 @@ export default function PosPage() {
         const today = new Date().toISOString().split("T")[0].replace(/-/g, "");
         const count = await pb.collection("orders").getList(1, 1, {
           filter: `order_no ~ "POS-${today}-"`,
-          sort: "-created",
+          sort: "-created_at",
         });
         const seq = (count.totalItems || 0) + 1;
         const orderNo = `POS-${today}-${String(seq).padStart(4, "0")}`;
@@ -220,7 +220,7 @@ export default function PosPage() {
           await pb.collection("products").update(product.id, { current_stock: newStock });
           await pb.collection("inventory_movements").create({
             product: product.id,
-            type: "sale",
+            movement_type: "sale",
             quantity: -item.quantity,
             order: result.id,
             notes: `Sale: ${orderNo}`,
@@ -233,7 +233,7 @@ export default function PosPage() {
           await pb.collection("customers").update(customer.id, { credit_balance: newBalance });
           await pb.collection("khata_transactions").create({
             customer: customer.id,
-            type: "debit",
+            transaction_type: "debit",
             amount: grandTotal,
             order: result.id,
             notes: `Purchase on credit — ${orderNo}`,
@@ -245,7 +245,7 @@ export default function PosPage() {
         await refreshProducts();
 
         setShowPayment(false);
-        setLastOrder({ ...orderPayload, id: result.id, created: result.created });
+        setLastOrder({ ...orderPayload, id: result.id, created_at: result.created_at });
         setShowReceipt(true);
         toast.success(`Order ${orderNo} confirmed`);
       } catch (err: any) {

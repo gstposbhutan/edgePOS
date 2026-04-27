@@ -76,7 +76,7 @@ export function ReceiptModal({ open, onClose, order, settings }: ReceiptModalPro
 
   if (!order) return null;
 
-  const date = new Date(order.created).toLocaleString("en-IN");
+  const date = new Date(order.created_at).toLocaleString("en-IN");
   const items = order.items || [];
 
   return (

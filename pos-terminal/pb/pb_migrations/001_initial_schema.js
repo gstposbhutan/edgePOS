@@ -9,8 +9,8 @@ migrate(
       fields: [
         { name: "name", type: "text", required: true },
         { name: "color", type: "text", required: false },
-        { name: "created", type: "autodate", onCreate: true },
-        { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
+        { name: "created_at", type: "autodate", onCreate: true },
+        { name: "updated_at", type: "autodate", onCreate: true, onUpdate: true },
       ],
     });
     app.save(categories);
@@ -34,8 +34,8 @@ migrate(
         { name: "image", type: "file", required: false, maxSelect: 1, maxSize: 5242880 },
         { name: "is_active", type: "bool", required: false, options: { default: true } },
         { name: "category", type: "relation", required: false, collectionId: categories.id, maxSelect: 1 },
-        { name: "created", type: "autodate", onCreate: true },
-        { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
+        { name: "created_at", type: "autodate", onCreate: true },
+        { name: "updated_at", type: "autodate", onCreate: true, onUpdate: true },
       ],
     });
     app.save(products);
@@ -49,8 +49,8 @@ migrate(
         { name: "phone", type: "text", required: false },
         { name: "credit_limit", type: "number", required: false, options: { default: 0 } },
         { name: "credit_balance", type: "number", required: false, options: { default: 0 } },
-        { name: "created", type: "autodate", onCreate: true },
-        { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
+        { name: "created_at", type: "autodate", onCreate: true },
+        { name: "updated_at", type: "autodate", onCreate: true, onUpdate: true },
       ],
     });
     app.save(customers);
@@ -62,8 +62,8 @@ migrate(
       fields: [
         { name: "status", type: "select", required: true, values: ["active", "converted", "abandoned"], options: { default: "active" } },
         { name: "customer", type: "relation", required: false, collectionId: customers.id, maxSelect: 1 },
-        { name: "created", type: "autodate", onCreate: true },
-        { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
+        { name: "created_at", type: "autodate", onCreate: true },
+        { name: "updated_at", type: "autodate", onCreate: true, onUpdate: true },
       ],
     });
     app.save(carts);
@@ -82,8 +82,8 @@ migrate(
         { name: "discount", type: "number", required: false, min: 0, options: { default: 0 } },
         { name: "gst_amount", type: "number", required: false, options: { default: 0 } },
         { name: "total", type: "number", required: false, options: { default: 0 } },
-        { name: "created", type: "autodate", onCreate: true },
-        { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
+        { name: "created_at", type: "autodate", onCreate: true },
+        { name: "updated_at", type: "autodate", onCreate: true, onUpdate: true },
       ],
     });
     app.save(cartItems);
@@ -111,8 +111,8 @@ migrate(
         { name: "refund_reason", type: "text", required: false },
         { name: "receipt_pdf", type: "file", required: false, maxSelect: 1, maxSize: 10485760 },
         { name: "is_synced", type: "bool", required: false, options: { default: false } },
-        { name: "created", type: "autodate", onCreate: true },
-        { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
+        { name: "created_at", type: "autodate", onCreate: true },
+        { name: "updated_at", type: "autodate", onCreate: true, onUpdate: true },
       ],
     });
     app.save(orders);
@@ -123,12 +123,12 @@ migrate(
       type: "base",
       fields: [
         { name: "product", type: "relation", required: true, collectionId: products.id, maxSelect: 1 },
-        { name: "type", type: "select", required: true, values: ["sale", "restock", "adjustment", "return", "loss", "damaged"] },
+        { name: "movement_type", type: "select", required: true, values: ["sale", "restock", "adjustment", "return", "loss", "damaged"] },
         { name: "quantity", type: "number", required: true },
         { name: "order", type: "relation", required: false, collectionId: orders.id, maxSelect: 1 },
         { name: "notes", type: "text", required: false },
-        { name: "created", type: "autodate", onCreate: true },
-        { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
+        { name: "created_at", type: "autodate", onCreate: true },
+        { name: "updated_at", type: "autodate", onCreate: true, onUpdate: true },
       ],
     });
     app.save(inventoryMovements);
@@ -139,12 +139,12 @@ migrate(
       type: "base",
       fields: [
         { name: "customer", type: "relation", required: true, collectionId: customers.id, maxSelect: 1 },
-        { name: "type", type: "select", required: true, values: ["debit", "credit", "adjustment"] },
+        { name: "transaction_type", type: "select", required: true, values: ["debit", "credit", "adjustment"] },
         { name: "amount", type: "number", required: true, options: { default: 0 } },
         { name: "order", type: "relation", required: false, collectionId: orders.id, maxSelect: 1 },
         { name: "notes", type: "text", required: false },
-        { name: "created", type: "autodate", onCreate: true },
-        { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
+        { name: "created_at", type: "autodate", onCreate: true },
+        { name: "updated_at", type: "autodate", onCreate: true, onUpdate: true },
       ],
     });
     app.save(khataTransactions);
@@ -161,8 +161,8 @@ migrate(
         { name: "receipt_header", type: "text", required: false },
         { name: "receipt_footer", type: "text", required: false, options: { default: "Thank you for your business!" } },
         { name: "gst_rate", type: "number", required: false, options: { default: 5 } },
-        { name: "created", type: "autodate", onCreate: true },
-        { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
+        { name: "created_at", type: "autodate", onCreate: true },
+        { name: "updated_at", type: "autodate", onCreate: true, onUpdate: true },
       ],
     });
     app.save(settings);
