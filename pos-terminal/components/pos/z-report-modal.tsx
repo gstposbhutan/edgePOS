@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { Printer, FileText, Calendar } from "lucide-react";
+import { formatCurrency } from "@/lib/gst";
 import { useShifts } from "@/hooks/use-shifts";
 
 interface ZReportModalProps {
@@ -59,7 +60,7 @@ export function ZReportModal({ open, onClose }: ZReportModalProps) {
       <div class="section">
         <div class="row"><span>Gross Sales</span><span>Nu. ${report.grossSales.toFixed(2)}</span></div>
         <div class="row"><span>Subtotal</span><span>Nu. ${report.subtotal.toFixed(2)}</span></div>
-        <div class="row"><span>GST @ 5%</span><span>Nu. ${report.gstTotal.toFixed(2)}</span></div>
+        <div class="row"><span>GST</span><span>Nu. ${report.gstTotal.toFixed(2)}</span></div>
         <div class="row"><span>Refund Total</span><span>-Nu. ${report.refundTotal.toFixed(2)}</span></div>
         <div class="row total"><span>NET SALES</span><span>Nu. ${(report.grossSales - report.refundTotal).toFixed(2)}</span></div>
       </div>
@@ -115,24 +116,24 @@ export function ZReportModal({ open, onClose }: ZReportModalProps) {
               <div className="space-y-1">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Gross Sales</span>
-                  <span>Nu. {report.grossSales.toFixed(2)}</span>
+                  <span>{formatCurrency(report.grossSales)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Subtotal</span>
-                  <span>Nu. {report.subtotal.toFixed(2)}</span>
+                  <span>{formatCurrency(report.subtotal)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">GST @ 5%</span>
-                  <span>Nu. {report.gstTotal.toFixed(2)}</span>
+                  <span className="text-muted-foreground">GST</span>
+                  <span>{formatCurrency(report.gstTotal)}</span>
                 </div>
                 <div className="flex justify-between text-destructive">
                   <span>Refunds</span>
-                  <span>Nu. {report.refundTotal.toFixed(2)}</span>
+                  <span>{formatCurrency(report.refundTotal)}</span>
                 </div>
                 <Separator />
                 <div className="flex justify-between font-bold">
                   <span>Net Sales</span>
-                  <span>Nu. {(report.grossSales - report.refundTotal).toFixed(2)}</span>
+                  <span>{formatCurrency(report.grossSales - report.refundTotal)}</span>
                 </div>
               </div>
 
@@ -140,15 +141,15 @@ export function ZReportModal({ open, onClose }: ZReportModalProps) {
                 <p className="text-xs font-medium text-muted-foreground uppercase">Payment Breakdown</p>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Cash</span>
-                  <span>Nu. {report.cashSales.toFixed(2)}</span>
+                  <span>{formatCurrency(report.cashSales)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Digital</span>
-                  <span>Nu. {report.digitalSales.toFixed(2)}</span>
+                  <span>{formatCurrency(report.digitalSales)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Credit</span>
-                  <span>Nu. {report.creditSales.toFixed(2)}</span>
+                  <span>{formatCurrency(report.creditSales)}</span>
                 </div>
               </div>
 

@@ -20,6 +20,7 @@ import {
   Delete,
   Hash,
 } from "lucide-react";
+import { formatCurrency } from "@/lib/gst";
 import type { CartItem } from "@/hooks/use-cart";
 import type { Customer } from "@/hooks/use-customers";
 
@@ -225,7 +226,7 @@ export function CartPanel({
                     </p>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    Nu. {item.unit_price.toFixed(2)} / unit
+                    {formatCurrency(item.unit_price)} / unit
                   </p>
                 </div>
                 <Button
@@ -284,7 +285,7 @@ export function CartPanel({
                       <Plus className="h-4 w-4" />
                     </Button>
                   </div>
-                  <p className="text-sm font-bold tabular-nums">Nu. {item.total.toFixed(2)}</p>
+                  <p className="text-sm font-bold tabular-nums">{formatCurrency(item.total)}</p>
                 </div>
               )}
 
@@ -362,12 +363,12 @@ export function CartPanel({
           <div className="space-y-1.5 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Subtotal</span>
-              <span className="tabular-nums">Nu. {subtotal.toFixed(2)}</span>
+              <span className="tabular-nums">{formatCurrency(subtotal)}</span>
             </div>
             {discountTotal > 0 && (
               <div className="flex justify-between text-emerald-500">
                 <span>Discount</span>
-                <span className="tabular-nums">−Nu. {discountTotal.toFixed(2)}</span>
+                <span className="tabular-nums">−{formatCurrency(discountTotal)}</span>
               </div>
             )}
 
@@ -386,7 +387,7 @@ export function CartPanel({
               </button>
               {!taxExempt ? (
                 <span className="text-muted-foreground tabular-nums">
-                  GST @ 5%: Nu. {gstTotal.toFixed(2)}
+                  GST: {formatCurrency(gstTotal)}
                 </span>
               ) : (
                 <span className="text-destructive text-xs">No GST applied</span>
@@ -396,7 +397,7 @@ export function CartPanel({
             {!taxExempt && (
               <div className="flex justify-between text-xs text-muted-foreground">
                 <span>Taxable</span>
-                <span className="tabular-nums">Nu. {taxableSubtotal.toFixed(2)}</span>
+                <span className="tabular-nums">{formatCurrency(taxableSubtotal)}</span>
               </div>
             )}
           </div>
@@ -421,7 +422,7 @@ export function CartPanel({
             disabled={loading || items.length === 0}
           >
             <Receipt className="h-5 w-5 mr-2" />
-            Pay Nu. {taxExempt ? grandTotalExempt.toFixed(0) : grandTotal.toFixed(0)}
+            Pay Nu. {(taxExempt ? grandTotalExempt : grandTotal).toFixed(0)}
             <ArrowRight className="h-4 w-4 ml-2" />
           </Button>
         </div>

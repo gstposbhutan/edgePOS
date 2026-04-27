@@ -13,10 +13,11 @@ import { useHeldCarts } from "@/hooks/use-held-carts";
 import { useKeyboardRegistry } from "@/hooks/use-keyboard-registry";
 import { useUndo } from "@/hooks/use-undo";
 import { useLayoutPreset } from "@/hooks/use-layout-preset";
+import { usePosShortcuts } from "@/hooks/use-pos-shortcuts";
 import { getPB, PB_REQ } from "@/lib/pb-client";
 import { generateOrderNo, generateOrderSignature } from "@/lib/gst";
 import { todayCompact } from "@/lib/date-utils";
-import { LAYOUT_PRESETS, LS_KEYS, SCREEN_LG, CART_WIDTH, MAX_UNDO_STACK } from "@/lib/constants";
+import { LAYOUT_PRESETS, LS_KEYS, SCREEN_LG, CART_WIDTH, MAX_UNDO_STACK, MOVEMENT_TYPE, KHATA_TXN } from "@/lib/constants";
 import { ProductGrid } from "@/components/pos/product-grid";
 import { CartPanel } from "@/components/pos/cart-panel";
 import { BarcodeScanner } from "@/components/pos/barcode-scanner";
@@ -324,7 +325,7 @@ export default function PosPage() {
           await pb.collection("products").update(product.id, { current_stock: newStock }, PB_REQ);
           await pb.collection("inventory_movements").create({
             product: product.id,
-            movement_type: "SALE",
+            movement_type: MOVEMENT_TYPE.SALE,
             quantity: -item.quantity,
             reference_id: result.id,
             notes: `Sale: ${orderNo}`,
@@ -336,7 +337,7 @@ export default function PosPage() {
           await pb.collection("khata_accounts").update(selectedCustomer.id, { outstanding_balance: newBalance }, PB_REQ);
           await pb.collection("khata_transactions").create({
             khata_account: selectedCustomer.id,
-            transaction_type: "DEBIT",
+            transaction_type: KHATA_TXN.DEBIT,
             amount: effectiveGrandTotal,
             reference_id: result.id,
             notes: `Purchase on credit — ${orderNo}`,
@@ -450,62 +451,28 @@ export default function PosPage() {
   }, []);
 
   // Keyboard shortcuts
-  useEffect(() => {
-    const unreg1 = registerShortcut("global", { key: "F1" }, () => { setShowHelp((prev) => !prev); });
-    const unreg2 = registerShortcut("global", { key: "F2" }, () => { handleNewTransaction(); });
-    const unreg3 = registerShortcut("global", { key: "F3" }, () => { handleHoldCart(); });
-    const unreg4 = registerShortcut("global", { key: "F4" }, () => { setShowHeldCarts(true); });
-    const unreg5 = registerShortcut("global", { key: "F5" }, () => { handleCheckout(); });
-    const unreg6 = registerShortcut("global", { key: "F6" }, () => {
-      if (lastOrder) setShowReceipt(true);
-      else toast("No receipt to print");
-    });
-    const unreg7 = registerShortcut("global", { key: "F7" }, () => { handleVoidLast(); });
-    const unreg8 = registerShortcut("global", { key: "F9" }, () => {
-      searchInputRef.current?.focus();
-    });
-    const unreg9 = registerShortcut("global", { key: "F10" }, () => {
-      if (items.length === 0) {
-        toast("Cart is empty — add items first");
-        return;
-      }
-      const amt = prompt("Enter discount per unit (Nu.):");
-      if (amt !== null && items.length > 0) {
-        const discount = parseFloat(amt) || 0;
-        applyDiscount(items[items.length - 1].id, discount);
-        toast.success(`Discount set: Nu. ${discount.toFixed(2)}`);
-      }
-    });
-    const unreg10 = registerShortcut("global", { key: "F11" }, () => {
-      if (document.fullscreenElement) {
-        document.exitFullscreen();
-      } else {
-        document.documentElement.requestFullscreen();
-      }
-    });
-    const unreg11 = registerShortcut("global", { key: "Escape" }, () => {
-      if (showPayment) setShowPayment(false);
-      else if (showHeldCarts) setShowHeldCarts(false);
-      else if (showHelp) setShowHelp(false);
-      else if (showCustomer) setShowCustomer(false);
-      else setSearchQuery("");
-    });
-    const unreg12 = registerShortcut("global", { key: "Tab" }, () => {
-      setShowCart((prev) => !prev);
-    });
-    const unreg13 = registerShortcut("global", { key: "z", ctrl: true }, () => { handleUndo(); });
-    const unreg14 = registerShortcut("global", { key: "Delete" }, () => {
-      if (items.length > 0) removeItem(items[items.length - 1].id);
-    });
-    const unreg15 = registerShortcut("global", { key: "c", ctrl: true, shift: false }, () => { setLayout("compact"); });
-    const unreg16 = registerShortcut("global", { key: "s", ctrl: true }, () => { setLayout("standard"); });
-
-    return () => {
-      unreg1(); unreg2(); unreg3(); unreg4(); unreg5(); unreg6(); unreg7(); unreg8();
-      unreg9(); unreg10(); unreg11(); unreg12(); unreg13(); unreg14(); unreg15(); unreg16();
-    };
-  }, [registerShortcut, handleNewTransaction, handleHoldCart, handleCheckout, handleVoidLast, handleUndo,
-      lastOrder, showPayment, showHeldCarts, showHelp, showCustomer, setSearchQuery, items, removeItem, setLayout]);
+  const setupShortcuts = usePosShortcuts({
+    items,
+    lastOrder,
+    showPayment,
+    showHeldCarts,
+    showCustomer,
+    setShowPayment,
+    setShowHeldCarts,
+    showHelpToggle: () => setShowHelp((prev) => !prev),
+    setShowCustomer,
+    setShowReceipt,
+    setSearchQuery,
+    handleNewTransaction,
+    handleHoldCart,
+    handleCheckout,
+    handleVoidLast,
+    handleUndo,
+    applyDiscount,
+    removeItem,
+    setLayout,
+  });
+  useEffect(() => setupShortcuts(), [setupShortcuts]);
 
   // Type-to-search: capture keystrokes when no modal is open
   useEffect(() => {

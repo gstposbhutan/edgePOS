@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Printer, CheckCircle, Zap, ShoppingCart } from "lucide-react";
+import { formatCurrency } from "@/lib/gst";
 import type { Settings } from "@/hooks/use-settings";
 import { usePlatform } from "@/hooks/use-platform";
 
@@ -117,7 +118,7 @@ export function ReceiptModal({ open, onClose, onNewSale, order, settings }: Rece
           <div className="text-center p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
             <p className="text-sm text-emerald-400 font-medium">Transaction Complete</p>
             <p className="text-3xl font-bold text-primary mt-1 tabular-nums">
-              Nu. {order.grand_total.toFixed(2)}
+              {formatCurrency(order.grand_total)}
             </p>
             <p className="text-xs text-muted-foreground mt-1">{order.order_no}</p>
           </div>
@@ -173,17 +174,17 @@ export function ReceiptModal({ open, onClose, onNewSale, order, settings }: Rece
             <div className="space-y-1 text-xs">
               <div className="flex justify-between">
                 <span className="text-gray-500">Subtotal</span>
-                <span>Nu. {order.subtotal.toFixed(2)}</span>
+                <span>{formatCurrency(order.subtotal)}</span>
               </div>
               {order.gst_total > 0 && (
                 <div className="flex justify-between">
-                  <span className="text-gray-500">GST @ 5%</span>
-                  <span>Nu. {order.gst_total.toFixed(2)}</span>
+                  <span className="text-gray-500">GST</span>
+                  <span>{formatCurrency(order.gst_total)}</span>
                 </div>
               )}
               <div className="flex justify-between total text-base">
                 <span>TOTAL</span>
-                <span>Nu. {order.grand_total.toFixed(2)}</span>
+                <span>{formatCurrency(order.grand_total)}</span>
               </div>
               {order.gst_total === 0 && (
                 <p className="text-[10px] text-gray-400 text-center">Tax Exempt</p>

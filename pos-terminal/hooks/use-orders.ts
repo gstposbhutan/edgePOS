@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { getPB, PB_REQ } from "@/lib/pb-client";
+import { ORDER_STATUS, MOVEMENT_TYPE, KHATA_TXN } from "@/lib/constants";
 
 export interface Order {
   id: string;
@@ -38,7 +39,7 @@ async function restoreStockAndReverseCredit(pb: ReturnType<typeof getPB>, orderI
 
     await pb.collection("inventory_movements").create({
       product: item.product,
-      movement_type: "RETURN",
+      movement_type: MOVEMENT_TYPE.RETURN,
       quantity: item.quantity || 0,
       reference_id: orderId,
       notes: `Return — order ${order.order_no}`,
@@ -58,7 +59,7 @@ async function restoreStockAndReverseCredit(pb: ReturnType<typeof getPB>, orderI
       await pb.collection("khata_accounts").update(acct.id, { outstanding_balance: newBalance }, PB_REQ);
       await pb.collection("khata_transactions").create({
         khata_account: acct.id,
-        transaction_type: "CREDIT",
+        transaction_type: KHATA_TXN.CREDIT,
         amount: order.grand_total || 0,
         reference_id: orderId,
         notes: `Reversal — order ${order.order_no}`,
@@ -85,11 +86,11 @@ export function useOrders() {
         const today = new Date().toISOString().split("T")[0];
         filterStr = `created_at >= "${today} 00:00:00"`;
       } else if (filter === "confirmed") {
-        filterStr = 'status = "CONFIRMED"';
+        filterStr = 'status = ORDER_STATUS.CONFIRMED';
       } else if (filter === "cancelled") {
-        filterStr = 'status = "CANCELLED"';
+        filterStr = 'status = ORDER_STATUS.CANCELLED';
       } else if (filter === "refunded") {
-        filterStr = 'status = "REFUNDED"';
+        filterStr = 'status = ORDER_STATUS.REFUNDED';
       }
 
       const records = await pb.collection("orders").getFullList<Order>({
@@ -137,7 +138,7 @@ export function useOrders() {
         await restoreStockAndReverseCredit(pb, orderId);
 
         await pb.collection("orders").update(orderId, {
-          status: "CANCELLED",
+          status: ORDER_STATUS.CANCELLED,
           cancellation_reason: reason,
         }, PB_REQ);
 
@@ -162,7 +163,7 @@ export function useOrders() {
 
           // Refund amount = full grand total
           await pb.collection("orders").update(orderId, {
-            status: "REFUNDED",
+            status: ORDER_STATUS.REFUNDED,
             refund_amount: order.grand_total || 0,
             refund_reason: reason,
           }, PB_REQ);
@@ -187,7 +188,7 @@ export function useOrders() {
               }
               await pb.collection("inventory_movements").create({
                 product: item.product,
-                movement_type: "RETURN",
+                movement_type: MOVEMENT_TYPE.RETURN,
                 quantity: ri.qty,
                 reference_id: orderId,
                 notes: `Partial refund — ${order.order_no}`,
@@ -197,7 +198,7 @@ export function useOrders() {
         }
 
         await pb.collection("orders").update(orderId, {
-          status: "REFUNDED",
+          status: ORDER_STATUS.REFUNDED,
           refund_amount: refundAmount,
           refund_reason: reason,
         }, PB_REQ);
