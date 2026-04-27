@@ -99,7 +99,7 @@ export function useShifts() {
           opening_float: openingFloat,
           status: "active",
           opened_at: new Date().toISOString(),
-        }, { requestKey: null });
+        });
         await fetchActiveShift();
         return { success: true, shift: record as unknown as Shift };
       } catch (err: any) {
@@ -146,7 +146,7 @@ export function useShifts() {
           credit_sales: creditSales,
           refund_total: refundTotal,
           transaction_count: orders.length,
-        }, { requestKey: null });
+        });
 
         await fetchActiveShift();
         await fetchShiftHistory();

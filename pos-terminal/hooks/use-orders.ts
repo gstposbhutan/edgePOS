@@ -77,7 +77,7 @@ export function useOrders() {
   const createOrder = useCallback(
     async (data: Partial<Order>) => {
       try {
-        const record = await pb.collection("orders").create(data, { requestKey: null });
+        const record = await pb.collection("orders").create(data);
         await fetchOrders();
         return { success: true, order: record as unknown as Order };
       } catch (err: any) {
@@ -90,10 +90,33 @@ export function useOrders() {
   const cancelOrder = useCallback(
     async (orderId: string, reason: string) => {
       try {
+        // Get order to restore stock
+        const order = await pb.collection("orders").getOne(orderId);
+        const items: any[] = order.items || [];
+
+        for (const item of items) {
+          if (item.product) {
+            // Restore stock
+            const product = await pb.collection("products").getOne(item.product).catch(() => null);
+            if (product) {
+              const restoredStock = (product.current_stock || 0) + (item.quantity || 0);
+              await pb.collection("products").update(item.product, { current_stock: restoredStock });
+            }
+            // Record inventory movement
+            await pb.collection("inventory_movements").create({
+              product: item.product,
+              movement_type: "RETURN",
+              quantity: item.quantity || 0,
+              reference_id: orderId,
+              notes: `Cancelled order ${order.order_no}`,
+            });
+          }
+        }
+
         await pb.collection("orders").update(orderId, {
           status: "CANCELLED",
           cancellation_reason: reason,
-        }, { requestKey: null });
+        });
         await fetchOrders();
         return { success: true };
       } catch (err: any) {
@@ -106,17 +129,31 @@ export function useOrders() {
   const refundOrder = useCallback(
     async (orderId: string, refundItems: { itemId: string; qty: number }[], reason: string) => {
       try {
-        // Get order
         const order = await pb.collection("orders").getOne(orderId);
-        const items = order.items || [];
+        const items: any[] = order.items || [];
 
-        // Calculate refund amount
         let refundAmount = 0;
         for (const ri of refundItems) {
           const item = items.find((i: any) => i.id === ri.itemId);
           if (item) {
             const ratio = ri.qty / item.quantity;
             refundAmount += item.total * ratio;
+
+            // Restore stock for refunded items
+            if (item.product && ri.qty > 0) {
+              const product = await pb.collection("products").getOne(item.product).catch(() => null);
+              if (product) {
+                const restoredStock = (product.current_stock || 0) + ri.qty;
+                await pb.collection("products").update(item.product, { current_stock: restoredStock });
+              }
+              await pb.collection("inventory_movements").create({
+                product: item.product,
+                movement_type: "RETURN",
+                quantity: ri.qty,
+                reference_id: orderId,
+                notes: `Refund — ${order.order_no}`,
+              });
+            }
           }
         }
 

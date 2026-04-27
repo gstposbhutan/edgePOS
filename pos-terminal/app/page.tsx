@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useProducts } from "@/hooks/use-products";
 import { useCart } from "@/hooks/use-cart";
 import { useCustomers } from "@/hooks/use-customers";
+import type { Customer } from "@/hooks/use-customers";
 import { useSettings } from "@/hooks/use-settings";
 import { getPB } from "@/lib/pb-client";
 import { ProductGrid } from "@/components/pos/product-grid";
@@ -80,6 +81,7 @@ export default function PosPage() {
   const [showShiftModal, setShowShiftModal] = useState<"open" | "close" | null>(null);
   const [lastOrder, setLastOrder] = useState<any>(null);
   const [online, setOnline] = useState(true);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
 
   const handleShiftAction = useCallback(async (amount: number) => {
     if (!user) return { success: false, error: "Not authenticated" };
@@ -180,6 +182,7 @@ export default function PosPage() {
 
         // Build order payload
         const orderPayload = {
+          order_type: "POS_SALE",
           order_no: orderNo,
           status: "CONFIRMED",
           items: items.map((i) => ({
@@ -198,9 +201,8 @@ export default function PosPage() {
           grand_total: grandTotal,
           payment_method: method,
           payment_ref: ref || "",
-          buyer_id: null,
-          customer_name: "",
-          customer_phone: "",
+          customer_name: selectedCustomer?.debtor_name || "",
+          customer_phone: selectedCustomer?.debtor_phone || "",
           created_by: user.id,
           digital_signature: digitalSignature,
         };
@@ -223,8 +225,18 @@ export default function PosPage() {
           });
         }
 
-        // Credit / Khata handling — requires buyer_id from cart
-        // TODO: re-enable when buyer selection is implemented via khata_accounts modal
+        // Credit / Khata handling
+        if (method === "credit" && selectedCustomer) {
+          const newBalance = selectedCustomer.outstanding_balance + grandTotal;
+          await pb.collection("khata_accounts").update(selectedCustomer.id, { outstanding_balance: newBalance });
+          await pb.collection("khata_transactions").create({
+            khata_account: selectedCustomer.id,
+            transaction_type: "DEBIT",
+            amount: grandTotal,
+            reference_id: result.id,
+            notes: `Purchase on credit — ${orderNo}`,
+          });
+        }
 
         // Clear cart
         await clearCart();
@@ -239,12 +251,13 @@ export default function PosPage() {
         toast.error(err.message || "Checkout failed");
       }
     },
-    [user, items, products, subtotal, gstTotal, grandTotal, settings, pb, clearCart, refreshProducts]
+    [user, items, products, subtotal, gstTotal, grandTotal, settings, pb, clearCart, refreshProducts, selectedCustomer]
   );
 
   const handleSelectCustomer = useCallback(
     async (customer: any) => {
-      await setCartCustomer(customer.id);
+      setCartCustomer(customer.id);
+      setSelectedCustomer(customer);
     },
     [setCartCustomer]
   );
@@ -253,7 +266,8 @@ export default function PosPage() {
     async (data: { debtor_name: string; debtor_phone: string }) => {
       const result = await createCustomer(data);
       if (result.success && result.record) {
-        await setCartCustomer(result.record.id);
+        setCartCustomer(result.record.id);
+        setSelectedCustomer(result.record);
         toast.success("Customer added");
       }
     },
@@ -361,7 +375,7 @@ export default function PosPage() {
         <div className="w-[380px] shrink-0 hidden lg:block">
           <CartPanel
             items={items}
-            customer={null}
+            customer={selectedCustomer}
             subtotal={subtotal}
             discountTotal={discountTotal}
             taxableSubtotal={taxableSubtotal}
@@ -399,7 +413,7 @@ export default function PosPage() {
         open={showPayment}
         onClose={() => setShowPayment(false)}
         grandTotal={grandTotal}
-        customer={null}
+        customer={selectedCustomer}
         onConfirm={handlePaymentConfirm}
       />
 
@@ -407,7 +421,7 @@ export default function PosPage() {
         open={showCustomer}
         onClose={() => setShowCustomer(false)}
         customers={customers}
-        selectedCustomer={null}
+        selectedCustomer={selectedCustomer}
         onSelect={handleSelectCustomer}
         onCreate={handleCreateCustomer}
       />

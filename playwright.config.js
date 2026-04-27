@@ -45,7 +45,7 @@ module.exports = defineConfig({
     },
     {
       name: 'pocketbase',
-      testMatch: /p0-.*\.spec\.js/,
+      testMatch: /p[01]-.*\.spec\.js/,
       use: { ...devices['Desktop Chrome'] },
     },
   ],

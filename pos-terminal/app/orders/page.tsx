@@ -31,7 +31,7 @@ import {
 } from "lucide-react";
 
 export default function OrdersPage() {
-  const { orders, loading, filter, setFilter, cancelOrder, refresh } = useOrders();
+  const { orders, loading, filter, setFilter, cancelOrder, refundOrder, refresh } = useOrders();
   const [search, setSearch] = useState("");
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
 
@@ -57,6 +57,7 @@ export default function OrdersPage() {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
     const items = order.items || [];
+    const date = order.created_at ? new Date(order.created_at).toLocaleString() : "";
     printWindow.document.write(`
       <html><head><title>Receipt ${order.order_no}</title>
       <style>
@@ -68,7 +69,7 @@ export default function OrdersPage() {
       </style></head><body>
       <h2>${order.expand?.customer?.name || "NEXUS BHUTAN"}</h2>
       <p>Invoice: ${order.order_no}</p>
-      <p>Date: ${new Date(order.created).toLocaleString()}</p>
+      <p>Date: ${date}</p>
       <table><thead><tr><th>Item</th><th class="right">Qty</th><th class="right">Total</th></tr></thead><tbody>
       ${items.map((i: any) => `<tr><td>${i.name}</td><td class="right">${i.quantity}</td><td class="right">${i.total.toFixed(2)}</td></tr>`).join("")}
       </tbody></table>
@@ -142,9 +143,9 @@ export default function OrdersPage() {
                       Nu. {order.grand_total.toFixed(2)}
                     </TableCell>
                     <TableCell>
-                      {order.status === "confirmed" ? (
+                      {order.status === "CONFIRMED" ? (
                         <Badge variant="secondary" className="text-xs">Confirmed</Badge>
-                      ) : order.status === "cancelled" ? (
+                      ) : order.status === "CANCELLED" ? (
                         <Badge variant="destructive" className="text-xs">Cancelled</Badge>
                       ) : (
                         <Badge variant="outline" className="text-xs">{order.status}</Badge>
@@ -166,15 +167,37 @@ export default function OrdersPage() {
                         >
                           <Printer className="h-4 w-4" />
                         </Button>
-                        {order.status === "confirmed" && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive"
-                            onClick={() => handleCancel(order.id)}
-                          >
-                            <XCircle className="h-4 w-4" />
-                          </Button>
+                        {order.status === "CONFIRMED" && (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive"
+                              onClick={() => handleCancel(order.id)}
+                            >
+                              <XCircle className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-warning"
+                              onClick={() => {
+                                const reason = prompt("Refund reason:");
+                                if (reason) {
+                                  refundOrder(order.id, [], reason).then((r) => {
+                                    if (r.success) {
+                                      toast.success("Order refunded");
+                                      refresh();
+                                    } else {
+                                      toast.error(r.error);
+                                    }
+                                  });
+                                }
+                              }}
+                            >
+                              <RotateCcw className="h-4 w-4" />
+                            </Button>
+                          </>
                         )}
                       </div>
                     </TableCell>
@@ -196,7 +219,7 @@ export default function OrdersPage() {
             <div className="space-y-3 text-sm">
               <div className="grid grid-cols-2 gap-2 text-muted-foreground">
                 <span>Date:</span>
-                <span>{new Date(selectedOrder.created).toLocaleString()}</span>
+                <span>{selectedOrder.created_at ? new Date(selectedOrder.created_at).toLocaleString() : ""}</span>
                 <span>Customer:</span>
                 <span>{selectedOrder.customer_name || "—"}</span>
                 <span>Payment:</span>

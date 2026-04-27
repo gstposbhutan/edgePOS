@@ -56,7 +56,7 @@ export function useCustomers() {
           credit_limit: 0,
           outstanding_balance: 0,
           ...data,
-        }, { requestKey: null });
+        });
         await fetchCustomers();
         return { success: true, record: record as unknown as Customer };
       } catch (err: any) {
@@ -69,7 +69,7 @@ export function useCustomers() {
   const updateCustomer = useCallback(
     async (id: string, data: Partial<Customer>) => {
       try {
-        await pb.collection("khata_accounts").update(id, data, { requestKey: null });
+        await pb.collection("khata_accounts").update(id, data);
         await fetchCustomers();
         return { success: true };
       } catch (err: any) {

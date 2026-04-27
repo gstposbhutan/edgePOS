@@ -38,7 +38,7 @@ export function useSettings() {
           receipt_header: "",
           receipt_footer: "Thank you for your business!",
           gst_rate: 5,
-        }, { requestKey: null });
+        });
         setSettings(defaultSettings as unknown as Settings);
       }
     } catch (err) {
@@ -65,7 +65,7 @@ export function useSettings() {
     async (data: Partial<Settings>) => {
       if (!settings) return { success: false, error: "No settings found" };
       try {
-        const updated = await pb.collection("settings").update(settings.id, data, { requestKey: null });
+        const updated = await pb.collection("settings").update(settings.id, data);
         setSettings(updated as unknown as Settings);
         return { success: true, error: null };
       } catch (err: any) {

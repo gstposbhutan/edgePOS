@@ -54,7 +54,7 @@ export function useCart() {
         setItems(itemRecords);
       } else {
         // Create new active cart
-        const newCart = await pb.collection("carts").create({ status: "ACTIVE" }, { requestKey: null });
+        const newCart = await pb.collection("carts").create({ status: "ACTIVE" });
         setCart(newCart as unknown as Cart);
         setItems([]);
       }
@@ -81,7 +81,7 @@ export function useCart() {
   const removeItem = useCallback(
     async (itemId: string) => {
       try {
-        await pb.collection("cart_items").delete(itemId, { requestKey: null });
+        await pb.collection("cart_items").delete(itemId);
         setItems((prev) => prev.filter((i) => i.id !== itemId));
       } catch (err) {
         console.error("Remove item error:", err);
@@ -107,7 +107,7 @@ export function useCart() {
           quantity: newQty,
           gst_5: gstAmount,
           total,
-        }, { requestKey: null });
+        });
         setItems((prev) => prev.map((i) => (i.id === itemId ? (updated as unknown as CartItem) : i)));
       } catch (err) {
         console.error("Update qty error:", err);
@@ -139,7 +139,7 @@ export function useCart() {
           discount: 0,
           gst_5: gstAmount,
           total,
-        }, { requestKey: null });
+        });
         setItems((prev) => [...prev, newItem as unknown as CartItem]);
       } catch (err) {
         console.error("Add item error:", err);
@@ -164,7 +164,7 @@ export function useCart() {
           discount: clamped,
           gst_5: gstAmount,
           total,
-        }, { requestKey: null });
+        });
         setItems((prev) => prev.map((i) => (i.id === itemId ? (updated as unknown as CartItem) : i)));
       } catch (err) {
         console.error("Discount error:", err);
@@ -189,7 +189,7 @@ export function useCart() {
           unit_price: price,
           gst_5: gstAmount,
           total,
-        }, { requestKey: null });
+        });
         setItems((prev) => prev.map((i) => (i.id === itemId ? (updated as unknown as CartItem) : i)));
       } catch (err) {
         console.error("Price override error:", err);
