@@ -143,7 +143,7 @@ export default function PosPage() {
     grandTotalExempt,
     settings,
     selectedCustomer,
-    clearCart,
+    clearCart: async () => { await clearCart(); },
     refreshProducts,
     clearUndoStack: () => undoStack.clear(),
   });
@@ -222,8 +222,9 @@ export default function PosPage() {
           toast.error(`${product.name} is out of stock`);
           return;
         }
-        await addItem(product);
-        toast.success(`Added ${product.name}`);
+        const result = await addItem(product);
+        if (result.success) toast.success(`Added ${product.name}`);
+        else toast.error(result.error || "Failed to add item");
       } else {
         toast.error(`Product not found for barcode: ${barcode}`);
       }
@@ -237,8 +238,10 @@ export default function PosPage() {
         toast.error("Product is out of stock");
         return;
       }
-      await addItem(product);
-      undoStack.push(() => removeItem(product.id));
+      const result = await addItem(product);
+      if (result.success) {
+        undoStack.push(() => { removeItem(product.id); });
+      }
     },
     [addItem, removeItem, undoStack]
   );
@@ -250,10 +253,14 @@ export default function PosPage() {
     }
     const lastItem = items[items.length - 1];
     const originalProduct = products.find((p) => p.id === lastItem.product);
-    await removeItem(lastItem.id);
-    toast.success(`Voided ${lastItem.name}`);
-    if (originalProduct) {
-      undoStack.push(() => addItem(originalProduct));
+    const result = await removeItem(lastItem.id);
+    if (result.success) {
+      toast.success(`Voided ${lastItem.name}`);
+      if (originalProduct) {
+        undoStack.push(() => { addItem(originalProduct); });
+      }
+    } else {
+      toast.error(result.error || "Failed to void item");
     }
   }, [items, products, removeItem, addItem, undoStack]);
 
@@ -298,9 +305,13 @@ export default function PosPage() {
     if (items.length === 0) return;
     const confirmed = window.confirm("Clear cart and start new transaction?");
     if (confirmed) {
-      await clearCart();
-      undoStack.clear();
-      toast.success("New transaction started");
+      const result = await clearCart();
+      if (result.success) {
+        undoStack.clear();
+        toast.success("New transaction started");
+      } else {
+        toast.error(result.error || "Failed to clear cart");
+      }
     }
   }, [items, clearCart]);
 
@@ -324,37 +335,29 @@ export default function PosPage() {
       const cart = recallCart(cartId);
       if (!cart) return;
 
-      try {
-        await clearCart();
-        for (const item of cart.items) {
-          const fullProduct = products.find((p) => p.id === item.product);
-          if (!fullProduct) continue;
+      const cleared = await clearCart();
+      if (!cleared.success) {
+        toast.error("Failed to clear current cart");
+        return;
+      }
+      for (const item of cart.items) {
+        const fullProduct = products.find((p) => p.id === item.product);
+        if (!fullProduct) continue;
 
-          try {
-            // addItem handles duplicate detection — if product already in cart, it increments
-            await addItem(fullProduct);
-            // After addItem, we need to set the exact quantity from the held cart
-            // addItem defaults to qty=1 (or increments existing). Force the exact qty.
-            if (item.quantity > 1) {
-              // Brief delay to let React state settle after addItem
-              await new Promise((r) => setTimeout(r, 50));
-              // Find the item that was just added by matching product ID
-              const cartItem = itemsRefForRecall.current.find(
-                (ci: { product: string }) => ci.product === item.product
-              );
-              if (cartItem && cartItem.quantity !== item.quantity) {
-                await updateQty(cartItem.id, item.quantity);
-              }
-            }
-          } catch {
-            /* continue to next item */
+        const added = await addItem(fullProduct);
+        if (!added.success) continue;
+        if (item.quantity > 1) {
+          await new Promise((r) => setTimeout(r, 50));
+          const cartItem = itemsRefForRecall.current.find(
+            (ci: { product: string }) => ci.product === item.product
+          );
+          if (cartItem && cartItem.quantity !== item.quantity) {
+            await updateQty(cartItem.id, item.quantity);
           }
         }
-        setShowHeldCarts(false);
-        toast.success(`Recalled: ${cart.label}`);
-      } catch {
-        toast.error("Failed to recall cart");
       }
+      setShowHeldCarts(false);
+      toast.success(`Recalled: ${cart.label}`);
     },
     [recallCart, clearCart, addItem, updateQty, products]
   );

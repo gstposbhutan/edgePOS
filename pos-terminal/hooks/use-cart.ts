@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { getPB, PB_REQ } from "@/lib/pb-client";
-import { calcItemTotals, calcCartTotals, formatCurrency } from "@/lib/gst";
+import { calcItemTotals, calcCartTotals } from "@/lib/gst";
 import { CART_STATUS } from "@/lib/constants";
 import type { Product } from "./use-products";
 
@@ -24,6 +24,11 @@ export interface Cart {
   status: string;
 }
 
+type OpResult = { success: boolean; error?: string };
+
+function errMsg(err: unknown): string {
+  return err instanceof Error ? err.message : "Operation failed";
+}
 
 export function useCart() {
   const pb = getPB();
@@ -56,7 +61,7 @@ export function useCart() {
         });
         setItems(itemRecords);
       } else {
-        const newCart = await pb.collection("carts").create({ status: "ACTIVE" }, PB_REQ);
+        const newCart = await pb.collection("carts").create({ status: CART_STATUS.ACTIVE }, PB_REQ);
         setCart(newCart as unknown as Cart);
         setItems([]);
       }
@@ -80,22 +85,23 @@ export function useCart() {
   }, [fetchActiveCart, pb]);
 
   const removeItem = useCallback(
-    async (itemId: string) => {
+    async (itemId: string): Promise<OpResult> => {
       try {
         await pb.collection("cart_items").delete(itemId, PB_REQ);
         setItems((prev) => prev.filter((i) => i.id !== itemId));
+        return { success: true };
       } catch (err) {
-        console.error("Remove item error:", err);
+        return { success: false, error: errMsg(err) };
       }
     },
     [pb]
   );
 
   const updateQty = useCallback(
-    async (itemId: string, newQty: number) => {
+    async (itemId: string, newQty: number): Promise<OpResult> => {
       if (newQty < 1) return removeItem(itemId);
       const item = itemsRef.current.find((i) => i.id === itemId);
-      if (!item) return;
+      if (!item) return { success: false, error: "Item not found" };
 
       const { gstAmount, total } = calcItemTotals({
         unitPrice: item.unit_price,
@@ -110,16 +116,17 @@ export function useCart() {
           total,
         }, PB_REQ);
         setItems((prev) => prev.map((i) => (i.id === itemId ? (updated as unknown as CartItem) : i)));
+        return { success: true };
       } catch (err) {
-        console.error("Update qty error:", err);
+        return { success: false, error: errMsg(err) };
       }
     },
     [pb, removeItem]
   );
 
   const addItem = useCallback(
-    async (product: Product) => {
-      if (!cart) return;
+    async (product: Product): Promise<OpResult> => {
+      if (!cart) return { success: false, error: "No active cart" };
       const unitPrice = product.sale_price || product.mrp || 0;
       const existing = itemsRef.current.find((i) => i.product === product.id);
 
@@ -142,17 +149,18 @@ export function useCart() {
           total,
         }, PB_REQ);
         setItems((prev) => [...prev, newItem as unknown as CartItem]);
+        return { success: true };
       } catch (err) {
-        console.error("Add item error:", err);
+        return { success: false, error: errMsg(err) };
       }
     },
     [cart, updateQty, pb]
   );
 
   const applyDiscount = useCallback(
-    async (itemId: string, discountPerUnit: number) => {
+    async (itemId: string, discountPerUnit: number): Promise<OpResult> => {
       const item = itemsRef.current.find((i) => i.id === itemId);
-      if (!item) return;
+      if (!item) return { success: false, error: "Item not found" };
       const clamped = Math.min(Math.max(0, discountPerUnit), item.unit_price);
       const { gstAmount, total } = calcItemTotals({
         unitPrice: item.unit_price,
@@ -167,17 +175,18 @@ export function useCart() {
           total,
         }, PB_REQ);
         setItems((prev) => prev.map((i) => (i.id === itemId ? (updated as unknown as CartItem) : i)));
+        return { success: true };
       } catch (err) {
-        console.error("Discount error:", err);
+        return { success: false, error: errMsg(err) };
       }
     },
     [pb]
   );
 
   const overridePrice = useCallback(
-    async (itemId: string, newUnitPrice: number) => {
+    async (itemId: string, newUnitPrice: number): Promise<OpResult> => {
       const item = itemsRef.current.find((i) => i.id === itemId);
-      if (!item) return;
+      if (!item) return { success: false, error: "Item not found" };
       const price = Math.max(0, newUnitPrice);
       const { gstAmount, total } = calcItemTotals({
         unitPrice: price,
@@ -192,38 +201,41 @@ export function useCart() {
           total,
         }, PB_REQ);
         setItems((prev) => prev.map((i) => (i.id === itemId ? (updated as unknown as CartItem) : i)));
+        return { success: true };
       } catch (err) {
-        console.error("Price override error:", err);
+        return { success: false, error: errMsg(err) };
       }
     },
     [pb]
   );
 
-  const clearCart = useCallback(async () => {
-    if (!cart) return;
+  const clearCart = useCallback(async (): Promise<OpResult> => {
+    if (!cart) return { success: false, error: "No active cart" };
     try {
       const currentItems = itemsRef.current;
       await Promise.all(currentItems.map((item) =>
         pb.collection("cart_items").delete(item.id, PB_REQ).catch(() => {})
       ));
-      await pb.collection("carts").update(cart.id, { status: "ABANDONED" }, PB_REQ);
-      const newCart = await pb.collection("carts").create({ status: "ACTIVE" }, PB_REQ);
+      await pb.collection("carts").update(cart.id, { status: CART_STATUS.ABANDONED }, PB_REQ);
+      const newCart = await pb.collection("carts").create({ status: CART_STATUS.ACTIVE }, PB_REQ);
       setCart(newCart as unknown as Cart);
       setItems([]);
+      return { success: true };
     } catch (err) {
-      console.error("Clear cart error:", err);
+      return { success: false, error: errMsg(err) };
     }
   }, [cart, pb]);
 
   const setCustomer = useCallback(
-    async (customerId: string | null) => {
-      if (!cart) return;
+    async (customerId: string | null): Promise<OpResult> => {
+      if (!cart) return { success: false, error: "No active cart" };
       try {
         await pb.collection("carts").update(cart.id, {
           customer_whatsapp: customerId || "",
         }, PB_REQ);
-      } catch {
-        // Non-critical — cart operates fine without customer link
+        return { success: true };
+      } catch (err) {
+        return { success: false, error: errMsg(err) };
       }
     },
     [cart, pb]
