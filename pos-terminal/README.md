@@ -11,81 +11,143 @@ A focused, offline-first Point of Sale system for Bhutanese retail. Runs entirel
 - **Credit / Khata Ledger** — Customer credit tracking with limits and repayments.
 - **End-of-Day Reports** — Order history, refunds, payment breakdowns.
 - **Multi-Role Auth** — Owner, Manager, Cashier roles with permission gating.
-- **Print Receipts** — Browser print + PDF-ready receipt layout.
+- **Print Receipts** — Browser print + thermal printer via Electron.
 - **Responsive Design** — Works on desktop, tablet, and mobile.
 
 ## 🚀 Quick Start
 
-### 1. Start PocketBase
+### 1. Install dependencies
 
-Download the PocketBase binary for your platform from [pocketbase.io](https://pocketbase.io/docs/).
+```bash
+cd pos-terminal
+npm install
+```
+
+### 2. Start PocketBase
+
+Download the PocketBase binary for your platform from [pocketbase.io](https://pocketbase.io/docs/) and place it in `pos-terminal/pb/pocketbase`.
 
 ```bash
 # Linux / macOS
-chmod +x pocketbase
-./pocketbase serve
+chmod +x pb/pocketbase
+./pb/pocketbase serve
 
 # Windows
-pocketbase.exe serve
+pb\pocketbase.exe serve
 ```
 
 PocketBase will start on `http://127.0.0.1:8090`. The admin UI is at `http://127.0.0.1:8090/_/admin`.
 
-### 2. Apply Schema Migration
+### 3. Apply schema migrations
 
-Copy the migration file into PocketBase:
+Copy the migration files into PocketBase:
 
 ```bash
-cp pb/pb_migrations/001_initial_schema.js ./pb_migrations/
+cp pb/pb_migrations/*.js ./pb_migrations/
 ```
 
-Restart PocketBase to apply the migration and seed data.
+Restart PocketBase to apply the migrations and seed data.
 
-### 3. Run the POS App
+### 4. Run the POS App
 
 ```bash
-npm install
+# Browser mode
 npm run dev
+
+# Desktop mode (Electron + embedded PocketBase)
+npm run electron:dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) and sign in with:
 - **Email**: `admin@pos.local`
 - **Password**: `admin123`
 
+## 🖨️ Thermal Printer Setup (Optional)
+
+Thermal printing requires native USB drivers. These are **not installed by default** to avoid system dependency issues.
+
+### Ubuntu / Debian
+
+```bash
+sudo apt-get install libudev-dev
+npm install escpos escpos-usb usb
+```
+
+### macOS
+
+```bash
+brew install libusb
+npm install escpos escpos-usb usb
+```
+
+### Windows
+
+Install [Zadig](https://zadig.akeo.ie/) and replace your printer's driver with WinUSB. Then:
+
+```bash
+npm install escpos escpos-usb usb
+```
+
+After installing, restart the Electron app. The Settings page will show "Connected" if a USB thermal printer is detected.
+
+## 🖥️ Desktop App (Electron)
+
+The Electron shell auto-launches PocketBase as a subprocess and provides:
+- **System tray** — minimize-to-tray behavior
+- **ESC/POS printing** — direct USB thermal printer access
+- **Background sync** — push orders to a central server
+- **LAN mode** — connect to a shared PocketBase instance
+
+### Build distributable
+
+```bash
+npm run electron:pack    # Local package
+npm run electron:build   # Full installer
+```
+
 ## 📁 Project Structure
 
 ```
 pos-terminal/
+├── electron/
+│   ├── main.js              # Electron lifecycle + PB launcher + IPC
+│   ├── preload.js           # Secure context bridge
+│   ├── pb-launcher.js       # PocketBase subprocess + health check
+│   └── printer.js           # ESC/POS USB thermal printer
 ├── pb/
 │   └── pb_migrations/
-│       └── 001_initial_schema.js    # PocketBase schema + seed data
+│       ├── 001_initial_schema.js    # Core collections
+│       └── 002_shifts.js            # Shift records for Z-Report
 ├── app/
-│   ├── page.tsx                     # Main POS (split-view)
-│   ├── login/page.tsx               # Auth login
-│   ├── inventory/page.tsx           # Stock management
-│   ├── orders/page.tsx              # Order history
-│   ├── customers/page.tsx           # Customer / Khata
-│   └── settings/page.tsx            # Store profile
+│   ├── page.tsx             # Main POS (split-view)
+│   ├── login/page.tsx       # Auth login
+│   ├── inventory/page.tsx   # Stock management
+│   ├── orders/page.tsx      # Order history
+│   ├── customers/page.tsx   # Customer / Khata
+│   └── settings/page.tsx    # Store profile + printer + sync + LAN
 ├── components/
 │   ├── pos/
-│   │   ├── product-grid.tsx         # Category-filtered product browse
-│   │   ├── cart-panel.tsx           # Cart with totals & checkout
-│   │   ├── barcode-scanner.tsx      # Camera-based barcode/QR scan
-│   │   ├── payment-modal.tsx        # Cash / Digital / Credit payment
-│   │   ├── customer-modal.tsx       # Select / create customer
-│   │   └── receipt-modal.tsx        # Print-ready receipt
-│   └── ui/                          # Shadcn/UI components
+│   │   ├── product-grid.tsx
+│   │   ├── cart-panel.tsx
+│   │   ├── barcode-scanner.tsx
+│   │   ├── payment-modal.tsx
+│   │   ├── customer-modal.tsx
+│   │   ├── receipt-modal.tsx
+│   │   └── z-report-modal.tsx
+│   └── ui/                  # Shadcn/UI components
 ├── hooks/
-│   ├── use-auth.ts                  # PocketBase auth state
-│   ├── use-products.ts              # Product catalog + barcode lookup
-│   ├── use-cart.ts                  # Active cart management
-│   ├── use-orders.ts                # Order history & refunds
-│   ├── use-customers.ts             # Customer & khata ledger
-│   └── use-settings.ts              # Store profile settings
+│   ├── use-auth.ts
+│   ├── use-products.ts
+│   ├── use-cart.ts
+│   ├── use-orders.ts
+│   ├── use-customers.ts
+│   ├── use-settings.ts
+│   ├── use-shifts.ts        # Shift open/close + Z-Report
+│   └── use-platform.ts      # Detect Electron vs Web
 ├── lib/
-│   ├── pb-client.ts                 # PocketBase SDK singleton
-│   └── gst.ts                       # Bhutan GST 2026 calculations
-└── next.config.mjs
+│   ├── pb-client.ts         # PocketBase SDK singleton
+│   └── gst.ts               # Bhutan GST 2026 calculations
+└── package.json
 ```
 
 ## 🔌 PocketBase Collections
@@ -96,11 +158,11 @@ pos-terminal/
 | `products` | Catalog with barcode, stock, MRP, HSN code |
 | `categories` | Product categories |
 | `customers` | Customer profiles with credit limit / balance |
-| `carts` | Active shopping session |
-| `cart_items` | Line items in active cart |
+| `carts` / `cart_items` | Active shopping session |
 | `orders` | Confirmed sales with immutable item snapshot |
 | `inventory_movements` | Stock changes (sale, restock, loss, damaged) |
 | `khata_transactions` | Credit ledger (debit/credit/adjustment) |
+| `shifts` | Cashier shift records for Z-Report |
 | `settings` | Store name, TPN/GSTIN, receipt text, GST rate |
 
 ## 🧾 GST Calculation
@@ -115,7 +177,24 @@ total   = taxable * 1.05 * quantity
 
 ## 📡 Sync to Central Server (Optional)
 
-For multi-store or cloud backup scenarios, configure a background sync worker to push orders and pull product catalog updates from a central PocketBase instance. This is **not required** for single-terminal offline operation.
+For multi-store or cloud backup scenarios:
+
+1. Go to **Settings → Central Sync**
+2. Enter your remote PocketBase URL and API key
+3. Set sync interval (minutes)
+4. Click **Start Sync**
+
+The background worker will push local orders and mark them as synced automatically.
+
+## 🌐 Multi-Terminal LAN Mode
+
+For shops with multiple POS terminals:
+
+1. Designate one computer as the **server** — run PocketBase there
+2. Find the server's local IP (e.g., `192.168.1.100`)
+3. On each terminal, go to **Settings → PocketBase Server**
+4. Enter: `http://192.168.1.100:8090`
+5. All terminals now share the same database in real-time
 
 ## 🔒 Security
 
@@ -128,11 +207,12 @@ For multi-store or cloud backup scenarios, configure a background sync worker to
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | Next.js 16 + React 19 + TypeScript |
-| Styling | Tailwind CSS v4 + Shadcn/UI |
-| Backend | PocketBase (Go binary, SQLite) |
-| Barcode | `html5-qrcode` |
-| Receipt | Native browser print dialog |
+| **Frontend** | Next.js 16 + React 19 + TypeScript |
+| **Styling** | Tailwind CSS v4 + Shadcn/UI |
+| **Backend** | PocketBase (Go binary, SQLite) |
+| **Desktop** | Electron |
+| **Barcode** | `html5-qrcode` |
+| **Receipt** | Browser print + ESC/POS (optional) |
 
 ## 📝 License
 

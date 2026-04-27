@@ -1,8 +1,18 @@
-const escpos = require("escpos");
-const USB = require("escpos-usb");
+const path = require("path");
 
-// Auto-detect USB printer
+let escpos = null;
+let USB = null;
+
+// Dynamically load escpos modules (optional dependency)
+try {
+  escpos = require("escpos");
+  USB = require("escpos-usb");
+} catch (err) {
+  console.log("[Printer] escpos/escpos-usb not installed. Thermal printing disabled.");
+}
+
 function findPrinter() {
+  if (!escpos || !USB) return null;
   try {
     const devices = USB.findPrinter();
     if (!devices || devices.length === 0) return null;
@@ -44,6 +54,11 @@ function formatReceipt(order, settings) {
 
 function printReceipt(order, settings) {
   return new Promise((resolve, reject) => {
+    if (!escpos || !USB) {
+      reject(new Error("Printer drivers not installed. Run: npm install escpos escpos-usb usb"));
+      return;
+    }
+
     const device = findPrinter();
     if (!device) {
       reject(new Error("No USB thermal printer found"));
@@ -80,7 +95,6 @@ function printReceipt(order, settings) {
       if (r.customer) printer.text(`Cust: ${r.customer}`);
       printer.drawLine();
 
-      // Items
       r.items.forEach((item) => {
         const left = `${item.name.substring(0, 20)}`;
         const right = `${item.qty}x ${item.total}`;
@@ -110,6 +124,9 @@ function printReceipt(order, settings) {
 }
 
 function getPrinterStatus() {
+  if (!escpos || !USB) {
+    return { connected: false, name: "Drivers not installed" };
+  }
   const device = findPrinter();
   return {
     connected: !!device,
@@ -124,9 +141,7 @@ function testPrint() {
       created: new Date().toISOString(),
       payment_method: "cash",
       customer_name: "Test Customer",
-      items: [
-        { name: "Test Product", quantity: 1, unit_price: 100, total: 105 },
-      ],
+      items: [{ name: "Test Product", quantity: 1, unit_price: 100, total: 105 }],
       subtotal: 100,
       gst_total: 5,
       grand_total: 105,
