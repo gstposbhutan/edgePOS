@@ -9,6 +9,22 @@
 - [x] Supabase schema: 29 migrations, all tables, RLS, JWT claims hook
 - [x] Auth: Login page (email/password), connectivity gate, proxy route guard, WhatsApp OTP
 - [x] Products: CRUD with Supabase, categories, batches, packages (BULK/BUNDLE/MIXED/PALLET)
+- [x] **HSN Master & Category Integration** — [F-HSN-001](features/hsn-master-integration.md) ✅ CODE COMPLETE
+  - Migration 033: `hsn_master` table seeded from BTC 2022 (Bhutan Trade Classification)
+  - Migration 034: `hsn_master_id` FK on products/entity_products, category sync trigger
+  - Migration 035: `category_properties` HSN columns, `get_hsn_properties()` DB function
+  - Migration 036: Fix HSN trigger to fire on `hsn_code` column update
+  - `GET /api/hsn` (search) + `POST /api/hsn` (details by code)
+  - `HsnCodeSelector` with autocomplete, category path, and tax summary display
+  - `useHsnCodes` + `useHsnChapters` hooks
+  - Admin categories page + `PropertyConfigModal` for SUPER_ADMIN / DISTRIBUTOR
+- [x] **Product Specifications (HSN-Driven)** — [F-SPEC-001](features/product-specifications.md) ✅ CODE COMPLETE
+  - Migration 032: `entity_product_specifications` table
+  - `GET /api/entity-products/[id]/specifications` + `POST /api/admin/entity-products/[id]/specifications`
+  - `EntityProductSpecifications` — dynamic form (5 data types: text, number, unit, datetime, multi)
+  - `ProductSpecificationsDisplay` — compact + expanded read-only variants
+  - `useEntityProductSpecifications` hook
+  - Specs wired into POS product detail modal (read-only) and shop product detail modal
 - [x] Cart: Persisted to carts/cart_items tables, discounts, quantity management
 - [x] Checkout: Order creation, stock deduction, digital signature, stock gate modal
 - [x] Inventory: Stock adjustments, movement history, photo-to-stock (bill OCR), stock predictions
@@ -196,6 +212,8 @@ All specs in `docs/features/`. Each contains: overview, data model, implementati
 | `stock-prediction.md` | F-PREDICT-001 | Both platforms |
 | `marketplace-page.md` | F-MARKET-001 | Web (editorial WhatsApp-only, superseded by F-SHOP-001) |
 | `customer-cart-shop.md` | F-SHOP-001 | Web — cart-based multi-store shop |
+| `hsn-master-integration.md` | F-HSN-001 | Both platforms — HSN master + category inheritance |
+| `product-specifications.md` | F-SPEC-001 | Both platforms — dynamic HSN-driven specifications |
 | `whatsapp-ordering.md` | F-WA-ORDER-001 | Web + gateway |
 | `order-management.md` | F-ORDER-001 | Both platforms |
 | `product-packaging.md` | F-PKG-001 | Both platforms |
