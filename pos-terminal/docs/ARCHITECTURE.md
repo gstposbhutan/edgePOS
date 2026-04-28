@@ -184,14 +184,19 @@ No data is duplicated between them. Components call hooks directly — there is 
 ### Shift Flow
 
 ```
-Open Shift:  shift-modal → handleShiftAction → useShifts.openShift(userId, float)
-Close Shift: shift-modal → handleShiftAction → useShifts.closeShift(id, userId, count)
-             └── Aggregates CONFIRMED orders since shift.opened_at
-             └── Calculates expected = opening_float + cashSales - refundTotal
-             └── Calculates discrepancy = closingCount - expected
+Open Shift:   shift-modal → handleShiftAction → useShifts.openShift(userId, float)
+Close Shift:  shift-modal → handleShiftAction → useShifts.closeShift(id, userId, count)
+              └── Aggregates CONFIRMED orders since shift.opened_at
+              └── Fetches cash_adjustments for the shift (cash in/out)
+              └── expected = opening_float + cashSales - refundTotal + cashIns - cashOuts
+              └── discrepancy = closingCount - expected
 
-Z-Report:    z-report-modal → useShifts.getZReport(date)
-             └── Queries CONFIRMED/CANCELLED/REFUNDED orders for date
+Z-Report:     z-report-modal → useShifts.getZReport(date)
+              └── Queries CONFIRMED/CANCELLED/REFUNDED orders for date
+
+Cash Adjust:  /adjustments page → cash-adjustments collection
+              └── Record cash in/out during shift (petty cash, expenses, deposits)
+              └── Included in shift close expected total calculation
 ```
 
 ### Scan Flow
@@ -261,6 +266,7 @@ User clicks Scan → BarcodeScanner opens → Camera captures barcode
 | `orders` | base | order_no, status, items (json), subtotal, gst_total, grand_total, payment_method, digital_signature |
 | `inventory_movements` | base | `product` → products, movement_type, quantity, `reference_id` → orders |
 | `khata_transactions` | base | `khata_account` → khata_accounts, transaction_type (DEBIT/CREDIT), amount |
+| `cash_adjustments` | base | `amount`, `type` (CASH_IN/CASH_OUT), `reason`, `notes`, `shift` → shifts, `created_by` → users |
 | `settings` | base | store_name, tpn_gstin, gst_rate, receipt_header/footer |
 | `shifts` | base | `opened_by` → users, opening_float, status (active/closed), cash_sales, digital_sales, credit_sales |
 
@@ -395,6 +401,25 @@ Returns:
   refresh(): void
 }
 ```
+
+### `useCashAdjustments(shiftId?)`
+
+Returns:
+```ts
+{
+  adjustments: CashAdjustment[]
+  loading: boolean
+  addAdjustment(data): Promise<OpResult & { record? }>
+  cashIns: CashAdjustment[]
+  cashOuts: CashAdjustment[]
+  totalCashIn: number
+  totalCashOut: number
+  netAdjustment: number
+  refresh(): void
+}
+```
+Cash adjustments are included in shift close `expectedTotal` calculation:
+`expected = opening_float + cashSales - refundTotal + totalCashIn - totalCashOut`
 
 ### `useSettings()`
 

@@ -5,4 +5,5 @@ export type { Customer } from "@/hooks/use-customers";
 export type { Settings } from "@/hooks/use-settings";
 export type { Shift } from "@/hooks/use-shifts";
 export type { HeldCart } from "@/hooks/use-held-carts";
-export type { LayoutPreset, PaymentMethod } from "@/lib/constants";
+export type { CashAdjustment } from "@/hooks/use-cash-adjustments";
+export type { LayoutPreset, PaymentMethod, CashAdjustmentType } from "@/lib/constants";

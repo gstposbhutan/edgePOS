@@ -59,6 +59,21 @@ export const KHATA_TXN = {
   ADJUSTMENT: "ADJUSTMENT",
 } as const;
 
+export const CASH_ADJUSTMENT_TYPE = {
+  CASH_IN: "CASH_IN",
+  CASH_OUT: "CASH_OUT",
+} as const;
+export type CashAdjustmentType = (typeof CASH_ADJUSTMENT_TYPE)[keyof typeof CASH_ADJUSTMENT_TYPE];
+
+export const CASH_ADJUSTMENT_REASON = {
+  PETTY_CASH: "Petty Cash",
+  OFFICE_EXPENSE: "Office Expense",
+  DEPOSIT: "Deposit",
+  WITHDRAWAL: "Withdrawal",
+  DRAWER_CORRECTION: "Drawer Correction",
+  OTHER: "Other",
+} as const;
+
 export const SHIFT_STATUS = {
   ACTIVE: "active",
   CLOSING: "closing",

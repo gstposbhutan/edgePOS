@@ -109,6 +109,19 @@ export function useShifts() {
         requestKey: null,
       });
 
+      // Fetch cash adjustments for this shift
+      const adjustments = await pb.collection("cash_adjustments").getFullList<{ amount: number; type: string }>({
+        filter: `shift = "${shiftId}"`,
+        requestKey: null,
+      }).catch(() => []);
+
+      const totalCashIn = adjustments
+        .filter((a) => a.type === "CASH_IN")
+        .reduce((sum, a) => sum + a.amount, 0);
+      const totalCashOut = adjustments
+        .filter((a) => a.type === "CASH_OUT")
+        .reduce((sum, a) => sum + a.amount, 0);
+
       let cashSales = 0;
       let digitalSales = 0;
       let creditSales = 0;
@@ -120,7 +133,8 @@ export function useShifts() {
         if (o.refund_amount) refundTotal += o.refund_amount;
       }
 
-      const expectedTotal = shift.opening_float + cashSales - refundTotal;
+      // Expected = opening_float + cash_sales - refunds + cash_ins - cash_outs
+      const expectedTotal = shift.opening_float + cashSales - refundTotal + totalCashIn - totalCashOut;
       const discrepancy = closingCount - expectedTotal;
 
       return pb.collection("shifts").update(shiftId, {

@@ -36,6 +36,7 @@ import {
   Package,
   ClipboardList,
   Users,
+  Wallet,
   Wifi,
   WifiOff,
   DoorOpen,
@@ -533,6 +534,12 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
               <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
                 <Users className="h-4 w-4 mr-1.5" />
                 Customers
+              </Button>
+            </Link>
+            <Link href="/adjustments">
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
+                <Wallet className="h-4 w-4 mr-1.5" />
+                Cash
               </Button>
             </Link>
           </div>

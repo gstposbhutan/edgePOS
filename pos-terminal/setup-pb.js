@@ -244,10 +244,21 @@ async function setup() {
     { name: 'transaction_count', type: 'number', required: false, options: { default: 0 } },
   ]);
 
+  // ── cash_adjustments ───────────────────────────────────────────────────────
+  await addFields(pb, 'cash_adjustments', [
+    { name: 'amount', type: 'number', required: true, options: { default: 0 } },
+    { name: 'type', type: 'text', required: true },
+    { name: 'reason', type: 'text', required: true },
+    { name: 'notes', type: 'text', required: false },
+    { name: 'shift', type: 'relation', target: 'shifts', required: true },
+    { name: 'created_by', type: 'relation', target: 'users', required: true },
+  ]);
+
   // ── Access rules ───────────────────────────────────────────────────────────
   const collectionNames = [
     'entities', 'categories', 'products', 'khata_accounts', 'carts', 'cart_items',
-    'orders', 'inventory_movements', 'khata_transactions', 'settings', 'shifts'
+    'orders', 'inventory_movements', 'khata_transactions', 'settings', 'shifts',
+    'cash_adjustments'
   ];
   console.log('\n🔒 Access rules:');
   for (const name of collectionNames) {
