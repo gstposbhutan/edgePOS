@@ -196,7 +196,6 @@ app.whenReady().then(async () => {
             passwordConfirm: "admin12345",
             name: "Admin",
             role: "owner",
-            verified: true,
           }),
         });
         if (createRes.ok) {
