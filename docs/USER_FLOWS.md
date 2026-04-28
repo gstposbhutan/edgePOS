@@ -1,6 +1,6 @@
 # NEXUS BHUTAN — User Flow Diagrams
 
-**Last Updated**: 2026-04-29 (rev 2)
+**Last Updated**: 2026-04-29 (rev 3)
 **Scope**: All vendor (POS staff), wholesaler, and consumer flows including WhatsApp interactions.
 
 > All diagrams are `.mmd` files. Install the **Mermaid Editor** or **Markdown Preview Mermaid Support** extension in VS Code to preview them.
@@ -17,7 +17,8 @@
 - [V6. Khata Credit Management](flows/vendor-khata.mmd)
 - [V7. Stock Alerts](flows/vendor-stock-alerts.mmd)
 - [V8. Vendor Restock from Wholesaler](flows/vendor-restock.mmd)
-- [V9. HSN Product Setup & Specifications](flows/vendor-hsn-product-setup.mmd) — **NEW**
+- [V9. HSN Product Setup & Specifications](flows/vendor-hsn-product-setup.mmd)
+- [V10. Marketplace Order Fulfillment](flows/vendor-marketplace-order.mmd) — **NEW**
 
 ---
 
@@ -36,7 +37,9 @@
 - [C3. WhatsApp OTP Login](flows/consumer-whatsapp-otp.mmd) — updated: auto-signup + mock mode
 - [C4. WhatsApp Receipt Delivery](flows/consumer-whatsapp-receipt.mmd)
 - [C5. WhatsApp Credit Alerts](flows/consumer-credit-alerts.mmd)
-- [C6. Cart Add / Update / Checkout](flows/consumer-cart-checkout.mmd) — **NEW**
+- [C6. Cart Add / Update / Checkout](flows/consumer-cart-checkout.mmd)
+- [C7. Checkout — Place Orders](flows/consumer-checkout.mmd) — **NEW**
+- [C8. Post-Delivery Payment Upload](flows/consumer-payment-after-delivery.mmd) — **NEW**
 
 ---
 

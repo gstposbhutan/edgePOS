@@ -1,0 +1,30 @@
+flowchart TD
+    V([Vendor / Retailer]) --> ORDERS["/pos/orders\nOrders list"]
+    ORDERS --> FILTER["MARKETPLACE filter tab\norder_type = MARKETPLACE"]
+    FILTER --> DETAIL["/pos/orders/[id]\nOrder detail — reuses existing page"]
+
+    DETAIL --> STATUS{Current status}
+
+    STATUS -->|CONFIRMED| INVOICE_BTN["Generate Invoice\n(creates PDF receipt + marks PROCESSING)"]
+    INVOICE_BTN --> PATCH_PROC["PATCH /api/shop/orders/[id]\n{ status: PROCESSING }"]
+    PATCH_PROC --> RIDER["logistics-bridge:\nPOST /api/dispatch-delivery\nRider auto-assigned"]
+
+    RIDER --> RIDER_PICKUP["Rider arrives at vendor\nPicks up package"]
+    RIDER_PICKUP --> WEBHOOK_PICK["POST /webhooks/toofan\nevent: PICKED_UP\nOrder → DISPATCHED"]
+
+    WEBHOOK_PICK --> RIDER_DELIVERS["Rider delivers to customer"]
+    RIDER_DELIVERS --> WEBHOOK_DEL["POST /webhooks/toofan\nevent: DELIVERED\nOrder → DELIVERED"]
+    WEBHOOK_DEL --> PAY_LINK["Auto: WhatsApp payment link\nsent to customer"]
+
+    PAY_LINK --> WAITING["Order awaiting payment\nCustomer uploads screenshot\nOCR verifies"]
+    WAITING --> COMPLETED["Order → COMPLETED\nInvoice finalized"]
+
+    COMPLETED --> INVOICE_VIEW["View Invoice\n/pos/order/[id]\nExisting receipt page\nPDF + WhatsApp send"]
+
+    STATUS -->|CONFIRMED or PROCESSING| CANCEL["Cancel order\nstock restored via DB trigger"]
+
+    subgraph "Vendor fallback — Toofan not yet live"
+        direction LR
+        FB1["PATCH DISPATCHED\n(vendor marks manually)"] --> FB2["PATCH DELIVERED\n(vendor marks manually)"]
+        FB2 --> FB3["Payment link auto-sent\nsame as webhook path"]
+    end

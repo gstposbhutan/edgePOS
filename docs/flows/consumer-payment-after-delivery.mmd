@@ -1,0 +1,62 @@
+sequenceDiagram
+    participant C as Customer
+    participant V as Vendor POS
+    participant LB as Logistics Bridge
+    participant R as Toofan or Rider
+    participant API as Shop API
+    participant GW as WhatsApp Gateway
+    participant WA as WhatsApp
+    participant DB as Supabase
+
+    Note over C,DB: After customer places order — status is CONFIRMED
+
+    V->>API: PATCH status PROCESSING (invoice created)
+    API->>DB: Update order to PROCESSING
+    API->>LB: POST /api/dispatch-delivery fire-and-forget
+    LB->>R: Assign rider to order
+
+    Note over R,DB: Rider arrives at vendor and picks up package
+
+    R->>LB: POST /webhooks/toofan event PICKED_UP orderId
+    LB->>DB: UPDATE orders SET status DISPATCHED
+    DB->>DB: log_order_status_change trigger
+
+    Note over R,DB: Rider delivers package to customer
+
+    R->>LB: POST /webhooks/toofan event DELIVERED orderId
+    LB->>DB: UPDATE orders SET status DELIVERED
+    LB->>DB: Read payment_token buyer_whatsapp grand_total order_no
+    LB->>GW: POST /api/send-payment-link
+
+    GW->>WA: Your order has been delivered. Pay here slash pay slash orderId question token equals ...
+    WA->>C: WhatsApp notification with payment link
+
+    Note over C,WA: Customer opens link — no login required, token is the credential
+
+    C->>API: GET /api/shop/pay/orderId?token=...
+    API->>DB: Validate token + expiry + status DELIVERED
+    API-->>C: order_no, grand_total, seller_name
+
+    C->>C: Select payment screenshot from gallery or camera
+
+    C->>API: POST /api/shop/pay/orderId with token imageBase64 mimeType
+    API->>API: verifyPaymentImage from lib/vision/server-payment-ocr.js
+    API->>DB: INSERT payment_attempts (attempt tracking, max 3)
+
+    alt OCR Verified
+        API->>DB: UPDATE orders SET status COMPLETED payment_token null payment_ref referenceNo completed_at NOW payment_method detected
+        API->>GW: POST /api/send-receipt fire-and-forget
+        GW->>WA: Receipt to customer
+        API-->>C: success true order_no referenceNo
+        C->>C: Confirmation screen
+    else OCR Failed attempts less than 3
+        API-->>C: verified false reason attemptsLeft
+        C->>C: Retry button
+    else Max 3 attempts reached
+        API-->>C: verified false Max attempts reached
+        C->>C: Contact store message
+    end
+
+    Note over V,API: Vendor fallback path
+    Note over V,API: If Toofan not yet live, vendor can PATCH DISPATCHED then DELIVERED manually
+    Note over V,API: On DELIVERED the API auto-sends the payment link — same result
