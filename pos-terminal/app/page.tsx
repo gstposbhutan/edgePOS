@@ -58,11 +58,9 @@ export default function PosPage() {
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated && !user) {
-      if (window.location.pathname !== "/login") {
-        window.location.href = "/login";
-      }
+      router.push("/login/");
     }
-  }, [isAuthenticated, user, authLoading]);
+  }, [isAuthenticated, user, authLoading, router]);
 
   if (authLoading) {
     return <div className="min-h-screen flex items-center justify-center"><p className="text-muted-foreground">Loading...</p></div>;
