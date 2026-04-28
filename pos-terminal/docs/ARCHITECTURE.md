@@ -1,7 +1,7 @@
 # NEXUS BHUTAN POS Terminal — Architecture & Developer Reference
 
 > Offline-first GST-compliant POS system for Bhutan.  
-> **Stack**: Next.js 16 (App Router) · React 19 · PocketBase 0.37 · TanStack Query · Zustand · @base-ui/react · Tailwind v4
+> **Stack**: Next.js 16 (App Router) · React 19 · PocketBase 0.37 · TanStack Query · Zustand · @base-ui/react · Tailwind v4 · Electron 41 · next-themes
 
 ---
 
@@ -29,10 +29,11 @@ pos-terminal/
 │   ├── layout.tsx                # Root layout (QueryProvider, Toaster)
 │   ├── page.tsx                  # POS main screen (/)
 │   ├── login/page.tsx            # Login page
-│   ├── orders/page.tsx           # Order management
-│   ├── inventory/page.tsx        # Inventory management
-│   ├── customers/page.tsx        # Khata customer management
-│   └── settings/page.tsx         # Store settings & config
+│   ├── orders/page.tsx            # Order management
+│   ├── inventory/page.tsx          # Inventory management
+│   ├── customers/page.tsx          # Khata customer management
+│   ├── adjustments/page.tsx        # Cash adjustments ledger
+│   └── settings/page.tsx           # Store settings & config
 ├── components/
 │   ├── pos/                      # POS business components
 │   │   ├── product-grid.tsx      # Product browser with filters
@@ -69,6 +70,7 @@ pos-terminal/
 │   ├── use-products.ts           # Products + categories + realtime
 │   ├── use-settings.ts           # Store settings
 │   ├── use-shifts.ts             # Shift open/close/Z-report
+│   ├── use-cash-adjustments.ts    # Cash movement ledger
 │   └── use-undo.ts               # Undo action stack (→ zustand)
 ├── lib/                          # Utility modules
 │   ├── constants.ts              # All enums, magic strings, config values
@@ -77,12 +79,19 @@ pos-terminal/
 │   ├── pb-client.ts              # PocketBase client singleton + auth helpers
 │   ├── print-utils.ts            # Browser/thermal print utilities
 │   ├── query-client.ts           # TanStack Query client factory
+│   ├── query-client.ts           # TanStack Query client factory
 │   ├── types.ts                  # Re-exports all major types
 │   └── utils.ts                  # cn() — Tailwind class merge
 ├── stores/
 │   └── pos-store.ts              # Zustand store (filters, preferences, held carts, undo)
 ├── providers/
-│   └── query-provider.tsx        # TanStack Query provider wrapper
+│   ├── query-provider.tsx         # TanStack Query provider wrapper
+│   └── theme-provider.tsx         # next-themes dark/light provider
+├── electron/                      # Electron main process
+│   ├── main.js                    # Window, tray, IPC, user seed
+│   ├── preload.js                 # Context bridge
+│   ├── pb-launcher.js             # PocketBase binary spawn
+│   └── printer.js                 # Thermal printer integration
 ├── pb/
 │   ├── pocketbase                # PocketBase 0.37.3 embedded binary
 │   └── pb_migrations/            # PocketBase migration files
@@ -142,6 +151,25 @@ No data is duplicated between them. Components call hooks directly — there is 
 ---
 
 ## 3. Data Flow
+
+### Launch / Login Flow
+
+```
+1. Electron launches → embedded PocketBase starts
+   → Health check waits for PB readiness
+
+2. On first launch: auto-creates admin POS user
+   (admin@pos.local / admin12345, role: owner)
+
+3. App loads → PosPage checks auth state
+   → If authenticated: show POS terminal
+   → If not: render login form INLINE (no redirects)
+     └── This works on file:// protocol in Electron's static export
+
+4. User logs in → useAuth.login() → pb.authWithPassword()
+   → Router stays on /, React re-renders with isAuthenticated=true
+   → PosTerminal renders with full POS UI
+```
 
 ### Primary Flow: Click Product → Cart → Checkout → Receipt
 
@@ -615,23 +643,38 @@ Components receive data as props, not from context. They call hooks at the page 
 npm run dev                    # Next.js dev server on port 3000
 
 # PocketBase
-npm run pb:serve              # Start PocketBase on port 8090
-npm run pb:setup              # Initialize/update schema & seed data
+npm run pb:serve               # Start PocketBase on port 8090
+npm run pb:setup               # Initialize/update schema & seed data
 
 # Build
-npm run build                 # Production build (static export)
+npm run build                  # Production build (static export)
 
 # Electron
-npm run electron:dev          # Next.js + Electron in dev mode
-npm run electron:build        # Build distributable Electron app
+npm run electron:dev           # Next.js + Electron in dev mode
+npm run electron:build         # Build distributable AppImage
+npm run electron:pack          # Build unpackaged Electron app (testing)
+
+# Quick rebuild & launch
+./dev.sh                       # Clean PB data → build → launch AppImage
 
 # Testing
-npm test                      # Run vitest
-npm run test:e2e              # Run Playwright e2e tests
+npm test                       # Run vitest
+npm run test:e2e               # Run Playwright e2e tests
 
 # Linting
-npm run lint                  # ESLint
+npm run lint                   # ESLint
 ```
+
+### Electron AppImage
+
+The packaged AppImage (`release/NEXUS BHUTAN POS-*.AppImage`):
+- Launches embedded PocketBase server automatically
+- Database stored in `~/.config/pos-terminal/pb_data/`
+- On first launch, auto-creates admin user: `admin@pos.local` / `admin12345`
+- Login form renders inline (no redirects — works with `file://` protocol)
+- System tray with printer test and quit
+- Thermal printer support (ESC/POS via USB)
+- Multi-store sync (configurable PocketBase URL)
 
 ### Environment
 
