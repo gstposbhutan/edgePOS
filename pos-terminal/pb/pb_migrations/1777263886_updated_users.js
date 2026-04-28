@@ -20,22 +20,7 @@ migrate((app) => {
     ]
   }))
 
-  app.save(collection)
-
-  // Seed default POS user (skip if already exists)
-  try {
-    const user = new Record(collection, {
-      email: "admin@pos.local",
-      password: "admin12345",
-      passwordConfirm: "admin12345",
-      name: "Admin",
-      role: "owner",
-      verified: true,
-    });
-    app.save(user);
-  } catch (_) { /* user already exists */ }
-
-  return collection
+  return app.save(collection)
 }, (app) => {
   const collection = app.findCollectionByNameOrId("_pb_users_auth_")
 

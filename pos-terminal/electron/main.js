@@ -183,14 +183,11 @@ app.whenReady().then(async () => {
 
     // Seed default POS user on first launch
     try {
-      const res = await fetch(PB_URL + "/api/collections/users/auth-with-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identity: "admin@pos.local", password: "admin12345" }),
-      });
-      if (!res.ok) {
-        // User doesn't exist or can't auth — try creating
-        await fetch(PB_URL + "/api/collections/users/records", {
+      // Check if any user exists
+      const listRes = await fetch(PB_URL + "/api/collections/users/records?perPage=1");
+      const listData = await listRes.json();
+      if (!listData.items || listData.items.length === 0) {
+        const createRes = await fetch(PB_URL + "/api/collections/users/records", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -202,10 +199,14 @@ app.whenReady().then(async () => {
             verified: true,
           }),
         });
-        console.log("[Main] Created default POS user");
+        if (createRes.ok) {
+          console.log("[Main] Created default POS user: admin@pos.local");
+        } else {
+          console.log("[Main] User creation failed:", await createRes.text());
+        }
       }
-    } catch (_) {
-      console.log("[Main] POS user already exists or setup not needed");
+    } catch (e) {
+      console.log("[Main] User seed error:", e.message);
     }
   } catch (err) {
     console.error("[Main] PocketBase failed to start:", err.message);
