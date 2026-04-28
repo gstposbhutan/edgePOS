@@ -9,21 +9,39 @@
 
 ## Overview
 
-Completes the consumer purchase loop that begins at the cart. A customer whose cart contains products from one or more vendors proceeds through a checkout review page, places all vendor orders in a single action, and pays **after delivery** by uploading a payment screenshot via a WhatsApp link.
+Completes the online consumer purchase loop that begins at the `/shop` cart.
+
+> **This is distinct from the physical POS sale.** When a customer visits the store in person, the vendor creates a sales invoice directly and the customer pays immediately — no order is needed, and the receipt is the invoice. That flow (`POS_SALE`) is already fully built.
+>
+> This feature covers the **online marketplace flow** only: customer orders remotely, goods are delivered by a rider, and payment happens after delivery.
+
+A customer whose cart contains products from one or more vendors proceeds through a checkout review page, places all vendor orders in a single action, and pays **after delivery** by uploading a payment screenshot via a WhatsApp link.
 
 Key principles:
 - **One `MARKETPLACE` order per vendor** is created from the cart at checkout.
 - **Payment is deferred** — the customer pays after the goods arrive, not upfront.
-- **Rider controls the delivery status** — Toofan/Rider webhooks drive `DISPATCHED` and `DELIVERED` transitions. The vendor only controls `CONFIRMED → PROCESSING` (invoice creation).
+- **Vendor confirms by generating an invoice** — this moves the order to `PROCESSING` and triggers rider assignment. There is no separate "confirm" button; generating the invoice is the confirmation.
+- **Rider controls delivery status** — Toofan/Rider webhooks drive `DISPATCHED` (picked up) and `DELIVERED` (handed to customer). Vendor does not manually mark these.
 - **Payment link is auto-sent** when the rider marks the order `DELIVERED`.
 - **OCR verification** of the payment screenshot closes the order as `COMPLETED`.
 
 ---
 
+## Order Creation Paths
+
+| Path | Actor | Mechanism |
+|------|-------|-----------|
+| **Customer self-checkout** | Customer online | Cart → `/shop/checkout` → `POST /api/shop/checkout` |
+| **Vendor-created order** | Vendor on behalf of customer | POS orders page → "New Customer Order" modal → `POST /api/shop/orders` |
+| **WhatsApp ordering** | Customer via WhatsApp | Existing gateway `order-handler.ts` (F-WA-ORDER-001, already built) |
+
+All three paths produce an identical `MARKETPLACE` order. The delivery and payment flow after creation is the same regardless of how the order was placed.
+
 ## Prerequisites
 
-- Customer is authenticated via WhatsApp OTP (F-AUTH-001). All `/shop/*` pages require an active session; unauthenticated visitors are redirected to `/login?redirect=<current_path>`.
-- The payment upload page (`/pay/[orderId]`) lives **outside** the auth-guarded `/shop` layout — it is accessed via a WhatsApp link and authenticated only by the `payment_token` query parameter.
+- **Customer self-checkout**: Customer must be authenticated via WhatsApp OTP. All `/shop/*` pages require an active session; unauthenticated visitors are redirected to `/login?redirect=<current_path>`.
+- **Vendor-created order**: Only the customer's WhatsApp number is required. All other details (name, address) are optional — vendor fills what they know. If the customer has no existing account, one is auto-created from the WhatsApp number (same auto-signup logic as OTP verify). Customer does not need to be logged in or even have ever used the app.
+- **Payment upload page** (`/pay/[orderId]`): lives **outside** the auth-guarded `/shop` layout — accessed via WhatsApp link, authenticated only by `payment_token` query parameter.
 
 ---
 
@@ -124,6 +142,39 @@ Creates all per-vendor MARKETPLACE orders from the customer's active carts. Each
 }
 ```
 
+### `POST /api/shop/orders` — Vendor Creates Order on Behalf of Customer
+
+Vendor-side order creation. Auth: vendor session (`seller_id = auth_entity_id`).
+
+**Request body**:
+```json
+{
+  "customer_whatsapp": "+97517123456",
+  "customer_name": "Sonam",
+  "delivery_address": "House 12, Norzin Lam",
+  "delivery_lat": 27.4728,
+  "delivery_lng": 89.6390,
+  "items": [
+    { "product_id": "uuid", "quantity": 2 }
+  ]
+}
+```
+
+Only `customer_whatsapp` and `items` are required. Everything else is optional.
+
+**Logic**:
+1. Look up `entities WHERE whatsapp_no = customer_whatsapp AND role = 'CUSTOMER'`
+2. If not found — auto-create customer (same pattern as `app/api/auth/whatsapp/verify/route.js` auto-signup)
+3. Validate products belong to vendor (`created_by = seller_id`), check stock
+4. Calculate totals, generate `MKT-YYYY-XXXXX`, digital signature, `payment_token`
+5. INSERT `orders` at `CONFIRMED`, `order_source = 'POS'` (vendor-initiated, not `MARKETPLACE_WEB`), `seller_id`, `buyer_id`, `buyer_whatsapp`
+6. INSERT `order_items`
+7. Fire-and-forget: WhatsApp order confirmation to customer
+
+No cart involved — items are passed directly in the request body.
+
+**UI entry point**: "New Customer Order" button on `app/pos/orders/page.jsx` opens `components/pos/create-marketplace-order-modal.jsx` — a modal with WhatsApp number input (required), optional customer name/address, and a product picker from the vendor's own product catalog.
+
 ### `GET /api/shop/orders`
 
 Customer's MARKETPLACE orders, ordered by `created_at DESC`. Filtered by `buyer_whatsapp = customerPhone AND order_type = 'MARKETPLACE'`. Enriched with `seller_entity.name`.
@@ -136,16 +187,18 @@ Single order for the customer. Validates ownership via `buyer_whatsapp`. Returns
 
 Vendor status update. Validates `seller_id = auth_entity_id`.
 
-Vendor-controlled transitions only:
+**Vendor only controls two transitions** — everything else is rider-driven:
 ```js
-CONFIRMED  → [PROCESSING, CANCELLED]
-PROCESSING → [CANCELLED]
+CONFIRMED  → [PROCESSING, CANCELLED]   // vendor generates invoice → PROCESSING
+PROCESSING → [CANCELLED]               // rider takes over from here
 // Fallback only (when Toofan not live):
 DISPATCHED → [DELIVERED]
 DELIVERED  → [COMPLETED]
 ```
 
-**On `PROCESSING`**: fires `POST /api/dispatch-delivery` to logistics-bridge (fire-and-forget) to assign rider.
+**On `PROCESSING`** (vendor generates invoice and confirms the order for dispatch):
+- Fires `POST /api/dispatch-delivery` to logistics-bridge (fire-and-forget) to assign rider
+- The invoice is generated client-side using the existing `Receipt` component and PDF logic from `app/pos/order/[id]/page.jsx` — same receipt format as a POS sale, just triggered from the marketplace order detail page
 
 **On `DELIVERED`** (fallback): reads `payment_token`, builds `/pay/[id]?token=...`, fires `POST {GATEWAY}/api/send-payment-link`.
 
@@ -274,10 +327,10 @@ Validates token via `GET /api/shop/pay/[orderId]?token=...`. Renders `<CustomerP
 
 - [ ] Migration 046: `payment_token`, `delivery_address`, `delivery_lat`, `delivery_lng` on orders
 - [ ] `lib/vision/server-payment-ocr.js` — extract OCR from `/api/payment-verify/route.js`
-- [ ] `app/api/shop/checkout/route.js`
-- [ ] `app/api/shop/orders/route.js`
-- [ ] `app/api/shop/orders/[id]/route.js` (GET customer + PATCH vendor)
-- [ ] `app/api/shop/pay/[orderId]/route.js` (GET validate + POST OCR)
+- [ ] `app/api/shop/checkout/route.js` — customer self-checkout
+- [ ] `app/api/shop/orders/route.js` — GET (customer list) + POST (vendor creates on behalf)
+- [ ] `app/api/shop/orders/[id]/route.js` — GET (customer) + PATCH (vendor)
+- [ ] `app/api/shop/pay/[orderId]/route.js` — GET validate + POST OCR
 - [ ] WhatsApp gateway: `send-order-confirmation`, `send-order-notification`, `send-payment-link`
 - [ ] Logistics bridge: `PICKED_UP` → DISPATCHED + `DELIVERED` → DELIVERED + payment link
 - [ ] `app/shop/layout.jsx` — auth guard
@@ -286,4 +339,5 @@ Validates token via `GET /api/shop/pay/[orderId]?token=...`. Renders `<CustomerP
 - [ ] `app/pay/[orderId]/page.jsx` + `components/shop/payment-upload.jsx`
 - [ ] `hooks/use-shop-orders.js`
 - [ ] `components/shop/cart-drawer.jsx` — wire Checkout button
-- [ ] `app/pos/orders/page.jsx` — add MARKETPLACE filter tab
+- [ ] `app/pos/orders/page.jsx` — MARKETPLACE filter tab + "New Customer Order" button
+- [ ] `components/pos/create-marketplace-order-modal.jsx` — WhatsApp input + product picker + optional delivery details

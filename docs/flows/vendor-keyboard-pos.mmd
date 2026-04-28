@@ -1,0 +1,39 @@
+flowchart TD
+    HEADER["POS Header\n[F9] Toggle: Touch Mode / Keyboard Mode\nStored in localStorage per device"]
+
+    HEADER -->|Touch Mode| TOUCH["Existing touch POS\napp/pos/page.jsx\nUnchanged"]
+
+    HEADER -->|Keyboard Mode| CART_SCREEN["MAIN SCREEN: Cart Table\napp/pos/keyboard/page.jsx\nFull-width — no product panel\n\n# | Qty | Product | Unit Price | Discount | Total\n─────────────────────────────────────────\n1 ► [2]  Druk Milk         15.00   0.00   30.00\n2   [1]  Bhutan Bread      12.00   0.00   12.00\n─────────────────────────────────────────\nSubtotal: 39.05   GST: 1.95   Total: 41.00\n─────────────────────────────────────────\n[F1 Help][F2 New][F3 Add][F5 Pay][F7 Void]"]
+
+    CART_SCREEN -->|Any printable key or F3| SEARCH_MODAL["PRODUCT SEARCH MODAL\ncomponents/pos/keyboard/product-search-modal\n\nSearch: [milk___________]\n────────────────────────────────\n► Druk Milk 500ml   DM500  142  Nu.15\n  Druk Milk 1L      DM1L    88  Nu.25\n  Suja Milk 250ml   SM250   34  Nu.10\n────────────────────────────────\n↑↓ navigate   Qty:[1]  Unit:[1]Pcs [2]Pkt [3]Ctn\nEnter = add to cart   Esc = close"]
+
+    CART_SCREEN -->|Barcode scanner 8+ digits| BARCODE["Exact barcode lookup\nSkips modal entirely\nAdds to cart directly"]
+
+    SEARCH_MODAL -->|Enter| CART_SCREEN
+    SEARCH_MODAL -->|Escape| CART_SCREEN
+    BARCODE --> CART_SCREEN
+
+    CART_SCREEN -->|F5| PAYMENT_MODAL["PAYMENT MODAL\ncomponents/pos/keyboard/payment-modal\n\nGrand Total: Nu. 177.07\n[1]CASH [2]MBOB [3]MPAY [4]RTGS [5]CREDIT\n\n(CASH) Received: [200.00]\nNu.10 Nu.50 Nu.100 Nu.500 Nu.1000\n[E] Exact   [R] Round to Nu.5\nChange: Nu. 22.93\n\nEnter = Complete   Esc = Cancel"]
+
+    CART_SCREEN -->|F1| HELP["HELP OVERLAY\nFull shortcut reference grid\nF1 / Esc / Enter to dismiss"]
+
+    CART_SCREEN -->|F2| NEW_TX["New transaction\nConfirm if cart has items\nClears cart and customer"]
+
+    CART_SCREEN -->|F4| CUST_MODAL["Assign Customer\nWhatsApp number input\nAuto-links khata account"]
+
+    CART_SCREEN -->|F7| VOID["Void selected row\nRemoves from cart"]
+
+    CART_SCREEN -->|F10| DISCOUNT["Discount modal\nApply to selected row or whole cart"]
+
+    PAYMENT_MODAL -->|Enter when received >= total| COMPLETE["Transaction complete\nOrder created — CONFIRMED\nReceipt auto-sent via WhatsApp"]
+
+    COMPLETE -->|F6| RECEIPT["Print / send receipt\nExisting receipt component"]
+    COMPLETE --> CART_SCREEN
+
+    subgraph "All other vendor pages — always keyboard-dense no toggle"
+        direction LR
+        OA["/pos/orders\nCompact table rows\nN = New Customer Order\nEnter = open detail"]
+        OB["/pos/products\nDense 36px rows\nN = Add  E = Edit"]
+        OC["/pos/inventory\nDense table\nTab navigation"]
+        OD["CreateMarketplaceOrderModal\nAuto-focus WhatsApp input\nTab order  Enter submits"]
+    end

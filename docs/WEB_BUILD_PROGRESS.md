@@ -213,6 +213,7 @@ All specs in `docs/features/`. Each contains: overview, data model, implementati
 | `marketplace-page.md` | F-MARKET-001 | Web (editorial WhatsApp-only, superseded by F-SHOP-001) |
 | `customer-cart-shop.md` | F-SHOP-001 | Web — cart-based multi-store shop |
 | `customer-checkout-flow.md` | F-CHECKOUT-001 | Web — checkout, post-delivery payment, OCR |
+| `vendor-keyboard-ui.md` | F-KBD-002 | Web — keyboard/desktop POS layout + dense vendor pages |
 | `hsn-master-integration.md` | F-HSN-001 | Both platforms — HSN master + category inheritance |
 | `product-specifications.md` | F-SPEC-001 | Both platforms — dynamic HSN-driven specifications |
 | `whatsapp-ordering.md` | F-WA-ORDER-001 | Web + gateway |

@@ -18,7 +18,8 @@
 - [V7. Stock Alerts](flows/vendor-stock-alerts.mmd)
 - [V8. Vendor Restock from Wholesaler](flows/vendor-restock.mmd)
 - [V9. HSN Product Setup & Specifications](flows/vendor-hsn-product-setup.mmd)
-- [V10. Marketplace Order Fulfillment](flows/vendor-marketplace-order.mmd) — **NEW**
+- [V10. Marketplace Order Fulfillment](flows/vendor-marketplace-order.mmd)
+- [V11. Keyboard/Desktop POS Layout](flows/vendor-keyboard-pos.mmd) — **NEW**
 
 ---
 
