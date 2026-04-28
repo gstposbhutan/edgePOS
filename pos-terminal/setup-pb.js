@@ -10,8 +10,24 @@ const AUTH_RULE = "@request.auth.id != ''";
 
 async function addField(pb, collectionName, fieldDef) {
   const col = await pb.collections.getOne(collectionName);
-  if (col.fields.some((f) => f.name === fieldDef.name)) {
-    console.log(`  ⏭ Field "${fieldDef.name}" already exists in ${collectionName}`);
+  const existing = col.fields.find((f) => f.name === fieldDef.name);
+  if (existing) {
+    // Update existing field properties (required, options, etc.)
+    let changed = false;
+    if (fieldDef.required !== undefined && existing.required !== fieldDef.required) {
+      existing.required = fieldDef.required;
+      changed = true;
+    }
+    if (fieldDef.options && Object.keys(fieldDef.options).some(k => existing.options?.[k] !== fieldDef.options[k])) {
+      existing.options = { ...existing.options, ...fieldDef.options };
+      changed = true;
+    }
+    if (changed) {
+      await pb.collections.update(col.id, col);
+      console.log(`  ✓ Updated "${fieldDef.name}" in ${collectionName}`);
+    } else {
+      console.log(`  ⏭ Field "${fieldDef.name}" already exists in ${collectionName}`);
+    }
     return;
   }
   col.fields.push(fieldDef);
@@ -214,7 +230,7 @@ async function setup() {
   await addFields(pb, 'shifts', [
     { name: 'opened_by', type: 'relation', target: 'users', required: true },
     { name: 'closed_by', type: 'relation', target: 'users', required: false },
-    { name: 'opening_float', type: 'number', required: true, options: { default: 0 } },
+    { name: 'opening_float', type: 'number', required: false, options: { default: 0 } },
     { name: 'closing_count', type: 'number', required: false, options: { default: 0 } },
     { name: 'expected_total', type: 'number', required: false, options: { default: 0 } },
     { name: 'discrepancy', type: 'number', required: false, options: { default: 0 } },

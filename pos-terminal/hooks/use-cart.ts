@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getPB, PB_REQ } from "@/lib/pb-client";
 import { calcItemTotals, calcCartTotals } from "@/lib/gst";
 import { CART_STATUS } from "@/lib/constants";
+import { usePosStore } from "@/stores/pos-store";
 import type { Product } from "./use-products";
 
 export interface CartItem {
@@ -30,216 +31,52 @@ function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : "Operation failed";
 }
 
+async function fetchActiveCart(): Promise<Cart> {
+  const pb = getPB();
+  if (!pb.authStore.isValid) throw new Error("Not authenticated");
+  const records = await pb.collection("carts").getFullList<Cart>({
+    filter: 'status = "ACTIVE"',
+    sort: "-created_at",
+    requestKey: null,
+  });
+  if (records.length > 0) return records[0];
+  const newCart = await pb.collection("carts").create({ status: CART_STATUS.ACTIVE }, PB_REQ);
+  return newCart as unknown as Cart;
+}
+
+async function fetchCartItems(cartId: string): Promise<CartItem[]> {
+  const pb = getPB();
+  return pb.collection("cart_items").getFullList<CartItem>({
+    filter: `cart = "${cartId}"`,
+    expand: "product",
+    sort: "created_at",
+    requestKey: null,
+  });
+}
+
 export function useCart() {
   const pb = getPB();
-  const [cart, setCart] = useState<Cart | null>(null);
-  const [items, setItems] = useState<CartItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [taxExempt, setTaxExempt] = useState(false);
-  const itemsRef = useRef(items);
-  itemsRef.current = items;
+  const queryClient = useQueryClient();
+  const taxExempt = usePosStore((s) => s.taxExempt);
+  const setTaxExempt = usePosStore((s) => s.setTaxExempt);
 
-  const fetchActiveCart = useCallback(async () => {
-    if (!pb.authStore.isValid) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    try {
-      const records = await pb.collection("carts").getFullList<Cart>({
-        filter: 'status = "ACTIVE"',
-        sort: "-created_at",
-        requestKey: null,
-      });
-      if (records.length > 0) {
-        setCart(records[0]);
-        const itemRecords = await pb.collection("cart_items").getFullList<CartItem>({
-          filter: `cart = "${records[0].id}"`,
-          expand: "product",
-          sort: "created_at",
-          requestKey: null,
-        });
-        setItems(itemRecords);
-      } else {
-        const newCart = await pb.collection("carts").create({ status: CART_STATUS.ACTIVE }, PB_REQ);
-        setCart(newCart as unknown as Cart);
-        setItems([]);
-      }
-    } catch (err) {
-      console.error("Cart fetch error:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [pb]);
+  const cartQuery = useQuery({
+    queryKey: ["cart"],
+    queryFn: fetchActiveCart,
+    staleTime: Infinity,
+  });
 
-  useEffect(() => {
-    fetchActiveCart();
+  const cart = cartQuery.data ?? null;
+  const cartId = cart?.id;
 
-    const unsubscribeAuth = pb.authStore.onChange(() => {
-      if (pb.authStore.isValid) {
-        fetchActiveCart();
-      }
-    });
+  const itemsQuery = useQuery({
+    queryKey: ["cart-items", cartId],
+    queryFn: () => fetchCartItems(cartId!),
+    enabled: !!cartId,
+    staleTime: 0,
+  });
 
-    return () => unsubscribeAuth();
-  }, [fetchActiveCart, pb]);
-
-  const removeItem = useCallback(
-    async (itemId: string): Promise<OpResult> => {
-      try {
-        await pb.collection("cart_items").delete(itemId, PB_REQ);
-        setItems((prev) => prev.filter((i) => i.id !== itemId));
-        return { success: true };
-      } catch (err) {
-        return { success: false, error: errMsg(err) };
-      }
-    },
-    [pb]
-  );
-
-  const updateQty = useCallback(
-    async (itemId: string, newQty: number): Promise<OpResult> => {
-      if (newQty < 1) return removeItem(itemId);
-      const item = itemsRef.current.find((i) => i.id === itemId);
-      if (!item) return { success: false, error: "Item not found" };
-
-      const { gstAmount, total } = calcItemTotals({
-        unitPrice: item.unit_price,
-        discount: item.discount,
-        quantity: newQty,
-      });
-
-      try {
-        const updated = await pb.collection("cart_items").update(itemId, {
-          quantity: newQty,
-          gst_5: gstAmount,
-          total,
-        }, PB_REQ);
-        setItems((prev) => prev.map((i) => (i.id === itemId ? (updated as unknown as CartItem) : i)));
-        return { success: true };
-      } catch (err) {
-        return { success: false, error: errMsg(err) };
-      }
-    },
-    [pb, removeItem]
-  );
-
-  const addItem = useCallback(
-    async (product: Product): Promise<OpResult> => {
-      if (!cart) return { success: false, error: "No active cart" };
-      const unitPrice = product.sale_price || product.mrp || 0;
-      const existing = itemsRef.current.find((i) => i.product === product.id);
-
-      if (existing) {
-        return updateQty(existing.id, existing.quantity + 1);
-      }
-
-      const { gstAmount, total } = calcItemTotals({ unitPrice, discount: 0, quantity: 1 });
-
-      try {
-        const newItem = await pb.collection("cart_items").create({
-          cart: cart.id,
-          product: product.id,
-          name: product.name,
-          sku: product.sku,
-          quantity: 1,
-          unit_price: unitPrice,
-          discount: 0,
-          gst_5: gstAmount,
-          total,
-        }, PB_REQ);
-        setItems((prev) => [...prev, newItem as unknown as CartItem]);
-        return { success: true };
-      } catch (err) {
-        return { success: false, error: errMsg(err) };
-      }
-    },
-    [cart, updateQty, pb]
-  );
-
-  const applyDiscount = useCallback(
-    async (itemId: string, discountPerUnit: number): Promise<OpResult> => {
-      const item = itemsRef.current.find((i) => i.id === itemId);
-      if (!item) return { success: false, error: "Item not found" };
-      const clamped = Math.min(Math.max(0, discountPerUnit), item.unit_price);
-      const { gstAmount, total } = calcItemTotals({
-        unitPrice: item.unit_price,
-        discount: clamped,
-        quantity: item.quantity,
-      });
-
-      try {
-        const updated = await pb.collection("cart_items").update(itemId, {
-          discount: clamped,
-          gst_5: gstAmount,
-          total,
-        }, PB_REQ);
-        setItems((prev) => prev.map((i) => (i.id === itemId ? (updated as unknown as CartItem) : i)));
-        return { success: true };
-      } catch (err) {
-        return { success: false, error: errMsg(err) };
-      }
-    },
-    [pb]
-  );
-
-  const overridePrice = useCallback(
-    async (itemId: string, newUnitPrice: number): Promise<OpResult> => {
-      const item = itemsRef.current.find((i) => i.id === itemId);
-      if (!item) return { success: false, error: "Item not found" };
-      const price = Math.max(0, newUnitPrice);
-      const { gstAmount, total } = calcItemTotals({
-        unitPrice: price,
-        discount: item.discount,
-        quantity: item.quantity,
-      });
-
-      try {
-        const updated = await pb.collection("cart_items").update(itemId, {
-          unit_price: price,
-          gst_5: gstAmount,
-          total,
-        }, PB_REQ);
-        setItems((prev) => prev.map((i) => (i.id === itemId ? (updated as unknown as CartItem) : i)));
-        return { success: true };
-      } catch (err) {
-        return { success: false, error: errMsg(err) };
-      }
-    },
-    [pb]
-  );
-
-  const clearCart = useCallback(async (): Promise<OpResult> => {
-    if (!cart) return { success: false, error: "No active cart" };
-    try {
-      const currentItems = itemsRef.current;
-      await Promise.all(currentItems.map((item) =>
-        pb.collection("cart_items").delete(item.id, PB_REQ).catch(() => {})
-      ));
-      await pb.collection("carts").update(cart.id, { status: CART_STATUS.ABANDONED }, PB_REQ);
-      const newCart = await pb.collection("carts").create({ status: CART_STATUS.ACTIVE }, PB_REQ);
-      setCart(newCart as unknown as Cart);
-      setItems([]);
-      return { success: true };
-    } catch (err) {
-      return { success: false, error: errMsg(err) };
-    }
-  }, [cart, pb]);
-
-  const setCustomer = useCallback(
-    async (customerId: string | null): Promise<OpResult> => {
-      if (!cart) return { success: false, error: "No active cart" };
-      try {
-        await pb.collection("carts").update(cart.id, {
-          customer_whatsapp: customerId || "",
-        }, PB_REQ);
-        return { success: true };
-      } catch (err) {
-        return { success: false, error: errMsg(err) };
-      }
-    },
-    [cart, pb]
-  );
+  const items = itemsQuery.data ?? [];
 
   const totals = calcCartTotals(
     items.map((i) => ({ unitPrice: i.unit_price, discount: i.discount, quantity: i.quantity }))
@@ -249,10 +86,160 @@ export function useCart() {
   const gstTotalExempt = taxExempt ? 0 : totals.gstTotal;
   const grandTotalExempt = taxExempt ? totals.taxableSubtotal : totals.grandTotal;
 
+  const refetchItems = () => {
+    if (cartId) queryClient.invalidateQueries({ queryKey: ["cart-items", cartId] });
+  };
+
+  const addItemMutation = useMutation({
+    mutationFn: async (product: Product): Promise<CartItem> => {
+      if (!cart) throw new Error("No active cart");
+      // Check cache for existing item (reflects latest server state via refetch)
+      const current = queryClient.getQueryData<CartItem[]>(["cart-items", cartId]) ?? [];
+      const existing = current.find((i) => i.product === product.id);
+      if (existing) {
+        const newQty = existing.quantity + 1;
+        const { gstAmount, total } = calcItemTotals({
+          unitPrice: existing.unit_price, discount: existing.discount, quantity: newQty,
+        });
+        await pb.collection("cart_items").update(existing.id, { quantity: newQty, gst_5: gstAmount, total }, PB_REQ);
+        return existing; // onSuccess will refetch, so return value isn't critical
+      }
+      const unitPrice = product.sale_price || product.mrp || 0;
+      const { gstAmount, total } = calcItemTotals({ unitPrice, discount: 0, quantity: 1 });
+      return pb.collection("cart_items").create({
+        cart: cart.id, product: product.id, name: product.name, sku: product.sku,
+        quantity: 1, unit_price: unitPrice, discount: 0, gst_5: gstAmount, total,
+      }, PB_REQ) as unknown as CartItem;
+    },
+    onSuccess: () => refetchItems(),
+  });
+
+  const addItem = async (product: Product): Promise<OpResult> => {
+    try {
+      await addItemMutation.mutateAsync(product);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: errMsg(err) };
+    }
+  };
+
+  const removeItemMutation = useMutation({
+    mutationFn: async (itemId: string) => {
+      await pb.collection("cart_items").delete(itemId, PB_REQ);
+    },
+    onSuccess: () => refetchItems(),
+  });
+
+  const removeItem = async (itemId: string): Promise<OpResult> => {
+    try {
+      await removeItemMutation.mutateAsync(itemId);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: errMsg(err) };
+    }
+  };
+
+  const updateQtyMutation = useMutation({
+    mutationFn: async ({ itemId, newQty }: { itemId: string; newQty: number }) => {
+      if (newQty < 1) {
+        await pb.collection("cart_items").delete(itemId, PB_REQ);
+        return null;
+      }
+      const current = queryClient.getQueryData<CartItem[]>(["cart-items", cartId]) ?? [];
+      const item = current.find((i) => i.id === itemId);
+      if (!item) throw new Error("Item not found");
+      const { gstAmount, total } = calcItemTotals({
+        unitPrice: item.unit_price, discount: item.discount, quantity: newQty,
+      });
+      await pb.collection("cart_items").update(itemId, { quantity: newQty, gst_5: gstAmount, total }, PB_REQ);
+      return null;
+    },
+    onSuccess: () => refetchItems(),
+  });
+
+  const updateQty = async (itemId: string, newQty: number): Promise<OpResult> => {
+    try {
+      await updateQtyMutation.mutateAsync({ itemId, newQty });
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: errMsg(err) };
+    }
+  };
+
+  const applyDiscountMutation = useMutation({
+    mutationFn: async ({ itemId, discountPerUnit }: { itemId: string; discountPerUnit: number }) => {
+      const current = queryClient.getQueryData<CartItem[]>(["cart-items", cartId]) ?? [];
+      const item = current.find((i) => i.id === itemId);
+      if (!item) throw new Error("Item not found");
+      const clamped = Math.min(Math.max(0, discountPerUnit), item.unit_price);
+      const { gstAmount, total } = calcItemTotals({
+        unitPrice: item.unit_price, discount: clamped, quantity: item.quantity,
+      });
+      await pb.collection("cart_items").update(itemId, { discount: clamped, gst_5: gstAmount, total }, PB_REQ);
+    },
+    onSuccess: () => refetchItems(),
+  });
+
+  const applyDiscount = async (itemId: string, discountPerUnit: number): Promise<OpResult> => {
+    try {
+      await applyDiscountMutation.mutateAsync({ itemId, discountPerUnit });
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: errMsg(err) };
+    }
+  };
+
+  const overridePriceMutation = useMutation({
+    mutationFn: async ({ itemId, newUnitPrice }: { itemId: string; newUnitPrice: number }) => {
+      const current = queryClient.getQueryData<CartItem[]>(["cart-items", cartId]) ?? [];
+      const item = current.find((i) => i.id === itemId);
+      if (!item) throw new Error("Item not found");
+      const price = Math.max(0, newUnitPrice);
+      const { gstAmount, total } = calcItemTotals({
+        unitPrice: price, discount: item.discount, quantity: item.quantity,
+      });
+      await pb.collection("cart_items").update(itemId, { unit_price: price, gst_5: gstAmount, total }, PB_REQ);
+    },
+    onSuccess: () => refetchItems(),
+  });
+
+  const overridePrice = async (itemId: string, newUnitPrice: number): Promise<OpResult> => {
+    try {
+      await overridePriceMutation.mutateAsync({ itemId, newUnitPrice });
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: errMsg(err) };
+    }
+  };
+
+  const clearCart = async (): Promise<OpResult> => {
+    if (!cart) return { success: false, error: "No active cart" };
+    try {
+      await Promise.all(items.map((item) =>
+        pb.collection("cart_items").delete(item.id, PB_REQ).catch(() => {})
+      ));
+      await pb.collection("carts").update(cart.id, { status: CART_STATUS.ABANDONED }, PB_REQ);
+      await queryClient.invalidateQueries({ queryKey: ["cart"] });
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: errMsg(err) };
+    }
+  };
+
+  const setCustomer = async (customerId: string | null): Promise<OpResult> => {
+    if (!cart) return { success: false, error: "No active cart" };
+    try {
+      await pb.collection("carts").update(cart.id, { customer_whatsapp: customerId || "" }, PB_REQ);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: errMsg(err) };
+    }
+  };
+
   return {
     cart,
     items,
-    loading,
+    loading: cartQuery.isLoading || itemsQuery.isLoading,
     ...totals,
     taxExempt,
     setTaxExempt,
@@ -266,6 +253,9 @@ export function useCart() {
     removeItem,
     clearCart,
     setCustomer,
-    refresh: fetchActiveCart,
+    refresh: () => {
+      queryClient.invalidateQueries({ queryKey: ["cart"] });
+      if (cartId) queryClient.invalidateQueries({ queryKey: ["cart-items", cartId] });
+    },
   };
 }

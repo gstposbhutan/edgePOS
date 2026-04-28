@@ -17,6 +17,7 @@ interface CartTotalsProps {
   loading: boolean;
   hasItems: boolean;
   onCheckout: () => void;
+  noShift: boolean;
 }
 
 export function CartTotals({
@@ -31,6 +32,7 @@ export function CartTotals({
   loading,
   hasItems,
   onCheckout,
+  noShift,
 }: CartTotalsProps) {
   return (
     <div className="p-4 border-t border-border space-y-2 shrink-0">
@@ -88,13 +90,20 @@ export function CartTotals({
         </span>
       </div>
 
+      {noShift && (
+        <div className="flex items-center gap-2 p-2 rounded bg-destructive/10 text-destructive text-xs mb-2">
+          <ShieldX className="h-3.5 w-3.5 shrink-0" />
+          <span>Open a shift to accept payments</span>
+        </div>
+      )}
+
       <Button
-        className={`w-full mt-2 h-12 text-base ${hasItems ? "animate-pulse-subtle" : ""}`}
+        className={`w-full mt-2 h-12 text-base ${hasItems && !noShift ? "animate-pulse-subtle" : ""}`}
         onClick={onCheckout}
-        disabled={loading || !hasItems}
+        disabled={loading || !hasItems || noShift}
       >
         <Receipt className="h-5 w-5 mr-2" />
-        Pay Nu. {(taxExempt ? grandTotalExempt : grandTotal).toFixed(0)}
+        {noShift ? "Open Shift First" : `Pay Nu. ${(taxExempt ? grandTotalExempt : grandTotal).toFixed(0)}`}
         <ArrowRight className="h-4 w-4 ml-2" />
       </Button>
     </div>

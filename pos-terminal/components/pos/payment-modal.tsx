@@ -129,18 +129,17 @@ export function PaymentModal({ open, onClose, grandTotal, customer, onConfirm }:
           {/* Method selection */}
           <div className="grid grid-cols-3 gap-2">
             {METHODS.map((m) => (
-              <button
+              <Button
                 key={m.id}
+                variant={method === m.id ? "default" : "outline"}
                 onClick={() => { setMethod(m.id); setError(""); }}
-                className={`flex flex-col items-center gap-1 p-3 rounded-lg border transition-all min-h-[4rem] ${
-                  method === m.id
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-border hover:border-primary/50"
+                className={`flex flex-col items-center gap-1 p-3 rounded-lg min-h-[4rem] h-auto ${
+                  method === m.id ? "" : "hover:border-primary/50"
                 }`}
               >
                 {m.icon}
                 <span className="text-xs font-medium">{m.label}</span>
-              </button>
+              </Button>
             ))}
           </div>
 
@@ -163,14 +162,15 @@ export function PaymentModal({ open, onClose, grandTotal, customer, onConfirm }:
 
               <div className="grid grid-cols-5 gap-2">
                 {DENOMINATIONS.map((denom) => (
-                  <button
+                  <Button
                     key={denom}
+                    variant="outline"
                     onClick={() => addDenomination(denom)}
-                    className="flex flex-col items-center justify-center p-3 rounded-lg border-2 border-border hover:border-primary hover:bg-primary/5 transition-all min-h-[4rem] active:scale-95"
+                    className="flex flex-col items-center justify-center p-3 rounded-lg min-h-[4rem] h-auto active:scale-95"
                   >
                     <Coins className="h-4 w-4 text-primary mb-0.5" />
                     <span className="text-sm font-bold tabular-nums">Nu.{denom}</span>
-                  </button>
+                  </Button>
                 ))}
               </div>
 

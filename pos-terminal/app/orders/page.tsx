@@ -330,16 +330,17 @@ export default function OrdersPage() {
                         <tr key={i} className={`border-t ${isSelected ? "bg-warning/5" : ""}`}>
                           {selectedOrder.status === "CONFIRMED" && (
                             <td className="p-2">
-                              <button
+                              <Button
+                                variant="ghost"
+                                size="icon-xs"
                                 onClick={() => toggleRefundItem(item.id, item.quantity)}
-                                className="w-6 h-6 flex items-center justify-center hover:text-warning"
                               >
                                 {isSelected ? (
                                   <CheckSquare className="h-4 w-4 text-warning" />
                                 ) : (
                                   <Square className="h-4 w-4 text-muted-foreground" />
                                 )}
-                              </button>
+                              </Button>
                             </td>
                           )}
                           <td className="p-2">
@@ -353,19 +354,23 @@ export default function OrdersPage() {
                           <td className="text-right p-2">
                             {isSelected && item.quantity > 1 ? (
                               <div className="flex items-center justify-end gap-1">
-                                <button
+                                <Button
+                                  variant="ghost"
+                                  size="icon-xs"
                                   onClick={() => setRefundQty(item.id, refundQty - 1, item.quantity)}
-                                  className="w-5 h-5 rounded bg-muted flex items-center justify-center hover:bg-warning/20"
+                                  className="hover:bg-warning/20"
                                 >
                                   <Minus className="h-2.5 w-2.5" />
-                                </button>
+                                </Button>
                                 <span className="w-5 text-center text-xs font-medium">{refundQty}</span>
-                                <button
+                                <Button
+                                  variant="ghost"
+                                  size="icon-xs"
                                   onClick={() => setRefundQty(item.id, refundQty + 1, item.quantity)}
-                                  className="w-5 h-5 rounded bg-muted flex items-center justify-center hover:bg-warning/20"
+                                  className="hover:bg-warning/20"
                                 >
                                   <Plus className="h-2.5 w-2.5" />
-                                </button>
+                                </Button>
                                 <span className="text-muted-foreground text-[10px]">/ {item.quantity}</span>
                               </div>
                             ) : (

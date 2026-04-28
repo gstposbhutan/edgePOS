@@ -19,7 +19,8 @@ import {
   Star,
 } from "lucide-react";
 import { ProductImage } from "./product-image";
-import { usePos } from "@/hooks/use-pos-context";
+import { useProducts } from "@/hooks/use-products";
+import { useFavorites } from "@/hooks/use-favorites";
 import type { Product, Category, StockFilter, SortField, SortOrder } from "@/hooks/use-products";
 
 interface ProductGridProps {
@@ -42,16 +43,36 @@ export function ProductGrid({
   highlightedIndex,
   setHighlightedIndex,
 }: ProductGridProps) {
-  const pos = usePos();
-  if (!pos) return <div className="flex-1" />;
-  const { products: posData, favorites: favObj } = pos;
-  const { products, categories, loading, searchQuery, setSearchQuery, selectedCategory, setSelectedCategory, selectedLetter, setSelectedLetter, availableLetters, stockFilter, setStockFilter, priceMin, setPriceMin, priceMax, setPriceMax, sortField, setSortField, sortOrder, setSortOrder } = posData;
-  const { favorites, toggleFavorite, isFavorite } = favObj;
+  const { products, categories, loading, searchQuery, setSearchQuery, selectedCategory, setSelectedCategory, selectedLetter, setSelectedLetter, availableLetters, stockFilter, setStockFilter, priceMin, setPriceMin, priceMax, setPriceMax, sortField, setSortField, sortOrder, setSortOrder } = useProducts();
+  const { favorites, toggleFavorite, isFavorite } = useFavorites();
   const [view, setView] = useState<"grid" | "list">("grid");
   const [showFilters, setShowFilters] = useState(false);
   const [showFavorites, setShowFavorites] = useState(false);
   const [tapFeedback, setTapFeedback] = useState<string | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
+
+  // Drag-to-scroll and wheel-to-scroll for horizontal filter rows
+  const scrollByWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    e.currentTarget.scrollBy({ left: e.deltaY, behavior: "auto" });
+  }, []);
+
+  const scrollByDrag = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    const startX = e.clientX + el.scrollLeft;
+    const onMove = (ev: MouseEvent) => {
+      el.scrollLeft = startX - ev.clientX;
+    };
+    const onUp = () => {
+      el.style.cursor = "";
+      el.classList.remove("cursor-grabbing");
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    el.style.cursor = "grabbing";
+    el.classList.add("cursor-grabbing");
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, []);
 
   const hasActiveFilters =
     selectedLetter !== null ||
@@ -104,14 +125,16 @@ export function ProductGrid({
               id="pos-search"
               autoComplete="off"
             />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
+              {searchQuery && (
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
           </div>
           <Button
             variant={showFilters ? "default" : "outline"}
@@ -125,23 +148,31 @@ export function ProductGrid({
             <ScanLine className="h-4 w-4" />
           </Button>
           <div className="flex border border-border rounded-md overflow-hidden">
-            <button
+            <Button
+              variant="ghost"
+              size="icon-sm"
               onClick={() => setView("grid")}
-              className={`p-2.5 transition-colors ${view === "grid" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+              className={`rounded-none h-9 w-9 ${view === "grid" ? "bg-primary text-primary-foreground hover:bg-primary/90" : "hover:bg-muted"}`}
             >
               <Grid3X3 className="h-4 w-4" />
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
               onClick={() => setView("list")}
-              className={`p-2.5 transition-colors ${view === "list" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+              className={`rounded-none h-9 w-9 ${view === "list" ? "bg-primary text-primary-foreground hover:bg-primary/90" : "hover:bg-muted"}`}
             >
               <List className="h-4 w-4" />
-            </button>
+            </Button>
           </div>
         </div>
 
         {/* Category tabs + Favorites */}
-        <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+        <div
+          className="flex gap-1.5 overflow-x-auto overscroll-contain scrollbar-none pb-0.5 cursor-grab select-none"
+          onWheel={scrollByWheel}
+          onMouseDown={scrollByDrag}
+        >
           {favoriteProducts.length > 0 && (
             <Button
               variant={showFavorites ? "default" : "outline"}
@@ -184,29 +215,29 @@ export function ProductGrid({
         </div>
 
         {/* A-Z Filter */}
-        <div className="flex gap-0.5 overflow-x-auto scrollbar-none">
-          <button
+        <div
+          className="flex gap-0.5 overflow-x-auto overscroll-contain scrollbar-none cursor-grab select-none"
+          onWheel={scrollByWheel}
+          onMouseDown={scrollByDrag}
+        >
+          <Button
+            variant={selectedLetter === null ? "default" : "ghost"}
+            size="icon-sm"
             onClick={() => setSelectedLetter(null)}
-            className={`shrink-0 w-8 h-8 rounded text-xs font-medium transition-colors flex items-center justify-center ${
-              selectedLetter === null
-                ? "bg-primary text-primary-foreground"
-                : "hover:bg-muted text-muted-foreground"
-            }`}
+            className={`shrink-0 w-8 h-8 rounded text-xs ${selectedLetter === null ? "" : "text-muted-foreground"}`}
           >
             #
-          </button>
+          </Button>
           {availableLetters.map((letter) => (
-            <button
+            <Button
               key={letter}
+              variant={selectedLetter === letter ? "default" : "ghost"}
+              size="icon-sm"
               onClick={() => setSelectedLetter(selectedLetter === letter ? null : letter)}
-              className={`shrink-0 w-8 h-8 rounded text-xs font-medium transition-colors flex items-center justify-center ${
-                selectedLetter === letter
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-muted text-muted-foreground"
-              }`}
+              className={`shrink-0 w-8 h-8 rounded text-xs ${selectedLetter === letter ? "" : "text-muted-foreground"}`}
             >
               {letter}
-            </button>
+            </Button>
           ))}
         </div>
 
@@ -218,12 +249,9 @@ export function ProductGrid({
                 Filters
               </span>
               {hasActiveFilters && (
-                <button
-                  onClick={clearFilters}
-                  className="text-xs text-primary hover:underline"
-                >
+                <Button variant="link" size="xs" onClick={clearFilters} className="h-auto p-0">
                   Clear all
-                </button>
+                </Button>
               )}
             </div>
 

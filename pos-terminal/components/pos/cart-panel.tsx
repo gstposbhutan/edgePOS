@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { CartItemRow } from "./cart-item-row";
 import { CartTotals } from "./cart-totals";
-import { usePos } from "@/hooks/use-pos-context";
+import { useCart } from "@/hooks/use-cart";
 import type { CartItem } from "@/hooks/use-cart";
 import type { Customer } from "@/hooks/use-customers";
 
@@ -18,6 +18,7 @@ interface CartPanelProps {
   isManager: boolean;
   onCheckout: () => void;
   onSelectCustomer: () => void;
+  noShift?: boolean;
 }
 
 export function CartPanel({
@@ -25,11 +26,9 @@ export function CartPanel({
   isManager,
   onCheckout,
   onSelectCustomer,
+  noShift = false,
 }: CartPanelProps) {
-  const pos = usePos();
-  if (!pos) return <div className="w-[380px] shrink-0 hidden md:block" />;
-  const { cart } = pos;
-  const { items, loading, subtotal, discountTotal, taxableSubtotal, gstTotal, grandTotal, taxExempt, setTaxExempt, grandTotalExempt, updateQty, removeItem, applyDiscount, overridePrice, clearCart } = cart;
+  const { items, loading, subtotal, discountTotal, taxableSubtotal, gstTotal, grandTotal, taxExempt, setTaxExempt, grandTotalExempt, updateQty, removeItem, applyDiscount, overridePrice, clearCart } = useCart();
   const totalItems = items.reduce((sum: number, i: CartItem) => sum + i.quantity, 0);
 
   return (
@@ -55,9 +54,10 @@ export function CartPanel({
         </div>
 
         {/* Customer */}
-        <button
+        <Button
+          variant="outline"
           onClick={onSelectCustomer}
-          className="mt-3 w-full flex items-center gap-2 p-2.5 rounded-lg border border-dashed border-border hover:border-primary hover:bg-primary/5 transition-all text-left group min-h-[3rem]"
+          className="mt-3 w-full justify-start gap-2 p-2.5 h-auto rounded-lg border-dashed min-h-[3rem] hover:border-primary hover:bg-primary/5 group"
         >
           <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center shrink-0 group-hover:bg-primary/10">
             <User className="h-4 w-4 text-muted-foreground group-hover:text-primary" />
@@ -72,7 +72,7 @@ export function CartPanel({
           ) : (
             <span className="text-sm text-muted-foreground">Walk-in Customer</span>
           )}
-        </button>
+        </Button>
       </div>
 
       {/* Items */}
@@ -114,6 +114,7 @@ export function CartPanel({
           loading={loading}
           hasItems={items.length > 0}
           onCheckout={onCheckout}
+          noShift={noShift}
         />
       )}
     </div>

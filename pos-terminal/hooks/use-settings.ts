@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useCallback } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getPB, PB_REQ } from "@/lib/pb-client";
 
 export interface Settings {
@@ -14,67 +15,54 @@ export interface Settings {
   gst_rate: number;
 }
 
+async function fetchSettings(): Promise<Settings> {
+  const pb = getPB();
+  if (!pb.authStore.isValid) throw new Error("Not authenticated");
+  const records = await pb.collection("settings").getFullList<Settings>({ limit: 1, requestKey: null });
+  if (records.length > 0) return records[0];
+  const defaultSettings = await pb.collection("settings").create({
+    store_name: "My Store",
+    store_address: "",
+    tpn_gstin: "",
+    phone: "",
+    receipt_header: "",
+    receipt_footer: "Thank you for your business!",
+    gst_rate: 5,
+  }, PB_REQ);
+  return defaultSettings as unknown as Settings;
+}
+
 export function useSettings() {
   const pb = getPB();
-  const [settings, setSettings] = useState<Settings | null>(null);
-  const [loading, setLoading] = useState(true);
-  const REQ = { requestKey: null };
+  const queryClient = useQueryClient();
 
-  const fetchSettings = useCallback(async () => {
-    if (!pb.authStore.isValid) {
-      setLoading(false);
-      return;
-    }
-    try {
-      const records = await pb.collection("settings").getFullList<Settings>({ limit: 1, requestKey: null });
-      if (records.length > 0) {
-        setSettings(records[0]);
-      } else {
-        // Create default settings
-        const defaultSettings = await pb.collection("settings").create({
-          store_name: "My Store",
-          store_address: "",
-          tpn_gstin: "",
-          phone: "",
-          receipt_header: "",
-          receipt_footer: "Thank you for your business!",
-          gst_rate: 5,
-        }, PB_REQ);
-        setSettings(defaultSettings as unknown as Settings);
-      }
-    } catch (err) {
-      console.error("Settings fetch error:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [pb]);
+  const { data: settings = null, isLoading } = useQuery({
+    queryKey: ["settings"],
+    queryFn: fetchSettings,
+    staleTime: 5 * 60 * 1000,
+  });
 
-  useEffect(() => {
-    fetchSettings();
-
-    // Re-fetch when auth becomes valid (handles Next.js keeping component in memory across redirects)
-    const unsubscribeAuth = pb.authStore.onChange(() => {
-      if (pb.authStore.isValid) {
-        fetchSettings();
-      }
-    });
-
-    return () => unsubscribeAuth();
-  }, [fetchSettings, pb]);
+  const updateMutation = useMutation({
+    mutationFn: async (data: Partial<Settings>) => {
+      if (!settings) throw new Error("No settings found");
+      return pb.collection("settings").update(settings.id, data, PB_REQ) as unknown as Settings;
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["settings"], updated);
+    },
+  });
 
   const updateSettings = useCallback(
     async (data: Partial<Settings>) => {
-      if (!settings) return { success: false, error: "No settings found" };
       try {
-        const updated = await pb.collection("settings").update(settings.id, data, PB_REQ);
-        setSettings(updated as unknown as Settings);
-        return { success: true, error: null };
+        const updated = await updateMutation.mutateAsync(data);
+        return { success: true, error: null, settings: updated };
       } catch (err: any) {
         return { success: false, error: err.message };
       }
     },
-    [pb, settings]
+    [updateMutation]
   );
 
-  return { settings, loading, updateSettings, refresh: fetchSettings };
+  return { settings, loading: isLoading, updateSettings, refresh: () => queryClient.invalidateQueries({ queryKey: ["settings"] }) };
 }

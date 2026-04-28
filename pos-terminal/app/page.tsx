@@ -8,7 +8,11 @@ import { useHeldCarts } from "@/hooks/use-held-carts";
 import { useUndo } from "@/hooks/use-undo";
 import { usePosShortcuts } from "@/hooks/use-pos-shortcuts";
 import { useCheckout } from "@/hooks/use-checkout";
-import { usePos, PosProvider } from "@/hooks/use-pos-context";
+import { useProducts } from "@/hooks/use-products";
+import { useCart } from "@/hooks/use-cart";
+import { useFavorites } from "@/hooks/use-favorites";
+import { useLayoutPreset } from "@/hooks/use-layout-preset";
+import { useCustomers } from "@/hooks/use-customers";
 import type { Customer } from "@/hooks/use-customers";
 import { getPB } from "@/lib/pb-client";
 import { LAYOUT_PRESETS, SCREEN_LG, CART_WIDTH } from "@/lib/constants";
@@ -59,16 +63,10 @@ export default function PosPage() {
 
   if (!isAuthenticated) return null;
 
-  return (
-    <PosProvider userId={user?.id}>
-      <PosTerminal user={user} isManager={isManager} signOut={signOut} />
-    </PosProvider>
-  );
+  return <PosTerminal user={user} isManager={isManager} signOut={signOut} />;
 }
 
 function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boolean; signOut: () => void }) {
-  const pb = getPB();
-  const pos = usePos()!;
   const {
     products,
     loading: productsLoading,
@@ -81,7 +79,7 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
     sortField, setSortField, sortOrder, setSortOrder,
     findByBarcode, refresh: refreshProducts,
     lowStockCount, outOfStockCount,
-  } = pos.products;
+  } = useProducts();
   const {
     items, loading: cartLoading,
     subtotal, discountTotal, taxableSubtotal, gstTotal, grandTotal,
@@ -89,14 +87,16 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
     subtotalExTax, gstTotalExempt, grandTotalExempt,
     addItem, updateQty, applyDiscount, overridePrice, removeItem, clearCart,
     setCustomer: setCartCustomer,
-  } = pos.cart;
-  const { customers, createCustomer } = pos.customers;
+  } = useCart();
+  const { customers, createCustomer } = useCustomers();
   const { settings } = useSettings();
-  const { activeShift, openShift, closeShift } = useShifts();
-  const { favorites, toggleFavorite, isFavorite } = pos.favorites;
+  const { activeShift, openShift, closeShift, loading: shiftLoading } = useShifts();
+  const { favorites, toggleFavorite, isFavorite } = useFavorites(user?.id);
   const { heldCarts, loadHeld, holdCart, recallCart, discardHeld } = useHeldCarts();
   const undoStack = useUndo();
-  const { layoutPreset, setLayout } = pos;
+  const { layoutPreset, setLayout } = useLayoutPreset();
+
+  const pb = getPB();
 
   const [showScanner, setShowScanner] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
@@ -137,6 +137,18 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
   });
     showScanner || showPayment || showCustomer || showReceipt || showZReport ||
     showShiftModal !== null || showHeldCarts || showHelp;
+
+  // Auto-prompt shift open when no active shift (once data loads)
+  const [hasPromptedShift, setHasPromptedShift] = useState(false);
+  useEffect(() => {
+    if (!shiftLoading && !activeShift && !hasPromptedShift && !anyModalOpen) {
+      setShowShiftModal("open");
+      setHasPromptedShift(true);
+    }
+    if (activeShift) {
+      setHasPromptedShift(true);
+    }
+  }, [shiftLoading, activeShift, hasPromptedShift, anyModalOpen]);
 
   // Clock
   useEffect(() => {
@@ -246,10 +258,15 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
   }, [items, products, removeItem, addItem, undoStack]);
 
   const handleCheckout = useCallback(async () => {
+    if (!activeShift) {
+      toast.error("No active shift. Please open a shift first.");
+      setShowShiftModal("open");
+      return;
+    }
     if (validateStock()) {
       setShowPayment(true);
     }
-  }, [validateStock]);
+  }, [validateStock, activeShift]);
 
   const handlePaymentConfirm = useCallback(
     async (method: string, ref: string, tendered?: number) => {
@@ -399,7 +416,7 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
       // Backspace: remove last character from search
       if (e.key === "Backspace") {
         e.preventDefault();
-        setSearchQuery((prev) => prev.slice(0, -1));
+        setSearchQuery(searchQuery.slice(0, -1));
         searchInputRef.current?.focus();
         return;
       }
@@ -414,7 +431,7 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
       // Any alphanumeric: append to search
       if (/^[a-zA-Z0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
-        setSearchQuery((prev) => prev + e.key);
+        setSearchQuery(searchQuery + e.key);
         setHighlightedIndex(0);
         searchInputRef.current?.focus();
       }
@@ -429,7 +446,6 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
   const cartColumnWidth = layoutPreset === "fullcart" ? CART_WIDTH.FULL : layoutPreset === "compact" ? CART_WIDTH.COMPACT : CART_WIDTH.STANDARD;
 
   return (
-    <PosProvider userId={user?.id}>
     <div className="h-screen flex flex-col bg-background">
       {/* Top Navigation */}
       <header className="border-b border-border bg-card/80 backdrop-blur-sm px-4 py-2.5 flex items-center justify-between shrink-0">
@@ -561,12 +577,13 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
         {/* Cart Panel — always visible on lg+, slide-over on md */}
         {(showCart || screenWidth >= SCREEN_LG) && (
           <div className={`${cartColumnWidth} shrink-0 hidden md:block ${layoutPreset === "fullcart" && !showCart ? "hidden" : ""}`}>
-            <CartPanel
-              customer={selectedCustomer}
-              isManager={isManager}
-              onCheckout={handleCheckout}
-              onSelectCustomer={() => setShowCustomer(true)}
-            />
+          <CartPanel
+            customer={selectedCustomer}
+            isManager={isManager}
+            onCheckout={handleCheckout}
+            onSelectCustomer={() => setShowCustomer(true)}
+            noShift={!activeShift}
+          />
           </div>
         )}
 
@@ -580,6 +597,7 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
                 isManager={isManager}
                 onCheckout={handleCheckout}
                 onSelectCustomer={() => setShowCustomer(true)}
+                noShift={!activeShift}
               />
             </div>
           </div>
@@ -675,6 +693,5 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
         onClose={() => setShowHelp(false)}
       />
     </div>
-    </PosProvider>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useCallback } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getPB, PB_REQ } from "@/lib/pb-client";
 
 export interface Customer {
@@ -12,106 +13,90 @@ export interface Customer {
   created_at: string;
 }
 
+async function fetchCustomers(): Promise<Customer[]> {
+  const pb = getPB();
+  if (!pb.authStore.isValid) throw new Error("Not authenticated");
+  return pb.collection("khata_accounts").getFullList<Customer>({
+    sort: "debtor_name",
+    requestKey: null,
+  });
+}
+
 export function useCustomers() {
   const pb = getPB();
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(true);
-  const REQ = { requestKey: null };
+  const queryClient = useQueryClient();
 
-  const fetchCustomers = useCallback(async () => {
-    if (!pb.authStore.isValid) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    try {
-      const records = await pb.collection("khata_accounts").getFullList<Customer>({
-        sort: "debtor_name",
-        requestKey: null,
-      });
-      setCustomers(records);
-    } catch (err) {
-      console.error("Customers fetch error:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [pb]);
+  const { data: customers = [], isLoading } = useQuery({
+    queryKey: ["customers"],
+    queryFn: fetchCustomers,
+    staleTime: 30 * 1000,
+  });
 
-  useEffect(() => {
-    fetchCustomers();
-
-    // Re-fetch when auth becomes valid (handles Next.js keeping component in memory across redirects)
-    const unsubscribeAuth = pb.authStore.onChange(() => {
-      if (pb.authStore.isValid) {
-        fetchCustomers();
-      }
-    });
-
-    return () => unsubscribeAuth();
-  }, [fetchCustomers, pb]);
+  const createMutation = useMutation({
+    mutationFn: async (data: Partial<Customer>) => {
+      return pb.collection("khata_accounts").create({
+        credit_limit: 0,
+        outstanding_balance: 0,
+        ...data,
+      }, PB_REQ) as unknown as Customer;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["customers"] }),
+  });
 
   const createCustomer = useCallback(
     async (data: Partial<Customer>) => {
       try {
-        const record = await pb.collection("khata_accounts").create({
-          credit_limit: 0,
-          outstanding_balance: 0,
-          ...data,
-        }, PB_REQ);
-        await fetchCustomers();
-        return { success: true, record: record as unknown as Customer };
+        const record = await createMutation.mutateAsync(data);
+        return { success: true, record };
       } catch (err: any) {
         return { success: false, error: err.message };
       }
     },
-    [pb, fetchCustomers]
+    [createMutation]
   );
 
   const updateCustomer = useCallback(
     async (id: string, data: Partial<Customer>) => {
       try {
         await pb.collection("khata_accounts").update(id, data, PB_REQ);
-        await fetchCustomers();
+        queryClient.invalidateQueries({ queryKey: ["customers"] });
         return { success: true };
       } catch (err: any) {
         return { success: false, error: err.message };
       }
     },
-    [pb, fetchCustomers]
+    [pb, queryClient]
   );
 
   const recordRepayment = useCallback(
     async (customerId: string, amount: number, method: string, notes?: string) => {
       try {
-        // Fetch current balance atomically from PocketBase to avoid stale React state
         const record = await pb.collection("khata_accounts").getOne(customerId, PB_REQ);
         const currentBalance = (record as Record<string, unknown>).outstanding_balance as number || 0;
         const newBalance = Math.max(0, currentBalance - amount);
         await pb.collection("khata_accounts").update(customerId, { outstanding_balance: newBalance }, PB_REQ);
-
         await pb.collection("khata_transactions").create({
           khata_account: customerId,
           transaction_type: "CREDIT",
           amount,
           notes: notes || `Repayment via ${method}`,
         }, PB_REQ);
-
-        await fetchCustomers();
+        queryClient.invalidateQueries({ queryKey: ["customers"] });
         return { success: true };
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Repayment failed";
         return { success: false, error: msg };
       }
     },
-    [pb, fetchCustomers]
+    [pb, queryClient]
   );
 
   return {
     customers,
-    loading,
+    loading: isLoading,
     createCustomer,
     updateCustomer,
     recordRepayment,
-    refresh: fetchCustomers,
+    refresh: () => queryClient.invalidateQueries({ queryKey: ["customers"] }),
   };
 }

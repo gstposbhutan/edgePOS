@@ -14,7 +14,7 @@ migrate(
       fields: [
         { name: "opened_by", type: "relation", required: true, collectionId: "_pb_users_auth_", maxSelect: 1 },
         { name: "closed_by", type: "relation", required: false, collectionId: "_pb_users_auth_", maxSelect: 1 },
-        { name: "opening_float", type: "number", required: true, min: 0, options: { default: 0 } },
+        { name: "opening_float", type: "number", required: false, min: 0, options: { default: 0 } },
         { name: "closing_count", type: "number", required: false, min: 0, options: { default: 0 } },
         { name: "expected_total", type: "number", required: false, options: { default: 0 } },
         { name: "discrepancy", type: "number", required: false, options: { default: 0 } },

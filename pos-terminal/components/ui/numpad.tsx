@@ -1,6 +1,7 @@
 "use client";
 
 import { Delete } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { NUMPAD_MAX_VALUE } from "@/lib/constants";
 
 const KEYS = [
@@ -32,39 +33,43 @@ export function Numpad({ value, onChange, onConfirm, onCancel }: NumpadProps) {
     <div className="grid grid-cols-3 gap-1.5">
       {KEYS.map((row, ri) =>
         row.map((key, ci) => (
-          <button
+          <Button
             key={`${ri}-${ci}`}
+            variant="ghost"
             onClick={() => handleKey(key)}
-            className={`h-10 rounded-md text-sm font-medium transition-colors active:scale-95 ${
+            className={`h-10 rounded-md text-sm font-medium active:scale-95 ${
               key === null
-                ? ""
+                ? "pointer-events-none opacity-0"
                 : key === "backspace"
                 ? "bg-muted hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
                 : "bg-muted hover:bg-primary/20 hover:text-primary"
             }`}
           >
             {key === "backspace" ? <Delete className="h-4 w-4 mx-auto" /> : key}
-          </button>
+          </Button>
         ))
       )}
-      <button
+      <Button
+        variant="destructive"
         onClick={onCancel}
-        className="h-10 rounded-md text-sm font-medium bg-destructive/10 text-destructive hover:bg-destructive/20 active:scale-95"
+        className="h-10 rounded-md text-sm font-medium active:scale-95"
       >
         ✕
-      </button>
-      <button
+      </Button>
+      <Button
+        variant="ghost"
         onClick={() => onChange("")}
         className="h-10 rounded-md text-sm font-medium bg-muted hover:bg-muted/80 text-muted-foreground active:scale-95"
       >
         C
-      </button>
-      <button
+      </Button>
+      <Button
+        variant="default"
         onClick={onConfirm}
-        className="h-10 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 active:scale-95"
+        className="h-10 rounded-md text-sm font-medium active:scale-95"
       >
         ✓
-      </button>
+      </Button>
     </div>
   );
 }

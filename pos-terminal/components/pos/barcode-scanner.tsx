@@ -14,47 +14,68 @@ interface BarcodeScannerProps {
 
 export function BarcodeScanner({ open, onClose, onScan }: BarcodeScannerProps) {
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const runningRef = useRef(false);
   const [error, setError] = useState("");
+  const [mounted, setMounted] = useState(false);
 
+  const safeStop = () => {
+    if (scannerRef.current && runningRef.current) {
+      scannerRef.current.stop().catch(() => {});
+      runningRef.current = false;
+    }
+  };
+
+  // Delay scanner init until dialog animation finishes and DOM is ready
   useEffect(() => {
     if (!open) {
-      if (scannerRef.current) {
-        scannerRef.current.stop().catch(() => {});
-        scannerRef.current = null;
-      }
+      setMounted(false);
+      safeStop();
+      scannerRef.current = null;
       return;
     }
 
     setError("");
-    const scannerId = "barcode-scanner-region";
-    const scanner = new Html5Qrcode(scannerId);
-    scannerRef.current = scanner;
+    const timer = setTimeout(() => {
+      const el = document.getElementById("barcode-scanner-region");
+      if (!el) {
+        setError("Scanner element not found");
+        return;
+      }
+      setMounted(true);
+      const scanner = new Html5Qrcode("barcode-scanner-region");
+      scannerRef.current = scanner;
 
-    scanner
-      .start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 250, height: 150 } },
-        (decodedText) => {
-          onScan(decodedText);
-          scanner.stop().catch(() => {});
-          onClose();
-        },
-        () => {
-          // QR scan error (no code found) — ignore
-        }
-      )
-      .catch((err) => {
-        setError("Camera access denied or not available.");
-        console.error(err);
-      });
+      scanner
+        .start(
+          { facingMode: "environment" },
+          { fps: 10, qrbox: { width: 250, height: 150 } },
+          (decodedText) => {
+            runningRef.current = false;
+            onScan(decodedText);
+            scanner.stop().catch(() => {});
+            onClose();
+          },
+          () => {}
+        )
+        .then(() => {
+          runningRef.current = true;
+        })
+        .catch((err) => {
+          setError("Camera access denied or not available.");
+          console.error(err);
+        });
+    }, 200);
 
     return () => {
-      if (scannerRef.current) {
-        scannerRef.current.stop().catch(() => {});
-        scannerRef.current = null;
-      }
+      clearTimeout(timer);
+      safeStop();
+      scannerRef.current = null;
     };
   }, [open, onScan, onClose]);
+
+  useEffect(() => {
+    return () => { safeStop(); };
+  }, []);
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>

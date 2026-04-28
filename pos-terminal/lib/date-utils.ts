@@ -21,3 +21,16 @@ export function formatTime(iso: string): string {
 export function nowISO(): string {
   return new Date().toISOString();
 }
+
+/**
+ * PocketBase date format: "YYYY-MM-DD HH:mm:ss.SSSZ"
+ * Space-separated, not ISO 8601 T-separated.
+ * @see https://pocketbase.io/docs/api-records
+ */
+export function pbNow(): string {
+  return new Date().toISOString().replace("T", " ");
+}
+
+export function pbDate(d: Date | string | number): string {
+  return new Date(d).toISOString().replace("T", " ");
+}
