@@ -2,17 +2,26 @@ const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 const http = require("http");
+const { app } = require("electron");
 
 const PB_URL = "http://127.0.0.1:8090";
 const MAX_RETRIES = 30;
 
+function getAppBase() {
+  // In production (packaged): use resourcesPath which is the real filesystem dir
+  // outside the asar archive. In dev: use __dirname.
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, "app.asar.unpacked");
+  }
+  return path.join(__dirname, "..");
+}
+
 function getPocketBaseBinary() {
+  const base = path.join(getAppBase(), "pb");
   const platform = process.platform;
-  const arch = process.arch;
-  const base = path.join(__dirname, "..", "pb");
 
   const candidates = [
-    path.join(base, `pocketbase_${platform}_${arch}`),
+    path.join(base, `pocketbase_${platform}_${process.arch}`),
     path.join(base, "pocketbase"),
     path.join(base, platform === "win32" ? "pocketbase.exe" : "pocketbase"),
   ];
@@ -21,7 +30,6 @@ function getPocketBaseBinary() {
     if (fs.existsSync(c)) return c;
   }
 
-  // Fallback: look in PATH
   return "pocketbase";
 }
 
@@ -58,7 +66,7 @@ function waitForPBReady(retries = 0) {
 
 function launchPocketBase() {
   const binary = getPocketBaseBinary();
-  const dataDir = path.join(__dirname, "..", "pb", "pb_data");
+  const dataDir = path.join(getAppBase(), "pb", "pb_data");
 
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });

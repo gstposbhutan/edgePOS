@@ -78,6 +78,12 @@
       "node_modules/**/*",
       "package.json"
     ],
+    "asarUnpack": [
+      "pb/**/*",
+      "node_modules/leveldown/**/*",
+      "node_modules/@img/**/*",
+      "node_modules/@next/swc*/**/*"
+    ],
     "extraMetadata": {
       "main": "electron/main.js"
     },
