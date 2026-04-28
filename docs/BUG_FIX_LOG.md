@@ -46,7 +46,127 @@ This document tracks bugs found and fixed after feature code changes are committ
 
 ## Active Bugs
 
-*No active bugs.*
+### Bug #004 - Product Details Modal Missing for Cashier
+**Date Found**: 2026-04-27
+**Feature**: POS Product Selection
+**Severity**: Medium
+**Status**: Fixed
+
+**Description**:
+Cashier clicking a product in ProductPanel expects to see product details in a modal, but currently the click adds product directly to cart.
+
+**Root Cause**:
+- ProductCard has `onClick={onAdd}` which directly adds to cart
+- No product details modal component exists for POS
+- User needs to view product details before adding to cart
+
+**Steps to Reproduce**:
+1. Login as cashier
+2. Go to POS page
+3. Click on any product in product grid
+4. Product is directly added to cart (no details shown)
+
+**Expected Behavior**:
+Clicking a product should open a modal showing product details (name, SKU, HSN, price, stock, image) with an "Add to Cart" button.
+
+**Actual Behavior**:
+Product is immediately added to cart without showing details.
+
+**Environment**:
+- Browser/OS: All
+- Related Files:
+  - `components/pos/product-panel.jsx`
+  - `components/pos/product-detail-modal.jsx` (new)
+
+**Fix**:
+- **Date Fixed**: 2026-04-27
+- **Files Changed**:
+  - `components/pos/product-detail-modal.jsx` (new)
+  - `components/pos/product-panel.jsx`
+  - `app/pos/products/page.jsx`
+- **Commit**: TBD
+- **Solution**:
+  1. Created new ProductDetailModal component showing:
+     - Product image
+     - Name, SKU, HSN code
+     - Price and stock status
+     - Package contents (if applicable)
+     - Optional Add to Cart button (via `readOnly` prop)
+  2. Updated ProductPanel to manage modal state
+  3. Updated ProductCard to use `onClick` instead of `onAdd`
+  4. Updated `/pos/products` page ProductRow to be clickable
+  5. Added role-based behavior:
+     - Cashiers see read-only detail modal (no Add to Cart on management page)
+     - Managers see edit form on management page
+     - Cashiers get Add to Cart button on POS selling page
+
+**Verification**:
+- **Date Verified**: TBD
+- **Test Steps**:
+  1. Login as cashier, go to POS page, click product → See detail modal with Add to Cart
+  2. Login as cashier, go to /pos/products, click product → See read-only modal (no Add to Cart)
+  3. Login as manager, go to /pos/products, click product → See edit form
+- **Notes**: Frontend fix only, no database changes needed
+
+---
+
+### Bug #003 - Order Status Changes Fail RLS Violation
+**Date Found**: 2026-04-27
+**Feature**: Order Status Logging (commit 7f4e424)
+**Severity**: Critical
+**Status**: Fixed
+
+**Description**:
+Order creation fails for cashiers with "new row violates row-level security policy for table order_status_log". When an order is created, the initial status (PENDING) triggers `log_order_status_change()`, which cannot insert into `order_status_log` due to missing INSERT policy.
+
+**Root Cause**:
+- Migration 010 creates `read_own_order_logs` policy with `FOR SELECT` only
+- Migration 029 creates `buyer_order_status_log` policy with `FOR SELECT` only
+- No INSERT/WITH CHECK policy exists for `order_status_log`
+- When order is created with initial status, trigger tries to INSERT but RLS blocks it
+- This is same pattern as Bug #002 - missing WITH CHECK clause for INSERT
+
+**Steps to Reproduce**:
+1. Login as retailer cashier
+2. Create new order through POS
+3. Order creation fails with RLS violation error on order_status_log
+
+**Expected Behavior**:
+Order status changes should be logged automatically via trigger, allowing users to track order history.
+
+**Actual Behavior**:
+Status update fails because trigger cannot insert into order_status_log.
+
+**Environment**:
+- Browser/OS: All
+- Related Files:
+  - `supabase/migrations/010_rls.sql`
+  - `supabase/migrations/029_wholesale_order_rls.sql`
+  - `supabase/migrations/007_orders.sql` (trigger definition)
+- Error Message: "new row violates row-level security policy for table order_status_log"
+
+**Fix**:
+- **Date Fixed**: 2026-04-27
+- **Files Changed**: `supabase/migrations/038_fix_order_status_log_rls_insert_policy.sql`
+- **Commit**: TBD (migration applied locally, not committed)
+- **Migration applied**: Yes (local database)
+- **Solution**:
+  1. Dropped existing SELECT-only policies (`read_own_order_logs`, `buyer_order_status_log`)
+  2. Recreated policies with both `USING` and `WITH CHECK` clauses:
+     - `seller_own_order_status_logs` - allows sellers full access to their order logs
+     - `buyer_own_order_status_logs` - allows buyers full access to their order logs
+     - `system_order_status_logs` - allows trigger inserts when order belongs to auth entity
+  3. `USING` clause controls SELECT/UPDATE/DELETE
+  4. `WITH CHECK` clause controls INSERT (required for trigger to work)
+
+**Verification**:
+- **Date Verified**: TBD
+- **Test Steps**: TBD
+- **Notes**: TBD
+
+---
+
+## Fixed Bugs
 
 ---
 
@@ -174,10 +294,10 @@ Triggers don't fire because they check `hsn_master_id`, not `hsn_code`.
 
 ## Statistics
 
-- **Total Bugs**: 2
+- **Total Bugs**: 4
 - **Open**: 0
 - **In Progress**: 0
-- **Fixed**: 2
+- **Fixed**: 4
 - **Verified**: 0
 
 ---

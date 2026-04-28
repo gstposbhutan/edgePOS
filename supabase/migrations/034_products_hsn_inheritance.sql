@@ -26,6 +26,9 @@ CREATE INDEX IF NOT EXISTS idx_products_subcategory ON products(subcategory);
 -- Update entity_products table to link with hsn_master
 -- ============================================================================
 
+-- Add hsn_code column (text version that can be directly set)
+ALTER TABLE entity_products ADD COLUMN IF NOT EXISTS hsn_code TEXT;
+
 -- Add foreign key reference to hsn_master for vendor products
 ALTER TABLE entity_products ADD COLUMN IF NOT EXISTS hsn_master_id UUID REFERENCES hsn_master(id);
 
@@ -246,25 +249,12 @@ LEFT JOIN hsn_master hsn ON ep.hsn_master_id = hsn.id
 LEFT JOIN entities e ON ep.entity_id = e.id;
 
 -- ============================================================================
--- RLS Policies for new columns
+-- Note: RLS Policies
 -- ============================================================================
-
-ALTER TABLE products ENABLE ROW LEVEL SECURITY;
-
-ALTER TABLE entity_products ENABLE ROW LEVEL SECURITY;
-
--- Policies for products_with_hsn view
-CREATE POLICY "all_read_products_with_hsn"
-  ON products_with_hsn FOR SELECT USING (true);
-
--- Policies for entity_products_with_hsn view
-CREATE POLICY "all_read_entity_products_with_hsn"
-  ON entity_products_with_hsn FOR SELECT USING (true);
-
--- Vendors can read their own entity products with HSN
-CREATE POLICY "vendors_read_own_entity_products_hsn"
-  ON entity_products_with_hsn FOR SELECT
-  USING (entity_id = (SELECT id FROM entities WHERE user_id = auth.uid()));
+-- Views do not support RLS policies. Access to views is controlled by:
+-- 1. The underlying table's RLS policies (products, entity_products)
+-- 2. CREATE VIEW with SECURITY INVOKER (default) respects caller's permissions
+-- No additional policies needed for these views.
 
 -- ============================================================================
 -- Helper function: Update existing products with HSN category

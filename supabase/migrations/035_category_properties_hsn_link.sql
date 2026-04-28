@@ -5,6 +5,9 @@
 -- Update category_properties table to reference HSN structure
 -- ============================================================================
 
+-- Make category_id nullable to support HSN-based properties without a traditional category
+ALTER TABLE category_properties ALTER COLUMN category_id DROP NOT NULL;
+
 -- Add HSN reference columns
 ALTER TABLE category_properties ADD COLUMN IF NOT EXISTS hsn_chapter TEXT;
 ALTER TABLE category_properties ADD COLUMN IF NOT EXISTS hsn_heading TEXT;
@@ -88,8 +91,8 @@ SELECT
   hsn.heading,
   hsn.subheading,
   hsn.category,
-  cp.id as property_id,
-  cp.name as property_name,
+  cp.property_id,
+  cp.property_name,
   cp.slug,
   cp.data_type,
   cp.is_required,
@@ -104,16 +107,14 @@ WHERE hsn.is_active = true;
 -- Update RLS Policies for new columns
 -- ============================================================================
 
--- Everyone can read HSN code properties
-CREATE POLICY "all_read_hsn_code_properties"
-  ON hsn_code_properties FOR SELECT USING (true);
+-- Note: hsn_code_properties is a view and does not need RLS policies.
+-- Access is controlled by the underlying table's RLS policies.
 
 -- Only super_admins and distributors can manage category properties
 CREATE POLICY "admins_manage_category_properties_hsn"
   ON category_properties FOR ALL USING (
   EXISTS (
     SELECT 1 FROM user_profiles up
-    JOIN entities e ON e.user_id = up.id
     WHERE up.id = auth.uid()
     AND up.role IN ('SUPER_ADMIN', 'DISTRIBUTOR')
   )

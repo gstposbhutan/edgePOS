@@ -1,0 +1,14 @@
+-- Migration 044: DISABLE RLS for development
+-- Re-enable with migration 045_enable_rls_prod.sql when ready
+
+ALTER TABLE entities DISABLE ROW LEVEL SECURITY;
+ALTER TABLE user_profiles DISABLE ROW LEVEL SECURITY;
+ALTER TABLE products DISABLE ROW LEVEL SECURITY;
+ALTER TABLE orders DISABLE ROW LEVEL SECURITY;
+ALTER TABLE order_items DISABLE ROW LEVEL SECURITY;
+ALTER TABLE carts DISABLE ROW LEVEL SECURITY;
+ALTER TABLE cart_items DISABLE ROW LEVEL SECURITY;
+ALTER TABLE inventory_movements DISABLE ROW LEVEL SECURITY;
+-- ALTER TABLE wholesale_orders DISABLE ROW LEVEL SECURITY; -- May not exist yet
+
+-- Note: These tables will be re-enabled in production

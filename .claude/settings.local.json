@@ -9,7 +9,8 @@
       "Bash(docker exec supabase_db_edgePOS *)",
       "Bash(node *)",
       "Bash(npx playwright *)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(npx supabase *)"
     ]
   }
 }
