@@ -1,5 +1,5 @@
 # Web App Build Progress
-**Last Updated**: 2026-04-26
+**Last Updated**: 2026-04-29
 **Strategy**: Web app first, Windows desktop app later. One feature at a time, in dependency order.
 
 ---
@@ -15,7 +15,15 @@
 - [x] Orders: CRUD, cancellations, refunds, replacements, status timeline
 - [x] Receipt PDF generation (jsPDF + html2canvas on order confirmation page)
 - [x] Khata: Unified credit system (CONSUMER/RETAILER/WHOLESALER), account management, ledger, repayments
-- [x] Marketplace: Public shop pages (`/shop/[slug]`) with WhatsApp ordering integration
+- [x] Marketplace: Public shop pages (`/shop/[slug]`) with WhatsApp ordering integration (superseded below)
+- [x] **Customer Cart & Multi-Store Shop** — [F-SHOP-001](features/customer-cart-shop.md) ✅ CODE COMPLETE
+  - Cart-based discovery at `/shop` (multi-store grid) and `/shop/store_[id]` (single retailer)
+  - Persistent cart per customer per retailer (`carts` + `cart_items` tables)
+  - `CartDrawer` (bottom sheet / sidebar) with quantity controls and GST breakdown
+  - `CartProvider` context at root layout, `useCart()` hook
+  - Login redirect on unauthenticated add-to-cart with return URL
+  - Fixed Next.js 15 async params in `PATCH`/`DELETE` `/api/cart/[itemId]` handlers
+  - [ ] Checkout / payment flow not yet wired up
 - [x] Admin Hub: Wholesaler dashboard, team management, settings
 - [x] Wholesale Ordering: Retailer restock UI, wholesaler catalog, purchase orders with CREDIT
 - [x] Vendor Restock Modal: Full wholesale ordering flow in POS (wholesaler list → catalog → cart → order)
@@ -186,7 +194,8 @@ All specs in `docs/features/`. Each contains: overview, data model, implementati
 | `vision-bill-audit.md` | F-AUDIT-001 | Desktop only |
 | `photo-to-stock.md` | F-PHOTO-001 | PWA primary |
 | `stock-prediction.md` | F-PREDICT-001 | Both platforms |
-| `marketplace-page.md` | F-MARKET-001 | Web |
+| `marketplace-page.md` | F-MARKET-001 | Web (editorial WhatsApp-only, superseded by F-SHOP-001) |
+| `customer-cart-shop.md` | F-SHOP-001 | Web — cart-based multi-store shop |
 | `whatsapp-ordering.md` | F-WA-ORDER-001 | Web + gateway |
 | `order-management.md` | F-ORDER-001 | Both platforms |
 | `product-packaging.md` | F-PKG-001 | Both platforms |

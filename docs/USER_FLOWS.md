@@ -1,6 +1,6 @@
 # NEXUS BHUTAN — User Flow Diagrams
 
-**Last Updated**: 2026-04-26
+**Last Updated**: 2026-04-29
 **Scope**: All vendor (POS staff), wholesaler, and consumer flows including WhatsApp interactions.
 
 > All diagrams are `.mmd` files. Install the **Mermaid Editor** or **Markdown Preview Mermaid Support** extension in VS Code to preview them.
@@ -29,11 +29,12 @@
 
 ## CONSUMER FLOWS
 
-- [C1. Marketplace Browsing](flows/consumer-marketplace.mmd)
+- [C1. Marketplace Browsing & Cart](flows/consumer-marketplace.mmd)
 - [C2. WhatsApp Ordering — End to End](flows/consumer-whatsapp-ordering.mmd)
-- [C3. WhatsApp OTP Login](flows/consumer-whatsapp-otp.mmd)
+- [C3. WhatsApp OTP Login](flows/consumer-whatsapp-otp.mmd) — updated: auto-signup + mock mode
 - [C4. WhatsApp Receipt Delivery](flows/consumer-whatsapp-receipt.mmd)
 - [C5. WhatsApp Credit Alerts](flows/consumer-credit-alerts.mmd)
+- [C6. Cart Add / Update / Checkout](flows/consumer-cart-checkout.mmd) — **NEW**
 
 ---
 
