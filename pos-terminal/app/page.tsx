@@ -48,6 +48,7 @@ import {
   ArrowRight,
   Sun,
   Moon,
+  FilePlus,
 } from "lucide-react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -557,6 +558,9 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
             </Link>
           </div>
           <div className="hidden md:block w-px h-6 bg-border mx-1" />
+          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground" onClick={handleNewTransaction} title="New Sale (F2)">
+            <FilePlus className="h-4 w-4" />
+          </Button>
           {!activeShift ? (
             <Button variant="outline" size="sm" onClick={() => setShowShiftModal("open")} className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10">
               <DoorOpen className="h-4 w-4 mr-1.5" />
