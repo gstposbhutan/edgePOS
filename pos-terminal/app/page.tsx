@@ -615,6 +615,7 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
             onCheckout={handleCheckout}
             onSelectCustomer={() => setShowCustomer(true)}
             onClearCustomer={() => setSelectedCustomer(null)}
+            onNewSale={handleNewTransaction}
             noShift={!activeShift}
           />
           </div>
@@ -631,6 +632,7 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
                 onCheckout={handleCheckout}
                 onSelectCustomer={() => setShowCustomer(true)}
                 onClearCustomer={() => setSelectedCustomer(null)}
+                onNewSale={handleNewTransaction}
                 noShift={!activeShift}
               />
             </div>

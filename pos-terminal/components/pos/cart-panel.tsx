@@ -20,6 +20,7 @@ interface CartPanelProps {
   onCheckout: () => void;
   onSelectCustomer: () => void;
   onClearCustomer?: () => void;
+  onNewSale: () => void;
   noShift?: boolean;
 }
 
@@ -29,9 +30,10 @@ export function CartPanel({
   onCheckout,
   onSelectCustomer,
   onClearCustomer,
+  onNewSale,
   noShift = false,
 }: CartPanelProps) {
-  const { items, loading, subtotal, discountTotal, taxableSubtotal, gstTotal, grandTotal, taxExempt, setTaxExempt, grandTotalExempt, updateQty, removeItem, applyDiscount, overridePrice, clearCart } = useCart();
+  const { items, loading, subtotal, discountTotal, taxableSubtotal, gstTotal, grandTotal, taxExempt, setTaxExempt, grandTotalExempt, updateQty, removeItem, applyDiscount, overridePrice } = useCart();
   const totalItems = items.reduce((sum: number, i: CartItem) => sum + i.quantity, 0);
 
   return (
@@ -49,7 +51,7 @@ export function CartPanel({
             )}
           </h2>
           {items.length > 0 && (
-            <Button variant="ghost" size="sm" onClick={clearCart} className="text-destructive hover:bg-destructive/10">
+            <Button variant="ghost" size="sm" onClick={onNewSale} className="text-destructive hover:bg-destructive/10">
               <Trash2 className="h-4 w-4 mr-1" />
               Clear
             </Button>
