@@ -59,5 +59,42 @@
     "typescript": "^5",
     "vitest": "^1.1.0",
     "wait-on": "^9.0.5"
+  },
+  "build": {
+    "appId": "bt.nexus.pos-terminal",
+    "productName": "NEXUS BHUTAN POS",
+    "directories": {
+      "output": "release",
+      "buildResources": "public"
+    },
+    "files": [
+      "out/**/*",
+      "electron/**/*",
+      "pb/**/*",
+      "pb_data/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "electron/main.js"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Office",
+      "icon": "public/favicon.ico"
+    },
+    "win": {
+      "target": ["nsis"],
+      "icon": "public/favicon.ico"
+    },
+    "mac": {
+      "target": ["dmg"],
+      "icon": "public/favicon.ico",
+      "category": "public.app-category.business"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }
