@@ -199,6 +199,50 @@ export function useShifts() {
     [pb]
   );
 
+  const getReconciliation = useCallback(
+    async (shiftId: string): Promise<{
+      openingFloat: number;
+      cashSales: number;
+      cashRefunds: number;
+      totalCashIn: number;
+      totalCashOut: number;
+    } | null> => {
+      try {
+        const shift = await pb.collection("shifts").getOne<Shift>(shiftId, PB_REQ);
+        const orders = await pb.collection("orders").getFullList({
+          filter: `created_at >= "${shift.opened_at}" && status = "CONFIRMED"`,
+          requestKey: null,
+        });
+
+        let cashSales = 0;
+        let cashRefunds = 0;
+        for (const o of orders) {
+          if (o.payment_method === "cash") cashSales += o.grand_total;
+          if (o.refund_amount && o.payment_method === "cash") cashRefunds += o.refund_amount;
+        }
+
+        const adjustments = await pb.collection("cash_adjustments").getFullList<{ amount: number; type: string }>({
+          filter: `shift = "${shiftId}"`,
+          requestKey: null,
+        }).catch(() => []);
+
+        const totalCashIn = adjustments.filter((a) => a.type === "CASH_IN").reduce((s, a) => s + a.amount, 0);
+        const totalCashOut = adjustments.filter((a) => a.type === "CASH_OUT").reduce((s, a) => s + a.amount, 0);
+
+        return {
+          openingFloat: shift.opening_float,
+          cashSales,
+          cashRefunds,
+          totalCashIn,
+          totalCashOut,
+        };
+      } catch {
+        return null;
+      }
+    },
+    [pb]
+  );
+
   return {
     activeShift,
     shiftHistory,
@@ -206,6 +250,7 @@ export function useShifts() {
     openShift,
     closeShift,
     getZReport,
+    getReconciliation,
     refresh: () => queryClient.invalidateQueries({ queryKey: ["shifts"] }),
   };
 }

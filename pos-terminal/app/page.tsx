@@ -24,6 +24,7 @@ import { CustomerModal } from "@/components/pos/customer-modal";
 import { ReceiptModal } from "@/components/pos/receipt-modal";
 import { ZReportModal } from "@/components/pos/z-report-modal";
 import { ShiftModal } from "@/components/pos/shift-modal";
+import type { ShiftReconciliation } from "@/components/pos/shift-modal";
 import { HeldCartsModal } from "@/components/pos/held-carts-modal";
 import { HelpOverlay } from "@/components/pos/help-overlay";
 import { useShifts } from "@/hooks/use-shifts";
@@ -91,7 +92,7 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
   } = useCart();
   const { customers, createCustomer } = useCustomers();
   const { settings } = useSettings();
-  const { activeShift, openShift, closeShift, loading: shiftLoading } = useShifts();
+  const { activeShift, openShift, closeShift, getReconciliation, loading: shiftLoading } = useShifts();
   const { favorites, toggleFavorite, isFavorite } = useFavorites(user?.id);
   const { heldCarts, loadHeld, holdCart, recallCart, discardHeld } = useHeldCarts();
   const undoStack = useUndo();
@@ -109,6 +110,7 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
   const [showHelp, setShowHelp] = useState(false);
   const [showTabletCart, setShowTabletCart] = useState(false);
   const [lastOrder, setLastOrder] = useState<any>(null);
+  const [reconData, setReconData] = useState<ShiftReconciliation | null>(null);
   const [online, setOnline] = useState(true);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [currentTime, setCurrentTime] = useState("");
@@ -150,6 +152,15 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
       setHasPromptedShift(true);
     }
   }, [shiftLoading, activeShift, hasPromptedShift, anyModalOpen]);
+
+  // Fetch reconciliation data when closing shift
+  useEffect(() => {
+    if (showShiftModal === "close" && activeShift) {
+      getReconciliation(activeShift.id).then(setReconData);
+    } else {
+      setReconData(null);
+    }
+  }, [showShiftModal, activeShift, getReconciliation]);
 
   // Clock
   useEffect(() => {
@@ -685,6 +696,7 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
         onClose={() => setShowShiftModal(null)}
         mode={showShiftModal || "open"}
         onConfirm={handleShiftAction}
+        reconciliation={reconData || undefined}
       />
 
       <HeldCartsModal
