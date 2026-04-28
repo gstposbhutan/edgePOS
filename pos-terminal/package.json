@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "main": "electron/main.js",
-  "author": "NEXUS Bhutan POS Team",
+  "author": "NEXUS Bhutan <hello@nexus-bt.com>",
   "homepage": "https://nexus-bt.com",
   "description": "Offline-first GST POS Terminal for Bhutan — Next.js + PocketBase + Electron",
   "scripts": {
