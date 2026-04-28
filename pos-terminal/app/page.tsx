@@ -31,6 +31,7 @@ import { useShifts } from "@/hooks/use-shifts";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { useTheme } from "next-themes";
 import {
   LogOut,
   Settings,
@@ -46,6 +47,8 @@ import {
   Clock,
   ShoppingCart,
   ArrowRight,
+  Sun,
+  Moon,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -97,6 +100,9 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
   const { heldCarts, loadHeld, holdCart, recallCart, discardHeld } = useHeldCarts();
   const undoStack = useUndo();
   const { layoutPreset, setLayout } = useLayoutPreset();
+
+  const { theme, setTheme } = useTheme();
+  const isDark = theme === "dark";
 
   const pb = getPB();
 
@@ -568,6 +574,14 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
           )}
           <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground" onClick={() => setShowZReport(true)}>
             <FileBarChart className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground hover:text-foreground"
+            onClick={() => setTheme(isDark ? "light" : "dark")}
+          >
+            {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
           <Link href="/settings">
             <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
