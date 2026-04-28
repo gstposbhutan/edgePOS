@@ -180,6 +180,33 @@ app.whenReady().then(async () => {
   try {
     await ready();
     console.log("[Main] PocketBase is ready");
+
+    // Seed default POS user on first launch
+    try {
+      const res = await fetch(PB_URL + "/api/collections/users/auth-with-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identity: "admin@pos.local", password: "admin12345" }),
+      });
+      if (!res.ok) {
+        // User doesn't exist or can't auth — try creating
+        await fetch(PB_URL + "/api/collections/users/records", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: "admin@pos.local",
+            password: "admin12345",
+            passwordConfirm: "admin12345",
+            name: "Admin",
+            role: "owner",
+            verified: true,
+          }),
+        });
+        console.log("[Main] Created default POS user");
+      }
+    } catch (_) {
+      console.log("[Main] POS user already exists or setup not needed");
+    }
   } catch (err) {
     console.error("[Main] PocketBase failed to start:", err.message);
     dialog.showErrorBox("PocketBase Error", "Could not start local database.");
