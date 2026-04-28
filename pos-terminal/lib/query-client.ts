@@ -32,7 +32,7 @@ function handleAuthError(error: unknown) {
     // Token expired or invalid — clear and redirect
     localStorage.removeItem("pb_auth");
     if (!window.location.pathname.startsWith("/login")) {
-      window.location.href = "/login";
+      window.location.href = "./login/";
     }
   }
 }

@@ -53,7 +53,7 @@ export function getPB(): PocketBase {
         localStorage.removeItem(AUTH_KEY);
         // Token cleared (expired/invalid) — redirect to login if not already there
         if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
-          window.location.href = "/login";
+          window.location.href = "./login/";
         }
       }
     });
