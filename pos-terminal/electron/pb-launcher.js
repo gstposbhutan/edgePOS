@@ -72,10 +72,17 @@ function launchPocketBase(dataDirOverride) {
     fs.mkdirSync(dataDir, { recursive: true });
   }
 
+  const migrationsDir = path.join(getAppBase(), "pb", "pb_migrations");
+
+  const args = ["serve", "--dir", dataDir, "--http", "127.0.0.1:8090"];
+  if (fs.existsSync(migrationsDir)) {
+    args.push("--migrationsDir", migrationsDir);
+  }
+
   console.log(`[PB] Starting PocketBase: ${binary}`);
   console.log(`[PB] Data dir: ${dataDir}`);
 
-  const proc = spawn(binary, ["serve", "--dir", dataDir, "--http", "127.0.0.1:8090"], {
+  const proc = spawn(binary, args, {
     stdio: "pipe",
     detached: false,
   });

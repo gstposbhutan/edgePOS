@@ -75,11 +75,13 @@
       "electron/**/*",
       "pb/**/*",
       "pb_data/**/*",
+      "public/**/*",
       "node_modules/**/*",
       "package.json"
     ],
     "asarUnpack": [
       "pb/**/*",
+      "public/**/*",
       "node_modules/leveldown/**/*",
       "node_modules/@img/**/*",
       "node_modules/@next/swc*/**/*"
