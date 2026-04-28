@@ -16,14 +16,10 @@ export function useAuth() {
     const unsubscribe = pb.authStore.onChange(() => {
       const current = getCurrentUser();
       setUser(current);
-      // If auth was cleared on a sub-page, go home (home has inline login)
       if (!current && typeof window !== "undefined") {
         const p = window.location.pathname;
-        if (!p.endsWith("/") && !p.endsWith("index.html") && p !== "/" && p !== "") return;
-        if (p.includes("/orders") || p.includes("/inventory") ||
-            p.includes("/customers") || p.includes("/settings") ||
-            p.includes("/adjustments")) {
-          window.location.href = "./";
+        if (p !== "/" && !p.endsWith("/index.html") && p !== "") {
+          window.location.href = "/";
         }
       }
     });

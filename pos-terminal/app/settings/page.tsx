@@ -97,7 +97,7 @@ export default function SettingsPage() {
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link href="../">
+          <Link href="/">
             <Button variant="ghost" size="sm">
               <ArrowLeft className="h-4 w-4 mr-1" />
               POS

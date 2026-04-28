@@ -2,14 +2,11 @@ const { app, BrowserWindow, ipcMain, Tray, Menu, dialog } = require("electron");
 const path = require("path");
 const { launchPocketBase, PB_URL } = require("./pb-launcher");
 const { printReceipt, getPrinterStatus, testPrint } = require("./printer");
+const { startStaticServer } = require("./static-server");
 
 const isDev = !app.isPackaged;
-
-function getResourcePath(...segments) {
-  if (isDev) return path.join(__dirname, "..", ...segments);
-  return path.join(process.resourcesPath, "app.asar.unpacked", ...segments);
-}
-
+const APP_PORT = 3200;
+let staticServer = null;
 let mainWindow = null;
 let tray = null;
 let pbProcess = null;
@@ -36,7 +33,7 @@ function createWindow() {
     mainWindow.loadURL("http://localhost:3000");
     mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(path.join(__dirname, "..", "out", "index.html"));
+    mainWindow.loadURL(`http://127.0.0.1:${APP_PORT}`);
   }
 
   mainWindow.on("close", (event) => {
@@ -212,6 +209,19 @@ app.whenReady().then(async () => {
     dialog.showErrorBox("PocketBase Error", "Could not start local database.");
   }
 
+  // Start static file server (serves out/ directory in production)
+  if (!isDev) {
+    const serveDir = path.join(__dirname, "..", "out");
+    try {
+      const { server, port, url } = await startStaticServer(serveDir, APP_PORT);
+      staticServer = server;
+      console.log(`[Main] Static server running at ${url}`);
+    } catch (err) {
+      console.error("[Main] Static server failed:", err.message);
+      dialog.showErrorBox("Startup Error", "Could not start static server.");
+    }
+  }
+
   createWindow();
   createTray();
 
@@ -227,6 +237,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  if (staticServer) staticServer.close();
   if (pbProcess) pbProcess.kill();
   if (syncInterval) clearInterval(syncInterval);
 });

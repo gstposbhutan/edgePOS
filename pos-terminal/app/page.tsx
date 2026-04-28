@@ -530,25 +530,25 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
 
         <div className="flex items-center gap-0.5">
           <div className="hidden md:flex items-center gap-0.5">
-            <Link href="./inventory/">
+            <Link href="/inventory">
               <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
                 <Package className="h-4 w-4 mr-1.5" />
                 Inventory
               </Button>
             </Link>
-            <Link href="./orders/">
+            <Link href="/orders">
               <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
                 <ClipboardList className="h-4 w-4 mr-1.5" />
                 Orders
               </Button>
             </Link>
-            <Link href="./customers/">
+            <Link href="/customers">
               <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
                 <Users className="h-4 w-4 mr-1.5" />
                 Customers
               </Button>
             </Link>
-            <Link href="./adjustments/">
+            <Link href="/adjustments">
               <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
                 <Wallet className="h-4 w-4 mr-1.5" />
                 Cash
@@ -578,7 +578,7 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
           >
             {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
-          <Link href="./settings/">
+          <Link href="/settings">
             <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
               <Settings className="h-4 w-4" />
             </Button>
