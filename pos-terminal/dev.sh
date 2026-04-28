@@ -3,9 +3,9 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 echo "=== Clean ==="
-rm -rf "/home/$USER/.config/pos-terminal/pb_data"
-rm -rf out/ .next/ release/
-
+rm -rf "$HOME/.config/pos-terminal/pb_data" 2>/dev/null
+rm -rf out/ release/ 2>/dev/null
+# Skip .next/ — may have root-owned Docker files
 echo "=== Build ==="
 npm run build
 npm run electron:build
