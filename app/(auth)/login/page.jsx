@@ -27,6 +27,7 @@ function LoginForm() {
   const [otpSent,    setOtpSent]    = useState(false)
   const [otpTimer,   setOtpTimer]   = useState(0)
   const otpInputs    = useRef([])
+  const [otpMessage, setOtpMessage] = useState(null) // For mock OTP display
 
   // Shared state
   const [loading,  setLoading]  = useState(false)
@@ -62,6 +63,7 @@ function LoginForm() {
   async function handleSendOtp(e) {
     e.preventDefault()
     setError(null)
+    setOtpMessage(null)
 
     const cleaned = waPhone.replace(/\s/g, '')
     if (!/^\+?[0-9]{8,15}$/.test(cleaned)) {
@@ -70,19 +72,33 @@ function LoginForm() {
     }
 
     setLoading(true)
-    const { error: sendError } = await sendWhatsAppOtp(
-      cleaned.startsWith('+') ? cleaned : `+${cleaned}`
-    )
+    const phone = cleaned.startsWith('+') ? cleaned : `+${cleaned}`
+    const response = await fetch('/api/auth/whatsapp/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone }),
+    })
+    const data = await response.json()
     setLoading(false)
 
-    if (sendError) {
-      setError(sendError)
+    if (!response.ok) {
+      setError(data.error)
       return
     }
 
     setOtpSent(true)
     setOtpTimer(60) // 60-second cooldown before resend
-    setWaOtp('')
+
+    // Show OTP in mock/dev mode for easy testing
+    if (data.mock || data.dev) {
+      setWaOtp(data.otp) // Auto-fill the OTP
+      setOtpMessage(data.mock
+        ? `Demo OTP: ${data.otp}`
+        : `Gateway down - Use OTP: ${data.otp}`
+      )
+    } else {
+      setWaOtp('')
+    }
   }
 
   /** Verify WhatsApp OTP and sign in */
@@ -263,6 +279,13 @@ function LoginForm() {
                   Code sent to <span className="font-medium text-foreground">{waPhone}</span>
                 </p>
               </div>
+
+              {otpMessage && (
+                <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-center">
+                  <p className="text-sm font-medium text-emerald-600">{otpMessage}</p>
+                  <p className="text-xs text-emerald-600/70 mt-1">Auto-filled for your convenience</p>
+                </div>
+              )}
 
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-foreground text-center block">

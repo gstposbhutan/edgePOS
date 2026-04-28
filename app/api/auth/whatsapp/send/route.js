@@ -5,6 +5,7 @@ import { createServiceClient } from '@/lib/supabase/server'
 const RATE_LIMIT_WINDOW = 10 * 60 * 1000 // 10 minutes
 const RATE_LIMIT_MAX = 3
 const OTP_EXPIRY = 5 * 60 * 1000 // 5 minutes
+const MOCK_OTP = '123456' // Universal OTP for demo/testing
 
 export async function POST(request) {
   try {
@@ -19,24 +20,27 @@ export async function POST(request) {
 
     const normalizedPhone = phone.replace(/\s/g, '')
     const supabase = createServiceClient()
+    const isMockMode = process.env.MOCK_WHATSAPP === 'true'
 
-    // Rate limit: max 3 OTPs per phone per 10 minutes
-    const since = new Date(Date.now() - RATE_LIMIT_WINDOW).toISOString()
-    const { count } = await supabase
-      .from('whatsapp_otps')
-      .select('*', { count: 'exact', head: true })
-      .eq('phone', normalizedPhone)
-      .gte('created_at', since)
+    // Rate limit: max 3 OTPs per phone per 10 minutes (skip in mock mode)
+    if (!isMockMode) {
+      const since = new Date(Date.now() - RATE_LIMIT_WINDOW).toISOString()
+      const { count } = await supabase
+        .from('whatsapp_otps')
+        .select('*', { count: 'exact', head: true })
+        .eq('phone', normalizedPhone)
+        .gte('created_at', since)
 
-    if (count >= RATE_LIMIT_MAX) {
-      return NextResponse.json(
-        { error: 'Too many requests. Try again in 10 minutes.' },
-        { status: 429 }
-      )
+      if (count >= RATE_LIMIT_MAX) {
+        return NextResponse.json(
+          { error: 'Too many requests. Try again in 10 minutes.' },
+          { status: 429 }
+        )
+      }
     }
 
-    // Generate 6-digit OTP
-    const otp = String(Math.floor(100000 + Math.random() * 900000))
+    // Generate OTP (use fixed OTP in mock mode)
+    const otp = isMockMode ? MOCK_OTP : String(Math.floor(100000 + Math.random() * 900000))
     const otpHash = await bcrypt.hash(otp, 10)
     const expiresAt = new Date(Date.now() + OTP_EXPIRY).toISOString()
 
@@ -64,7 +68,18 @@ export async function POST(request) {
       )
     }
 
-    // Send OTP via whatsapp-gateway
+    // MOCK MODE: Return OTP in response for easy testing
+    if (isMockMode) {
+      console.log(`[MOCK WhatsApp OTP] Phone: ${normalizedPhone}, OTP: ${otp}`)
+      return NextResponse.json({
+        success: true,
+        mock: true,
+        otp: otp, // Include OTP in response for demo
+        message: `Mock mode: Use OTP ${otp} to verify`
+      })
+    }
+
+    // PRODUCTION: Send OTP via whatsapp-gateway
     try {
       const gatewayUrl = process.env.WHATSAPP_GATEWAY_URL || 'http://localhost:3001'
       await fetch(`${gatewayUrl}/api/send-otp`, {
@@ -77,6 +92,13 @@ export async function POST(request) {
       // In development, log the OTP so it can be tested without gateway
       if (process.env.NODE_ENV === 'development') {
         console.log(`[DEV] WhatsApp OTP for ${normalizedPhone}: ${otp}`)
+        // Return OTP in dev mode for easier testing when gateway is down
+        return NextResponse.json({
+          success: true,
+          dev: true,
+          otp: otp,
+          message: `Gateway unavailable - DEV mode: Use OTP ${otp}`
+        })
       }
     }
 
