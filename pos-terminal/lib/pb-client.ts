@@ -51,10 +51,8 @@ export function getPB(): PocketBase {
         localStorage.setItem(AUTH_KEY, JSON.stringify({ token, record }));
       } else {
         localStorage.removeItem(AUTH_KEY);
-        // Token cleared (expired/invalid) — redirect to login if not already there
-        if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
-          window.location.href = "./login/";
-        }
+        // Auth cleared — React will re-render and show login form inline.
+        // No redirect needed (avoids file:// protocol issues).
       }
     });
   }

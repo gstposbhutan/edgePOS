@@ -29,11 +29,9 @@ function handleAuthError(error: unknown) {
       message?.includes("auth") ||
       message?.includes("not authenticated") ||
       message?.includes("Not authenticated")) {
-    // Token expired or invalid — clear and redirect
+    // Token expired or invalid — clear auth.
+    // React re-renders and shows login form inline on all pages.
     localStorage.removeItem("pb_auth");
-    if (!window.location.pathname.startsWith("/login")) {
-      window.location.href = "./login/";
-    }
   }
 }
 
