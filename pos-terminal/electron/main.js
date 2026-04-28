@@ -23,7 +23,7 @@ function createWindow() {
     minWidth: 1024,
     minHeight: 768,
     title: "NEXUS BHUTAN POS",
-    icon: getResourcePath("public", "favicon.ico"),
+    icon: getResourcePath("public", "favicon.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -47,21 +47,25 @@ function createWindow() {
 }
 
 function createTray() {
-  tray = new Tray(getResourcePath("public", "favicon.ico"));
-  const contextMenu = Menu.buildFromTemplate([
-    { label: "Show", click: () => mainWindow.show() },
-    { label: "Test Printer", click: async () => {
-      try { await testPrint(); } catch (e) { dialog.showErrorBox("Printer", e.message); }
-    }},
-    { type: "separator" },
-    { label: "Quit", click: () => {
-      if (pbProcess) pbProcess.kill();
-      app.exit(0);
-    }},
-  ]);
-  tray.setToolTip("NEXUS BHUTAN POS");
-  tray.setContextMenu(contextMenu);
-  tray.on("click", () => mainWindow.show());
+  try {
+    tray = new Tray(getResourcePath("public", "favicon.png"));
+    const contextMenu = Menu.buildFromTemplate([
+      { label: "Show", click: () => mainWindow.show() },
+      { label: "Test Printer", click: async () => {
+        try { await testPrint(); } catch (e) { dialog.showErrorBox("Printer", e.message); }
+      }},
+      { type: "separator" },
+      { label: "Quit", click: () => {
+        if (pbProcess) pbProcess.kill();
+        app.exit(0);
+      }},
+    ]);
+    tray.setToolTip("NEXUS BHUTAN POS");
+    tray.setContextMenu(contextMenu);
+    tray.on("click", () => mainWindow.show());
+  } catch (e) {
+    console.warn("[Main] Tray creation failed:", e.message);
+  }
 }
 
 // ── IPC Handlers ────────────────────────────────────────────────────────────
