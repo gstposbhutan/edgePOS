@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { useSettings } from "@/hooks/use-settings";
 import { useHeldCarts } from "@/hooks/use-held-carts";
@@ -51,22 +50,18 @@ import {
   Moon,
 } from "lucide-react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
+
+const LoginFallback = dynamic(() => import("@/app/login/page"), { ssr: false });
 
 export default function PosPage() {
-  const router = useRouter();
   const { user, isAuthenticated, signOut, isManager, loading: authLoading } = useAuth();
-
-  useEffect(() => {
-    if (!authLoading && !isAuthenticated && !user) {
-      router.push("/login/");
-    }
-  }, [isAuthenticated, user, authLoading, router]);
 
   if (authLoading) {
     return <div className="min-h-screen flex items-center justify-center"><p className="text-muted-foreground">Loading...</p></div>;
   }
 
-  if (!isAuthenticated) return null;
+  if (!isAuthenticated) return <LoginFallback />;
 
   return <PosTerminal user={user} isManager={isManager} signOut={signOut} />;
 }

@@ -22,10 +22,9 @@ export default function LoginPage() {
     const result = await login(email, password);
     if (result.success) {
       try {
-        await router.push("/");
+        await router.push("./");
       } catch {
-        // Fallback for static export
-        window.location.href = "/";
+        window.location.href = "./";
       }
     } else {
       setError(result.error || "Login failed");
