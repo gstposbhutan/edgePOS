@@ -82,7 +82,7 @@
       "main": "electron/main.js"
     },
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": ["AppImage"],
       "category": "Office",
       "icon": "public/favicon.ico"
     },
