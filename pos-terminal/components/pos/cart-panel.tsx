@@ -6,6 +6,7 @@ import {
   Trash2,
   ShoppingCart,
   User,
+  X,
 } from "lucide-react";
 import { CartItemRow } from "./cart-item-row";
 import { CartTotals } from "./cart-totals";
@@ -18,6 +19,7 @@ interface CartPanelProps {
   isManager: boolean;
   onCheckout: () => void;
   onSelectCustomer: () => void;
+  onClearCustomer?: () => void;
   noShift?: boolean;
 }
 
@@ -26,6 +28,7 @@ export function CartPanel({
   isManager,
   onCheckout,
   onSelectCustomer,
+  onClearCustomer,
   noShift = false,
 }: CartPanelProps) {
   const { items, loading, subtotal, discountTotal, taxableSubtotal, gstTotal, grandTotal, taxExempt, setTaxExempt, grandTotalExempt, updateQty, removeItem, applyDiscount, overridePrice, clearCart } = useCart();
@@ -63,11 +66,21 @@ export function CartPanel({
             <User className="h-4 w-4 text-muted-foreground group-hover:text-primary" />
           </div>
           {customer ? (
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{customer.debtor_name}</p>
-              {customer.debtor_phone && (
-                <p className="text-xs text-muted-foreground">{customer.debtor_phone}</p>
-              )}
+            <div className="flex-1 min-w-0 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium truncate">{customer.debtor_name}</p>
+                {customer.debtor_phone && (
+                  <p className="text-xs text-muted-foreground">{customer.debtor_phone}</p>
+                )}
+              </div>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={(e) => { e.stopPropagation(); onClearCustomer?.(); }}
+                className="text-muted-foreground hover:text-destructive shrink-0"
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
             </div>
           ) : (
             <span className="text-sm text-muted-foreground">Walk-in Customer</span>

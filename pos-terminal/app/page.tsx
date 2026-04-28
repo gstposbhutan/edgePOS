@@ -319,6 +319,7 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
       const result = await clearCart();
       if (result.success) {
         undoStack.clear();
+        setSelectedCustomer(null);
         toast.success("New transaction started");
       } else {
         toast.error(result.error || "Failed to clear cart");
@@ -609,6 +610,7 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
             isManager={isManager}
             onCheckout={handleCheckout}
             onSelectCustomer={() => setShowCustomer(true)}
+            onClearCustomer={() => setSelectedCustomer(null)}
             noShift={!activeShift}
           />
           </div>
@@ -624,6 +626,7 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
                 isManager={isManager}
                 onCheckout={handleCheckout}
                 onSelectCustomer={() => setShowCustomer(true)}
+                onClearCustomer={() => setSelectedCustomer(null)}
                 noShift={!activeShift}
               />
             </div>
