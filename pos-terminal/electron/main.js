@@ -13,6 +13,11 @@ let pbProcess = null;
 let syncInterval = null;
 let syncConfig = null;
 
+function getResourcePath(...segments) {
+  if (isDev) return path.join(__dirname, "..", ...segments);
+  return path.join(process.resourcesPath, "app.asar.unpacked", ...segments);
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
