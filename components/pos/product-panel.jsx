@@ -1,54 +1,77 @@
 "use client"
 
+import { useState } from "react"
 import { Search, Package, AlertTriangle } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { ProductDetailModal } from "./product-detail-modal"
 
 /**
  * Left panel — product search and grid.
- * Clicking a product adds it to the cart.
+ * Clicking a product opens detail modal.
  *
  * @param {{ products: object[], loading: boolean, onSearch: (q:string)=>void, onAddItem: (p:object)=>void }} props
  */
 export function ProductPanel({ products, loading, onSearch, onAddItem }) {
+  const [selectedProduct, setSelectedProduct] = useState(null)
+
+  function handleProductClick(product) {
+    setSelectedProduct(product)
+  }
+
+  function handleAddToCart(product) {
+    onAddItem(product)
+    setSelectedProduct(null)
+  }
+
   return (
-    <div className="flex flex-col h-full gap-3">
-      {/* Search bar */}
-      <div className="relative shrink-0">
-        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Search products by name or SKU..."
-          onChange={(e) => onSearch(e.target.value)}
-          className="pl-9"
-        />
+    <>
+      <div className="flex flex-col h-full gap-3">
+        {/* Search bar */}
+        <div className="relative shrink-0">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search products by name or SKU..."
+            onChange={(e) => onSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+
+        {/* Product grid */}
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {Array.from({ length: 9 }).map((_, i) => (
+                <div key={i} className="h-28 rounded-xl bg-muted animate-pulse" />
+              ))}
+            </div>
+          ) : products.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
+              <Package className="h-10 w-10 opacity-30" />
+              <p className="text-sm">No products found</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {products.map((product) => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  onClick={() => handleProductClick(product)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Product grid */}
-      <div className="flex-1 overflow-y-auto">
-        {loading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {Array.from({ length: 9 }).map((_, i) => (
-              <div key={i} className="h-28 rounded-xl bg-muted animate-pulse" />
-            ))}
-          </div>
-        ) : products.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
-            <Package className="h-10 w-10 opacity-30" />
-            <p className="text-sm">No products found</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {products.map((product) => (
-              <ProductCard
-                key={product.id}
-                product={product}
-                onAdd={() => onAddItem(product)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+      {/* Product detail modal */}
+      <ProductDetailModal
+        open={!!selectedProduct}
+        product={selectedProduct}
+        onAddToCart={handleAddToCart}
+        onClose={() => setSelectedProduct(null)}
+      />
+    </>
   )
 }
 
@@ -63,7 +86,7 @@ const PKG_LABELS = {
   PALLET: { label: 'Pallet', color: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' },
 }
 
-function ProductCard({ product, onAdd }) {
+function ProductCard({ product, onClick }) {
   const price      = parseFloat(product.mrp ?? product.wholesale_price ?? 0)
   // Use available_stock (view column) — handles both real stock and computed package qty
   const stock      = product.available_stock ?? product.current_stock ?? 0
@@ -75,8 +98,7 @@ function ProductCard({ product, onAdd }) {
 
   return (
     <button
-      onClick={onAdd}
-      disabled={outOfStock}
+      onClick={onClick}
       className={`
         group relative flex flex-col gap-2 p-3 rounded-xl border text-left
         transition-all duration-150 active:scale-95

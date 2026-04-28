@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { ProductForm }   from "@/components/pos/products/product-form"
 import { PackageForm }   from "@/components/pos/products/package-form"
+import { ProductDetailModal } from "@/components/pos/product-detail-modal"
 import { useProductCatalog } from "@/hooks/use-product-catalog"
 import { getUser, getRoleClaims } from "@/lib/auth"
 
@@ -27,6 +28,7 @@ export default function ProductsPage() {
   const [packages,      setPackages]      = useState([])
   const [pkgsLoading,   setPkgsLoading]   = useState(false)
   const [filterActive,  setFilterActive]  = useState('ALL')
+  const [viewProduct,   setViewProduct]   = useState(null)  // For cashier view-only
 
   useEffect(() => {
     async function load() {
@@ -88,8 +90,18 @@ export default function ProductsPage() {
   }
 
   function openAdd() { setEditProduct(null); setShowForm(true) }
-  function openEdit(p) { setEditProduct(p); setShowForm(true) }
+  function openEdit(p) {
+    if (!canManage) {
+      // Cashier - show read-only detail modal
+      setViewProduct(p)
+    } else {
+      // Manager/Admin - show edit form
+      setEditProduct(p)
+      setShowForm(true)
+    }
+  }
   function closeForm() { setShowForm(false); setEditProduct(null) }
+  function closeDetail() { setViewProduct(null) }
 
   return (
     <div className="flex flex-col h-full">
@@ -249,6 +261,15 @@ export default function ProductsPage() {
         onSave={handleSavePackage}
         onClose={() => { setShowPkgForm(false); setEditPackage(null) }}
       />
+
+      {/* Product detail modal (read-only for cashiers) */}
+      <ProductDetailModal
+        open={!!viewProduct}
+        product={viewProduct}
+        onAddToCart={() => {}}
+        onClose={closeDetail}
+        readOnly={true}
+      />
     </div>
   )
 }
@@ -297,7 +318,10 @@ function ProductRow({ product, canManage, onEdit, onToggle, onTogglePkgOnly, onT
   const stock = product.current_stock ?? 0
 
   return (
-    <div className={`flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors ${!product.is_active ? 'opacity-50' : ''}`}>
+    <div
+      className={`flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors cursor-pointer ${!product.is_active ? 'opacity-50' : ''}`}
+      onClick={onEdit}
+    >
       {/* Image / placeholder */}
       <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center shrink-0 overflow-hidden">
         {product.image_url
@@ -342,14 +366,14 @@ function ProductRow({ product, canManage, onEdit, onToggle, onTogglePkgOnly, onT
             <Pencil className="h-4 w-4" />
           </Button>
           <button
-            onClick={onToggle}
+            onClick={(e) => { e.stopPropagation(); onToggle(); }}
             title={product.is_active ? 'Deactivate' : 'Activate'}
             className={`transition-colors ${product.is_active ? 'text-emerald-600 hover:text-emerald-700' : 'text-muted-foreground hover:text-foreground'}`}
           >
             {product.is_active ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
           </button>
           <button
-            onClick={onTogglePkgOnly}
+            onClick={(e) => { e.stopPropagation(); onTogglePkgOnly(); }}
             title={product.sold_as_package_only ? 'Allow direct sale' : 'Package only (hide from POS/marketplace)'}
             className={`transition-colors text-[10px] font-medium px-1.5 py-0.5 rounded border ${
               product.sold_as_package_only
@@ -360,7 +384,7 @@ function ProductRow({ product, canManage, onEdit, onToggle, onTogglePkgOnly, onT
             PKG
           </button>
           <button
-            onClick={onToggleWeb}
+            onClick={(e) => { e.stopPropagation(); onToggleWeb(); }}
             title={product.visible_on_web ? 'Hide from marketplace' : 'Show on marketplace'}
             className={`transition-colors text-[10px] font-medium px-1.5 py-0.5 rounded border ${
               product.visible_on_web
