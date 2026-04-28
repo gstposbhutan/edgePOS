@@ -1,5 +1,6 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import { ConnectivityGate } from "@/components/connectivity-gate";
+import { CartProvider } from "@/lib/cart-context";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -24,7 +25,9 @@ export default function RootLayout({ children }) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <ConnectivityGate>{children}</ConnectivityGate>
+        <CartProvider>
+          <ConnectivityGate>{children}</ConnectivityGate>
+        </CartProvider>
       </body>
     </html>
   );
