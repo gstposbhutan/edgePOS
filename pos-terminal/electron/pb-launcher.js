@@ -64,9 +64,9 @@ function waitForPBReady(retries = 0) {
   });
 }
 
-function launchPocketBase() {
+function launchPocketBase(dataDirOverride) {
   const binary = getPocketBaseBinary();
-  const dataDir = path.join(getAppBase(), "pb", "pb_data");
+  const dataDir = dataDirOverride || path.join(getAppBase(), "pb", "pb_data");
 
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });

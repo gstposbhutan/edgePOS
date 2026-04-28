@@ -4,6 +4,12 @@ const { launchPocketBase, PB_URL } = require("./pb-launcher");
 const { printReceipt, getPrinterStatus, testPrint } = require("./printer");
 
 const isDev = !app.isPackaged;
+
+function getResourcePath(...segments) {
+  if (isDev) return path.join(__dirname, "..", ...segments);
+  return path.join(process.resourcesPath, "app.asar.unpacked", ...segments);
+}
+
 let mainWindow = null;
 let tray = null;
 let pbProcess = null;
@@ -17,7 +23,7 @@ function createWindow() {
     minWidth: 1024,
     minHeight: 768,
     title: "NEXUS BHUTAN POS",
-    icon: path.join(__dirname, "..", "public", "favicon.ico"),
+    icon: getResourcePath("public", "favicon.ico"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -41,7 +47,7 @@ function createWindow() {
 }
 
 function createTray() {
-  tray = new Tray(path.join(__dirname, "..", "public", "favicon.ico"));
+  tray = new Tray(getResourcePath("public", "favicon.ico"));
   const contextMenu = Menu.buildFromTemplate([
     { label: "Show", click: () => mainWindow.show() },
     { label: "Test Printer", click: async () => {
@@ -160,8 +166,11 @@ ipcMain.handle("sync:force", async () => {
 // ── App Lifecycle ───────────────────────────────────────────────────────────
 
 app.whenReady().then(async () => {
-  // Launch PocketBase
-  const { proc, ready } = launchPocketBase();
+  // Launch PocketBase with data dir in user's app data (writable)
+  const dataDir = isDev
+    ? path.join(__dirname, "..", "pb", "pb_data")
+    : path.join(app.getPath("userData"), "pb_data");
+  const { proc, ready } = launchPocketBase(dataDir);
   pbProcess = proc;
 
   try {
