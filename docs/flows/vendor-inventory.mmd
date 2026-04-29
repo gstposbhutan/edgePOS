@@ -1,5 +1,5 @@
 flowchart TD
-    INV([Inventory Page]) --> TABS{Select Tab}
+    INV(["/pos/inventory\nInventory Page"]) --> TABS{Select Tab}
 
     TABS --> |Stock Levels| STOCK_TAB[Stock Table]
     TABS --> |Draft Purchases| DRAFT_TAB[Draft Purchases]
@@ -9,15 +9,25 @@ flowchart TD
     STOCK_TAB --> ALERTS{Low/Out of stock?}
     ALERTS --> |Yes| BANNER[Show alert banners]
     ALERTS --> |No| TABLE
-    BANNER --> TABLE[Product stock table]
-    TABLE --> FILTER_STOCK[Filter: ALL LOW OUT]
+    BANNER --> TABLE["Product stock table\nOne row per active batch (FEFO order)\nbatch_number · expires_at · qty · selling_price"]
+    TABLE --> FILTER_STOCK["Filter: ALL LOW OUT"]
     TABLE --> SCAN_BTN[Scan Bill button]
-    TABLE --> ADJUST["Adjust Stock - Manager+"]
+    TABLE --> ADJUST["Adjust Stock — Manager+"]
     ADJUST --> ADJ_TYPE["Type: RESTOCK SALE DAMAGE LOSS RETURN"]
-    ADJ_TYPE --> MOVEMENT[Create inventory movement]
-    MOVEMENT --> UPDATE_STOCK[Trigger updates current_stock]
+    ADJ_TYPE --> MOVEMENT["INSERT inventory_movement\n(with batch_id if batch-specific)"]
+    MOVEMENT --> SYNC["sync_batch_quantity trigger\nDecrements product_batches.quantity"]
+    SYNC --> DEPLETE["auto_deplete_batch trigger\nSets status=DEPLETED if quantity ≤ 0"]
+    DEPLETE --> UPDATE_STOCK["products.current_stock updated\n(aggregate of active batches)"]
 
     SCAN_BTN --> SCAN_MODAL[Scan Bill Modal]
+
+    subgraph "Batch Auto-Depletion (migration 060)"
+        DEPLETE_NOTE["BEFORE UPDATE trigger on product_batches:\n- quantity ≤ 0 → status = DEPLETED\n- quantity > 0 (restored) → status = ACTIVE\nSync trigger is SECURITY DEFINER\n(works in service-role context)"]
+    end
+
+    subgraph "Sellable Products View (migration 061)"
+        VIEW_NOTE["sellable_products view uses auth_entity_id()\nINNER JOIN product_batches scoped to current entity\nEach entity only sees their own active stock\nProducts with no active batches excluded"]
+    end
 
     DRAFT_TAB --> DRAFT_LIST[Draft List]
     DRAFT_TAB --> SCAN_BTN2[Scan Bill Button]
@@ -33,7 +43,7 @@ flowchart TD
 
     REVIEW --> EDIT_ITEMS["Edit qty / price / assign product"]
     REVIEW --> |Confirm Restock| CONFIRM_D[Create RESTOCK movements]
-    CONFIRM_D --> STOCK_UP[Stock updated]
+    CONFIRM_D --> STOCK_UP[Stock updated via triggers]
     REVIEW --> |Cancel Draft| CANCEL_D[Status: CANCELLED]
 
     PRED_TAB --> SUMMARY[Summary Cards]

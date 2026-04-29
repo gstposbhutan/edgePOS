@@ -22,7 +22,8 @@
 - [V11. Keyboard/Desktop POS Layout](flows/vendor-keyboard-pos.mmd)
 - [V12. Multi-Cart (Hold & Switch)](flows/vendor-multi-cart.mmd) — **NEW**
 - [V13. Credit Sale OTP Verification](flows/vendor-credit-otp.mmd) — **NEW**
-- [V14. Sales Order Page (/salesorder)](flows/vendor-salesorder-page.mmd) — **NEW**
+- [V14. Sales Order Page (/salesorder)](flows/vendor-salesorder-page.mmd)
+- [V15. Sales Order → Invoice Fulfilment](flows/vendor-sales-order-invoice.mmd) — **NEW**
 
 ---
 

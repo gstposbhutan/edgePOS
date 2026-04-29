@@ -16,7 +16,6 @@ export function useOrders(entityId) {
 
   const STATUS_GROUPS = {
     ALL:       null,
-    WHATSAPP:  'WHATSAPP',
     ACTIVE:    ['PENDING_PAYMENT', 'PAYMENT_VERIFYING', 'CONFIRMED', 'PROCESSING', 'DISPATCHED'],
     COMPLETED: ['COMPLETED', 'DELIVERED'],
     CANCELLED: ['CANCELLED', 'PAYMENT_FAILED'],
@@ -37,10 +36,11 @@ export function useOrders(entityId) {
       .order('created_at', { ascending: false })
       .limit(100)
 
+    // POS orders only: exclude customer-facing sales order types
+    query = query.in('order_type', ['POS_SALE', 'WHOLESALE'])
+
     const filterVal = STATUS_GROUPS[filter]
-    if (filter === 'WHATSAPP') {
-      query = query.eq('order_source', 'WHATSAPP')
-    } else if (filterVal) {
+    if (filterVal) {
       query = query.in('status', filterVal)
     }
 
@@ -58,7 +58,7 @@ export function useOrders(entityId) {
     const [{ data: order }, { data: items }, { data: timeline }, { data: refunds }, { data: replacements }] =
       await Promise.all([
         supabase.from('orders').select('*').eq('id', orderId).single(),
-        supabase.from('order_items').select('*').eq('order_id', orderId).order('created_at'),
+        supabase.from('order_items').select('*, batch:batch_id(id, batch_number, expires_at, mrp, selling_price)').eq('order_id', orderId).order('created_at'),
         supabase.from('order_status_log').select('*').eq('order_id', orderId).order('created_at'),
         supabase.from('refunds').select('*').eq('order_id', orderId).order('created_at'),
         supabase.from('replacements').select('*').eq('order_id', orderId).order('created_at'),

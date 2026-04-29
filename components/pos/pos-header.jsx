@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { LogOut, RefreshCw, Wifi, Package, BookOpen, ClipboardList, Wallet, ShoppingBag, Keyboard, ChevronDown, Store, LayoutDashboard } from "lucide-react"
+import { LogOut, RefreshCw, Wifi, Package, BookOpen, ClipboardList, Wallet, ShoppingBag, Keyboard, ChevronDown, Store, LayoutDashboard, ShoppingCart } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { FaceAuthBadge } from "./face-auth-badge"
@@ -121,6 +121,10 @@ export function PosHeader({ storeName, cashierName, customer, syncing, onEnrollF
           <ClipboardList className="h-4 w-4" />
         </Button>
 
+        <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/purchases')} title="Purchases">
+          <ShoppingCart className="h-4 w-4" />
+        </Button>
+
         <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/products')} title="Products">
           <BookOpen className="h-4 w-4" />
         </Button>
@@ -143,7 +147,7 @@ export function PosHeader({ storeName, cashierName, customer, syncing, onEnrollF
           variant="ghost"
           size="icon-sm"
           title="Switch to Keyboard Mode (F9)"
-          onClick={() => { localStorage.setItem('pos_layout_mode', 'keyboard'); router.push('/pos/keyboard') }}
+          onClick={() => { localStorage.setItem('pos_layout_mode', 'keyboard'); router.push('/pos') }}
         >
           <Keyboard className="h-4 w-4" />
         </Button>

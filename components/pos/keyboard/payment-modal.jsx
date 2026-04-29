@@ -5,11 +5,9 @@ import { X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 const METHODS = [
-  { key: 'MBOB',   label: 'mBoB',   num: '1' },
-  { key: 'MPAY',   label: 'mPay',   num: '2' },
-  { key: 'RTGS',   label: 'RTGS',   num: '3' },
-  { key: 'CASH',   label: 'Cash',   num: '4' },
-  { key: 'CREDIT', label: 'Credit', num: '5' },
+  { key: 'ONLINE', label: 'Online',  num: '1' },
+  { key: 'CASH',   label: 'Cash',    num: '2' },
+  { key: 'CREDIT', label: 'Credit',  num: '3' },
 ]
 
 const DENOMINATIONS = [10, 50, 100, 500, 1000]
@@ -34,7 +32,7 @@ export function PaymentModal({ open, grandTotal, onConfirm, onClose }) {
 
     function handleKey(e) {
       // 1-5: select payment method
-      if (/^[1-5]$/.test(e.key) && !e.ctrlKey) {
+      if (/^[1-3]$/.test(e.key) && !e.ctrlKey) {
         const m = METHODS.find(m => m.num === e.key)
         if (m) { setMethod(m.key); e.preventDefault(); return }
       }

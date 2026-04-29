@@ -1,33 +1,53 @@
 stateDiagram-v2
-    [*] --> DRAFT
-    DRAFT --> PENDING_PAYMENT : Customer identified plus checkout
-    PENDING_PAYMENT --> PAYMENT_VERIFYING : Digital payment selected
+    %% ── POS SALE lifecycle ──────────────────────────────────────────────────
+    [*] --> PENDING_PAYMENT : POS cashier confirms payment\n(order INSERT)
+    PENDING_PAYMENT --> CONFIRMED : UPDATE status\n→ guard_stock_on_confirm (BEFORE)\n→ deduct_stock_on_confirm (AFTER)\n→ batch quantities decremented
+
+    %% ── Marketplace / WhatsApp order lifecycle ──────────────────────────────
+    [*] --> DRAFT : Customer creates order\n(SALES_ORDER or marketplace)
+    DRAFT --> PENDING_PAYMENT : Customer proceeds to checkout
+    PENDING_PAYMENT --> PAYMENT_VERIFYING : Online payment selected
     PAYMENT_VERIFYING --> CONFIRMED : Payment verified
     PENDING_PAYMENT --> CONFIRMED : Cash payment
-    PENDING_PAYMENT --> CANCELLED : Payment failed or timeout
-    PAYMENT_VERIFYING --> CANCELLED : Verification failed or timeout
 
-    CONFIRMED --> PROCESSING : Staff begins fulfillment
-    PROCESSING --> DISPATCHED : Handed to delivery
-    DISPATCHED --> DELIVERED : Customer received
+    %% ── Sales Order specific states ─────────────────────────────────────────
+    DRAFT --> PARTIALLY_FULFILLED : First Sales Invoice created\n(some lines still unfulfilled)
+    PARTIALLY_FULFILLED --> PARTIALLY_FULFILLED : Another Sales Invoice created\n(more lines invoiced)
+    PARTIALLY_FULFILLED --> CONFIRMED : All lines fully invoiced
+
+    %% ── SALES_INVOICE / PURCHASE_INVOICE: inserted directly at CONFIRMED ────
+    note right of CONFIRMED
+        SALES_INVOICE and PURCHASE_INVOICE
+        are INSERT'd directly at CONFIRMED.
+        deduct_stock / restock triggers fire
+        on AFTER INSERT (migration 062).
+    end note
+
+    %% ── Fulfilment flow ─────────────────────────────────────────────────────
+    CONFIRMED --> PROCESSING : Staff begins fulfilment
+    PROCESSING --> DISPATCHED : Handed to rider\n(pickup OTP sent to vendor)
+    DISPATCHED --> DELIVERED : Customer received\n(delivery OTP verified)
     DELIVERED --> COMPLETED : Sale finalized
 
-    DRAFT --> CANCELLED : Staff cancels
-    PENDING_PAYMENT --> CANCELLED : Staff cancels
-    PAYMENT_VERIFYING --> CANCELLED : Staff cancels
-    CONFIRMED --> CANCELLED : Staff cancels stock restored
-    PROCESSING --> CANCELLED : Staff cancels stock restored
+    %% ── Cancellations ───────────────────────────────────────────────────────
+    DRAFT --> CANCELLED : Cancelled before payment
+    PENDING_PAYMENT --> CANCELLED : Payment failed or staff cancels
+    PAYMENT_VERIFYING --> CANCELLED : Verification failed
+    CONFIRMED --> CANCELLED : Staff cancels\n→ stock restored (RETURN movements)
+    PROCESSING --> CANCELLED : Staff cancels\n→ stock restored
     DISPATCHED --> CANCELLATION_REQUESTED : Customer requests
-    CANCELLATION_REQUESTED --> CANCELLED : Approved
+    CANCELLATION_REQUESTED --> CANCELLED : Approved\n→ stock restored
 
-    CONFIRMED --> REFUND_REQUESTED : Staff requests refund
-    DELIVERED --> REFUND_REQUESTED : Staff requests refund
-    COMPLETED --> REFUND_REQUESTED : Staff requests refund
+    %% ── Refunds ─────────────────────────────────────────────────────────────
+    CONFIRMED --> REFUND_REQUESTED : Manager requests refund
+    DELIVERED --> REFUND_REQUESTED : Manager requests refund
+    COMPLETED --> REFUND_REQUESTED : Manager requests refund
     REFUND_REQUESTED --> REFUND_APPROVED : Manager approves
     REFUND_REQUESTED --> REFUND_REJECTED : Manager rejects
     REFUND_APPROVED --> REFUND_PROCESSING : Processing refund
-    REFUND_PROCESSING --> REFUNDED : Refund complete stock restored
+    REFUND_PROCESSING --> REFUNDED : Complete\n→ stock restored (RETURN movements)
 
+    %% ── Replacements ────────────────────────────────────────────────────────
     CONFIRMED --> REPLACEMENT_REQUESTED : Customer requests replacement
     DELIVERED --> REPLACEMENT_REQUESTED : Customer requests replacement
     COMPLETED --> REPLACEMENT_REQUESTED : Customer requests replacement
@@ -35,6 +55,7 @@ stateDiagram-v2
     REPLACEMENT_APPROVED --> REPLACEMENT_SHIPPED : Shipped
     REPLACEMENT_SHIPPED --> REPLACEMENT_DELIVERED : Delivered
 
+    %% ── Terminal states ─────────────────────────────────────────────────────
     CANCELLED --> [*]
     COMPLETED --> [*]
     REFUNDED --> [*]

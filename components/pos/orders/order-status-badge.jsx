@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge"
 
 const STATUS_CONFIG = {
   DRAFT:                    { label: 'Draft',               style: 'bg-muted text-muted-foreground border-border' },
+  PARTIALLY_FULFILLED:      { label: 'Partial',             style: 'bg-amber-500/10 text-amber-600 border-amber-500/30' },
   PENDING_PAYMENT:          { label: 'Pending Payment',     style: 'bg-amber-500/10 text-amber-600 border-amber-500/30' },
   PAYMENT_VERIFYING:        { label: 'Verifying',           style: 'bg-blue-500/10 text-blue-600 border-blue-500/30' },
   CONFIRMED:                { label: 'Confirmed',           style: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30' },

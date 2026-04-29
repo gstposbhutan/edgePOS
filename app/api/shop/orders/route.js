@@ -85,7 +85,10 @@ export async function POST(request) {
     if (!vendor) return NextResponse.json({ error: 'Vendor not found' }, { status: 403 })
 
     const body = await request.json()
-    const { customer_whatsapp, customer_name, delivery_address, delivery_lat, delivery_lng, items } = body
+    const { customer_whatsapp, customer_name, delivery_address, delivery_lat, delivery_lng, items,
+            order_type: requestedOrderType } = body
+    // Allow SALES_ORDER type for vendor-initiated sales (no immediate stock deduction)
+    const isSalesOrder = requestedOrderType === 'SALES_ORDER'
 
     // Validate required fields
     if (!customer_whatsapp || !/^\+?[0-9]{8,15}$/.test(customer_whatsapp.replace(/\s/g, ''))) {
@@ -149,23 +152,38 @@ export async function POST(request) {
       customerEntity = newEntity
     }
 
-    // Validate products belong to this vendor and are active
+    // Validate products are active and this vendor has stock (batch or product-level)
     const productIds = items.map(i => i.product_id)
     const { data: products, error: productsError } = await serviceClient
       .from('products')
-      .select('id, name, sku, mrp, current_stock, is_active, created_by')
+      .select('id, name, sku, mrp, current_stock, is_active')
       .in('id', productIds)
 
     if (productsError) throw productsError
 
     const productMap = Object.fromEntries((products || []).map(p => [p.id, p]))
 
+    // Fetch this vendor's active batch totals for each product
+    const { data: batchTotals } = await serviceClient
+      .from('product_batches')
+      .select('product_id, quantity')
+      .eq('entity_id', sellerId)
+      .eq('status', 'ACTIVE')
+      .in('product_id', productIds)
+
+    const batchStockMap = {}
+    for (const b of (batchTotals || [])) {
+      batchStockMap[b.product_id] = (batchStockMap[b.product_id] || 0) + b.quantity
+    }
+
     for (const item of items) {
       const product = productMap[item.product_id]
       if (!product) return NextResponse.json({ error: `Product ${item.product_id} not found` }, { status: 404 })
       if (!product.is_active) return NextResponse.json({ error: `Product "${product.name}" is not active` }, { status: 400 })
-      if (product.created_by !== sellerId) return NextResponse.json({ error: `Product "${product.name}" does not belong to your store` }, { status: 403 })
-      if (product.current_stock < item.quantity) return NextResponse.json({ error: `Insufficient stock for "${product.name}"` }, { status: 400 })
+      // Vendor must have batch stock for this product (or product-level stock as fallback)
+      const vendorStock = batchStockMap[item.product_id] ?? product.current_stock ?? 0
+      if (vendorStock <= 0) return NextResponse.json({ error: `"${product.name}" is not stocked by your store` }, { status: 403 })
+      if (vendorStock < item.quantity) return NextResponse.json({ error: `Insufficient stock for "${product.name}"` }, { status: 400 })
     }
 
     // Calculate totals
@@ -195,16 +213,17 @@ export async function POST(request) {
 
     // Generate order number
     const year = new Date().getFullYear()
+    const prefix = isSalesOrder ? 'SO' : 'MKT'
     const { data: lastOrder } = await serviceClient
       .from('orders')
       .select('order_no')
-      .like('order_no', `MKT-${year}-%`)
+      .like('order_no', `${prefix}-${year}-%`)
       .order('order_no', { ascending: false })
       .limit(1)
       .single()
 
     const lastSerial = lastOrder?.order_no ? parseInt(lastOrder.order_no.split('-')[2] ?? '0', 10) : 0
-    const orderNo = `MKT-${year}-${String(lastSerial + 1).padStart(5, '0')}`
+    const orderNo = `${prefix}-${year}-${String(lastSerial + 1).padStart(5, '0')}`
 
     const signature = createHash('sha256')
       .update(`${orderNo}:${grandTotal}:${vendor.tpn_gstin ?? ''}`)
@@ -216,10 +235,10 @@ export async function POST(request) {
     const { data: order, error: orderError } = await serviceClient
       .from('orders')
       .insert({
-        order_type: 'MARKETPLACE',
-        order_no: orderNo,
+        order_type:   isSalesOrder ? 'SALES_ORDER' : 'MARKETPLACE',
+        order_no:     orderNo,
         order_source: 'POS',
-        status: 'CONFIRMED',
+        status:       isSalesOrder ? 'DRAFT' : 'CONFIRMED',
         seller_id: sellerId,
         buyer_id: customerEntity.id,
         buyer_whatsapp: phone,
@@ -231,8 +250,8 @@ export async function POST(request) {
         delivery_address: delivery_address ?? null,
         delivery_lat: delivery_lat ?? null,
         delivery_lng: delivery_lng ?? null,
-        payment_token: paymentToken,
-        payment_token_expires_at: paymentTokenExpiresAt,
+        payment_token: isSalesOrder ? null : paymentToken,
+        payment_token_expires_at: isSalesOrder ? null : paymentTokenExpiresAt,
         digital_signature: signature,
         created_by: session.user.id,
       })

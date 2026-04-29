@@ -86,7 +86,31 @@
   - F5 to place order; navigates to success screen with order number
   - Replaces `CreateMarketplaceOrderModal` — "New Order" in `/pos/orders` now navigates here
 - [x] **Keyboard POS** — [F-KBD-002](features/vendor-keyboard-ui.md) ✅ CODE COMPLETE
+  - Default route `/pos`; touch POS moved to `/pos/touch`
+  - Cart table: Batch column (blue batch#, expiry) + Stock column (available_qty)
+  - Product search: entity-scoped `product_batches` queries (one row per batch, FEFO order)
+  - Barcode lookup: entity-scoped (batch barcode → SKU fallback)
+  - Payment methods simplified to Online / Cash / Credit (legacy MBOB/MPAY/RTGS → ONLINE, migration 064)
+  - Breadcrumb navigation on all POS pages; back button restores correct orders tab
+  - Sales Order / Sales Invoice / Purchase Order / Purchase Invoice all converted to keyboard-first full-screen overlays
   - See feature spec for full details
+- [x] **Sales Orders & Sales Invoices** — [F-SALES-001](features/sales-order-invoice.md) ✅ CODE COMPLETE
+  - `/salesorder` creates SALES_ORDER (DRAFT, no stock change)
+  - Sales invoice creation: full-screen overlay with batch picker per line, qty capped at batch stock
+  - Partial fulfilment: multiple invoices per SO, server validates remaining qty
+  - Success screen with printable invoice preview + PDF download
+  - `/pos/orders` defaults to Sales tab; tab-aware back navigation
+  - Migration 058: SALES_ORDER/SALES_INVOICE order types, PARTIALLY_FULFILLED status, sales_order_id FK
+  - Migration 062: deduct_stock triggers fire on INSERT OR UPDATE (fixes SALES_INVOICE direct-CONFIRMED insert)
+- [x] **Purchase Orders & Purchase Invoices** ✅ CODE COMPLETE
+  - Convert to invoice: full-screen overlay (matches sales invoice UI)
+  - product search scoped to `product_batches` with entity_id — only products vendor has received
+  - Flow diagram: `docs/flows/vendor-purchase-order-invoice.mmd`
+- [x] **Batch Stock Management** ✅ CODE COMPLETE
+  - Migration 060: `auto_deplete_batch` BEFORE UPDATE trigger — sets status=DEPLETED when qty ≤ 0
+  - Migration 061: `sellable_products` view uses `auth_entity_id()` INNER JOIN — entity-scoped
+  - Migration 062: all stock deduction/guard triggers handle INSERT OR UPDATE; SECURITY DEFINER
+  - Product validation in `/api/shop/orders` now checks `product_batches` by entity_id (not `created_by`)
 - [x] Admin Hub: Wholesaler dashboard, team management, settings
 - [x] Wholesale Ordering: Retailer restock UI, wholesaler catalog, purchase orders with CREDIT
 - [x] Vendor Restock Modal: Full wholesale ordering flow in POS (wholesaler list → catalog → cart → order)
@@ -261,6 +285,7 @@ All specs in `docs/features/`. Each contains: overview, data model, implementati
 | `customer-cart-shop.md` | F-SHOP-001 | Web — cart-based multi-store shop |
 | `customer-checkout-flow.md` | F-CHECKOUT-001 | Web — checkout, post-delivery payment, OCR |
 | `vendor-keyboard-ui.md` | F-KBD-002 | Web — keyboard/desktop POS layout + dense vendor pages |
+| `sales-order-invoice.md` | F-SALES-001 | Web — Sales Order → Invoice with batch picking and partial fulfilment |
 | `rider-system.md` | F-RIDER-001 | Web — rider login, OTP pickup/delivery, admin rider management |
 | `hsn-master-integration.md` | F-HSN-001 | Both platforms — HSN master + category inheritance |
 | `product-specifications.md` | F-SPEC-001 | Both platforms — dynamic HSN-driven specifications |

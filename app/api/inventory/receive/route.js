@@ -64,7 +64,7 @@ export async function POST(request) {
         barcode:        barcode?.trim()  || null,
         manufactured_at: manufactured_at || null,
         expires_at:      expires_at      || null,
-        quantity:        parseInt(quantity, 10),
+        quantity:        0, // trigger sync_batch_quantity will increment from the RESTOCK movement below
         unit_cost:       unit_cost       ? parseFloat(unit_cost)       : null,
         mrp:             parseFloat(mrp),
         selling_price:   parseFloat(selling_price),

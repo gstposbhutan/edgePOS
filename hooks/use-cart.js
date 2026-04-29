@@ -14,7 +14,7 @@ const CART_SELECT = `
   id, customer_whatsapp, buyer_hash, created_at,
   cart_items (
     *,
-    batch:batch_id (id, batch_number, expires_at, mrp, selling_price),
+    batch:batch_id (id, batch_number, expires_at, mrp, selling_price, available_qty:quantity),
     package_def:package_id (
       id, package_type,
       package_items (
@@ -161,7 +161,7 @@ export function useCart(entityId, createdBy) {
       })
       .select(`
         *,
-        batch:batch_id (id, batch_number, expires_at, mrp, selling_price),
+        batch:batch_id (id, batch_number, expires_at, mrp, selling_price, available_qty:quantity),
         package_def:package_id (
           id, package_type,
           package_items (quantity, product:product_id (name, unit))
@@ -194,7 +194,7 @@ export function useCart(entityId, createdBy) {
       .from('cart_items')
       .update({ quantity: newQty, gst_5: gst5, total })
       .eq('id', itemId)
-      .select(`*, package_def:package_id (id, package_type, package_items (quantity, product:product_id (name, unit)))`)
+      .select(`*, batch:batch_id (id, batch_number, expires_at, mrp, selling_price), package_def:package_id (id, package_type, package_items (quantity, product:product_id (name, unit)))`)
       .single()
 
     if (updated) {
@@ -218,7 +218,7 @@ export function useCart(entityId, createdBy) {
       .from('cart_items')
       .update({ discount: clamped, gst_5: gst5, total })
       .eq('id', itemId)
-      .select(`*, package_def:package_id (id, package_type, package_items (quantity, product:product_id (name, unit)))`)
+      .select(`*, batch:batch_id (id, batch_number, expires_at, mrp, selling_price), package_def:package_id (id, package_type, package_items (quantity, product:product_id (name, unit)))`)
       .single()
 
     if (updated) {
@@ -241,7 +241,7 @@ export function useCart(entityId, createdBy) {
       .from('cart_items')
       .update({ unit_price: price, gst_5: gst5, total })
       .eq('id', itemId)
-      .select(`*, package_def:package_id (id, package_type, package_items (quantity, product:product_id (name, unit)))`)
+      .select(`*, batch:batch_id (id, batch_number, expires_at, mrp, selling_price), package_def:package_id (id, package_type, package_items (quantity, product:product_id (name, unit)))`)
       .single()
 
     if (updated) {

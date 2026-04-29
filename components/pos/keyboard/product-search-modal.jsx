@@ -54,63 +54,72 @@ export function ProductSearchModal({ open, initialQuery = '', entityId, onAdd, o
     return () => clearTimeout(timer)
   }, [query, entityId])
 
+  function mapBatch(b) {
+    return {
+      product_id:      b.products.id,
+      id:              b.products.id,   // kept for legacy callers
+      name:            b.products.name,
+      sku:             b.products.sku,
+      unit:            b.products.unit,
+      mrp:             b.mrp ?? b.products.mrp,
+      selling_price:   b.selling_price ?? b.products.selling_price ?? b.mrp,
+      available_stock: b.quantity,
+      batch_id:        b.id,
+      batch_number:    b.batch_number,
+      expires_at:      b.expires_at,
+    }
+  }
+
   async function searchProducts(q) {
+    if (!entityId) return
     setLoading(true)
     const { data } = await supabase
-      .from('sellable_products')
-      .select('id, name, sku, mrp, selling_price, available_stock, unit, batch_id, batch_number, expires_at')
-      .or(`name.ilike.%${q}%,sku.ilike.%${q}%`)
-      .gt('available_stock', 0)
-      .order('name')
+      .from('product_batches')
+      .select('id, batch_number, expires_at, mrp, selling_price, quantity, products!inner(id, name, sku, unit, mrp, selling_price)')
+      .eq('entity_id', entityId)
+      .eq('status', 'ACTIVE')
+      .gt('quantity', 0)
+      .or(`name.ilike.%${q}%,sku.ilike.%${q}%`, { referencedTable: 'products' })
+      .order('expires_at', { ascending: true, nullsFirst: false })
       .limit(9)
-    setResults(data || [])
+    setResults((data || []).map(mapBatch))
     setSelected(0)
     setLoading(false)
   }
 
   async function lookupBarcode(code) {
+    if (!entityId) return
     setLoading(true)
 
-    // 1. Try product_batches barcode first (entity-scoped, batch-specific price)
-    const { data: batchData } = await supabase
+    // Try batch barcode first (entity-scoped)
+    const { data: byBarcode } = await supabase
       .from('product_batches')
-      .select(`
-        id, batch_number, expires_at, mrp, selling_price, quantity,
-        products!inner(id, name, sku, unit, mrp, selling_price)
-      `)
+      .select('id, batch_number, expires_at, mrp, selling_price, quantity, products!inner(id, name, sku, unit, mrp, selling_price)')
+      .eq('entity_id', entityId)
       .eq('barcode', code)
       .eq('status', 'ACTIVE')
       .gt('quantity', 0)
       .limit(1)
-      .single()
 
-    if (batchData) {
-      const product = {
-        id:              batchData.products.id,
-        name:            batchData.products.name,
-        sku:             batchData.products.sku,
-        unit:            batchData.products.unit,
-        mrp:             batchData.mrp ?? batchData.products.mrp,
-        selling_price:   batchData.selling_price ?? batchData.products.selling_price ?? batchData.mrp,
-        available_stock: batchData.quantity,
-        batch_id:        batchData.id,
-        batch_number:    batchData.batch_number,
-        expires_at:      batchData.expires_at,
-      }
-      handleAdd(product)
+    if (byBarcode?.[0]) {
+      handleAdd(mapBatch(byBarcode[0]))
       setLoading(false)
       return
     }
 
-    // 2. Fallback: look up by product SKU in sellable_products
-    const { data } = await supabase
-      .from('sellable_products')
-      .select('id, name, sku, mrp, selling_price, available_stock, unit, batch_id, batch_number, expires_at')
-      .eq('sku', code)
-      .gt('available_stock', 0)
+    // Fallback: match by product SKU within entity batches
+    const { data: bySku } = await supabase
+      .from('product_batches')
+      .select('id, batch_number, expires_at, mrp, selling_price, quantity, products!inner(id, name, sku, unit, mrp, selling_price)')
+      .eq('entity_id', entityId)
+      .eq('status', 'ACTIVE')
+      .gt('quantity', 0)
+      .or(`sku.eq.${code}`, { referencedTable: 'products' })
+      .order('expires_at', { ascending: true, nullsFirst: false })
       .limit(1)
-    if (data?.[0]) {
-      handleAdd(data[0])
+
+    if (bySku?.[0]) {
+      handleAdd(mapBatch(bySku[0]))
     } else {
       setResults([])
     }
@@ -188,6 +197,7 @@ export function ProductSearchModal({ open, initialQuery = '', entityId, onAdd, o
                 <th className="w-8 px-2 py-2" />
                 <th className="text-left px-4 py-2 font-medium">Product</th>
                 <th className="text-left px-4 py-2 font-medium">SKU</th>
+                <th className="text-left px-4 py-2 font-medium">Batch</th>
                 <th className="text-right px-4 py-2 font-medium">Stock</th>
                 <th className="text-right px-4 py-2 font-medium">Price</th>
               </tr>
@@ -195,7 +205,7 @@ export function ProductSearchModal({ open, initialQuery = '', entityId, onAdd, o
             <tbody>
               {results.map((product, i) => (
                 <tr
-                  key={product.id}
+                  key={product.batch_id}
                   onClick={() => handleAdd(product)}
                   onMouseEnter={() => setSelected(i)}
                   className={`border-b border-border cursor-pointer transition-colors ${
@@ -213,14 +223,17 @@ export function ProductSearchModal({ open, initialQuery = '', entityId, onAdd, o
                   </td>
                   <td className="px-4 py-3">
                     <p className="font-medium">{product.name}</p>
-                    {product.batch_number && (
-                      <p className="text-[10px] text-muted-foreground">
-                        Batch: {product.batch_number}{product.expires_at ? ` · Exp: ${new Date(product.expires_at).toLocaleDateString()}` : ''}
-                      </p>
-                    )}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{product.sku}</td>
-                  <td className="px-4 py-3 text-right text-muted-foreground">{product.available_stock}</td>
+                  <td className="px-4 py-3 text-xs">
+                    {product.batch_number
+                      ? <span className="text-blue-600 font-medium">{product.batch_number}</span>
+                      : <span className="text-muted-foreground">—</span>}
+                    {product.expires_at && (
+                      <p className="text-[10px] text-muted-foreground">exp {new Date(product.expires_at).toLocaleDateString()}</p>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right text-muted-foreground tabular-nums">{product.available_stock}</td>
                   <td className="px-4 py-3 text-right">
                     <p className="font-semibold text-primary">Nu. {parseFloat(product.selling_price ?? product.mrp).toFixed(2)}</p>
                     {product.selling_price && product.mrp && parseFloat(product.selling_price) < parseFloat(product.mrp) && (

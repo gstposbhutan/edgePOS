@@ -292,12 +292,72 @@ Triggers don't fire because they check `hsn_master_id`, not `hsn_code`.
 
 ---
 
+---
+
+### Bug #005 - POS Sales Not Deducting Batch Stock
+**Date Found**: 2026-04-29  
+**Feature**: Keyboard POS Checkout / Batch Stock  
+**Severity**: Critical  
+**Status**: Fixed
+
+**Description**: POS sales and Sales Invoices were not creating SALE inventory_movements, so `product_batches.quantity` was never decremented and batches remained ACTIVE after being fully consumed.
+
+**Root Cause** (three separate issues):
+1. `sellable_products` view joined batches via `pb.entity_id = p.created_by`. Retailers who didn't create a product got `batch_id = NULL` in search results, so `order_items.batch_id` was NULL, and `sync_batch_quantity` skipped the movement.
+2. `deduct_stock_on_sales_invoice` trigger only fired on `UPDATE OF status`. SALES_INVOICE is inserted directly at `CONFIRMED`, so the trigger never fired.
+3. `guard_stock_on_confirm` raised an exception on the POS CONFIRM UPDATE because batch quantities were stale (never decremented by prior sales). The error was swallowed client-side.
+
+**Fix**:
+- Migration 061: Rewrote `sellable_products` view with `INNER JOIN product_batches WHERE entity_id = auth_entity_id()`
+- Migration 062: Rewrote all stock deduction/guard triggers to handle `AFTER INSERT OR UPDATE`; made `sync_batch_quantity` `SECURITY DEFINER`
+- Migration 060: Added `auto_deplete_batch` BEFORE UPDATE trigger on `product_batches`
+- All search modals (`product-search-modal.jsx`, `salesorder/page.jsx`, `purchases/new/page.jsx`) now query `product_batches` directly with explicit `entity_id` — no view dependency
+- `pos/page.jsx`: surfaces `confirmError` from the CONFIRM UPDATE
+
+**Files Changed**: migrations 060–062, `components/pos/keyboard/product-search-modal.jsx`, `app/salesorder/page.jsx`, `app/pos/purchases/new/page.jsx`, `app/pos/page.jsx`
+
+---
+
+### Bug #006 - Product Validation Blocks Products Not Created By Vendor
+**Date Found**: 2026-04-29  
+**Feature**: Sales Order creation (`/api/shop/orders`)  
+**Severity**: High  
+**Status**: Fixed
+
+**Description**: `POST /api/shop/orders` returned "Product does not belong to your store" for products that the vendor received from a wholesaler but didn't create themselves.
+
+**Root Cause**: Validation checked `product.created_by !== sellerId`. In the Central Brain model, products are shared — a retailer who received stock from a wholesaler doesn't own the product record.
+
+**Fix**: Replaced `created_by` check with a `product_batches` lookup: vendor passes validation if they have any active batch stock for that product.
+
+**Files Changed**: `app/api/shop/orders/route.js`
+
+---
+
+### Bug #007 - Cart Table Not Showing Batch Number
+**Date Found**: 2026-04-29  
+**Feature**: Keyboard POS Cart Table  
+**Severity**: Medium  
+**Status**: Fixed
+
+**Description**: Batch number and stock not visible in the POS cart table even though cart_items had batch_id populated.
+
+**Root Cause** (two issues):
+1. `cart-table.jsx` didn't render batch info at all.
+2. `useCart.js` `updateQty`/`applyDiscount`/`overridePrice` selects omitted the `batch:batch_id` join — batch data stripped after any quantity edit.
+
+**Fix**: Added Batch and Stock columns to the cart table. Added `batch:batch_id (id, batch_number, expires_at, mrp, selling_price, available_qty:quantity)` to all select queries in `use-cart.js`.
+
+**Files Changed**: `components/pos/keyboard/cart-table.jsx`, `hooks/use-cart.js`
+
+---
+
 ## Statistics
 
-- **Total Bugs**: 4
+- **Total Bugs**: 7
 - **Open**: 0
 - **In Progress**: 0
-- **Fixed**: 4
+- **Fixed**: 7
 - **Verified**: 0
 
 ---

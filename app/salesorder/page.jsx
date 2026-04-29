@@ -8,11 +8,12 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { ShortcutBar } from "@/components/pos/keyboard/shortcut-bar"
 import { createClient } from "@/lib/supabase/client"
 import { getUser, getRoleClaims } from "@/lib/auth"
 
 // ── Fullscreen product search modal (same pattern as keyboard POS) ──────────
-function ProductSearchModal({ open, initialQuery, entityId, onAdd, onClose }) {
+function ProductSearchModal({ open, initialQuery, entityId, onAdd, onClose }) {  // entityId scopes all queries to this vendor's stock
   const supabase = createClient()
   const [query,    setQuery]    = useState(initialQuery)
   const [results,  setResults]  = useState([])
@@ -32,31 +33,69 @@ function ProductSearchModal({ open, initialQuery, entityId, onAdd, onClose }) {
   }, [open, initialQuery])
 
   useEffect(() => {
-    if (!query.trim()) { setResults([]); return }
+    if (!query.trim() || !entityId) { setResults([]); return }
+
+    function mapBatch(b) {
+      return {
+        id:              b.products.id,
+        name:            b.products.name,
+        sku:             b.products.sku,
+        unit:            b.products.unit,
+        mrp:             b.mrp,
+        selling_price:   b.selling_price ?? b.mrp,
+        available_stock: b.quantity,
+        batch_id:        b.id,
+        batch_number:    b.batch_number,
+        expires_at:      b.expires_at,
+        batch_barcode:   b.barcode ?? null,
+      }
+    }
+
     if (/^\d{8,}$/.test(query.trim())) {
-      // Barcode — exact lookup, add immediately
       setLoading(true)
-      supabase.from('sellable_products')
-        .select('id, name, sku, mrp, available_stock, unit')
-        .eq('sku', query.trim()).gt('available_stock', 0).limit(1)
-        .then(({ data }) => {
-          if (data?.[0]) { onAdd(data[0], parseInt(qty, 10) || 1); onClose() }
-          setLoading(false)
-        })
+      ;(async () => {
+        const { data } = await supabase
+          .from('product_batches')
+          .select('id, batch_number, expires_at, mrp, selling_price, quantity, barcode, products!inner(id, name, sku, unit)')
+          .eq('entity_id', entityId)
+          .eq('barcode', query.trim())
+          .eq('status', 'ACTIVE')
+          .gt('quantity', 0)
+          .limit(1)
+        if (data?.[0]) { onAdd(mapBatch(data[0]), parseInt(qty, 10) || 1); onClose() }
+        setLoading(false)
+      })()
       return
     }
+
     const t = setTimeout(async () => {
       setLoading(true)
-      const { data } = await supabase.from('sellable_products')
-        .select('id, name, sku, mrp, available_stock, unit')
-        .or(`name.ilike.%${query}%,sku.ilike.%${query}%`)
-        .gt('available_stock', 0).order('name').limit(9)
-      setResults(data || [])
+      const { data } = await supabase
+        .from('product_batches')
+        .select('id, batch_number, expires_at, mrp, selling_price, quantity, barcode, products!inner(id, name, sku, unit)')
+        .eq('entity_id', entityId)
+        .eq('status', 'ACTIVE')
+        .gt('quantity', 0)
+        .or(`name.ilike.%${query}%,sku.ilike.%${query}%`, { referencedTable: 'products' })
+        .order('expires_at', { ascending: true, nullsFirst: false })
+        .limit(50)
+
+      // Deduplicate by product — aggregate stock, keep earliest-expiry batch metadata
+      const seen = new Map()
+      for (const b of (data || [])) {
+        const pid = b.products.id
+        if (!seen.has(pid)) {
+          seen.set(pid, { ...mapBatch(b), available_stock: b.quantity })
+        } else {
+          seen.get(pid).available_stock += b.quantity
+        }
+      }
+      setResults([...seen.values()].slice(0, 9))
       setSelected(0)
       setLoading(false)
     }, 200)
     return () => clearTimeout(t)
-  }, [query])
+  }, [query, entityId])
 
   function handleAdd(product) {
     onAdd(product, Math.max(1, parseInt(qty, 10) || 1))
@@ -117,7 +156,7 @@ function ProductSearchModal({ open, initialQuery, entityId, onAdd, onClose }) {
               <tr className="border-b border-border bg-muted/30 text-xs text-muted-foreground">
                 <th className="w-8 px-2 py-2" />
                 <th className="text-left px-4 py-2 font-medium">Product</th>
-                <th className="text-left px-4 py-2 font-medium">SKU</th>
+                <th className="text-left px-4 py-2 font-medium">Batch</th>
                 <th className="text-right px-4 py-2 font-medium">Stock</th>
                 <th className="text-right px-4 py-2 font-medium">Price</th>
               </tr>
@@ -125,7 +164,7 @@ function ProductSearchModal({ open, initialQuery, entityId, onAdd, onClose }) {
             <tbody>
               {results.map((product, i) => (
                 <tr
-                  key={product.id}
+                  key={product.batch_id ?? product.id}
                   onClick={() => handleAdd(product)}
                   onMouseEnter={() => setSelected(i)}
                   className={`border-b border-border cursor-pointer transition-colors ${
@@ -137,10 +176,30 @@ function ProductSearchModal({ open, initialQuery, entityId, onAdd, onClose }) {
                       i === selected ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted border-border text-muted-foreground'
                     }`}>{i + 1}</span>
                   </td>
-                  <td className="px-4 py-3 font-medium">{product.name}</td>
-                  <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{product.sku}</td>
-                  <td className="px-4 py-3 text-right text-muted-foreground">{product.available_stock}</td>
-                  <td className="px-4 py-3 text-right font-semibold text-primary">Nu. {parseFloat(product.mrp).toFixed(2)}</td>
+                  <td className="px-4 py-3">
+                    <p className="font-medium">{product.name}</p>
+                    <p className="text-[10px] text-muted-foreground font-mono">{product.sku}</p>
+                  </td>
+                  <td className="px-4 py-3">
+                    {product.batch_id ? (
+                      <div>
+                        <p className="text-xs font-medium text-blue-600">
+                          {product.batch_number || product.batch_id.slice(0, 8)}
+                        </p>
+                        {product.expires_at && (
+                          <p className="text-[10px] text-muted-foreground">
+                            Exp: {new Date(product.expires_at).toLocaleDateString()}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground">No batch</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{product.available_stock}</td>
+                  <td className="px-4 py-3 text-right font-semibold text-primary">
+                    Nu. {parseFloat(product.selling_price ?? product.mrp).toFixed(2)}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -222,18 +281,56 @@ export default function SalesOrderPage() {
 
   // ── Cart ──────────────────────────────────────────────────────────────────
   function addToCart(product, qty = 1) {
+    const batchId  = product.batch_id ?? null
+    const price    = parseFloat(product.selling_price ?? product.mrp ?? 0)
+    const batchQty = product.available_stock ?? Infinity
+
+    // Cap qty at batch availability
+    let effectiveQty = qty
+    if (batchId && qty > batchQty) {
+      effectiveQty = batchQty > 0 ? batchQty : 0
+      if (effectiveQty === 0) { setError(`Batch "${product.batch_number || batchId.slice(0, 8)}" is out of stock.`); return }
+      setError(
+        `Only ${batchQty} units available in batch "${product.batch_number || batchId.slice(0, 8)}". ` +
+        `Added ${batchQty}. Search again to add remaining ${qty - batchQty} from another batch.`
+      )
+    }
+
     setItems(prev => {
-      const existing = prev.find(i => i.product_id === product.id)
-      if (existing) return prev.map(i => i.product_id === product.id ? { ...i, quantity: i.quantity + qty } : i)
-      return [...prev, { product_id: product.id, name: product.name, sku: product.sku, mrp: parseFloat(product.mrp), quantity: qty }]
+      // Dedup on (product_id, batch_id) — same batch merges, different batches are separate lines
+      const existing = prev.find(i =>
+        i.product_id === product.id &&
+        (i.batch_id ?? null) === batchId
+      )
+      if (existing) return prev.map(i =>
+        i.product_id === product.id && (i.batch_id ?? null) === batchId
+          ? { ...i, quantity: i.quantity + effectiveQty }
+          : i
+      )
+      return [...prev, {
+        product_id:   product.id,
+        name:         product.name,
+        sku:          product.sku,
+        mrp:          price,
+        batch_id:     batchId,
+        batch_number: product.batch_number ?? null,
+        expires_at:   product.expires_at   ?? null,
+        quantity:     effectiveQty,
+      }]
     })
     setSelectedRow(items.length)
   }
 
-  function removeItem(productId) { setItems(prev => prev.filter(i => i.product_id !== productId)) }
-  function updateQty(productId, qty) {
-    if (qty < 1) { removeItem(productId); return }
-    setItems(prev => prev.map(i => i.product_id === productId ? { ...i, quantity: qty } : i))
+  function removeItem(productId, batchId = null) {
+    setItems(prev => prev.filter(i => !(i.product_id === productId && (i.batch_id ?? null) === batchId)))
+  }
+  function updateQty(productId, qty, batchId = null) {
+    if (qty < 1) { removeItem(productId, batchId); return }
+    setItems(prev => prev.map(i =>
+      i.product_id === productId && (i.batch_id ?? null) === batchId
+        ? { ...i, quantity: qty }
+        : i
+    ))
   }
 
   const subtotal   = items.reduce((s, i) => s + i.mrp * i.quantity, 0)
@@ -260,7 +357,7 @@ export default function SalesOrderPage() {
       if (e.key === 'Escape')    { e.preventDefault(); router.back(); return }
       if (e.key === 'ArrowDown') { e.preventDefault(); if (items.length > 0) setSelectedRow(r => (r + 1) % items.length); return }
       if (e.key === 'ArrowUp')   { e.preventDefault(); if (items.length > 0) setSelectedRow(r => (r - 1 + items.length) % items.length); return }
-      if (e.key === 'Delete')    { e.preventDefault(); if (items[selectedRow]) removeItem(items[selectedRow].product_id); return }
+      if (e.key === 'Delete')    { e.preventDefault(); if (items[selectedRow]) removeItem(items[selectedRow].product_id, items[selectedRow].batch_id ?? null); return }
       if (e.key === 'Enter' && items.length > 0) {
         e.preventDefault()
         setEditRow(selectedRow)
@@ -286,50 +383,23 @@ export default function SalesOrderPage() {
     setLoading(true); setError(null)
     try {
       const normalPhone = phone.trim().startsWith('+') ? phone.trim() : `+${phone.trim()}`
-
-      // Ensure a khata account exists for this customer before placing the order.
-      // The DB trigger (khata_debit_on_confirm) requires one for CREDIT orders.
-      const khataCheck = await supabase
-        .from('khata_accounts')
-        .select('id')
-        .eq('creditor_entity_id', entity.id)
-        .eq('debtor_phone', normalPhone)
-        .eq('party_type', 'CONSUMER')
-        .in('status', ['ACTIVE', 'FROZEN'])
-        .limit(1)
-        .single()
-
-      if (!khataCheck.data) {
-        // Resolve customer name
-        const { data: customerEntity } = await supabase
-          .from('entities').select('name').eq('whatsapp_no', normalPhone).single()
-
-        const { error: khataErr } = await supabase
-          .from('khata_accounts')
-          .insert({
-            creditor_entity_id: entity.id,
-            party_type:   'CONSUMER',
-            debtor_phone: normalPhone,
-            debtor_name:  name.trim() || customerEntity?.name || `Customer ${normalPhone.slice(-4)}`,
-            credit_limit: 1000,
-          })
-
-        if (khataErr) {
-          setError('Failed to set up credit account: ' + khataErr.message)
-          return
-        }
-      }
+      // Khata account created at invoice time (not at Sales Order creation)
 
       const res = await fetch('/api/shop/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({
+          order_type:        'SALES_ORDER',
           customer_whatsapp: normalPhone,
-          customer_name: name.trim() || undefined,
-          delivery_address: address.trim() || undefined,
-          delivery_lat: lat ?? undefined,
-          delivery_lng: lng ?? undefined,
-          items: items.map(i => ({ product_id: i.product_id, quantity: i.quantity })),
+          customer_name:     name.trim() || undefined,
+          delivery_address:  address.trim() || undefined,
+          delivery_lat:      lat ?? undefined,
+          delivery_lng:      lng ?? undefined,
+          items: items.map(i => ({
+            product_id: i.product_id,
+            quantity:   i.quantity,
+            ...(i.batch_id ? { batch_id: i.batch_id } : {}),
+          })),
         }),
       })
       const data = await res.json()
@@ -367,22 +437,26 @@ export default function SalesOrderPage() {
   return (
     <div className="flex flex-col h-screen bg-background select-none">
       {/* Header */}
-      <header className="border-b border-border px-4 py-2 flex items-center gap-3 shrink-0 bg-muted/10">
-        <Button variant="ghost" size="icon-sm" onClick={() => router.back()}>
+      <header className="glassmorphism border-b border-border px-4 py-2 flex items-center gap-3 shrink-0">
+        <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/orders?section=SALES&tab=SO')}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <div>
-          <p className="text-sm font-bold">New Sales Order</p>
-          <p className="text-xs text-muted-foreground">{entity.name}</p>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1 text-xs text-muted-foreground mb-0.5">
+            <button onClick={() => router.push('/pos')} className="hover:text-foreground transition-colors">POS</button>
+            <span>/</span>
+            <button onClick={() => router.push('/pos/orders?section=SALES&tab=SO')} className="hover:text-foreground transition-colors">Sales Orders</button>
+            <span>/</span>
+            <span className="text-foreground font-medium">New</span>
+          </div>
+          <p className="text-[10px] text-muted-foreground">{entity.name}</p>
         </div>
-        <div className="ml-auto flex items-center gap-4 text-sm tabular-nums">
-          {items.length > 0 && (
-            <>
-              <span className="text-muted-foreground">{items.length} item{items.length > 1 ? 's' : ''}</span>
-              <span className="font-bold text-primary">Nu. {grandTotal.toFixed(2)}</span>
-            </>
-          )}
-        </div>
+        {items.length > 0 && (
+          <div className="flex items-center gap-3 text-sm tabular-nums shrink-0">
+            <span className="text-muted-foreground">{items.length} item{items.length > 1 ? 's' : ''}</span>
+            <span className="font-bold text-primary">Nu. {grandTotal.toFixed(2)}</span>
+          </div>
+        )}
       </header>
 
       {error && <div className="px-4 py-2 bg-tibetan/10 border-b border-tibetan/30 text-sm text-tibetan shrink-0">{error}</div>}
@@ -434,22 +508,6 @@ export default function SalesOrderPage() {
             </Button>
           </div>
 
-          <div className="mt-auto pt-4 border-t border-border">
-            <p className="text-xs text-muted-foreground mb-1.5">Shortcuts</p>
-            {[
-              ['Any key', 'Open product search'],
-              ['↑↓', 'Navigate rows'],
-              ['Enter', 'Edit qty'],
-              ['Del', 'Remove row'],
-              ['F5', 'Place order'],
-              ['Esc', 'Go back'],
-            ].map(([k, v]) => (
-              <div key={k} className="flex items-center gap-2 py-0.5">
-                <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 bg-muted border border-border rounded text-foreground min-w-[44px] text-center">{k}</span>
-                <span className="text-[10px] text-muted-foreground">{v}</span>
-              </div>
-            ))}
-          </div>
         </div>
 
         {/* Right — Order table */}
@@ -497,9 +555,9 @@ export default function SalesOrderPage() {
                               type="number" min="1"
                               value={editQty}
                               onChange={e => setEditQty(e.target.value)}
-                              onBlur={() => { updateQty(item.product_id, parseInt(editQty, 10) || 1); setEditRow(null) }}
+                              onBlur={() => { updateQty(item.product_id, parseInt(editQty, 10) || 1, item.batch_id ?? null); setEditRow(null) }}
                               onKeyDown={e => {
-                                if (e.key === 'Enter')  { updateQty(item.product_id, parseInt(editQty, 10) || 1); setEditRow(null) }
+                                if (e.key === 'Enter')  { updateQty(item.product_id, parseInt(editQty, 10) || 1, item.batch_id ?? null); setEditRow(null) }
                                 if (e.key === 'Escape') setEditRow(null)
                               }}
                               onClick={e => e.stopPropagation()}
@@ -507,19 +565,19 @@ export default function SalesOrderPage() {
                             />
                           ) : (
                             <div className="flex items-center justify-center gap-1">
-                              <button onClick={e => { e.stopPropagation(); updateQty(item.product_id, item.quantity - 1) }} className="h-6 w-6 rounded border border-border hover:bg-muted/50 flex items-center justify-center"><Minus className="h-3 w-3" /></button>
+                              <button onClick={e => { e.stopPropagation(); updateQty(item.product_id, item.quantity - 1, item.batch_id ?? null) }} className="h-6 w-6 rounded border border-border hover:bg-muted/50 flex items-center justify-center"><Minus className="h-3 w-3" /></button>
                               <button
                                 onClick={e => { e.stopPropagation(); setEditRow(i); setEditQty(String(item.quantity)); setTimeout(() => editQtyRef.current?.select(), 20) }}
                                 className={`w-10 text-center font-medium ${isSelected ? 'border border-primary/50 rounded bg-background' : 'hover:text-primary'}`}
                               >{item.quantity}</button>
-                              <button onClick={e => { e.stopPropagation(); updateQty(item.product_id, item.quantity + 1) }} className="h-6 w-6 rounded border border-border hover:bg-muted/50 flex items-center justify-center"><Plus className="h-3 w-3" /></button>
+                              <button onClick={e => { e.stopPropagation(); updateQty(item.product_id, item.quantity + 1, item.batch_id ?? null) }} className="h-6 w-6 rounded border border-border hover:bg-muted/50 flex items-center justify-center"><Plus className="h-3 w-3" /></button>
                             </div>
                           )}
                         </td>
                         <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">Nu. {item.mrp.toFixed(2)}</td>
                         <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-primary">Nu. {total}</td>
                         <td className="px-2 py-2">
-                          <button onClick={e => { e.stopPropagation(); removeItem(item.product_id) }} className="text-muted-foreground hover:text-tibetan transition-colors"><Trash2 className="h-4 w-4" /></button>
+                          <button onClick={e => { e.stopPropagation(); removeItem(item.product_id, item.batch_id ?? null) }} className="text-muted-foreground hover:text-tibetan transition-colors"><Trash2 className="h-4 w-4" /></button>
                         </td>
                       </tr>
                     )
@@ -554,6 +612,16 @@ export default function SalesOrderPage() {
           </div>
         </div>
       </div>
+
+      {/* Shortcut bar */}
+      <ShortcutBar shortcuts={[
+        { key: 'Any key', label: 'Search products' },
+        { key: '↑↓',     label: 'Navigate rows' },
+        { key: 'Enter',  label: 'Edit qty' },
+        { key: 'Del',    label: 'Remove row' },
+        { key: 'F5',     label: 'Place order' },
+        { key: 'Esc',    label: 'Go back' },
+      ]} />
 
       {/* Fullscreen product search modal */}
       <ProductSearchModal

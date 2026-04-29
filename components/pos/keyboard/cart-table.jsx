@@ -63,6 +63,8 @@ export function CartTable({ items, onUpdateQty, onRemoveItem, selectedRow, onSel
             <th className="text-left px-4 py-2 w-8">#</th>
             <th className="text-center px-2 py-2 w-20">Qty</th>
             <th className="text-left px-4 py-2">Product</th>
+            <th className="text-left px-4 py-2 w-32">Batch</th>
+            <th className="text-right px-4 py-2 w-20">Stock</th>
             <th className="text-right px-4 py-2 w-28">Unit Price</th>
             <th className="text-right px-4 py-2 w-28">Total</th>
             <th className="w-10 px-2 py-2" />
@@ -110,7 +112,21 @@ export function CartTable({ items, onUpdateQty, onRemoveItem, selectedRow, onSel
                 </td>
                 <td className="px-4 py-2.5">
                   <p className="truncate max-w-xs">{item.name}</p>
-                  {item.sku && <p className="text-xs text-muted-foreground font-mono">{item.sku}</p>}
+                  <p className="text-[10px] text-muted-foreground font-mono">{item.sku}</p>
+                </td>
+                <td className="px-4 py-2.5 text-xs">
+                  {(item.batch?.batch_number ?? item.batch_number)
+                    ? <>
+                        <p className="text-blue-600 font-medium">{item.batch?.batch_number ?? item.batch_number}</p>
+                        {(item.batch?.expires_at ?? item.expires_at) && (
+                          <p className="text-[10px] text-muted-foreground">exp {new Date(item.batch?.expires_at ?? item.expires_at).toLocaleDateString()}</p>
+                        )}
+                      </>
+                    : <span className="text-muted-foreground">—</span>
+                  }
+                </td>
+                <td className="px-4 py-2.5 text-right tabular-nums text-xs text-muted-foreground/60">
+                  {item.available_stock != null ? item.available_stock : (item.batch?.available_qty != null ? item.batch.available_qty : '—')}
                 </td>
                 <td className="px-4 py-2.5 text-right tabular-nums">
                   Nu. {parseFloat(item.unit_price).toFixed(2)}
