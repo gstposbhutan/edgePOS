@@ -1,8 +1,29 @@
 # Feature: Multi-Store Management
 
 **Feature ID**: F-MSTORE-001
-**Phase**: 4 (after core POS and sync are stable)
-**Status**: Scoped
+**Phase**: 3
+**Status**: Partially complete — store selector + creation done; stock transfers pending
+**Last Updated**: 2026-04-29
+
+## Implementation Status (2026-04-29)
+
+### ✅ Completed
+- **Migration 050** — `owner_stores` junction table (owner_id, entity_id, is_primary). Back-fills existing OWNER users.
+- **`hooks/use-owner-stores.js`** — fetches all stores for an OWNER, exposes `createStore`
+- **POS header store selector** — dropdown shown when owner has 2+ stores; switches full POS context (products, cart, orders, khata all re-scope to new entity_id)
+- **`/admin/stores` page** — owner creates new stores; each is auto-linked via `owner_stores`
+- **`GET/POST /api/admin/stores`** — list owned stores + create new store + link
+- **`proxy.js`** — RETAILER+OWNER now allowed through to `/admin/*`
+- **Admin sidebar** — Stores nav item visible to all admin users; role-filtered so OWNER only sees Stores/Team/Settings
+
+### ⏳ Pending
+- Stock transfers between owned stores
+- Cross-store aggregated reports in admin hub
+- SUPER_ADMIN assigning existing entities to an owner
+
+---
+
+## Original Specification
 **Last Updated**: 2026-04-19
 **Dependencies**: F-DESKTOP-001, F-SYNC-001, F-AUTH-001 (RLS infrastructure)
 

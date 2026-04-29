@@ -1,0 +1,26 @@
+flowchart TD
+    POS["POS — Cart Table\n(touch or keyboard)"]
+
+    POS --> TABS["Cart tab bar\nCart 1 [3] · Cart 2 [1] · + Hold"]
+
+    TABS -->|"+ Hold button\n(touch) or F4 (keyboard)"| NEW_CART["New blank cart created\nCarts: Cart 1 [3] · Cart 2 [1] · Cart 3 [ ]→active"]
+
+    TABS -->|"Click tab or Ctrl+N"| SWITCH["Switch active cart\nAll item ops target new active cart"]
+
+    TABS -->|"✕ on tab or F6"| CANCEL{Only cart?}
+    CANCEL -->|Yes| FRESH["Items deleted\nNew blank cart created automatically"]
+    CANCEL -->|No| REMOVE["Cart slot removed\nActive index adjusted"]
+
+    NEW_CART --> ADD_ITEMS["Add products to Cart 3\nCart 1 still intact for Customer 1"]
+
+    ADD_ITEMS -->|"Switch back to Cart 1"| CHECKOUT_1["Process Cart 1 checkout\nCart 1 marked CONVERTED on order confirm"]
+
+    CHECKOUT_1 --> CONTINUE["Remaining carts continue\nNo interruption to other customers"]
+
+    subgraph "Keyboard shortcuts"
+        direction LR
+        K1["F4 — New cart"]
+        K2["F6 — Cancel active"]
+        K3["Tab / ⇧Tab — Cycle"]
+        K4["Ctrl+1–9 — Jump to cart N"]
+    end

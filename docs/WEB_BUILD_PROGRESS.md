@@ -1,5 +1,5 @@
 # Web App Build Progress
-**Last Updated**: 2026-04-29
+**Last Updated**: 2026-04-29 (rev 2)
 **Strategy**: Web app first, Windows desktop app later. One feature at a time, in dependency order.
 
 ---
@@ -39,7 +39,54 @@
   - `CartProvider` context at root layout, `useCart()` hook
   - Login redirect on unauthenticated add-to-cart with return URL
   - Fixed Next.js 15 async params in `PATCH`/`DELETE` `/api/cart/[itemId]` handlers
-  - [ ] Checkout / payment flow not yet wired up
+  - [x] Checkout / payment flow wired (see F-CHECKOUT-001 below)
+- [x] **Customer Checkout & Post-Delivery Payment** — [F-CHECKOUT-001](features/customer-checkout-flow.md) ✅ CODE COMPLETE
+  - Multi-vendor order splitting: one MARKETPLACE order per vendor per checkout
+  - `/api/shop/checkout` — customer self-checkout with delivery address + GPS
+  - `/api/shop/orders` — GET customer orders + POST vendor creates order on behalf of customer
+  - `/api/shop/orders/[id]` — GET customer detail + PATCH vendor status transitions
+  - `/api/shop/pay/[orderId]` — public token-validated OCR payment upload
+  - Payment token (64-char hex, 7-day expiry) stored on orders; cleared on payment completion
+  - WhatsApp gateway: `send-order-confirmation`, `send-order-notification`, `send-payment-link`
+  - Logistics bridge: `PICKED_UP` → DISPATCHED + `DELIVERED` → payment link auto-sent
+  - Customer shop pages: `/shop/checkout`, `/shop/orders`, `/shop/orders/[id]`, `/pay/[orderId]`
+  - `CustomerOtpModal` — WhatsApp OTP required for every CREDIT sale; auto-creates khata account
+  - Migration 046: `payment_token`, `delivery_address`, `delivery_lat/lng` on orders
+  - Migration 051: Fixed `khata_debit_on_confirm` trigger — MARKETPLACE orders now use CONSUMER party_type
+- [x] **Multi-Cart (Hold & Switch)** — [F-CART-002](features/multi-cart.md) ✅ CODE COMPLETE
+  - Up to 9 simultaneous ACTIVE carts per terminal
+  - `useCart` rewritten to manage `carts[]` array; all ops target `carts[activeIndex]`
+  - Touch POS: cart tab bar with `+` (hold), switch tabs, `✕` (cancel)
+  - Keyboard POS: F4 (new cart), F6 (cancel), Tab/Shift+Tab (cycle), Ctrl+1–9 (jump to cart N)
+- [x] **Rider System** — [F-RIDER-001](features/rider-system.md) ✅ CODE COMPLETE
+  - Migration 047: `riders` table + `pickup_otp`, `delivery_otp`, `rider_id` on orders
+  - Phone + PIN login at `/rider/login`; session via magic link
+  - Assignment: logistics-bridge sends WhatsApp accept/reject link to rider
+  - Pickup OTP: sent to vendor on accept; rider inputs at collection → DISPATCHED + delivery OTP sent to customer
+  - Delivery OTP: sent to customer on DISPATCHED; rider inputs at doorstep → DELIVERED + payment link
+  - `/rider` web app: dashboard, order detail, OTP modals, history, change PIN
+  - `/admin/riders` — SUPER_ADMIN creates riders with initial PIN
+- [x] **Vendor Signup (Retailer & Wholesaler)** — [F-SIGNUP-001](features/vendor-signup.md) ✅ CODE COMPLETE
+  - `/signup/retailer` → RETAILER entity + OWNER user → `/pos`
+  - `/signup/wholesaler` → WHOLESALER entity + OWNER user → `/admin`
+  - Unified `/api/auth/signup/vendor` endpoint with `role` parameter
+  - `user_metadata` stores role/sub_role/entity_id (not `app_metadata`)
+- [x] **Multi-Store Owner Management** — [F-MSTORE-001](features/multi-store.md) ✅ PARTIAL
+  - Migration 050: `owner_stores` junction table
+  - POS header store selector dropdown (2+ stores)
+  - `/admin/stores` — owner creates/views all owned stores
+  - `proxy.js` — RETAILER+OWNER allowed through to `/admin/*`
+  - Admin sidebar role-filtered by role (OWNER sees Stores/Team/Settings only)
+  - Team management: OWNER can add MANAGER/CASHIER/STAFF, transfer ownership, remove members
+  - [ ] Stock transfers between stores (pending)
+- [x] **Sales Order Page** (`/salesorder`) ✅ CODE COMPLETE
+  - Keyboard-first two-column layout: customer details left, order table right
+  - Fullscreen product search modal (identical to keyboard POS: 1–9, ↑↓, Esc, barcode)
+  - Auto-creates khata account if customer is new before placing order
+  - F5 to place order; navigates to success screen with order number
+  - Replaces `CreateMarketplaceOrderModal` — "New Order" in `/pos/orders` now navigates here
+- [x] **Keyboard POS** — [F-KBD-002](features/vendor-keyboard-ui.md) ✅ CODE COMPLETE
+  - See feature spec for full details
 - [x] Admin Hub: Wholesaler dashboard, team management, settings
 - [x] Wholesale Ordering: Retailer restock UI, wholesaler catalog, purchase orders with CREDIT
 - [x] Vendor Restock Modal: Full wholesale ordering flow in POS (wholesaler list → catalog → cart → order)
@@ -214,9 +261,13 @@ All specs in `docs/features/`. Each contains: overview, data model, implementati
 | `customer-cart-shop.md` | F-SHOP-001 | Web — cart-based multi-store shop |
 | `customer-checkout-flow.md` | F-CHECKOUT-001 | Web — checkout, post-delivery payment, OCR |
 | `vendor-keyboard-ui.md` | F-KBD-002 | Web — keyboard/desktop POS layout + dense vendor pages |
+| `rider-system.md` | F-RIDER-001 | Web — rider login, OTP pickup/delivery, admin rider management |
 | `hsn-master-integration.md` | F-HSN-001 | Both platforms — HSN master + category inheritance |
 | `product-specifications.md` | F-SPEC-001 | Both platforms — dynamic HSN-driven specifications |
 | `whatsapp-ordering.md` | F-WA-ORDER-001 | Web + gateway |
 | `order-management.md` | F-ORDER-001 | Both platforms |
 | `product-packaging.md` | F-PKG-001 | Both platforms |
 | `distributor-role.md` | F-DIST-001 | Admin Hub |
+| `multi-cart.md` | F-CART-002 | Web — hold/switch/cancel carts in POS |
+| `vendor-signup.md` | F-SIGNUP-001 | Web — retailer + wholesaler signup pages |
+| `multi-store.md` | F-MSTORE-001 | Web — owner store selector + creation (partial) |
