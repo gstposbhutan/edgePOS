@@ -1,17 +1,17 @@
 "use client"
 
 import { useState } from "react"
-import { Minus, Plus, Trash2, ShoppingCart, CreditCard, Tag, Pencil, X } from "lucide-react"
+import { Minus, Plus, Trash2, ShoppingCart, CreditCard, Tag, Pencil, X, PlusCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 
 const PAYMENT_METHODS = [
-  { id: 'MBOB',   label: 'mBoB',   color: 'bg-blue-600' },
-  { id: 'MPAY',   label: 'mPay',   color: 'bg-emerald-600' },
-  { id: 'CASH',   label: 'Cash',   color: 'bg-amber-600' },
-  { id: 'RTGS',   label: 'RTGS',   color: 'bg-purple-600' },
-  { id: 'CREDIT', label: 'Credit', color: 'bg-tibetan' },
+  { id: 'MBOB',   label: 'mBoB',   activeClass: 'bg-blue-600 text-white border-transparent' },
+  { id: 'MPAY',   label: 'mPay',   activeClass: 'bg-emerald-600 text-white border-transparent' },
+  { id: 'CASH',   label: 'Cash',   activeClass: 'bg-amber-600 text-white border-transparent' },
+  { id: 'RTGS',   label: 'RTGS',   activeClass: 'bg-purple-600 text-white border-transparent' },
+  { id: 'CREDIT', label: 'Credit', activeClass: 'bg-red-500 text-white border-transparent' },
 ]
 
 /**
@@ -40,23 +40,60 @@ export function CartPanel({
   customer, paymentMethod, userSubRole = 'CASHIER', khataAccount,
   onUpdateQty, onRemoveItem, onApplyDiscount, onOverridePrice,
   onSelectPayment, onCheckout, checkoutLoading,
+  // Multi-cart props
+  carts = [], activeIndex = 0, onHoldCart, onSwitchCart, onCancelCart,
 }) {
   const hasItems    = items.length > 0
   const canCheckout = hasItems && !!paymentMethod
   const canDiscount = ['MANAGER', 'OWNER', 'ADMIN'].includes(userSubRole)
+  const multiCart   = carts.length > 1 || hasItems
 
   return (
     <div className="flex flex-col h-full gap-3">
-      {/* Cart header */}
-      <div className="flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2">
-          <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium text-foreground">Cart</span>
-          {hasItems && <Badge className="bg-primary text-xs">{items.length}</Badge>}
-        </div>
-        {hasItems && (
-          <span className="text-xs text-muted-foreground">{items.reduce((s,i) => s + i.quantity, 0)} items</span>
-        )}
+      {/* Multi-cart tab bar */}
+      <div className="flex items-center gap-1 shrink-0 overflow-x-auto pb-0.5">
+        {carts.map((cart, i) => {
+          const count = (cart.cart_items ?? []).length
+          const isActive = i === activeIndex
+          return (
+            <div key={cart.id ?? i} className="flex items-center shrink-0">
+              <button
+                onClick={() => onSwitchCart?.(i)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                  isActive
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                }`}
+              >
+                <ShoppingCart className="h-3 w-3" />
+                <span>Cart {i + 1}</span>
+                {count > 0 && (
+                  <span className={`text-[10px] font-bold px-1 rounded-full ${isActive ? 'bg-white/20' : 'bg-muted-foreground/20'}`}>
+                    {count}
+                  </span>
+                )}
+              </button>
+              {/* Cancel this cart */}
+              {(count > 0 || carts.length > 1) && (
+                <button
+                  onClick={() => onCancelCart?.(i)}
+                  className="ml-0.5 text-muted-foreground hover:text-tibetan transition-colors"
+                  title="Cancel this cart"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          )
+        })}
+        {/* Add new cart (hold current, start fresh) */}
+        <button
+          onClick={onHoldCart}
+          className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-muted-foreground hover:text-primary hover:bg-muted/50 transition-colors shrink-0"
+          title="Hold cart & start new"
+        >
+          <PlusCircle className="h-3.5 w-3.5" />
+        </button>
       </div>
 
       {/* Items */}
@@ -119,14 +156,12 @@ export function CartPanel({
                 <button
                   key={method.id}
                   onClick={() => onSelectPayment(method.id)}
-                  disabled={method.id === 'CREDIT' && !customer?.whatsapp}
-                  title={method.id === 'CREDIT' && !customer?.whatsapp ? 'Customer identification required' : ''}
                   className={`
                     py-1.5 px-2 rounded-lg text-xs font-medium border transition-all
                     ${paymentMethod === method.id
-                      ? `${method.color} text-white border-transparent`
-                      : method.id === 'CREDIT' && !customer?.whatsapp
-                        ? 'border-border text-muted-foreground/40 bg-card cursor-not-allowed'
+                      ? method.activeClass
+                      : method.id === 'CREDIT'
+                        ? 'border-red-400 text-red-500 bg-red-50 dark:bg-red-950/20 hover:bg-red-100 dark:hover:bg-red-950/40'
                         : 'border-border text-muted-foreground hover:border-primary/40 hover:text-foreground bg-card'
                     }
                   `}
@@ -163,10 +198,10 @@ export function CartPanel({
                     <p className="text-tibetan font-medium">Credit limit exceeded</p>
                   )}
                 </>
-              ) : customer?.whatsapp ? (
-                <p className="text-amber-600">No khata account found. Owner/Manager can create one.</p>
               ) : (
-                <p className="text-amber-600">Customer identification required for credit</p>
+                <p className="text-xs text-muted-foreground">
+                  Customer will verify via WhatsApp OTP at checkout.
+                </p>
               )}
             </div>
           )}

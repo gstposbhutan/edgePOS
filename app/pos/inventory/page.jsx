@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Package, AlertTriangle, XCircle, History, RefreshCw, TrendingUp, FileText, Camera } from "lucide-react"
+import { ArrowLeft, Package, AlertTriangle, XCircle, History, RefreshCw, TrendingUp, FileText, Camera, Layers, PackagePlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -14,6 +14,7 @@ import { LeadTimeModal }     from "@/components/pos/inventory/lead-time-modal"
 import { ScanBillModal }     from "@/components/pos/inventory/scan-bill-modal"
 import { DraftPurchaseReview } from "@/components/pos/inventory/draft-purchase-review"
 import { DraftPurchasesList }  from "@/components/pos/inventory/draft-purchases-list"
+import { ReceiveStockModal }   from "@/components/pos/inventory/receive-stock-modal"
 import { useInventory }      from "@/hooks/use-inventory"
 import { useStockPredictions } from "@/hooks/use-stock-predictions"
 import { useDraftPurchases } from "@/hooks/use-draft-purchases"
@@ -21,9 +22,10 @@ import { getUser, getRoleClaims } from "@/lib/auth"
 import { createClient } from "@/lib/supabase/client"
 
 const TABS = [
-  { id: 'stock',       label: 'Stock Levels', icon: Package },
-  { id: 'drafts',      label: 'Draft Purchases', icon: FileText },
-  { id: 'predictions', label: 'Predictions', icon: TrendingUp },
+  { id: 'stock',       label: 'Stock Levels',    icon: Package },
+  { id: 'batches',     label: 'Batches',          icon: Layers },
+  { id: 'drafts',      label: 'Draft Purchases',  icon: FileText },
+  { id: 'predictions', label: 'Predictions',      icon: TrendingUp },
   { id: 'history',     label: 'Movement History', icon: History },
 ]
 
@@ -33,10 +35,11 @@ export default function InventoryPage() {
 
   const [entityId,        setEntityId]        = useState(null)
   const [activeTab,       setActiveTab]       = useState('stock')
-  const [adjustProduct,   setAdjustProduct]   = useState(null) // product to adjust
-  const [leadTimeProduct, setLeadTimeProduct] = useState(null) // prediction for lead time
+  const [adjustProduct,   setAdjustProduct]   = useState(null)
+  const [leadTimeProduct, setLeadTimeProduct] = useState(null)
   const [scanOpen,        setScanOpen]        = useState(false)
   const [reviewingDraft,  setReviewingDraft]  = useState(null)
+  const [receiveOpen,     setReceiveOpen]     = useState(false)
   const [userId,          setUserId]          = useState(null)
   const [search,          setSearch]          = useState('')
 
@@ -54,8 +57,8 @@ export default function InventoryPage() {
 
   const {
     products, loading, filter, setFilter,
-    lowCount, outCount, movements,
-    adjustStock, fetchMovements, refresh,
+    lowCount, outCount, movements, batches,
+    adjustStock, fetchMovements, fetchBatches, receiveStock, refresh,
   } = useInventory(entityId)
 
   const {
@@ -73,6 +76,7 @@ export default function InventoryPage() {
     if (activeTab === 'history' && entityId) fetchMovements()
     if (activeTab === 'predictions' && entityId) fetchPredictions()
     if (activeTab === 'drafts' && entityId) fetchDrafts()
+    if (activeTab === 'batches' && entityId) fetchBatches()
   }, [activeTab, entityId])
 
   // Client-side search filter
@@ -178,6 +182,11 @@ export default function InventoryPage() {
                 className="flex-1"
               />
               <div className="flex gap-1">
+                <Button size="sm" variant="outline" onClick={() => setReceiveOpen(true)}
+                  className="gap-1.5 border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/5">
+                  <PackagePlus className="h-4 w-4" />
+                  <span className="hidden sm:inline text-xs">Receive</span>
+                </Button>
                 <Button size="sm" variant="outline" onClick={() => setScanOpen(true)}
                   className="border-primary/30 text-primary hover:bg-primary/5">
                   <Camera className="h-4 w-4" />
@@ -227,6 +236,10 @@ export default function InventoryPage() {
           <MovementHistory movements={movements} loading={loading} />
         )}
 
+        {activeTab === 'batches' && (
+          <BatchesTab batches={batches} onRefresh={fetchBatches} entityId={entityId} />
+        )}
+
         {activeTab === 'drafts' && (
           reviewingDraft ? (
             <DraftPurchaseReview
@@ -251,7 +264,9 @@ export default function InventoryPage() {
       <AdjustStockModal
         open={!!adjustProduct}
         product={adjustProduct}
+        entityId={entityId}
         onAdjust={handleAdjust}
+        onReceive={receiveStock}
         onClose={() => setAdjustProduct(null)}
       />
 
@@ -282,6 +297,90 @@ export default function InventoryPage() {
         }}
         onClose={() => setScanOpen(false)}
       />
+
+      {/* Receive Stock modal */}
+      <ReceiveStockModal
+        open={receiveOpen}
+        entityId={entityId}
+        onReceive={receiveStock}
+        onClose={() => setReceiveOpen(false)}
+      />
+    </div>
+  )
+}
+
+// ── Batches Tab ───────────────────────────────────────────────────────────────
+function BatchesTab({ batches, onRefresh, entityId }) {
+  useEffect(() => { if (entityId) onRefresh() }, [entityId])
+
+  const STATUS_STYLE = {
+    ACTIVE:   'text-emerald-600 bg-emerald-500/10 border-emerald-500/20',
+    DEPLETED: 'text-muted-foreground bg-muted/30 border-border',
+    EXPIRED:  'text-tibetan bg-tibetan/10 border-tibetan/20',
+    RECALLED: 'text-amber-600 bg-amber-500/10 border-amber-500/20',
+  }
+
+  if (!batches.length) {
+    return (
+      <div className="flex flex-col items-center justify-center h-48 text-muted-foreground gap-2">
+        <Layers className="h-10 w-10 opacity-20" />
+        <p className="text-sm">No batches recorded yet. Use "Receive Stock" to add your first batch.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-border bg-muted/30 text-xs text-muted-foreground">
+            <th className="text-left px-4 py-2 font-medium">Product</th>
+            <th className="text-left px-4 py-2 font-medium">Batch #</th>
+            <th className="text-left px-4 py-2 font-medium">Barcode</th>
+            <th className="text-right px-4 py-2 font-medium">Qty</th>
+            <th className="text-right px-4 py-2 font-medium">Cost</th>
+            <th className="text-right px-4 py-2 font-medium">MRP</th>
+            <th className="text-right px-4 py-2 font-medium">Selling</th>
+            <th className="text-left px-4 py-2 font-medium">Exp Date</th>
+            <th className="text-left px-4 py-2 font-medium">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {batches.map(batch => {
+            const isExpiringSoon = batch.expires_at &&
+              new Date(batch.expires_at) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+            return (
+              <tr key={batch.id} className="border-b border-border hover:bg-muted/20">
+                <td className="px-4 py-2.5">
+                  <p className="font-medium truncate max-w-[160px]">{batch.products?.name}</p>
+                  <p className="text-xs text-muted-foreground font-mono">{batch.products?.sku}</p>
+                </td>
+                <td className="px-4 py-2.5 font-mono text-xs">{batch.batch_number}</td>
+                <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{batch.barcode || '—'}</td>
+                <td className="px-4 py-2.5 text-right tabular-nums font-semibold">{batch.quantity}</td>
+                <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
+                  {batch.unit_cost ? `Nu. ${parseFloat(batch.unit_cost).toFixed(2)}` : '—'}
+                </td>
+                <td className="px-4 py-2.5 text-right tabular-nums">
+                  {batch.mrp ? `Nu. ${parseFloat(batch.mrp).toFixed(2)}` : '—'}
+                </td>
+                <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-primary">
+                  {batch.selling_price ? `Nu. ${parseFloat(batch.selling_price).toFixed(2)}` : '—'}
+                </td>
+                <td className={`px-4 py-2.5 text-xs ${isExpiringSoon && batch.status === 'ACTIVE' ? 'text-amber-600 font-medium' : 'text-muted-foreground'}`}>
+                  {batch.expires_at ? new Date(batch.expires_at).toLocaleDateString() : '—'}
+                  {isExpiringSoon && batch.status === 'ACTIVE' && ' ⚠'}
+                </td>
+                <td className="px-4 py-2.5">
+                  <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${STATUS_STYLE[batch.status] || ''}`}>
+                    {batch.status}
+                  </span>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
     </div>
   )
 }

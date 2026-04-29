@@ -32,7 +32,7 @@ export function useProducts(entityId) {
     setLoading(true)
     const { data } = await supabase
       .from('sellable_products')
-      .select('id, name, sku, hsn_code, image_url, available_stock, wholesale_price, mrp, unit, product_type, package_type, package_def_id, package_barcode, reorder_point')
+      .select('id, name, sku, hsn_code, image_url, available_stock, wholesale_price, mrp, selling_price, unit, product_type, package_type, package_def_id, package_barcode, reorder_point, batch_id, batch_number, expires_at, batch_barcode')
       .order('name')
       .limit(100)
 
@@ -47,7 +47,7 @@ export function useProducts(entityId) {
     setLoading(true)
     const { data } = await supabase
       .from('sellable_products')
-      .select('id, name, sku, hsn_code, image_url, available_stock, wholesale_price, mrp, unit, product_type, package_type, package_def_id, package_barcode, reorder_point')
+      .select('id, name, sku, hsn_code, image_url, available_stock, wholesale_price, mrp, selling_price, unit, product_type, package_type, package_def_id, package_barcode, reorder_point, batch_id, batch_number, expires_at, batch_barcode')
       .or(`name.ilike.%${searchQuery}%,sku.ilike.%${searchQuery}%`)
       .order('name')
       .limit(50)

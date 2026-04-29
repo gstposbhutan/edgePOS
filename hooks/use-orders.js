@@ -53,7 +53,8 @@ export function useOrders(entityId) {
    * Fetch a single order with full detail — items, timeline, refunds, replacements.
    * @param {string} orderId
    */
-  async function fetchOrderDetail(orderId) {
+  async function fetchOrderDetail(orderId, eidOverride) {
+    const resolvedEntityId = eidOverride ?? entityId
     const [{ data: order }, { data: items }, { data: timeline }, { data: refunds }, { data: replacements }] =
       await Promise.all([
         supabase.from('orders').select('*').eq('id', orderId).single(),
@@ -63,7 +64,30 @@ export function useOrders(entityId) {
         supabase.from('replacements').select('*').eq('order_id', orderId).order('created_at'),
       ])
 
-    return { order, items: items ?? [], timeline: timeline ?? [], refunds: refunds ?? [], replacements: replacements ?? [] }
+    // For CREDIT orders, fetch the customer's khata account and entity name
+    let khataAccount = null
+    let customerName = null
+    const phone = order?.buyer_whatsapp ?? order?.buyer_phone
+    if (order?.payment_method === 'CREDIT' && phone) {
+      const [{ data: acct }, { data: customerEntity }] = await Promise.all([
+        supabase
+          .from('khata_accounts')
+          .select('id, debtor_name, debtor_phone, outstanding_balance, credit_limit, party_type')
+          .eq('creditor_entity_id', resolvedEntityId)
+          .eq('debtor_phone', phone)
+          .single(),
+        supabase
+          .from('entities')
+          .select('name')
+          .eq('whatsapp_no', phone)
+          .single(),
+      ])
+      khataAccount = acct ?? null
+      // Prefer khata debtor_name, then entity name, then phone as fallback
+      customerName = acct?.debtor_name || customerEntity?.name || null
+    }
+
+    return { order, items: items ?? [], timeline: timeline ?? [], refunds: refunds ?? [], replacements: replacements ?? [], khataAccount, customerName }
   }
 
   /**

@@ -28,10 +28,11 @@ function SignupForm() {
     setLoading(true)
 
     try {
-      const res = await fetch('/api/auth/signup/wholesaler', {
+      const res = await fetch('/api/auth/signup/vendor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          role: 'WHOLESALER',
           name: businessName,
           whatsapp_no: whatsappNo,
           tpn_gstin: tpnGstin || undefined,
@@ -204,8 +205,8 @@ function SignupForm() {
         </p>
         <p className="text-xs text-muted-foreground">
           Retailer?{' '}
-          <a href="/login" className="text-primary hover:underline underline-offset-4">
-            Sign in to your POS
+          <a href="/signup/retailer" className="text-primary hover:underline underline-offset-4">
+            Create a retail account
           </a>
         </p>
       </div>

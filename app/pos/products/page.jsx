@@ -103,6 +103,19 @@ export default function ProductsPage() {
   function closeForm() { setShowForm(false); setEditProduct(null) }
   function closeDetail() { setViewProduct(null) }
 
+  // Keyboard shortcuts: N = add product, Escape = close form
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return
+      if (showForm || viewProduct) return
+      if (e.key === 'n' || e.key === 'N') {
+        if (canManage) { e.preventDefault(); openAdd() }
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [showForm, viewProduct, canManage])
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}

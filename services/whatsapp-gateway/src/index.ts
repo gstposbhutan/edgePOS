@@ -272,6 +272,261 @@ app.post('/api/send-credit-alert', async (req, res) => {
   }
 });
 
+// ─── POST /api/send-order-confirmation ────────────────────────────────────
+// Sent to the customer after they place a marketplace order (all vendor orders listed)
+
+app.post('/api/send-order-confirmation', async (req, res) => {
+  try {
+    const { phoneNumber, orders, totalAmount } = req.body;
+
+    if (!phoneNumber || !orders?.length) {
+      return res.status(400).json({ success: false, error: 'phoneNumber and orders required' });
+    }
+
+    const phone = phoneNumber.replace(/^\+/, '');
+    const orderLines = orders
+      .map((o: any) => `• ${o.seller_name} — ${o.order_no} — Nu. ${parseFloat(o.grand_total).toFixed(2)}`)
+      .join('\n');
+
+    const message =
+      `✅ *Your order is confirmed!*\n\n` +
+      `${orderLines}\n\n` +
+      `*Total: Nu. ${parseFloat(totalAmount || 0).toFixed(2)}*\n\n` +
+      `Your goods will be delivered to your address. You'll receive a payment link after delivery.`;
+
+    if (WA_TOKEN && WA_PHONE_ID) {
+      const data = await sendTemplateMessage(phone, 'order_confirmation', [
+        { type: 'body', parameters: [{ type: 'text', text: orderLines }, { type: 'text', text: `Nu. ${parseFloat(totalAmount || 0).toFixed(2)}` }] },
+      ]);
+      if (data?.error) {
+        console.warn('order_confirmation template failed, falling back to text:', data.error);
+        await sendTextMessage(phone, message);
+      }
+      return res.json({ success: true });
+    }
+
+    console.log(`[DEV] Order confirmation for +${phone}:\n${message}`);
+    return res.json({ success: true, dev: true });
+  } catch (error) {
+    console.error('Send order confirmation error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to send order confirmation' });
+  }
+});
+
+// ─── POST /api/send-order-notification ─────────────────────────────────────
+// Sent to a vendor when a new marketplace order arrives for their store
+
+app.post('/api/send-order-notification', async (req, res) => {
+  try {
+    const { vendorPhone, orderNo, grandTotal, itemCount, customerPhone } = req.body;
+
+    if (!vendorPhone || !orderNo) {
+      return res.status(400).json({ success: false, error: 'vendorPhone and orderNo required' });
+    }
+
+    const phone = vendorPhone.replace(/^\+/, '');
+
+    const message =
+      `🛍️ *New marketplace order!*\n\n` +
+      `Order: ${orderNo}\n` +
+      `Amount: Nu. ${parseFloat(grandTotal || 0).toFixed(2)}\n` +
+      `Items: ${itemCount}\n` +
+      `Customer: ${customerPhone}\n\n` +
+      `Log in to your POS to process this order.`;
+
+    if (WA_TOKEN && WA_PHONE_ID) {
+      const data = await sendTemplateMessage(phone, 'order_notification', [
+        { type: 'body', parameters: [
+          { type: 'text', text: orderNo },
+          { type: 'text', text: `Nu. ${parseFloat(grandTotal || 0).toFixed(2)}` },
+          { type: 'text', text: String(itemCount) },
+        ]},
+      ]);
+      if (data?.error) {
+        console.warn('order_notification template failed, falling back to text:', data.error);
+        await sendTextMessage(phone, message);
+      }
+      return res.json({ success: true });
+    }
+
+    console.log(`[DEV] Order notification for vendor +${phone}:\n${message}`);
+    return res.json({ success: true, dev: true });
+  } catch (error) {
+    console.error('Send order notification error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to send order notification' });
+  }
+});
+
+// ─── POST /api/send-payment-link ────────────────────────────────────────────
+// Sent to the customer after their order is marked DELIVERED — contains the payment URL
+
+app.post('/api/send-payment-link', async (req, res) => {
+  try {
+    const { phoneNumber, orderNo, grandTotal, paymentUrl } = req.body;
+
+    if (!phoneNumber || !paymentUrl) {
+      return res.status(400).json({ success: false, error: 'phoneNumber and paymentUrl required' });
+    }
+
+    const phone = phoneNumber.replace(/^\+/, '');
+
+    const message =
+      `📦 *Your order has been delivered!*\n\n` +
+      `Order: ${orderNo}\n` +
+      `Amount due: *Nu. ${parseFloat(grandTotal || 0).toFixed(2)}*\n\n` +
+      `Tap the link below to upload your payment screenshot:\n${paymentUrl}\n\n` +
+      `This link expires in 7 days.`;
+
+    if (WA_TOKEN && WA_PHONE_ID) {
+      const data = await sendTemplateMessage(phone, 'payment_link', [
+        { type: 'body', parameters: [
+          { type: 'text', text: orderNo },
+          { type: 'text', text: `Nu. ${parseFloat(grandTotal || 0).toFixed(2)}` },
+          { type: 'text', text: paymentUrl },
+        ]},
+      ]);
+      if (data?.error) {
+        console.warn('payment_link template failed, falling back to text:', data.error);
+        await sendTextMessage(phone, message);
+      }
+      return res.json({ success: true });
+    }
+
+    console.log(`[DEV] Payment link for +${phone}:\n${message}`);
+    return res.json({ success: true, dev: true });
+  } catch (error) {
+    console.error('Send payment link error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to send payment link' });
+  }
+});
+
+// ─── POST /api/send-rider-assignment ───────────────────────────────────────
+// Sent to rider when a new order is assigned for pickup
+
+app.post('/api/send-rider-assignment', async (req, res) => {
+  try {
+    const { riderPhone, orderNo, vendorName, vendorAddress, itemCount, acceptUrl, rejectUrl } = req.body;
+
+    if (!riderPhone || !orderNo) {
+      return res.status(400).json({ success: false, error: 'riderPhone and orderNo required' });
+    }
+
+    const phone = riderPhone.replace(/^\+/, '');
+
+    const message =
+      `🛵 *New delivery assignment!*\n\n` +
+      `Order: ${orderNo}\n` +
+      `Pickup from: ${vendorName}\n` +
+      `Address: ${vendorAddress || 'Check app for details'}\n` +
+      `Items: ${itemCount}\n\n` +
+      `Accept: ${acceptUrl}\n` +
+      `Reject: ${rejectUrl}`;
+
+    if (WA_TOKEN && WA_PHONE_ID) {
+      const data = await sendTemplateMessage(phone, 'rider_assignment', [
+        { type: 'body', parameters: [
+          { type: 'text', text: orderNo },
+          { type: 'text', text: vendorName },
+          { type: 'text', text: acceptUrl },
+        ]},
+      ]);
+      if (data?.error) {
+        await sendTextMessage(phone, message);
+      }
+      return res.json({ success: true });
+    }
+
+    console.log(`[DEV] Rider assignment for +${phone}:\n${message}`);
+    return res.json({ success: true, dev: true });
+  } catch (error) {
+    console.error('Send rider assignment error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to send rider assignment' });
+  }
+});
+
+// ─── POST /api/send-pickup-otp ──────────────────────────────────────────────
+// Sent to vendor when rider accepts — contains the pickup OTP
+
+app.post('/api/send-pickup-otp', async (req, res) => {
+  try {
+    const { vendorPhone, orderNo, riderName, pickupOtp } = req.body;
+
+    if (!vendorPhone || !pickupOtp) {
+      return res.status(400).json({ success: false, error: 'vendorPhone and pickupOtp required' });
+    }
+
+    const phone = vendorPhone.replace(/^\+/, '');
+
+    const message =
+      `✅ *Rider assigned for order ${orderNo}*\n\n` +
+      `Rider: ${riderName}\n\n` +
+      `*Pickup OTP: ${pickupOtp}*\n` +
+      `Share this code with the rider when they arrive to collect the package.\n\n` +
+      `This OTP expires in 2 hours.`;
+
+    if (WA_TOKEN && WA_PHONE_ID) {
+      const data = await sendTemplateMessage(phone, 'pickup_otp', [
+        { type: 'body', parameters: [
+          { type: 'text', text: orderNo },
+          { type: 'text', text: riderName },
+          { type: 'text', text: pickupOtp },
+        ]},
+      ]);
+      if (data?.error) {
+        await sendTextMessage(phone, message);
+      }
+      return res.json({ success: true });
+    }
+
+    console.log(`[DEV] Pickup OTP for vendor +${phone}:\n${message}`);
+    return res.json({ success: true, dev: true });
+  } catch (error) {
+    console.error('Send pickup OTP error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to send pickup OTP' });
+  }
+});
+
+// ─── POST /api/send-delivery-otp ────────────────────────────────────────────
+// Sent to customer when order is DISPATCHED — contains the delivery OTP
+
+app.post('/api/send-delivery-otp', async (req, res) => {
+  try {
+    const { customerPhone, orderNo, deliveryOtp, riderName } = req.body;
+
+    if (!customerPhone || !deliveryOtp) {
+      return res.status(400).json({ success: false, error: 'customerPhone and deliveryOtp required' });
+    }
+
+    const phone = customerPhone.replace(/^\+/, '');
+
+    const message =
+      `🚀 *Your order ${orderNo} is on the way!*\n\n` +
+      (riderName ? `Rider: ${riderName}\n\n` : '') +
+      `*Delivery OTP: ${deliveryOtp}*\n` +
+      `Share this code with the rider when they arrive to confirm delivery.\n\n` +
+      `This OTP expires in 4 hours.`;
+
+    if (WA_TOKEN && WA_PHONE_ID) {
+      const data = await sendTemplateMessage(phone, 'delivery_otp', [
+        { type: 'body', parameters: [
+          { type: 'text', text: orderNo },
+          { type: 'text', text: deliveryOtp },
+        ]},
+      ]);
+      if (data?.error) {
+        await sendTextMessage(phone, message);
+      }
+      return res.json({ success: true });
+    }
+
+    console.log(`[DEV] Delivery OTP for customer +${phone}:\n${message}`);
+    return res.json({ success: true, dev: true });
+  } catch (error) {
+    console.error('Send delivery OTP error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to send delivery OTP' });
+  }
+});
+
 // ─── GET /api/webhook — Verification ───────────────────────────────────────
 
 app.get('/api/webhook', (req, res) => {

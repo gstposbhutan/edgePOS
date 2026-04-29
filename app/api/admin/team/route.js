@@ -15,8 +15,8 @@ async function getContext(request) {
   const { data: { user } } = await supabase.auth.getUser(token)
   if (!user) return null
 
-  const entityId = user.app_metadata?.entity_id
-  const subRole = user.app_metadata?.sub_role
+  const entityId = user.user_metadata?.entity_id || user.app_metadata?.entity_id
+  const subRole  = user.user_metadata?.sub_role  || user.app_metadata?.sub_role
   if (!entityId) return null
 
   return { entityId, subRole, supabase }
@@ -65,8 +65,8 @@ export async function POST(request) {
   if (!email || !password || !full_name || !sub_role) {
     return NextResponse.json({ error: 'email, password, full_name, and sub_role are required' }, { status: 400 })
   }
-  if (!['MANAGER', 'STAFF'].includes(sub_role)) {
-    return NextResponse.json({ error: 'sub_role must be MANAGER or STAFF' }, { status: 400 })
+  if (!['MANAGER', 'CASHIER', 'STAFF'].includes(sub_role)) {
+    return NextResponse.json({ error: 'sub_role must be MANAGER, CASHIER, or STAFF' }, { status: 400 })
   }
   if (password.length < 6) {
     return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 })
@@ -75,13 +75,21 @@ export async function POST(request) {
   const { entityId, supabase } = ctx
   const permissions = PERMISSIONS_BY_ROLE[sub_role] || []
 
+  // Determine the entity's role so new staff inherit the correct role
+  const { data: entity } = await supabase
+    .from('entities')
+    .select('role')
+    .eq('id', entityId)
+    .single()
+  const entityRole = entity?.role || 'RETAILER'
+
   // Create auth user
   const { data: authData, error: authErr } = await supabase.auth.admin.createUser({
     email: email.trim().toLowerCase(),
     password,
     email_confirm: true,
-    app_metadata: {
-      role: 'WHOLESALER',
+    user_metadata: {
+      role: entityRole,
       sub_role,
       entity_id: entityId,
       permissions,
@@ -101,7 +109,7 @@ export async function POST(request) {
     .insert({
       id: authData.user.id,
       entity_id: entityId,
-      role: 'WHOLESALER',
+      role: entityRole,
       sub_role,
       full_name: full_name.trim(),
       permissions,

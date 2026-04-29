@@ -30,7 +30,8 @@ export function useAdminAuth() {
 
       const { entityId, role, subRole } = getRoleClaims(user)
 
-      if (role === 'RETAILER') {
+      // Retailers go to POS — except OWNERs who also have access to /admin for store management
+      if (role === 'RETAILER' && subRole !== 'OWNER') {
         router.push('/pos')
         return
       }
@@ -39,7 +40,7 @@ export function useAdminAuth() {
     }
 
     check()
-  }, [router])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   return state
 }

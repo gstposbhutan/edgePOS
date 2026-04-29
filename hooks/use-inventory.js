@@ -12,6 +12,7 @@ export function useInventory(entityId) {
 
   const [products,  setProducts]  = useState([])
   const [movements, setMovements] = useState([])
+  const [batches,   setBatches]   = useState([])
   const [loading,   setLoading]   = useState(true)
   const [filter,    setFilter]    = useState('ALL') // ALL | LOW | OUT
 
@@ -24,7 +25,7 @@ export function useInventory(entityId) {
     setLoading(true)
     const { data } = await supabase
       .from('products')
-      .select('id, name, sku, unit, current_stock, mrp, wholesale_price, hsn_code, is_active, reorder_point, barcode')
+      .select('id, name, sku, unit, current_stock, mrp, selling_price, wholesale_price, hsn_code, is_active, reorder_point, barcode')
       .eq('is_active', true)
       .order('name')
 
@@ -79,6 +80,34 @@ export function useInventory(entityId) {
   const lowCount = products.filter(p => p.current_stock > 0 && p.current_stock <= (p.reorder_point ?? 10)).length
   const outCount = products.filter(p => p.current_stock <= 0).length
 
+  // ── Fetch active batches for this entity ─────────────────────────────────
+  const fetchBatches = useCallback(async (productId = null) => {
+    let query = supabase
+      .from('product_batches')
+      .select('id, product_id, batch_number, barcode, manufactured_at, expires_at, quantity, unit_cost, mrp, selling_price, status, received_at, products(name, sku, unit)')
+      .eq('entity_id', entityId)
+      .order('expires_at', { ascending: true, nullsFirst: false })
+
+    if (productId) query = query.eq('product_id', productId)
+
+    const { data } = await query
+    setBatches(data ?? [])
+  }, [entityId])
+
+  // ── Receive stock — creates batch + RESTOCK movement + updates product prices
+  const receiveStock = useCallback(async (formData) => {
+    const res = await fetch('/api/inventory/receive', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formData),
+    })
+    const data = await res.json()
+    if (data.error) return { error: data.error, batch: null }
+    await fetchProducts()
+    await fetchBatches()
+    return { error: null, batch: data.batch }
+  }, [entityId])
+
   // Products that are bottlenecking an active package (component availability < 1 package)
   // Computed at the hook level so the inventory page can show a dedicated alert
   async function getPackageBottlenecks() {
@@ -110,6 +139,7 @@ export function useInventory(entityId) {
     products: filtered,
     allProducts: products,
     movements,
+    batches,
     loading,
     filter,
     setFilter,
@@ -117,6 +147,8 @@ export function useInventory(entityId) {
     outCount,
     adjustStock,
     fetchMovements,
+    fetchBatches,
+    receiveStock,
     getPackageBottlenecks,
     refresh: fetchProducts,
   }

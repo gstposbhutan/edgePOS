@@ -25,7 +25,7 @@ export function useProductCatalog(entityId) {
     const { data } = await supabase
       .from('products')
       .select(`
-        id, name, sku, hsn_code, unit, mrp, wholesale_price,
+        id, name, sku, hsn_code, unit, mrp, wholesale_price, selling_price,
         current_stock, image_url, is_active, created_at,
         product_categories(category_id, categories(id, name))
       `)
@@ -58,12 +58,8 @@ export function useProductCatalog(entityId) {
         sku:             formData.sku?.trim() || null,
         hsn_code:        formData.hsn_code.trim(),
         unit:            formData.unit || 'pcs',
-        mrp:             parseFloat(formData.mrp) || 0,
-        wholesale_price: parseFloat(formData.wholesale_price) || 0,
         current_stock:   parseInt(formData.current_stock) || 0,
         image_url:       formData.image_url?.trim() || null,
-        barcode:         formData.barcode?.trim() || null,
-        qr_code:         formData.qr_code?.trim() || null,
         reorder_point:   parseInt(formData.reorder_point) || 10,
         is_active:       true,
         created_by:      entityId,
@@ -130,12 +126,8 @@ export function useProductCatalog(entityId) {
         sku:             formData.sku?.trim() || null,
         hsn_code:        formData.hsn_code.trim(),
         unit:            formData.unit || 'pcs',
-        mrp:             parseFloat(formData.mrp) || 0,
-        wholesale_price: parseFloat(formData.wholesale_price) || 0,
-        image_url:       formData.image_url?.trim() || null,
-        barcode:         formData.barcode?.trim() || null,
-        qr_code:         formData.qr_code?.trim() || null,
-        reorder_point:   parseInt(formData.reorder_point) || 10,
+        image_url:     formData.image_url?.trim() || null,
+        reorder_point: parseInt(formData.reorder_point) || 10,
       })
       .eq('id', productId)
 

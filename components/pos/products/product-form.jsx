@@ -6,13 +6,12 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 
-const UNITS = ['pcs', 'kg', 'g', 'litre', 'ml', 'box', 'pack', 'dozen', 'pair', 'set']
+const UNITS = ['pcs', 'kg', 'g', 'litre', 'ml', 'btl', 'box', 'pack', 'dozen', 'pair', 'set', 'roll', 'sheet', 'bag', 'can', 'tube', 'sachet']
 
 const EMPTY_FORM = {
   name: '', sku: '', hsn_code: '', unit: 'pcs',
-  mrp: '', wholesale_price: '', current_stock: '0', image_url: '',
-  barcode: '', qr_code: '', reorder_point: '10',
-  batch_number: '', manufactured_at: '', expires_at: '',
+  wholesale_price: '', mrp: '', selling_price: '',
+  current_stock: '0', image_url: '', reorder_point: '10',
 }
 
 /**
@@ -42,16 +41,12 @@ export function ProductForm({ open, product, categories, saving, onSave, onClose
         sku:             product.sku ?? '',
         hsn_code:        product.hsn_code ?? '',
         unit:            product.unit ?? 'pcs',
-        mrp:             String(product.mrp ?? ''),
         wholesale_price: String(product.wholesale_price ?? ''),
+        mrp:             String(product.mrp ?? ''),
+        selling_price:   String(product.selling_price ?? ''),
         current_stock:   String(product.current_stock ?? '0'),
         image_url:       product.image_url ?? '',
-        barcode:         product.barcode ?? '',
-        qr_code:         product.qr_code ?? '',
         reorder_point:   String(product.reorder_point ?? '10'),
-        batch_number:    '',
-        manufactured_at: '',
-        expires_at:      '',
       })
       setSelectedCats(
         (product.product_categories ?? []).map(pc => pc.category_id)
@@ -79,7 +74,6 @@ export function ProductForm({ open, product, categories, saving, onSave, onClose
 
     if (!form.name.trim())     return setError('Product name is required')
     if (!form.hsn_code.trim()) return setError('HSN code is required for GST compliance')
-    if (!form.mrp || isNaN(parseFloat(form.mrp))) return setError('MRP (selling price) is required')
 
     const { error: saveError } = await onSave(form, selectedCats)
     if (saveError) setError(saveError)
@@ -135,31 +129,36 @@ export function ProductForm({ open, product, categories, saving, onSave, onClose
             </div>
           </div>
 
-          {/* Pricing */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">MRP / Selling Price (Nu.) <span className="text-tibetan">*</span></label>
-              <Input
-                type="number" min="0" step="0.01"
-                placeholder="0.00"
-                value={form.mrp}
-                onChange={e => set('mrp', e.target.value)}
-                required
-              />
+          {/* Prices + stock — read-only, managed via stock receipts and movements */}
+          {isEdit && (
+            <div className="p-3 bg-muted/30 rounded-lg border border-border space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Prices & Stock</p>
+              <div className="grid grid-cols-4 gap-3 text-sm">
+                <div>
+                  <p className="text-[10px] text-muted-foreground">Wholesale</p>
+                  <p className="font-medium">{form.wholesale_price ? `Nu. ${parseFloat(form.wholesale_price).toFixed(2)}` : '—'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground">MRP</p>
+                  <p className="font-medium">{form.mrp ? `Nu. ${parseFloat(form.mrp).toFixed(2)}` : '—'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground">Selling Price</p>
+                  <p className="font-semibold text-primary">
+                    Nu. {parseFloat(form.selling_price || form.mrp || 0).toFixed(2)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground">Stock</p>
+                  <p className="font-semibold">{form.current_stock ?? 0} {form.unit}</p>
+                </div>
+              </div>
+              <p className="text-[10px] text-muted-foreground">Prices update when receiving stock. Stock updates automatically on sales and receipts.</p>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">Cost / Wholesale Price (Nu.)</label>
-              <Input
-                type="number" min="0" step="0.01"
-                placeholder="0.00"
-                value={form.wholesale_price}
-                onChange={e => set('wholesale_price', e.target.value)}
-              />
-            </div>
-          </div>
+          )}
 
-          {/* Unit + Initial stock */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* Unit + Opening stock (new products only) */}
+          <div className={`grid gap-3 ${isEdit ? 'grid-cols-1' : 'grid-cols-2'}`}>
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-foreground">Unit</label>
               <select
@@ -170,41 +169,18 @@ export function ProductForm({ open, product, categories, saving, onSave, onClose
                 {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
               </select>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">
-                {isEdit ? 'Current Stock' : 'Opening Stock'}
-              </label>
-              <Input
-                type="number" min="0"
-                placeholder="0"
-                value={form.current_stock}
-                onChange={e => set('current_stock', e.target.value)}
-                disabled={isEdit} // stock changes go through inventory adjustments
-              />
-              {isEdit && (
-                <p className="text-[10px] text-muted-foreground">Adjust stock from Inventory page</p>
-              )}
-            </div>
-          </div>
-
-          {/* Barcode + QR */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">Barcode</label>
-              <Input
-                placeholder="Scan or enter EAN/UPC"
-                value={form.barcode}
-                onChange={e => set('barcode', e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">QR Code</label>
-              <Input
-                placeholder="QR code data"
-                value={form.qr_code}
-                onChange={e => set('qr_code', e.target.value)}
-              />
-            </div>
+            {!isEdit && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">Opening Stock</label>
+                <Input
+                  type="number" min="0"
+                  placeholder="0"
+                  value={form.current_stock}
+                  onChange={e => set('current_stock', e.target.value)}
+                />
+                <p className="text-[10px] text-muted-foreground">Initial qty on hand (receive stock to add more later)</p>
+              </div>
+            )}
           </div>
 
           {/* Reorder point */}

@@ -15,7 +15,6 @@ export function ProductDetailModal({ open, product, onAddToCart, onClose, readOn
   if (!product) return null
 
   const price = parseFloat(product.mrp ?? product.wholesale_price ?? 0)
-  const wholesalePrice = parseFloat(product.wholesale_price ?? 0)
   const stock = product.available_stock ?? product.current_stock ?? 0
   const isPackage = product.product_type === 'PACKAGE'
   const pkgLabel = isPackage ? product.package_type : null
@@ -95,12 +94,6 @@ export function ProductDetailModal({ open, product, onAddToCart, onClose, readOn
               <p className="text-xs text-muted-foreground">MRP</p>
               <p className="text-xl font-bold text-primary">Nu. {price.toFixed(2)}</p>
             </div>
-            {wholesalePrice > 0 && (
-              <div>
-                <p className="text-xs text-muted-foreground">Wholesale</p>
-                <p className="text-lg font-semibold">Nu. {wholesalePrice.toFixed(2)}</p>
-              </div>
-            )}
             <div>
               <p className="text-xs text-muted-foreground">Stock</p>
               <p className={`text-lg font-semibold ${outOfStock ? 'text-tibetan' : lowStock ? 'text-amber-600' : 'text-emerald-600'}`}>

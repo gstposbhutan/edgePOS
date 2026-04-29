@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 const ROLE_PERMISSIONS = {
   MANAGER: ['inventory:read', 'inventory:write', 'orders:read', 'orders:write', 'reports:read', 'khata:read'],
-  STAFF: ['orders:read', 'orders:write'],
+  CASHIER: ['orders:read', 'orders:write'],
+  STAFF:   ['orders:read', 'orders:write'],
 }
 
 export function CreateTeamMemberModal({ open, onClose, onCreated }) {
@@ -108,6 +109,7 @@ export function CreateTeamMemberModal({ open, onClose, onCreated }) {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="MANAGER">Manager</SelectItem>
+                <SelectItem value="CASHIER">Cashier</SelectItem>
                 <SelectItem value="STAFF">Staff</SelectItem>
               </SelectContent>
             </Select>

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { ArrowLeft, XCircle, RefreshCw, RotateCcw, Loader2, Receipt, MessageCircle, AlertTriangle } from "lucide-react"
+import { ArrowLeft, XCircle, RefreshCw, RotateCcw, Loader2, Receipt, MessageCircle, AlertTriangle, User, Phone, CreditCard } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { OrderStatusBadge } from "@/components/pos/orders/order-status-badge"
@@ -10,7 +10,9 @@ import { OrderTimeline }    from "@/components/pos/orders/order-timeline"
 import { CancelModal }      from "@/components/pos/orders/cancel-modal"
 import { RefundModal }      from "@/components/pos/orders/refund-modal"
 import { useOrders }        from "@/hooks/use-orders"
+import { useKhata }         from "@/hooks/use-khata"
 import { getUser, getRoleClaims } from "@/lib/auth"
+import { createClient }     from "@/lib/supabase/client"
 
 // Statuses where cancellation is still possible
 const CANCELLABLE_STATUSES = [
@@ -44,14 +46,15 @@ export default function OrderDetailPage() {
       const { entityId: eid, subRole: sr } = getRoleClaims(currentUser)
       setEntityId(eid)
       setSubRole(sr ?? 'CASHIER')
-      await loadDetail()
+      await loadDetail(eid)
     }
     load()
   }, [id])
 
-  async function loadDetail() {
+  async function loadDetail(eid) {
     setLoading(true)
-    const data = await fetchOrderDetail(id)
+    // Pass eid directly — React state (entityId) may not be set yet at call time
+    const data = await fetchOrderDetail(id, eid ?? entityId)
     setDetail(data)
     setLoading(false)
   }
@@ -147,6 +150,68 @@ export default function OrderDetailPage() {
             <p className="text-xs text-muted-foreground">{order.buyer_phone ?? order.buyer_whatsapp ?? 'Face-ID'}</p>
           </div>
         </div>
+
+        {/* Customer details — shown for all CREDIT orders */}
+        {order.payment_method === 'CREDIT' && (
+          <div className="p-3 rounded-lg border border-primary/20 bg-primary/5 space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+              <User className="h-3.5 w-3.5" /> Customer (Credit)
+            </p>
+            <div className="space-y-0.5">
+              <p className="text-sm font-semibold">
+                {detail?.customerName ?? (order.buyer_hash ? 'Face-ID Customer' : 'Unknown Customer')}
+              </p>
+              {(order.buyer_whatsapp || order.buyer_phone) && (
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Phone className="h-3 w-3 shrink-0" />
+                  <span>{order.buyer_whatsapp ?? order.buyer_phone}</span>
+                </div>
+              )}
+            </div>
+            {detail?.khataAccount ? (
+              <div className="space-y-1.5 pt-1">
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <div>
+                    <p className="text-muted-foreground">Outstanding</p>
+                    <p className="font-semibold text-tibetan">
+                      Nu. {parseFloat(detail.khataAccount.outstanding_balance ?? 0).toFixed(2)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Limit</p>
+                    <p className="font-semibold">
+                      Nu. {parseFloat(detail.khataAccount.credit_limit ?? 0).toFixed(2)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">After order</p>
+                    <p className="font-semibold text-amber-600">
+                      Nu. {(parseFloat(detail.khataAccount.outstanding_balance ?? 0) + parseFloat(order.grand_total)).toFixed(2)}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  className="text-xs text-primary hover:underline flex items-center gap-1 pt-0.5"
+                  onClick={() => router.push(`/pos/khata?phone=${encodeURIComponent(order.buyer_whatsapp ?? order.buyer_phone)}`)}
+                >
+                  <CreditCard className="h-3 w-3" /> View full Khata ledger
+                </button>
+              </div>
+            ) : (
+              <div className="pt-1 space-y-2">
+                <p className="text-xs text-muted-foreground">No khata account found for this customer.</p>
+                {isManager && (order.buyer_whatsapp || order.buyer_phone) && (
+                  <CreateKhataButton
+                    phone={order.buyer_whatsapp ?? order.buyer_phone}
+                    name={detail?.customerName}
+                    entityId={entityId}
+                    onCreated={loadDetail}
+                  />
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Unmatched items warning */}
         {order.order_source === 'WHATSAPP' && items.some(i => i.matched === false) && (
@@ -257,5 +322,39 @@ export default function OrderDetailPage() {
         onClose={() => setShowRefund(false)}
       />
     </div>
+  )
+}
+
+function CreateKhataButton({ phone, name, entityId, onCreated }) {
+  const [loading, setLoading] = useState(false)
+  const [done,    setDone]    = useState(false)
+  const { createAccount } = useKhata(entityId)
+
+  async function handleCreate() {
+    setLoading(true)
+    const supabase = createClient()
+    const { data: customerEntity } = await supabase
+      .from('entities')
+      .select('name')
+      .eq('whatsapp_no', phone)
+      .single()
+
+    const { error } = await createAccount({
+      party_type:   'CONSUMER',
+      debtor_phone: phone,
+      debtor_name:  name ?? customerEntity?.name ?? `Customer ${phone.slice(-4)}`,
+      credit_limit: 1000,
+    })
+
+    setLoading(false)
+    if (!error) { setDone(true); onCreated() }
+  }
+
+  if (done) return null
+
+  return (
+    <Button size="sm" variant="outline" onClick={handleCreate} disabled={loading} className="h-7 text-xs gap-1.5">
+      {loading ? <><Loader2 className="h-3 w-3 animate-spin" /> Creating...</> : <><CreditCard className="h-3 w-3" /> Create Khata Account</>}
+    </Button>
   )
 }

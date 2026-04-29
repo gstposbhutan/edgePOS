@@ -377,12 +377,20 @@ function LoginForm() {
         © 2026 NEXUS BHUTAN · GST 2026 Compliant
       </p>
 
-      <p className="text-center text-xs text-muted-foreground mt-2">
-        Wholesaler?{' '}
-        <a href="/signup/wholesaler" className="text-primary hover:underline underline-offset-4">
-          Create your business account
-        </a>
-      </p>
+      <div className="text-center text-xs text-muted-foreground mt-2 space-y-1">
+        <p>
+          New retailer?{' '}
+          <a href="/signup/retailer" className="text-primary hover:underline underline-offset-4">
+            Create a retail account
+          </a>
+        </p>
+        <p>
+          Wholesaler?{' '}
+          <a href="/signup/wholesaler" className="text-primary hover:underline underline-offset-4">
+            Create a wholesale account
+          </a>
+        </p>
+      </div>
     </div>
   )
 }

@@ -1,11 +1,13 @@
 "use client"
 
 import { X, Plus, Minus, Trash2, ShoppingBag, Store } from "lucide-react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { useCart } from "@/lib/cart-context"
 import { formatCurrency } from "@/lib/utils"
 
 export function CartDrawer() {
+  const router = useRouter()
   const { carts, isOpen, setIsOpen, updateQuantity, removeItem, itemCount } = useCart()
 
   const totalItems = carts.reduce((sum, cart) => sum + cart.itemCount, 0)
@@ -129,7 +131,11 @@ export function CartDrawer() {
               <span>Total</span>
               <span className="text-primary">Nu. {grandTotal.toFixed(2)}</span>
             </div>
-            <Button className="w-full h-12 text-base" size="lg">
+            <Button
+              className="w-full h-12 text-base"
+              size="lg"
+              onClick={() => { setIsOpen(false); router.push('/shop/checkout') }}
+            >
               Checkout ({totalItems} items)
             </Button>
             <p className="text-xs text-center text-muted-foreground">

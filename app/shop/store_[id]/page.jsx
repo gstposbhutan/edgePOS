@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { Search, ShoppingBag, Store, Phone, ArrowLeft } from "lucide-react"
+import { Search, ShoppingBag, Store, Phone, ArrowLeft, LogOut, ClipboardList, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { createClient } from "@/lib/supabase/client"
@@ -19,6 +19,13 @@ export default function StoreDetailPage() {
   const supabase = createClient()
   const router = useRouter()
   const { addToCart, itemCount, setIsOpen } = useCart()
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef(null)
+
+  async function handleSignOut() {
+    await supabase.auth.signOut()
+    router.push('/login')
+  }
 
   async function handleAddToCart(productId) {
     const result = await addToCart(productId)
@@ -138,6 +145,38 @@ export default function StoreDetailPage() {
                 </span>
               )}
             </Button>
+
+            {/* User dropdown */}
+            <div className="relative" ref={menuRef}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-10 w-10"
+                onClick={() => setMenuOpen(v => !v)}
+              >
+                <User className="h-5 w-5" />
+              </Button>
+              {menuOpen && (
+                <div className="absolute right-0 top-12 w-44 bg-background border border-border rounded-xl shadow-lg z-50 overflow-hidden">
+                  <Link
+                    href="/shop/orders"
+                    onClick={() => setMenuOpen(false)}
+                    className="flex items-center gap-2.5 px-4 py-3 text-sm hover:bg-muted/50 transition-colors"
+                  >
+                    <ClipboardList className="h-4 w-4 text-muted-foreground" />
+                    My Orders
+                  </Link>
+                  <div className="border-t border-border" />
+                  <button
+                    onClick={handleSignOut}
+                    className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-tibetan hover:bg-tibetan/5 transition-colors"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Sign Out
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </header>

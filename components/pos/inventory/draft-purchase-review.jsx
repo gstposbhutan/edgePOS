@@ -278,11 +278,23 @@ export function DraftPurchaseReview({ draft, onUpdateItem, onConfirm, onCancel, 
                 </div>
               )}
 
+              {/* Batch details — collapsible, DRAFT only */}
+              {draft.status === 'DRAFT' && (
+                <BatchDetailsSection item={item} onChange={handleItemChange} />
+              )}
+
               {/* Read-only total for confirmed */}
               {draft.status !== 'DRAFT' && (
-                <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">{item.quantity} × Nu. {parseFloat(item.unit_price || 0).toFixed(2)}</span>
-                  <span className="font-semibold text-primary">Nu. {parseFloat(item.total_price || 0).toFixed(2)}</span>
+                <div className="space-y-0.5">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-muted-foreground">{item.quantity} × Nu. {parseFloat(item.unit_price || 0).toFixed(2)}</span>
+                    <span className="font-semibold text-primary">Nu. {parseFloat(item.total_price || 0).toFixed(2)}</span>
+                  </div>
+                  {item.batch_number && (
+                    <p className="text-[10px] text-muted-foreground">
+                      Batch: {item.batch_number}{item.expires_at ? ` · Exp: ${new Date(item.expires_at).toLocaleDateString()}` : ''}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -309,6 +321,68 @@ export function DraftPurchaseReview({ draft, onUpdateItem, onConfirm, onCancel, 
               {confirming ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
               Confirm Restock ({validItems.length})
             </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Collapsible batch details section per draft item ──────────────────────────
+function BatchDetailsSection({ item, onChange }) {
+  const [expanded, setExpanded] = useState(false)
+  const hasBatchData = item.batch_number || item.mrp || item.selling_price || item.expires_at
+
+  return (
+    <div className="border-t border-border/50 pt-1.5 mt-1">
+      <button
+        type="button"
+        onClick={() => setExpanded(v => !v)}
+        className="text-[10px] text-primary hover:underline"
+      >
+        {expanded ? '▲ Hide' : '▼ Add'} batch details (optional)
+        {hasBatchData && !expanded && <span className="ml-1 text-emerald-600">✓</span>}
+      </button>
+
+      {expanded && (
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-[10px] text-muted-foreground">MRP</label>
+            <Input
+              type="number" step="0.01" min="0"
+              value={item.mrp || ''}
+              onChange={e => onChange(item.id, 'mrp', e.target.value ? parseFloat(e.target.value) : null)}
+              placeholder="Nu. 0.00"
+              className="h-7 text-xs"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] text-muted-foreground">Selling Price</label>
+            <Input
+              type="number" step="0.01" min="0"
+              value={item.selling_price || ''}
+              onChange={e => onChange(item.id, 'selling_price', e.target.value ? parseFloat(e.target.value) : null)}
+              placeholder="Nu. 0.00"
+              className="h-7 text-xs"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] text-muted-foreground">Batch Number</label>
+            <Input
+              value={item.batch_number || ''}
+              onChange={e => onChange(item.id, 'batch_number', e.target.value || null)}
+              placeholder="e.g. BT-2026-001"
+              className="h-7 text-xs"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] text-muted-foreground">Expiry Date</label>
+            <Input
+              type="date"
+              value={item.expires_at || ''}
+              onChange={e => onChange(item.id, 'expires_at', e.target.value || null)}
+              className="h-7 text-xs"
+            />
           </div>
         </div>
       )}

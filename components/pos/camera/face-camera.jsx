@@ -66,7 +66,9 @@ export function FaceCamera({ entityId, onIdentified, onUnidentified, active = tr
 
       if (!cancelled) {
         setStatus('scanning')
-        startLoop()
+        // Brief delay so the MediaPipe WASM delegate finishes warming up
+        // before the first detectForVideo call — avoids spurious console errors.
+        setTimeout(startLoop, 500)
       }
     }
 

@@ -135,35 +135,69 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: 'No matched items to confirm' }, { status: 400 })
     }
 
-    // Create inventory movements (RESTOCK) — the existing trigger updates products.current_stock
-    const movements = validItems.map(item => ({
-      product_id: item.product_id,
-      entity_id: draft.entity_id,
-      movement_type: 'RESTOCK',
-      quantity: item.quantity,
-      reference_id: id,
-      notes: `Bill scan: ${draft.supplier_name || 'Unknown supplier'}`,
-    }))
+    // For each item, create batch (if batch_number present) then RESTOCK movement
+    let batchesCreated = 0
+    for (const item of validItems) {
+      let batchId = null
 
-    const { error: movementError } = await supabase
-      .from('inventory_movements')
-      .insert(movements)
+      if (item.batch_number) {
+        const { data: newBatch, error: batchErr } = await supabase
+          .from('product_batches')
+          .insert({
+            product_id:      item.product_id,
+            entity_id:       draft.entity_id,
+            batch_number:    item.batch_number,
+            barcode:         item.batch_barcode  || null,
+            expires_at:      item.expires_at     || null,
+            manufactured_at: item.manufactured_at || null,
+            quantity:        item.quantity,
+            unit_cost:       item.unit_price     || null,
+            mrp:             item.mrp            || null,
+            selling_price:   item.selling_price  || null,
+            status:          'ACTIVE',
+            notes:           `From bill scan — ${draft.supplier_name || 'Unknown supplier'}`,
+          })
+          .select('id')
+          .single()
 
-    if (movementError) {
-      return NextResponse.json({ error: `Stock update failed: ${movementError.message}` }, { status: 500 })
+        if (!batchErr && newBatch) {
+          batchId = newBatch.id
+          batchesCreated++
+
+          // Update product prices if provided
+          if (item.mrp || item.selling_price) {
+            const priceUpdate = {}
+            if (item.mrp)           priceUpdate.mrp           = parseFloat(item.mrp)
+            if (item.selling_price) priceUpdate.selling_price = parseFloat(item.selling_price)
+            if (item.unit_price)    priceUpdate.wholesale_price = parseFloat(item.unit_price)
+            await supabase.from('products').update(priceUpdate).eq('id', item.product_id)
+          }
+        }
+      }
+
+      // Insert RESTOCK movement — triggers update products.current_stock and batch.quantity
+      await supabase.from('inventory_movements').insert({
+        product_id:    item.product_id,
+        entity_id:     draft.entity_id,
+        movement_type: 'RESTOCK',
+        quantity:      item.quantity,
+        reference_id:  id,
+        batch_id:      batchId,
+        notes:         `Bill scan: ${draft.supplier_name || 'Unknown supplier'}`,
+      })
     }
 
     // Mark draft as confirmed
     await supabase
       .from('draft_purchases')
       .update({
-        status: 'CONFIRMED',
+        status:       'CONFIRMED',
         confirmed_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        updated_at:   new Date().toISOString(),
       })
       .eq('id', id)
 
-    return NextResponse.json({ success: true, itemsRestocked: validItems.length })
+    return NextResponse.json({ success: true, itemsRestocked: validItems.length, batchesCreated })
   }
 
   return NextResponse.json({ error: 'Unknown action. Use confirm or cancel.' }, { status: 400 })

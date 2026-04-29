@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation"
 import { PosHeader }       from "@/components/pos/pos-header"
 import { ProductPanel }    from "@/components/pos/product-panel"
 import { CartPanel }       from "@/components/pos/cart-panel"
-import { CustomerIdModal } from "@/components/pos/customer-id-modal"
+import { CustomerIdModal }  from "@/components/pos/customer-id-modal"
+import { CustomerOtpModal } from "@/components/pos/customer-otp-modal"
 import { StockGateModal }  from "@/components/pos/stock-gate-modal"
 import { CreateAccountModal } from "@/components/pos/khata/create-account-modal"
 import { CameraCanvas }      from "@/components/pos/camera/camera-canvas"
@@ -17,6 +18,7 @@ import { RestockModal }       from "@/components/pos/restock/restock-modal"
 import { useCart }         from "@/hooks/use-cart"
 import { useProducts }     from "@/hooks/use-products"
 import { useKhata }        from "@/hooks/use-khata"
+import { useOwnerStores }  from "@/hooks/use-owner-stores"
 import { getUser, getRoleClaims } from "@/lib/auth"
 import { createClient }    from "@/lib/supabase/client"
 
@@ -27,6 +29,7 @@ export default function PosPage() {
   const [user,              setUser]              = useState(null)
   const [entity,            setEntity]            = useState(null)
   const [subRole,           setSubRole]           = useState('CASHIER')
+  const [activeEntityId,    setActiveEntityId]    = useState(null)
   const [paymentMethod,     setPaymentMethod]     = useState(null)
   const [showCustomerModal, setShowCustomerModal] = useState(false)
   const [checkoutLoading,   setCheckoutLoading]   = useState(false)
@@ -42,6 +45,7 @@ export default function PosPage() {
   const [showCreateKhata,   setShowCreateKhata]   = useState(false)
   const [ownerOverride,     setOwnerOverride]     = useState(false)
   const [showRestock,       setShowRestock]       = useState(false)
+  const [showCreditOtp,     setShowCreditOtp]     = useState(false)
 
   // Payment methods that require OCR verification
   const OCR_REQUIRED_METHODS = ['MBOB', 'MPAY', 'RTGS']
@@ -54,6 +58,7 @@ export default function PosPage() {
       const { entityId, subRole: sr } = getRoleClaims(currentUser)
       setSubRole(sr ?? 'CASHIER')
       if (!entityId) return
+      setActiveEntityId(entityId)
       const { data } = await supabase
         .from('entities')
         .select('id, name, tpn_gstin')
@@ -64,10 +69,26 @@ export default function PosPage() {
     load()
   }, [])
 
+  const { stores: ownedStores } = useOwnerStores(user?.id, subRole)
+
+  async function handleSwitchStore(entityId) {
+    const { data } = await supabase
+      .from('entities')
+      .select('id, name, tpn_gstin')
+      .eq('id', entityId)
+      .single()
+    if (data) {
+      setEntity(data)
+      setActiveEntityId(entityId)
+    }
+  }
+
   const {
     cartId, items, customer, loading: cartLoading,
     subtotal, discountTotal, taxableSubtotal, gstTotal, grandTotal,
+    carts, activeIndex,
     addItem, updateQty, applyDiscount, overridePrice, removeItem, clearCart, setCustomerIdentity,
+    holdCart, switchCart, cancelCart,
   } = useCart(entity?.id, user?.id)
 
   const { products, loading: productsLoading, search } = useProducts(entity?.id)
@@ -88,14 +109,27 @@ export default function PosPage() {
           shortfalls.push({ item, available: avail ?? 0, needed: item.quantity })
         }
       } else if (item.product_id) {
-        const { data: product } = await supabase
-          .from('products')
-          .select('current_stock')
-          .eq('id', item.product_id)
-          .single()
+        if (item.batch_id) {
+          // Batch-specific stock check
+          const { data: batch } = await supabase
+            .from('product_batches')
+            .select('quantity, batch_number')
+            .eq('id', item.batch_id)
+            .single()
 
-        if ((product?.current_stock ?? 0) < item.quantity) {
-          shortfalls.push({ item, available: product?.current_stock ?? 0, needed: item.quantity })
+          if ((batch?.quantity ?? 0) < item.quantity) {
+            shortfalls.push({ item, available: batch?.quantity ?? 0, needed: item.quantity, batchNumber: batch?.batch_number })
+          }
+        } else {
+          const { data: product } = await supabase
+            .from('products')
+            .select('current_stock')
+            .eq('id', item.product_id)
+            .single()
+
+          if ((product?.current_stock ?? 0) < item.quantity) {
+            shortfalls.push({ item, available: product?.current_stock ?? 0, needed: item.quantity })
+          }
         }
       }
     }
@@ -110,34 +144,61 @@ export default function PosPage() {
       return
     }
 
-    // Khata lookup when CREDIT selected
-    if (paymentMethod === 'CREDIT' && customer?.whatsapp) {
-      const { account } = await lookupAccount(customer.whatsapp)
-      setKhataAccount(account)
+    // CREDIT: must verify customer identity via WhatsApp OTP every time
+    if (paymentMethod === 'CREDIT') {
+      if (!customer?.whatsapp) { setShowCustomerModal(true); return }
+      setShowCreditOtp(true)
+      return
+      // Flow continues in handleCreditOtpVerified after OTP succeeds
+    }
 
-      if (!account) {
-        // No account — prompt creation (OWNER/MANAGER only)
-        if (['MANAGER', 'OWNER', 'ADMIN'].includes(subRole)) {
-          setShowCreateKhata(true)
-          return
-        }
-        setCheckoutError('No khata account found. Ask your manager or owner to create one.')
+    await initiateCheckout()
+  }
+
+  // Called when customer completes OTP verification for CREDIT payment
+  async function handleCreditOtpVerified(phone) {
+    setShowCreditOtp(false)
+    await setCustomerIdentity({ whatsapp: phone, buyerHash: null })
+
+    // Khata lookup — auto-create if new customer
+    let { account } = await lookupAccount(phone)
+
+    if (!account) {
+      // Resolve customer name from their entity record (created during OTP signup)
+      const supabaseClient = createClient()
+      const { data: customerEntity } = await supabaseClient
+        .from('entities')
+        .select('name')
+        .eq('whatsapp_no', phone)
+        .single()
+
+      const { account: newAccount, error: createErr } = await createAccount({
+        party_type:   'CONSUMER',
+        debtor_phone: phone,
+        debtor_name:  customerEntity?.name ?? `Customer ${phone.slice(-4)}`,
+        credit_limit: 1000, // default limit — manager can adjust later
+      })
+
+      if (createErr) {
+        setCheckoutError('Failed to create khata account: ' + createErr)
         return
       }
+      account = newAccount
+    }
 
-      // Limit check
-      const balance = parseFloat(account.outstanding_balance)
-      const limit = parseFloat(account.credit_limit)
-      if (balance + grandTotal > limit && !ownerOverride) {
-        if (subRole === 'OWNER' || subRole === 'ADMIN') {
-          // Owner can override
-          setCheckoutError(`Credit limit exceeded (Nu. ${balance.toFixed(2)} / Nu. ${limit.toFixed(2)}). Tap checkout again to override.`)
-          setOwnerOverride(true)
-          return
-        }
-        setCheckoutError(`Credit limit exceeded. Outstanding: Nu. ${balance.toFixed(2)}, Limit: Nu. ${limit.toFixed(2)}`)
+    setKhataAccount(account)
+
+    // Credit limit check
+    const balance = parseFloat(account.outstanding_balance)
+    const limit   = parseFloat(account.credit_limit)
+    if (balance + grandTotal > limit && !ownerOverride) {
+      if (subRole === 'OWNER' || subRole === 'ADMIN') {
+        setCheckoutError(`Credit limit exceeded (Nu. ${balance.toFixed(2)} / Nu. ${limit.toFixed(2)}). Tap checkout again to override.`)
+        setOwnerOverride(true)
         return
       }
+      setCheckoutError(`Credit limit exceeded. Outstanding: Nu. ${balance.toFixed(2)}, Limit: Nu. ${limit.toFixed(2)}`)
+      return
     }
 
     await initiateCheckout()
@@ -228,6 +289,7 @@ export default function PosPage() {
           order_id:     order.id,
           product_id:   item.product_id,
           package_id:   item.package_id   ?? null,
+          batch_id:     item.batch_id     ?? null,
           package_name: item.package_id   ? item.name : null,
           package_type: item.package_def?.package_type ?? null,
           sku:          item.sku,
@@ -342,6 +404,8 @@ export default function PosPage() {
         userSubRole={subRole}
         onEnrollFace={() => setShowConsent(true)}
         onRestock={() => setShowRestock(true)}
+        ownedStores={ownedStores}
+        onSwitchStore={handleSwitchStore}
         faceCamera={
           <FaceCamera
             entityId={entity?.id}
@@ -420,6 +484,11 @@ export default function PosPage() {
             onSelectPayment={setPaymentMethod}
             onCheckout={handleCheckout}
             checkoutLoading={checkoutLoading}
+            carts={carts}
+            activeIndex={activeIndex}
+            onHoldCart={holdCart}
+            onSwitchCart={switchCart}
+            onCancelCart={cancelCart}
           />
         </div>
       </div>
@@ -443,6 +512,12 @@ export default function PosPage() {
         open={showCustomerModal}
         onIdentify={handleCustomerIdentified}
         onClose={() => setShowCustomerModal(false)}
+      />
+
+      <CustomerOtpModal
+        open={showCreditOtp}
+        onVerified={handleCreditOtpVerified}
+        onClose={() => setShowCreditOtp(false)}
       />
 
       <StockGateModal

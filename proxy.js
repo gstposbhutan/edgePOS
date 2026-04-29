@@ -58,8 +58,9 @@ export async function proxy(request) {
     return NextResponse.redirect(new URL(ROLE_HOME[role] || '/pos', request.url))
   }
 
-  // Block RETAILER/CASHIER from /admin routes
-  if (pathname.startsWith('/admin') && role === 'RETAILER') {
+  // Block RETAILER from /admin — except OWNERs who manage multiple stores
+  const subRole = session.user?.user_metadata?.sub_role || session.user?.app_metadata?.sub_role
+  if (pathname.startsWith('/admin') && role === 'RETAILER' && subRole !== 'OWNER') {
     return NextResponse.redirect(new URL('/pos', request.url))
   }
 

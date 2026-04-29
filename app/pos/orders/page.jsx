@@ -2,38 +2,44 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Search, RefreshCw, ShoppingBag, MessageCircle } from "lucide-react"
+import { ArrowLeft, Search, RefreshCw, ShoppingBag, MessageCircle, Plus, Store } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { OrderStatusBadge } from "@/components/pos/orders/order-status-badge"
 import { useOrders } from "@/hooks/use-orders"
 import { getUser, getRoleClaims } from "@/lib/auth"
 
-const FILTERS = ['ALL', 'WHATSAPP', 'ACTIVE', 'COMPLETED', 'CANCELLED', 'REFUNDS']
+const FILTERS = ['ALL', 'MARKETPLACE', 'WHATSAPP', 'ACTIVE', 'COMPLETED', 'CANCELLED', 'REFUNDS']
 
 export default function OrdersPage() {
   const router = useRouter()
 
   const [entityId, setEntityId] = useState(null)
   const [search,   setSearch]   = useState('')
+  const [subRole,  setSubRole]  = useState('CASHIER')
 
   useEffect(() => {
     async function load() {
       const user = await getUser()
       if (!user) return router.push('/login')
-      const { entityId: eid } = getRoleClaims(user)
+      const { entityId: eid, subRole: sr } = getRoleClaims(user)
       setEntityId(eid)
+      setSubRole(sr ?? 'CASHIER')
     }
     load()
   }, [])
 
   const { orders, loading, filter, setFilter, fetchOrders } = useOrders(entityId)
 
-  const displayed = orders.filter(o =>
-    !search.trim() ||
-    o.order_no.toLowerCase().includes(search.toLowerCase()) ||
-    (o.buyer_whatsapp ?? '').includes(search)
-  )
+  const displayed = orders.filter(o => {
+    const matchesSearch =
+      !search.trim() ||
+      o.order_no.toLowerCase().includes(search.toLowerCase()) ||
+      (o.buyer_whatsapp ?? '').includes(search)
+
+    if (filter === 'MARKETPLACE') return matchesSearch && o.order_type === 'MARKETPLACE'
+    return matchesSearch
+  })
 
   return (
     <div className="flex flex-col h-full">
@@ -49,6 +55,13 @@ export default function OrdersPage() {
         <Button variant="ghost" size="icon-sm" onClick={fetchOrders}>
           <RefreshCw className="h-4 w-4" />
         </Button>
+        {/* New Customer Order — available to Manager/Owner/Admin */}
+        {['MANAGER', 'OWNER', 'ADMIN'].includes(subRole) && (
+          <Button size="sm" onClick={() => router.push('/salesorder')} className="gap-1.5">
+            <Plus className="h-4 w-4" />
+            New Order
+          </Button>
+        )}
       </div>
 
       {/* Search + filter */}
@@ -71,7 +84,11 @@ export default function OrdersPage() {
               onClick={() => setFilter(f)}
               className={`shrink-0 ${filter === f ? 'bg-primary' : ''}`}
             >
-              {f.charAt(0) + f.slice(1).toLowerCase()}
+              {f === 'MARKETPLACE' ? (
+                <span className="flex items-center gap-1"><Store className="h-3 w-3" /> Marketplace</span>
+              ) : (
+                f.charAt(0) + f.slice(1).toLowerCase()
+              )}
             </Button>
           ))}
         </div>
@@ -106,12 +123,16 @@ export default function OrdersPage() {
                         <MessageCircle className="h-3 w-3" /> WA
                       </span>
                     )}
+                    {order.order_type === 'MARKETPLACE' && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-600 border border-blue-500/20">
+                        <Store className="h-3 w-3" /> MKT
+                      </span>
+                    )}
                     <OrderStatusBadge status={order.status} size="sm" />
                   </div>
                   <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
                     <span>{new Date(order.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                     {order.buyer_whatsapp && <span>{order.buyer_whatsapp}</span>}
-                    {order.buyer_phone && !order.buyer_whatsapp && <span>{order.buyer_phone}</span>}
                     <span>{order.payment_method}</span>
                   </div>
                 </div>
@@ -124,6 +145,7 @@ export default function OrdersPage() {
           </div>
         )}
       </div>
+
     </div>
   )
 }

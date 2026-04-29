@@ -189,6 +189,19 @@ export default function OrderConfirmationPage() {
           </div>
         )}
 
+        {/* Pickup OTP — shown when MARKETPLACE order is PROCESSING and rider is assigned */}
+        {order.order_type === 'MARKETPLACE' && order.status === 'PROCESSING' && order.pickup_otp && (
+          <div className="p-4 bg-amber-500/10 border-2 border-amber-500/40 rounded-xl space-y-2">
+            <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">Rider Pickup OTP</p>
+            <p className="text-4xl font-mono font-bold tracking-[0.3em] text-amber-700 text-center py-2">
+              {order.pickup_otp}
+            </p>
+            <p className="text-xs text-amber-700 text-center">
+              Share this code verbally with the rider when they arrive to collect the package.
+            </p>
+          </div>
+        )}
+
         {/* Action buttons */}
         <div className="grid grid-cols-3 gap-3">
           <Button
