@@ -10,6 +10,7 @@ export function ShortcutBar({ shortcuts = [] }) {
     { key: 'F5',   label: 'Pay' },
     { key: 'F6',   label: 'Cancel Cart' },
     { key: 'F7',   label: 'Void Row' },
+    { key: 'Ctrl+M', label: 'Discount' },
     { key: 'Tab',       label: 'Next Cart' },
     { key: 'Ctrl+1–9', label: 'Switch Cart' },
     { key: 'Del',  label: 'Remove' },

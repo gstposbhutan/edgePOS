@@ -164,7 +164,8 @@ export default function NewPurchaseOrderPage() {
     async function init() {
       const user = await getUser()
       if (!user) { router.push('/login'); return }
-      const { entityId } = getRoleClaims(user)
+      const { entityId, subRole } = getRoleClaims(user)
+      if (subRole === 'CASHIER') { router.push('/pos'); return }
       if (!entityId) { router.push('/pos'); return }
       const { data } = await supabase.from('entities').select('id, name, tpn_gstin').eq('id', entityId).single()
       setEntity(data)
@@ -261,6 +262,7 @@ export default function NewPurchaseOrderPage() {
         <p className="text-muted-foreground font-mono">{done.order_no}</p>
         <div className="flex gap-3 mt-2">
           <Button variant="outline" onClick={() => { setDone(null); setItems([]); setSupplierQuery(''); setSelectedSupplier(null) }}>New PO</Button>
+          <Button variant="outline" onClick={() => router.push(`/pos/purchases/${done.id}`)}>View PO</Button>
           <Button onClick={() => router.push('/pos/purchases')}>View Purchases</Button>
         </div>
       </div>

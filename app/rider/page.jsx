@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Package, History, LogOut, RefreshCw, MapPin, User } from "lucide-react"
+import { Package, History, LogOut, RefreshCw, MapPin, Phone, DollarSign, CheckCircle, Loader2, Store } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { OrderStatusBadge } from "@/components/pos/orders/order-status-badge"
@@ -15,13 +15,26 @@ export default function RiderDashboard() {
   const router = useRouter()
   const { current, history, rider, loading, error, fetchOrders, accept, reject, pickup, deliver } = useRider()
 
-  const [otpModal,    setOtpModal]    = useState(null) // { type: 'pickup'|'deliver', orderId }
+  const [otpModal,    setOtpModal]    = useState(null)
   const [otpLoading,  setOtpLoading]  = useState(false)
   const [otpError,    setOtpError]    = useState(null)
+
+  // Delivery fee state
+  const [feeInput,    setFeeInput]    = useState('')
+  const [feeLoading,  setFeeLoading]  = useState(false)
+  const [feeError,    setFeeError]    = useState(null)
+  const [feeSubmitted, setFeeSubmitted] = useState(false)
 
   useEffect(() => {
     fetchOrders()
   }, [fetchOrders])
+
+  // Reset fee state when order changes
+  useEffect(() => {
+    setFeeInput('')
+    setFeeError(null)
+    setFeeSubmitted(current?.delivery_fee != null)
+  }, [current?.id, current?.delivery_fee])
 
   async function handleAccept() {
     try { await accept(current?.id) } catch (err) { console.error(err) }
@@ -46,6 +59,31 @@ export default function RiderDashboard() {
       setOtpError(err.message)
     } finally {
       setOtpLoading(false)
+    }
+  }
+
+  async function handleSubmitFee(e) {
+    e.preventDefault()
+    const fee = parseFloat(feeInput)
+    if (!fee || fee <= 0) { setFeeError('Enter a valid delivery fee'); return }
+    setFeeLoading(true)
+    setFeeError(null)
+    try {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`/api/rider/orders/${current.id}/fee`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ delivery_fee: fee }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setFeeError(data.error); return }
+      setFeeSubmitted(true)
+      fetchOrders()
+    } catch (err) {
+      setFeeError(err.message)
+    } finally {
+      setFeeLoading(false)
     }
   }
 
@@ -97,49 +135,75 @@ export default function RiderDashboard() {
         {current ? (
           <div className="border-2 border-primary/30 rounded-xl overflow-hidden">
             <div className="px-4 py-3 bg-primary/5 border-b border-primary/20 flex items-center justify-between">
-              <p className="text-sm font-semibold">Current Order</p>
+              <div>
+                <p className="text-sm font-semibold">Current Order</p>
+                <p className="text-xs text-muted-foreground font-mono">{current.order_no}</p>
+              </div>
               <OrderStatusBadge status={current.status} size="sm" />
             </div>
-            <div className="p-4 space-y-3">
-              <p className="text-base font-bold">{current.order_no}</p>
 
-              {current.seller && (
-                <div className="flex items-start gap-2 text-sm">
-                  <Package className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                  <div>
-                    <p className="font-medium">Pickup: {current.seller.name}</p>
-                  </div>
+            <div className="p-4 space-y-4">
+
+              {/* Pickup address (vendor) */}
+              <div className="p-3 rounded-lg bg-muted/30 border border-border space-y-1">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  <Store className="h-3.5 w-3.5" /> Pickup — Vendor
                 </div>
-              )}
-
-              {current.delivery_address && (
-                <div className="flex items-start gap-2 text-sm">
-                  <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                  <div>
-                    <p className="font-medium">Deliver to:</p>
-                    <p className="text-muted-foreground">{current.delivery_address}</p>
-                    {current.delivery_lat && (
-                      <a
-                        href={`https://maps.google.com/?q=${current.delivery_lat},${current.delivery_lng}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-primary text-xs hover:underline"
-                      >
-                        Open in Maps
+                {current.seller && (
+                  <>
+                    <p className="text-sm font-medium">{current.seller.name}</p>
+                    {current.seller.address && (
+                      <p className="text-xs text-muted-foreground">{current.seller.address}</p>
+                    )}
+                    {current.seller.whatsapp_no && (
+                      <a href={`tel:${current.seller.whatsapp_no}`}
+                        className="flex items-center gap-1 text-xs text-primary hover:underline">
+                        <Phone className="h-3 w-3" /> {current.seller.whatsapp_no}
                       </a>
                     )}
-                  </div>
+                  </>
+                )}
+              </div>
+
+              {/* Delivery address (customer) */}
+              <div className="p-3 rounded-lg bg-muted/30 border border-border space-y-1">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  <MapPin className="h-3.5 w-3.5" /> Deliver to — Customer
                 </div>
+                {current.delivery_address
+                  ? <p className="text-sm">{current.delivery_address}</p>
+                  : <p className="text-xs text-muted-foreground">No address provided</p>
+                }
+                {current.buyer_whatsapp && (
+                  <a href={`tel:${current.buyer_whatsapp}`}
+                    className="flex items-center gap-1 text-xs text-primary hover:underline">
+                    <Phone className="h-3 w-3" /> {current.buyer_whatsapp}
+                  </a>
+                )}
+                {current.delivery_lat && (
+                  <a href={`https://maps.google.com/?q=${current.delivery_lat},${current.delivery_lng}`}
+                    target="_blank" rel="noreferrer"
+                    className="text-xs text-primary hover:underline block">
+                    Open in Maps →
+                  </a>
+                )}
+              </div>
+
+              {/* Items summary */}
+              {current.items?.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {current.items.length} item{current.items.length > 1 ? 's' : ''}: {current.items.map(i => i.name).join(', ')}
+                </p>
               )}
 
-              {current.items?.length > 0 && (
-                <div className="text-xs text-muted-foreground">
-                  {current.items.length} item{current.items.length > 1 ? 's' : ''}: {current.items.map(i => i.name).join(', ')}
-                </div>
-              )}
+              {/* Order value */}
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Order value</span>
+                <span className="font-semibold text-primary">Nu. {parseFloat(current.grand_total).toFixed(2)}</span>
+              </div>
 
               {/* Action buttons by status */}
-              <div className="pt-1 space-y-2">
+              <div className="space-y-2">
                 {(current.status === 'CONFIRMED' || current.status === 'PROCESSING') && current.pickup_otp === null && (
                   <div className="flex gap-2">
                     <Button variant="outline" onClick={handleReject} className="flex-1">Reject</Button>
@@ -148,21 +212,57 @@ export default function RiderDashboard() {
                 )}
 
                 {(current.status === 'CONFIRMED' || current.status === 'PROCESSING') && current.pickup_otp !== null && (
-                  <Button
-                    className="w-full h-11"
-                    onClick={() => setOtpModal({ type: 'pickup', orderId: current.id })}
-                  >
-                    Confirm Pickup (Enter OTP from vendor)
+                  <Button className="w-full h-11"
+                    onClick={() => setOtpModal({ type: 'pickup', orderId: current.id })}>
+                    Confirm Pickup (Enter vendor OTP)
                   </Button>
                 )}
 
                 {current.status === 'DISPATCHED' && (
-                  <Button
-                    className="w-full h-11"
-                    onClick={() => setOtpModal({ type: 'deliver', orderId: current.id })}
-                  >
-                    Confirm Delivery (Enter OTP from customer)
+                  <Button className="w-full h-11"
+                    onClick={() => setOtpModal({ type: 'deliver', orderId: current.id })}>
+                    Confirm Delivery (Enter customer OTP)
                   </Button>
+                )}
+
+                {/* Delivery fee — shown after delivery */}
+                {current.status === 'DELIVERED' && (
+                  <div className="border border-border rounded-lg p-3 space-y-2">
+                    <div className="flex items-center gap-1.5 text-sm font-semibold">
+                      <DollarSign className="h-4 w-4 text-primary" /> Delivery Fee
+                    </div>
+                    {feeSubmitted || current.delivery_fee ? (
+                      <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-500/10 px-3 py-2 rounded">
+                        <CheckCircle className="h-4 w-4 shrink-0" />
+                        Nu. {parseFloat(current.delivery_fee).toFixed(2)} submitted
+                        {current.delivery_fee_paid
+                          ? ' · Payment confirmed by vendor'
+                          : ' · Awaiting vendor payment confirmation'}
+                      </div>
+                    ) : (
+                      <form onSubmit={handleSubmitFee} className="space-y-2">
+                        <p className="text-xs text-muted-foreground">
+                          Enter the delivery cost to charge the customer. The vendor will confirm payment.
+                        </p>
+                        <div className="flex gap-2">
+                          <div className="relative flex-1">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">Nu.</span>
+                            <input
+                              type="number" min="1" step="0.01"
+                              value={feeInput}
+                              onChange={e => setFeeInput(e.target.value)}
+                              placeholder="0.00"
+                              className="w-full h-9 pl-9 pr-3 text-sm border border-input rounded bg-background"
+                            />
+                          </div>
+                          <Button type="submit" disabled={feeLoading} className="h-9 px-4">
+                            {feeLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Submit'}
+                          </Button>
+                        </div>
+                        {feeError && <p className="text-xs text-tibetan">{feeError}</p>}
+                      </form>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
@@ -191,7 +291,12 @@ export default function RiderDashboard() {
                       {new Date(order.completed_at || order.updated_at).toLocaleDateString()}
                     </p>
                   </div>
-                  <OrderStatusBadge status={order.status} size="sm" />
+                  <div className="flex items-center gap-2">
+                    {order.delivery_fee && (
+                      <span className="text-xs text-muted-foreground">Nu. {parseFloat(order.delivery_fee).toFixed(2)}</span>
+                    )}
+                    <OrderStatusBadge status={order.status} size="sm" />
+                  </div>
                 </div>
               ))}
             </div>
@@ -199,11 +304,10 @@ export default function RiderDashboard() {
         )}
       </main>
 
-      {/* OTP modals */}
       <OtpInputModal
         open={otpModal?.type === 'pickup'}
         title="Confirm Pickup"
-        description="Ask the vendor for the 6-digit OTP shown on their invoice or WhatsApp."
+        description="Ask the vendor for the 6-digit OTP shown on their screen or WhatsApp."
         onConfirm={handleOtpConfirm}
         onClose={() => { setOtpModal(null); setOtpError(null) }}
         loading={otpLoading}

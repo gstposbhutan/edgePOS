@@ -6,6 +6,7 @@ import { ArrowLeft, Plus, RefreshCw, FileText, Receipt, Building2 } from "lucide
 import { Button } from "@/components/ui/button"
 import { OrderStatusBadge } from "@/components/pos/orders/order-status-badge"
 import { usePurchases } from "@/hooks/use-purchases"
+import { getUser, getRoleClaims } from "@/lib/auth"
 
 const PO_STATUS_STYLE = {
   DRAFT:               'bg-muted text-muted-foreground border-border',
@@ -29,6 +30,14 @@ export default function PurchasesPage() {
   const router = useRouter()
   const { purchases, loading, error, fetchPurchases } = usePurchases()
   const [tab, setTab] = useState('PO') // 'PO' | 'INVOICE'
+
+  useEffect(() => {
+    getUser().then(user => {
+      if (!user) return router.push('/login')
+      const { subRole } = getRoleClaims(user)
+      if (subRole === 'CASHIER') return router.push('/pos')
+    })
+  }, [])
 
   useEffect(() => { fetchPurchases({ type: tab }) }, [tab])
 
@@ -94,7 +103,7 @@ export default function PurchasesPage() {
                       <><span>·</span><span>Due {new Date(p.expected_delivery).toLocaleDateString()}</span></>
                     )}
                     {p.purchase_order_id && tab === 'INVOICE' && (
-                      <span className="text-[10px] text-primary">← {p.purchase_order_id?.slice(0,8)}</span>
+                      <span className="text-[10px] text-primary">← {p.purchase_order_no || p.purchase_order_id?.slice(0,8)}</span>
                     )}
                   </div>
                 </div>

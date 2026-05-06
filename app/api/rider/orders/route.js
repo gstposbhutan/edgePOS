@@ -43,8 +43,8 @@ export async function GET() {
         .from('orders')
         .select(`
           id, order_no, status, grand_total, delivery_address, delivery_lat, delivery_lng,
-          pickup_otp, delivery_otp,
-          seller:entities!seller_id(id, name, whatsapp_no),
+          pickup_otp, delivery_otp, delivery_fee, delivery_fee_paid,
+          seller:entities!seller_id(id, name, whatsapp_no, address),
           buyer_whatsapp
         `)
         .eq('id', rider.current_order_id)

@@ -1,5 +1,5 @@
 # Web App Build Progress
-**Last Updated**: 2026-04-29 (rev 2)
+**Last Updated**: 2026-05-06 (rev 4)
 **Strategy**: Web app first, Windows desktop app later. One feature at a time, in dependency order.
 
 ---
@@ -126,6 +126,46 @@
   - Page object: `RestockModal` with selectors for all UI components
   - [ ] Testing: Requires database seeding with wholesaler data + retailer-wholesaler connection
 
+- [x] **Cashier Access Restriction** ✅ CODE COMPLETE
+  - CASHIER role: only Orders nav visible (Purchases, Products, Inventory, Khata, Registers hidden)
+  - Orders page: Sales section tab hidden from CASHIER, forced to POS Orders view
+  - Applied to both keyboard POS (`app/pos/page.jsx`) and touch POS (`components/pos/pos-header.jsx`)
+  - Page-level redirects: all restricted pages redirect CASHIER to `/pos` if accessed via direct URL
+    - `/pos/purchases`, `/pos/purchases/[id]`, `/pos/purchases/new`
+    - `/pos/products`, `/pos/inventory`, `/pos/khata`, `/pos/registers`
+
+- [x] **Shift Management & Cash Registers** — [F-SHIFT-001](features/shift-management.md) ✅ CODE COMPLETE
+  - Migration 069: `cash_registers`, `shifts`, `shift_transactions`, `shift_reconciliations` tables with RLS
+  - Cash register CRUD: `/api/cash-registers` (GET/POST) + `/api/cash-registers/[id]` (PATCH/DELETE)
+  - Register management page: `/pos/registers` (MANAGER/OWNER only)
+  - Shift API: open (with register picker), close (blind cash count), current status, history, track-transaction
+  - Shift badge in POS header: gold "Shift Active" pulse / grey "Start Shift" button
+  - Start shift modal: register picker + opening float (pre-filled from register default)
+  - End shift modal: confirm → blind count entry → "Report sent to owner"
+  - Shift gate: cashiers blocked from checkout without active shift
+  - Fire-and-forget transaction tracking after every sale
+
+- [x] **Line-Item Discount (Flat / Percentage)** — [F-DISCOUNT-001](features/line-item-discount.md) ✅ CODE COMPLETE
+  - Migration 070: `discount_type` (FLAT/PERCENTAGE) + `discount_value` on `cart_items` and `order_items`
+  - Audit trigger on `order_items` discount changes → `audit_logs` table
+  - Keyboard POS: Ctrl+M opens discount modal with flat/percentage toggle + preview
+  - Touch POS: inline discount edit updated with flat/percentage toggle
+  - Cart table: discount column showing `−Nu.X.XX` (flat) or `−X%` (percentage)
+  - Order detail: shows discount type badge in line items
+  - All roles (CASHIER, MANAGER, OWNER) can apply discounts
+
+- [x] **Payment Method Unification** ✅ CODE COMPLETE
+  - Both POS modes (keyboard and touch) now use identical payment options: **Online**, **Cash**, **Credit**
+  - **Online**: mandatory journal number field — vendor enters reference number from customer's payment confirmation
+  - Touch POS: OCR scanner modal removed; journal number input shown inline in cart panel
+  - Keyboard POS payment modal: keys 1-3 select method; input focus guards prevent method-switching while typing
+  - `payment_ref` on orders stores journal number for Online payments
+
+- [x] **Keyboard POS Cart Edit Fix** ✅ CODE COMPLETE
+  - Enter key now confirms qty edit (previously reset to old value due to onBlur double-fire)
+  - Tab key confirms edit and stays focused within the POS app (previously tabbed out to browser chrome)
+  - Guard flag prevents `onBlur` from re-firing after Enter/Tab/Escape already committed the edit
+
 ## In Progress
 - [x] **Admin Hub (Wholesaler Dashboard)** — NEW
   - [x] Admin dashboard page (`app/admin/page.jsx`) with stats cards (team, products, orders, revenue)
@@ -241,9 +281,9 @@
 
 ## Desktop-Only (Future — Not in Web Build)
 - Desktop Shell (F-DESKTOP-001) — Desktop app wrapper for Windows
-- Keyboard Checkout (F-KBD-001) — Numpad-based checkout flow
+- Keyboard Checkout (F-KBD-001) — Numpad-based checkout flow (partially implemented — see F-KBD-002)
 - Bank Reconciliation (F-BANK-001) — OCR bank statement parsing, auto-match to khata repayments
-- Shift Management (F-SHIFT-001) — Opening/closing floats, cashier handovers
+- ~~Shift Management (F-SHIFT-001)~~ — **Moved to Done** (implemented as web feature)
 - Vision-to-Bill Audit (F-AUDIT-001) — AI-powered bill verification and fraud detection
 - Offline Sync (F-SYNC-001) — PouchDB + IndexedDB for offline operations
 
@@ -273,7 +313,7 @@ All specs in `docs/features/`. Each contains: overview, data model, implementati
 | `credit-ledger.md` | F-CREDIT-001 | **Deprecated** — merged into F-KHATA-001 |
 | `desktop-shell.md` | F-DESKTOP-001 | Desktop only |
 | `keyboard-checkout.md` | F-KBD-001 | Desktop only |
-| `payment-ocr.md` | F-OCR-001 | Both platforms |
+| `payment-ocr.md` | F-OCR-001 | Both platforms — deferred (journal number entry used instead) |
 | `bank-reconciliation.md` | F-BANK-001 | Desktop only |
 | `offline-sync.md` | F-SYNC-001 | Desktop only |
 | `multi-store.md` | F-MSTORE-001 | Both platforms |

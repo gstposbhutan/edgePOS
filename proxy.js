@@ -2,7 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 
 // Routes that don't require authentication
-const PUBLIC_ROUTES = ['/login', '/signup', '/offline', '/shop']
+const PUBLIC_ROUTES = ['/login', '/signup', '/offline', '/shop', '/rider/login']
 
 // Role → home route mapping
 const ROLE_HOME = {
@@ -10,6 +10,7 @@ const ROLE_HOME = {
   DISTRIBUTOR:  '/admin',
   WHOLESALER:   '/admin',
   RETAILER:     '/pos',
+  RIDER:        '/rider',
 }
 
 export async function proxy(request) {
@@ -67,6 +68,11 @@ export async function proxy(request) {
   // Block WHOLESALER/DISTRIBUTOR from /pos routes
   if (pathname.startsWith('/pos') && (role === 'WHOLESALER' || role === 'DISTRIBUTOR')) {
     return NextResponse.redirect(new URL('/admin', request.url))
+  }
+
+  // Riders can only access /rider routes
+  if (role === 'RIDER' && !pathname.startsWith('/rider')) {
+    return NextResponse.redirect(new URL('/rider', request.url))
   }
 
   return response

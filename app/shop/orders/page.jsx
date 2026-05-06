@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import { ShoppingBag, Store, ArrowLeft } from "lucide-react"
 import Link from "next/link"
@@ -19,7 +19,15 @@ const TABS = [
 
 const ACTIVE_STATUSES = ['CONFIRMED', 'PROCESSING', 'DISPATCHED']
 
-export default function ShopOrdersPage() {
+export default function ShopOrdersPageWrapper() {
+  return (
+    <Suspense fallback={<div className="flex h-screen items-center justify-center"><div className="h-8 w-8 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>}>
+      <ShopOrdersPage />
+    </Suspense>
+  )
+}
+
+function ShopOrdersPage() {
   const searchParams = useSearchParams()
   const confirmedNos = searchParams.get('confirmed')
   const partial = searchParams.get('partial')

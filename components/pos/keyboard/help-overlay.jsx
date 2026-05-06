@@ -17,7 +17,7 @@ const SHORTCUTS = [
   { key: 'F7',     label: 'Void selected row' },
   { key: 'F8',     label: 'Open cash drawer' },
   { key: 'F9',     label: 'Switch Touch / Keyboard mode' },
-  { key: 'F10',    label: 'Discount on selected row' },
+  { key: 'Ctrl+M', label: 'Discount on selected row' },
   { key: 'F12',    label: 'Lock terminal' },
   { key: '↑ ↓',    label: 'Navigate rows' },
   { key: 'Enter',  label: 'Edit qty on selected row' },

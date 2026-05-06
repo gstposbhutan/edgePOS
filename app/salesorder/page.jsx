@@ -404,7 +404,7 @@ export default function SalesOrderPage() {
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error); return }
-      setDone({ order_no: data.order.order_no })
+      setDone({ id: data.order.id, order_no: data.order.order_no })
     } catch (err) {
       setError(err.message)
     } finally {
@@ -426,7 +426,8 @@ export default function SalesOrderPage() {
         <p className="text-muted-foreground font-mono">{done.order_no}</p>
         <div className="flex gap-3 mt-2">
           <Button variant="outline" onClick={resetForm}>New Order</Button>
-          <Button onClick={() => router.push('/pos/orders')}>View Orders</Button>
+          <Button variant="outline" onClick={() => router.push(`/pos/orders/${done.id}`)}>View Order</Button>
+          <Button onClick={() => router.push('/pos/orders?section=SALES&tab=SO')}>View Orders</Button>
         </div>
       </div>
     )

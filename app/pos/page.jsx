@@ -7,13 +7,18 @@ import { ProductSearchModal } from "@/components/pos/keyboard/product-search-mod
 import { PaymentModal }       from "@/components/pos/keyboard/payment-modal"
 import { HelpOverlay }        from "@/components/pos/keyboard/help-overlay"
 import { ShortcutBar }        from "@/components/pos/keyboard/shortcut-bar"
+import { DiscountModal }      from "@/components/pos/keyboard/discount-modal"
 import { useCart }            from "@/hooks/use-cart"
 import { useKhata }           from "@/hooks/use-khata"
 import { getUser, getRoleClaims, signOut } from "@/lib/auth"
 import { createClient }       from "@/lib/supabase/client"
+import { ShiftStatusBadge }   from "@/components/pos/shift/shift-status-badge"
+import { StartShiftModal }    from "@/components/pos/shift/start-shift-modal"
+import { EndShiftModal }      from "@/components/pos/shift/end-shift-modal"
+import { useShift }           from "@/hooks/use-shift"
 import {
   LogOut, ClipboardList, BookOpen, Package,
-  Wallet, Hand, X, LayoutDashboard, ShoppingCart
+  Wallet, Hand, X, LayoutDashboard, ShoppingCart, Landmark
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { CustomerOtpModal } from "@/components/pos/customer-otp-modal"
@@ -35,6 +40,11 @@ export default function KeyboardPosPage() {
   const [creditOtpOpen, setCreditOtpOpen] = useState(false)
   const pendingPayment  = useRef(null) // stores { method, received } while OTP is open
   const [lastOrderNo,  setLastOrderNo]  = useState(null)
+  const [showDiscount, setShowDiscount] = useState(false)
+  const [showStartShift, setShowStartShift] = useState(false)
+  const [showEndShift,   setShowEndShift]   = useState(false)
+
+  const { shift, openShift, closeShift } = useShift()
 
   useEffect(() => {
     async function load() {
@@ -85,6 +95,11 @@ export default function KeyboardPosPage() {
       if (e.key === 'F5')  { e.preventDefault(); if (items.length > 0) setPaymentOpen(true); return }
       if (e.key === 'F6')  { e.preventDefault(); cancelCart(activeIndex); return } // F6 = cancel/clear active cart
       if (e.key === 'F7')  { e.preventDefault(); voidSelected(); return }
+      if (e.ctrlKey && e.key === 'm') {
+        e.preventDefault()
+        if (items.length > 0 && items[selectedRow]) setShowDiscount(true)
+        return
+      }
       if (e.key === 'Tab' && !e.shiftKey) {                                    // Tab = next cart
         e.preventDefault()
         if (carts.length > 1) switchCart((activeIndex + 1) % carts.length)
@@ -164,7 +179,7 @@ export default function KeyboardPosPage() {
     }
   }
 
-  async function handlePaymentConfirm({ method, received }) {
+  async function handlePaymentConfirm({ method, received, journalNo }) {
     setPaymentOpen(false)
     setCheckoutErr(null)
 
@@ -172,12 +187,12 @@ export default function KeyboardPosPage() {
 
     // CREDIT requires customer OTP verification before completing
     if (method === 'CREDIT') {
-      pendingPayment.current = { method, received }
+      pendingPayment.current = { method, received, journalNo }
       setCreditOtpOpen(true)
       return
     }
 
-    await processPayment({ method, received })
+    await processPayment({ method, received, journalNo })
   }
 
   async function handleCreditOtpVerified(phone) {
@@ -208,7 +223,12 @@ export default function KeyboardPosPage() {
     }
   }
 
-  async function processPayment({ method, received }) {
+  async function processPayment({ method, received, journalNo }) {
+    // Shift gate: cashiers must have an active shift
+    if (subRole === 'CASHIER' && !shift) {
+      setCheckoutErr('Start a shift before processing sales')
+      return
+    }
 
     try {
       const year   = new Date().getFullYear()
@@ -239,6 +259,7 @@ export default function KeyboardPosPage() {
           gst_total:     gstTotal,
           grand_total:   grandTotal,
           payment_method: method,
+          payment_ref:   journalNo || null,
           digital_signature: signature,
           cart_id:       cartId,
           created_by:    user?.id,
@@ -257,7 +278,9 @@ export default function KeyboardPosPage() {
           name:       item.name,
           quantity:   item.quantity,
           unit_price: item.unit_price,
-          discount:   item.discount ?? 0,
+          discount:       item.discount ?? 0,
+          discount_type:  item.discount_type || 'FLAT',
+          discount_value: item.discount_value ?? 0,
           gst_5:      item.gst_5,
           total:      item.total,
           status:     'ACTIVE',
@@ -277,6 +300,18 @@ export default function KeyboardPosPage() {
       setLastOrderNo(order.order_no)
       await clearCart()
       setSelectedRow(0)
+
+      // Track shift transaction (fire-and-forget)
+      fetch('/api/shifts/track-transaction', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_id: order.id,
+          transaction_type: 'SALE',
+          payment_method: method,
+          amount: grandTotal,
+        }),
+      }).catch(() => {})
 
     } catch (err) {
       setCheckoutErr(err.message)
@@ -326,18 +361,25 @@ export default function KeyboardPosPage() {
           <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/orders')} title="Orders [O]">
             <ClipboardList className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/purchases')} title="Purchases">
-            <ShoppingCart className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/products')} title="Products">
-            <BookOpen className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/inventory')} title="Inventory">
-            <Package className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/khata')} title="Khata">
-            <Wallet className="h-4 w-4" />
-          </Button>
+          {subRole !== 'CASHIER' && (
+            <>
+              <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/purchases')} title="Purchases">
+                <ShoppingCart className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/products')} title="Products">
+                <BookOpen className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/inventory')} title="Inventory">
+                <Package className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/khata')} title="Khata">
+                <Wallet className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/registers')} title="Cash Registers">
+                <Landmark className="h-4 w-4" />
+              </Button>
+            </>
+          )}
           <Button
             variant="ghost"
             size="icon-sm"
@@ -347,6 +389,7 @@ export default function KeyboardPosPage() {
           >
             <Hand className="h-4 w-4" />
           </Button>
+          <ShiftStatusBadge shift={shift} onStart={() => setShowStartShift(true)} onEnd={() => setShowEndShift(true)} />
           <Button variant="ghost" size="icon-sm" onClick={handleSignOut} title="Sign out">
             <LogOut className="h-4 w-4" />
           </Button>
@@ -458,6 +501,32 @@ export default function KeyboardPosPage() {
         onVerified={handleCreditOtpVerified}
         onClose={() => { setCreditOtpOpen(false); pendingPayment.current = null }}
       />
+
+      {showStartShift && (
+        <StartShiftModal
+          onOpen={openShift}
+          onClose={() => setShowStartShift(false)}
+        />
+      )}
+
+      {showEndShift && shift && (
+        <EndShiftModal
+          shift={shift}
+          onClose={() => setShowEndShift(false)}
+          onEndShift={closeShift}
+        />
+      )}
+
+      {showDiscount && items[selectedRow] && (
+        <DiscountModal
+          item={items[selectedRow]}
+          onClose={() => setShowDiscount(false)}
+          onApply={(discount) => {
+            applyDiscount(items[selectedRow].id, discount)
+            setShowDiscount(false)
+          }}
+        />
+      )}
     </div>
   )
 }

@@ -69,7 +69,19 @@ export async function GET(request, { params }) {
       .eq('order_id', id)
       .order('created_at')
 
-    return NextResponse.json({ order, items: items || [], timeline: timeline || [] })
+    // Fetch related invoices for POs
+    let relatedInvoices = []
+    if (order.order_type === 'PURCHASE_ORDER') {
+      const { data: invoices } = await serviceClient
+        .from('orders')
+        .select('id, order_no, status, grand_total, created_at')
+        .eq('purchase_order_id', id)
+        .eq('order_type', 'PURCHASE_INVOICE')
+        .order('created_at', { ascending: false })
+      relatedInvoices = invoices || []
+    }
+
+    return NextResponse.json({ order, items: items || [], timeline: timeline || [], relatedInvoices })
 
   } catch (error) {
     console.error('[purchases/[id] GET]', error)

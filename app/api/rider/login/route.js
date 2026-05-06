@@ -1,6 +1,22 @@
 import { NextResponse } from 'next/server'
-import { createServiceClient } from '@/lib/supabase/server'
+import { createClient } from '@supabase/supabase-js'
 import bcrypt from 'bcryptjs'
+
+function createAdminClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+    { auth: { persistSession: false, autoRefreshToken: false } }
+  )
+}
+
+function createAnonClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    { auth: { persistSession: false, autoRefreshToken: false } }
+  )
+}
 
 export async function POST(request) {
   try {
@@ -12,11 +28,11 @@ export async function POST(request) {
 
     const normalised = phone.trim().startsWith('+') ? phone.trim() : `+${phone.trim()}`
 
-    const serviceClient = createServiceClient()
+    const serviceClient = createAdminClient()
 
     const { data: rider, error: riderError } = await serviceClient
       .from('riders')
-      .select('id, name, whatsapp_no, pin_hash, is_active, auth_user_id')
+      .select('id, name, whatsapp_no, pin_hash, is_active, auth_user_id, auth_email, auth_password')
       .eq('whatsapp_no', normalised)
       .single()
 
@@ -37,27 +53,27 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Account not fully set up. Contact admin.' }, { status: 500 })
     }
 
-    // Get the rider's email to sign them in
-    const { data: { user }, error: userError } = await serviceClient.auth.admin.getUserById(rider.auth_user_id)
-    if (userError || !user) {
-      return NextResponse.json({ error: 'Authentication account not found' }, { status: 500 })
+    if (!rider.auth_email || !rider.auth_password) {
+      return NextResponse.json({ error: 'Account not fully set up. Contact admin.' }, { status: 500 })
     }
 
-    // Generate a magic link token for the rider to establish a session
-    const { data: linkData, error: linkError } = await serviceClient.auth.admin.generateLink({
-      type: 'magiclink',
-      email: user.email,
+    // Sign in using stored credentials — works for both seeded and API-created users
+    const anonClient = createAnonClient()
+    const { data: signInData, error: signInError } = await anonClient.auth.signInWithPassword({
+      email:    rider.auth_email,
+      password: rider.auth_password,
     })
 
-    if (linkError || !linkData) {
-      return NextResponse.json({ error: 'Failed to create session' }, { status: 500 })
+    if (signInError || !signInData?.session) {
+      console.error('[rider/login] signInWithPassword failed:', signInError?.message)
+      return NextResponse.json({ error: 'Failed to create session: ' + (signInError?.message ?? 'unknown') }, { status: 500 })
     }
 
     return NextResponse.json({
-      success: true,
-      rider: { id: rider.id, name: rider.name, whatsapp_no: rider.whatsapp_no },
-      access_token: linkData.properties.access_token,
-      refresh_token: linkData.properties.refresh_token,
+      success:       true,
+      rider:         { id: rider.id, name: rider.name, whatsapp_no: rider.whatsapp_no },
+      access_token:  signInData.session.access_token,
+      refresh_token: signInData.session.refresh_token,
     })
 
   } catch (error) {

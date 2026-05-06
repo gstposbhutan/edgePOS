@@ -6,13 +6,12 @@ import { Trash2 } from "lucide-react"
 /**
  * Full-width cart table for keyboard POS.
  * Row selection via ↑↓. Qty editing by pressing Enter on selected row.
- *
- * @param {{ items: object[], onUpdateQty: fn, onRemoveItem: fn, selectedRow: number, onSelectRow: fn }} props
  */
 export function CartTable({ items, onUpdateQty, onRemoveItem, selectedRow, onSelectRow, onEditRequest }) {
   const [editingRow, setEditingRow]   = useState(null)
   const [editQty,    setEditQty]      = useState('')
   const editInputRef                  = useRef(null)
+  const committedRef                  = useRef(false)
 
   // Called by parent keyboard handler (Enter key) to start editing the selected row
   if (onEditRequest) onEditRequest.current = (index) => {
@@ -20,12 +19,15 @@ export function CartTable({ items, onUpdateQty, onRemoveItem, selectedRow, onSel
   }
 
   function startEdit(index) {
+    committedRef.current = false
     setEditingRow(index)
     setEditQty(String(items[index].quantity))
     setTimeout(() => editInputRef.current?.select(), 20)
   }
 
   function confirmEdit(index) {
+    if (committedRef.current) return
+    committedRef.current = true
     const qty = parseInt(editQty, 10)
     if (!isNaN(qty) && qty > 0) {
       onUpdateQty(items[index].id, qty)
@@ -35,12 +37,14 @@ export function CartTable({ items, onUpdateQty, onRemoveItem, selectedRow, onSel
   }
 
   function cancelEdit() {
+    committedRef.current = true
     setEditingRow(null)
     setEditQty('')
   }
 
   function handleEditKeyDown(e, index) {
     if (e.key === 'Enter')  { e.preventDefault(); confirmEdit(index) }
+    if (e.key === 'Tab')    { e.preventDefault(); confirmEdit(index) }
     if (e.key === 'Escape') { e.preventDefault(); cancelEdit() }
   }
 
@@ -66,6 +70,7 @@ export function CartTable({ items, onUpdateQty, onRemoveItem, selectedRow, onSel
             <th className="text-left px-4 py-2 w-32">Batch</th>
             <th className="text-right px-4 py-2 w-20">Stock</th>
             <th className="text-right px-4 py-2 w-28">Unit Price</th>
+            <th className="text-right px-4 py-2 w-24">Discount</th>
             <th className="text-right px-4 py-2 w-28">Total</th>
             <th className="w-10 px-2 py-2" />
           </tr>
@@ -96,7 +101,7 @@ export function CartTable({ items, onUpdateQty, onRemoveItem, selectedRow, onSel
                       value={editQty}
                       onChange={e => setEditQty(e.target.value)}
                       onKeyDown={e => handleEditKeyDown(e, i)}
-                      onBlur={() => confirmEdit(i)}
+                      onBlur={() => { if (!committedRef.current) confirmEdit(i) }}
                       className="w-16 px-1 py-0.5 text-sm text-center border border-primary rounded bg-background outline-none"
                       onClick={e => e.stopPropagation()}
                     />
@@ -130,6 +135,17 @@ export function CartTable({ items, onUpdateQty, onRemoveItem, selectedRow, onSel
                 </td>
                 <td className="px-4 py-2.5 text-right tabular-nums">
                   Nu. {parseFloat(item.unit_price).toFixed(2)}
+                </td>
+                <td className="px-4 py-2.5 text-right tabular-nums">
+                  {parseFloat(item.discount) > 0 ? (
+                    <span className="text-emerald-600 text-xs font-medium">
+                      {item.discount_type === 'PERCENTAGE'
+                        ? `${item.discount_value}%`
+                        : `Nu.${parseFloat(item.discount).toFixed(2)}`}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground/40">—</span>
+                  )}
                 </td>
                 <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-primary">
                   Nu. {total.toFixed(2)}

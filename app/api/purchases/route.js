@@ -61,6 +61,19 @@ export async function GET(request) {
     const { data: orders, error } = await query
     if (error) throw error
 
+    // Enrich invoices with referenced PO order_no
+    const poIds = (orders || []).filter(o => o.purchase_order_id).map(o => o.purchase_order_id)
+    if (poIds.length > 0) {
+      const { data: poOrders } = await serviceClient
+        .from('orders')
+        .select('id, order_no')
+        .in('id', poIds)
+      const poMap = Object.fromEntries((poOrders || []).map(po => [po.id, po.order_no]))
+      for (const o of (orders || [])) {
+        if (o.purchase_order_id) o.purchase_order_no = poMap[o.purchase_order_id] || null
+      }
+    }
+
     return NextResponse.json({ orders: orders || [] })
 
   } catch (error) {
@@ -92,7 +105,7 @@ export async function POST(request) {
 
     if (!items?.length) return NextResponse.json({ error: 'At least one item is required' }, { status: 400 })
     if (!payment_method) return NextResponse.json({ error: 'Payment method is required' }, { status: 400 })
-    if (!['MBOB', 'MPAY', 'RTGS', 'CASH', 'CREDIT'].includes(payment_method)) {
+    if (!['ONLINE', 'CASH', 'CREDIT'].includes(payment_method)) {
       return NextResponse.json({ error: 'Invalid payment method' }, { status: 400 })
     }
 

@@ -1,4 +1,5 @@
 const { createClient } = require('@supabase/supabase-js')
+const bcrypt = require('bcryptjs')
 const {
   TEST_ENTITY,
   TEST_WHOLESALER,
@@ -10,6 +11,8 @@ const {
   TEST_KHATA_ACCOUNTS,
   TEST_RETAILER_WHOLESALER,
   TEST_WHOLESALER_KHATA,
+  TEST_RIDER,
+  TEST_BATCHES,
 } = require('./test-data')
 
 function getAdminClient() {
@@ -178,40 +181,57 @@ async function seedDatabase() {
   const authIdMap = {} // email → actual auth user ID
 
   for (const user of TEST_USERS) {
-    // Check if user already exists
-    const { data: { users: existing } } = await supabase.auth.admin.listUsers()
-    const found = existing.find(u => u.email === user.email)
+    const { data, error: authErr } = await supabase.auth.admin.createUser({
+      email: user.email,
+      password: user.password,
+      email_confirm: true,
+      user_metadata: {
+        phone: TEST_ENTITY.whatsapp_no,
+      },
+      app_metadata: {
+        role: user.role,
+        sub_role: user.sub_role,
+        entity_id: user.entity_id,
+        permissions: user.permissions,
+      },
+    })
 
-    if (found) {
-      authIdMap[user.email] = found.id
-      // Update app_metadata to keep claims in sync
-      await supabase.auth.admin.updateUserById(found.id, {
-        app_metadata: {
-          role: user.role,
-          sub_role: user.sub_role,
-          entity_id: user.entity_id,
-          permissions: user.permissions,
-        },
-      })
-    } else {
-      const { data, error: authErr } = await supabase.auth.admin.createUser({
-        email: user.email,
-        password: user.password,
-        email_confirm: true,
-        app_metadata: {
-          role: user.role,
-          sub_role: user.sub_role,
-          entity_id: user.entity_id,
-          permissions: user.permissions,
-        },
-      })
+    if (authErr) {
+      // "already registered" — try to look up via signIn to get the ID
+      if (authErr.message?.includes('already been registered')) {
+        console.log(`[DB Seed] User ${user.email} already exists, looking up via profile...`)
+        // The user_profiles table should have the ID from a previous seed
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('id')
+          .eq('role', user.role)
+          .eq('sub_role', user.sub_role)
+          .eq('entity_id', user.entity_id)
+          .maybeSingle()
 
-      if (authErr) {
-        console.error(`[DB Seed] Auth user creation failed for ${user.email}:`, authErr.message || authErr.code)
-        throw authErr
+        if (profile) {
+          authIdMap[user.email] = profile.id
+          // Update password + metadata
+          await supabase.auth.admin.updateUserById(profile.id, {
+            password: user.password,
+            user_metadata: {
+              phone: TEST_ENTITY.whatsapp_no,
+            },
+            app_metadata: {
+              role: user.role,
+              sub_role: user.sub_role,
+              entity_id: user.entity_id,
+              permissions: user.permissions,
+            },
+          })
+          console.log(`[DB Seed] Updated existing user ${user.email} (${profile.id})`)
+          continue
+        }
       }
-      authIdMap[user.email] = data.user.id
+      console.error(`[DB Seed] Auth user creation failed for ${user.email}:`, authErr.message || authErr.code)
+      throw authErr
     }
+    authIdMap[user.email] = data.user.id
   }
 
   // ── 7. Upsert user profiles using actual auth IDs ──────────────
@@ -284,8 +304,72 @@ async function seedDatabase() {
     throw wKhataErr
   }
 
+  // ── 13. Upsert product batches ────────────────────────────────────────
+  const { error: batchErr } = await supabase
+    .from('product_batches')
+    .upsert(TEST_BATCHES, { onConflict: 'id' })
+
+  if (batchErr) {
+    console.error('[DB Seed] Product batches upsert failed:', batchErr.message)
+    throw batchErr
+  }
+
+  // ── 14. Seed test rider ──────────────────────────────────────────────
+  // Create auth user for rider login
+  const riderEmail = 'rider@teststore.bt'
+  const riderPassword = 'TestRider@2026'
+  let riderAuthId = null
+
+  const { data: riderAuthData, error: riderAuthErr } = await supabase.auth.admin.createUser({
+    email: riderEmail,
+    password: riderPassword,
+    email_confirm: true,
+  })
+
+  if (riderAuthErr) {
+    if (riderAuthErr.message?.includes('already been registered')) {
+      const { data: existingRider } = await supabase
+        .from('riders')
+        .select('auth_user_id')
+        .eq('whatsapp_no', TEST_RIDER.phone)
+        .maybeSingle()
+      if (existingRider?.auth_user_id) {
+        riderAuthId = existingRider.auth_user_id
+        await supabase.auth.admin.updateUserById(riderAuthId, { password: riderPassword })
+      }
+    } else {
+      console.error('[DB Seed] Rider auth user creation failed:', riderAuthErr.message)
+      throw riderAuthErr
+    }
+  } else {
+    riderAuthId = riderAuthData.user.id
+  }
+
+  // Hash the PIN
+  const pinHash = await bcrypt.hash(TEST_RIDER.pin, 10)
+
+  const { error: riderErr } = await supabase
+    .from('riders')
+    .upsert({
+      id: TEST_RIDER.id,
+      name: TEST_RIDER.name,
+      whatsapp_no: TEST_RIDER.phone,
+      pin_hash: pinHash,
+      is_active: TEST_RIDER.is_active,
+      is_available: true,
+      current_order_id: null,
+      auth_user_id: riderAuthId,
+      auth_email: riderEmail,
+      auth_password: riderPassword,
+    }, { onConflict: 'id' })
+
+  if (riderErr) {
+    console.error('[DB Seed] Rider upsert failed:', riderErr.message)
+    throw riderErr
+  }
+
   console.log(
-    `[DB Seed] Seeded: 1 retailer, 1 wholesaler, 1 category, ${TEST_PRODUCTS.length} retailer products, ${TEST_WHOLESALER_PRODUCTS.length} wholesaler products, ${TEST_ORDERS.length} orders, ${TEST_KHATA_ACCOUNTS.length} consumer khata + 1 B2B khata, ${TEST_USERS.length} users, ${profiles.length} profiles`
+    `[DB Seed] Seeded: 1 retailer, 1 wholesaler, 1 category, ${TEST_PRODUCTS.length} retailer products, ${TEST_WHOLESALER_PRODUCTS.length} wholesaler products, ${TEST_ORDERS.length} orders, ${TEST_KHATA_ACCOUNTS.length} consumer khata + 1 B2B khata, ${TEST_USERS.length} users, ${profiles.length} profiles, ${TEST_BATCHES.length} batches, 1 rider`
   )
   console.log('[DB Seed] Auth ID map:', JSON.stringify(authIdMap, null, 2))
 

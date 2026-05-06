@@ -2,7 +2,7 @@
 
 import { useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { ArrowLeft, Store, CreditCard, MapPin } from "lucide-react"
+import { ArrowLeft, Store, CreditCard, MapPin, KeyRound, Truck } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { OrderStatusBadge } from "@/components/pos/orders/order-status-badge"
@@ -95,6 +95,18 @@ export default function ShopOrderDetailPage() {
               <p className="text-sm font-medium">{order.delivery_address}</p>
               <p className="text-xs text-muted-foreground">Delivery address</p>
             </div>
+          </div>
+        )}
+
+        {/* Delivery OTP — customer gives this to rider at doorstep */}
+        {order.delivery_otp && order.status === 'DISPATCHED' && (
+          <div className="p-4 rounded-xl border border-gold/30 bg-gold/5 space-y-2">
+            <div className="flex items-center gap-2">
+              <Truck className="h-4 w-4 text-gold" />
+              <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Rider is on the way!</p>
+            </div>
+            <p className="text-xs text-muted-foreground">Give this code to the rider when they arrive.</p>
+            <p className="text-3xl font-mono font-bold text-gold tracking-[0.3em] text-center py-3">{order.delivery_otp}</p>
           </div>
         )}
 

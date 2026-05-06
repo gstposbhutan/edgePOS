@@ -2,14 +2,18 @@
 
 **Feature ID**: F-OCR-001
 **Phase**: 3
-**Status**: Scoped
-**Last Updated**: 2026-04-19
+**Status**: Deferred (journal number entry used instead)
+**Last Updated**: 2026-05-06
 
 ---
 
 ## Overview
 
-When a customer pays via mBoB or BNB mobile banking, they present their phone screen showing the transaction confirmation to the cashier. The POS front-facing camera captures a photo of the screen and an OCR pipeline extracts structured payment data. The extracted Journal Number, amount, sender name, date/time, and account digits are verified against the open order. This replaces manual reference-number entry and catches common payment fraud before the order is confirmed.
+When a customer pays via mBoB, mPay, or RTGS, the vendor manually enters the **journal number** from the customer's payment confirmation into the POS. This is stored as `payment_ref` on the order. The OCR-based camera scanning approach was deferred in favor of this simpler manual entry flow.
+
+**Current implementation**: Both keyboard POS and touch POS show a mandatory "Journal Number" input when the **Online** payment method is selected. The vendor reads the reference number from the customer's phone and types it in. No camera or AI verification is involved.
+
+**Future scope** (below): The original OCR-based camera verification pipeline for automated payment screenshot scanning. This may be re-implemented when banking APIs become available.
 
 ---
 

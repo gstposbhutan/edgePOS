@@ -84,12 +84,14 @@ export async function POST(request) {
     const { data: rider, error: riderError } = await supabase
       .from('riders')
       .insert({
-        name: name.trim(),
-        whatsapp_no: phone,
-        pin_hash: pinHash,
-        auth_user_id: authData.user.id,
-        is_active: true,
-        is_available: true,
+        name:          name.trim(),
+        whatsapp_no:   phone,
+        pin_hash:      pinHash,
+        auth_user_id:  authData.user.id,
+        auth_email:    tempEmail,
+        auth_password: tempPassword,
+        is_active:     true,
+        is_available:  true,
       })
       .select('id, name, whatsapp_no, is_active, is_available')
       .single()

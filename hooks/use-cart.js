@@ -207,16 +207,34 @@ export function useCart(entityId, createdBy) {
   }, [items, activeIndex])
 
   // ── Apply discount ─────────────────────────────────────────────────────────
-  const applyDiscount = useCallback(async (itemId, discountPerUnit) => {
+  // Accepts either a flat number (legacy) or { type: 'FLAT'|'PERCENTAGE', value: number }
+  const applyDiscount = useCallback(async (itemId, input) => {
     const item = items.find(i => i.id === itemId)
     if (!item) return
     const unitPrice = parseFloat(item.unit_price)
-    const clamped   = Math.min(Math.max(0, discountPerUnit), unitPrice)
+
+    let discountType, discountValue, discountPerUnit
+    if (typeof input === 'object' && input !== null) {
+      discountType = input.type || 'FLAT'
+      discountValue = parseFloat(input.value) || 0
+      if (discountType === 'PERCENTAGE') {
+        discountPerUnit = unitPrice * (Math.min(discountValue, 100) / 100)
+      } else {
+        discountPerUnit = discountValue
+      }
+    } else {
+      // Legacy: flat number
+      discountType = 'FLAT'
+      discountValue = parseFloat(input) || 0
+      discountPerUnit = discountValue
+    }
+
+    const clamped = Math.min(Math.max(0, discountPerUnit), unitPrice)
     const { gst5, total } = calcItemTotals(unitPrice, clamped, item.quantity)
 
     const { data: updated } = await supabase
       .from('cart_items')
-      .update({ discount: clamped, gst_5: gst5, total })
+      .update({ discount: clamped, discount_type: discountType, discount_value: discountValue, gst_5: gst5, total })
       .eq('id', itemId)
       .select(`*, batch:batch_id (id, batch_number, expires_at, mrp, selling_price), package_def:package_id (id, package_type, package_items (quantity, product:product_id (name, unit)))`)
       .single()

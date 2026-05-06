@@ -35,6 +35,7 @@ export default function ProductsPage() {
       const user = await getUser()
       if (!user) return router.push('/login')
       const { entityId: eid, subRole: sr } = getRoleClaims(user)
+      if (sr === 'CASHIER') return router.push('/pos')
       setEntityId(eid)
       setSubRole(sr ?? 'CASHIER')
     }

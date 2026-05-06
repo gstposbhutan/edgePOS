@@ -268,7 +268,7 @@ const TEST_ORDERS = [
     subtotal: 85.00,
     gst_total: 4.25,
     grand_total: 89.25,
-    payment_method: 'MBOB',
+    payment_method: 'ONLINE',
     items: [
       { product_id: TEST_PRODUCTS[2].id, sku: TEST_PRODUCTS[2].sku, name: TEST_PRODUCTS[2].name, qty: 1, rate: 85.00, discount: 0, gst_5: 4.25, total: 89.25 },
     ],
@@ -313,7 +313,7 @@ const TEST_ORDERS = [
     subtotal: 90.00,
     gst_total: 4.50,
     grand_total: 94.50,
-    payment_method: 'MPAY',
+    payment_method: 'ONLINE',
     items: [
       { product_id: TEST_PRODUCTS[8].id, sku: TEST_PRODUCTS[8].sku, name: TEST_PRODUCTS[8].name, qty: 1, rate: 90.00, discount: 0, gst_5: 4.50, total: 94.50 },
     ],
@@ -446,6 +446,117 @@ const TEST_WHOLESALER_KHATA = {
   status: 'ACTIVE',
 }
 
+// ── Test rider ────────────────────────────────────────────────────────
+const TEST_RIDER = {
+  id: '00000000-0000-4000-8000-000000005001',
+  name: 'Test Rider',
+  phone: '+97517100050',
+  pin: '1234',
+  vehicle_type: 'motorcycle',
+  is_active: true,
+  entity_id: TEST_ENTITY.id,
+}
+
+// ── Test product batches (for PO/SO flows) ───────────────────────────
+const TEST_BATCHES = [
+  {
+    id: '00000000-0000-4000-8000-000000006001',
+    product_id: TEST_PRODUCTS[0].id, // Druk 1100 Generator
+    entity_id: TEST_ENTITY.id,
+    batch_number: 'BATCH-GEN-001',
+    quantity: 20,
+    mrp: 35000.00,
+    selling_price: 35000.00,
+    unit_cost: 28000.00,
+    status: 'ACTIVE',
+    expires_at: '2027-12-31',
+  },
+  {
+    id: '00000000-0000-4000-8000-000000006002',
+    product_id: TEST_PRODUCTS[1].id, // Wai Wai Noodles
+    entity_id: TEST_ENTITY.id,
+    batch_number: 'BATCH-WAI-001',
+    quantity: 60,
+    mrp: 450.00,
+    selling_price: 450.00,
+    unit_cost: 360.00,
+    status: 'ACTIVE',
+    expires_at: '2027-06-30',
+  },
+  {
+    id: '00000000-0000-4000-8000-000000006003',
+    product_id: TEST_PRODUCTS[2].id, // Druk Supreme Milk 1L
+    entity_id: TEST_ENTITY.id,
+    batch_number: 'BATCH-MLK-001',
+    quantity: 50,
+    mrp: 85.00,
+    selling_price: 85.00,
+    unit_cost: 68.00,
+    status: 'ACTIVE',
+    expires_at: '2027-03-31',
+  },
+  {
+    id: '00000000-0000-4000-8000-000000006004',
+    product_id: TEST_PRODUCTS[3].id, // Bhutan Telecom SIM Card
+    entity_id: TEST_ENTITY.id,
+    batch_number: 'BATCH-SIM-001',
+    quantity: 100,
+    mrp: 100.00,
+    selling_price: 100.00,
+    unit_cost: 50.00,
+    status: 'ACTIVE',
+    expires_at: '2028-12-31',
+  },
+  {
+    id: '00000000-0000-4000-8000-000000006005',
+    product_id: TEST_PRODUCTS[4].id, // Red Bull Energy Drink 250ml
+    entity_id: TEST_ENTITY.id,
+    batch_number: 'BATCH-RDB-001',
+    quantity: 6,
+    mrp: 120.00,
+    selling_price: 120.00,
+    unit_cost: 95.00,
+    status: 'ACTIVE',
+    expires_at: '2027-09-30',
+  },
+  {
+    id: '00000000-0000-4000-8000-000000006006',
+    product_id: TEST_PRODUCTS[5].id, // Surf Excel Detergent 1kg
+    entity_id: TEST_ENTITY.id,
+    batch_number: 'BATCH-SRF-001',
+    quantity: 3,
+    mrp: 320.00,
+    selling_price: 320.00,
+    unit_cost: 260.00,
+    status: 'ACTIVE',
+    expires_at: '2028-06-30',
+  },
+  {
+    id: '00000000-0000-4000-8000-000000006007',
+    product_id: TEST_PRODUCTS[6].id, // Lifebuoy Soap Bar (Pack of 4)
+    entity_id: TEST_ENTITY.id,
+    batch_number: 'BATCH-LFB-001',
+    quantity: 8,
+    mrp: 180.00,
+    selling_price: 180.00,
+    unit_cost: 140.00,
+    status: 'ACTIVE',
+    expires_at: '2028-03-31',
+  },
+  {
+    id: '00000000-0000-4000-8000-000000006008',
+    product_id: TEST_PRODUCTS[9].id, // Notebook A4 (200 pages)
+    entity_id: TEST_ENTITY.id,
+    batch_number: 'BATCH-NB-001',
+    quantity: 30,
+    mrp: 60.00,
+    selling_price: 60.00,
+    unit_cost: 42.00,
+    status: 'ACTIVE',
+    expires_at: '2029-12-31',
+  },
+]
+
 module.exports = {
   TEST_PHONE,
   TEST_ENTITY,
@@ -462,6 +573,8 @@ module.exports = {
   CASHIER_USER: TEST_USERS[0],
   MANAGER_USER: TEST_USERS[1],
   OWNER_USER: TEST_USERS[2],
+  TEST_RIDER,
+  TEST_BATCHES,
 }
 
 // Also export individual constants for easier importing in tests
@@ -479,3 +592,5 @@ module.exports.TEST_WHOLESALER_KHATA = TEST_WHOLESALER_KHATA
 module.exports.CASHIER_USER = TEST_USERS[0]
 module.exports.MANAGER_USER = TEST_USERS[1]
 module.exports.OWNER_USER = TEST_USERS[2]
+module.exports.TEST_RIDER = TEST_RIDER
+module.exports.TEST_BATCHES = TEST_BATCHES

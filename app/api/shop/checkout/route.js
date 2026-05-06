@@ -4,6 +4,56 @@ import { cookies } from 'next/headers'
 import { createServiceClient } from '@/lib/supabase/server'
 import { createHash, randomBytes } from 'node:crypto'
 
+async function assignRider(serviceClient, orderId, order) {
+  try {
+    const { data: riders } = await serviceClient
+      .from('riders')
+      .select('id, name, whatsapp_no')
+      .eq('is_active', true)
+      .eq('is_available', true)
+      .is('current_order_id', null)
+      .order('created_at', { ascending: true })
+      .limit(1)
+
+    const rider = riders?.[0]
+    if (!rider) return
+
+    const pickupOtp = String(Math.floor(100000 + Math.random() * 900000))
+    const pickupOtpExpiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
+
+    await serviceClient
+      .from('orders')
+      .update({
+        rider_id:              rider.id,
+        rider_accepted_at:     new Date().toISOString(),
+        pickup_otp:            pickupOtp,
+        pickup_otp_expires_at: pickupOtpExpiresAt,
+      })
+      .eq('id', orderId)
+
+    await serviceClient
+      .from('riders')
+      .update({ is_available: false, current_order_id: orderId })
+      .eq('id', rider.id)
+
+    const gatewayUrl = process.env.NEXT_PUBLIC_WHATSAPP_GATEWAY_URL || 'http://localhost:3001'
+    if (order.seller_whatsapp) {
+      fetch(`${gatewayUrl}/api/send-pickup-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vendorPhone: order.seller_whatsapp,
+          orderNo:     order.order_no,
+          riderName:   rider.name,
+          pickupOtp,
+        }),
+      }).catch(() => {})
+    }
+  } catch (err) {
+    console.error('[checkout/assignRider]', err.message)
+  }
+}
+
 export async function POST(request) {
   try {
     const cookieStore = await cookies()
@@ -163,6 +213,12 @@ export async function POST(request) {
             status:     'ACTIVE',
           }))
         )
+
+        // Auto-assign available rider (fire-and-forget)
+        assignRider(serviceClient, order.id, {
+          order_no:       order.order_no,
+          seller_whatsapp: vendor.whatsapp_no,
+        })
 
         createdOrders.push({
           id: order.id,

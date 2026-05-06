@@ -27,6 +27,70 @@ async function getSession(cookieStore) {
   return error ? null : session
 }
 
+function generateOtp() {
+  return String(Math.floor(100000 + Math.random() * 900000))
+}
+
+// Auto-assign the first available active rider, generate pickup OTP, notify vendor
+async function assignRider(serviceClient, orderId, order, actorId) {
+  try {
+    // Pick the first available active rider not currently on a delivery
+    const { data: riders } = await serviceClient
+      .from('riders')
+      .select('id, name, whatsapp_no')
+      .eq('is_active', true)
+      .eq('is_available', true)
+      .is('current_order_id', null)
+      .order('created_at', { ascending: true })
+      .limit(1)
+
+    const rider = riders?.[0]
+    if (!rider) return // no riders available — order stays in PROCESSING until one is free
+
+    const pickupOtp = generateOtp()
+    const pickupOtpExpiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
+
+    // Assign rider + pickup OTP atomically
+    await serviceClient
+      .from('orders')
+      .update({
+        rider_id:              rider.id,
+        rider_accepted_at:     new Date().toISOString(),
+        pickup_otp:            pickupOtp,
+        pickup_otp_expires_at: pickupOtpExpiresAt,
+      })
+      .eq('id', orderId)
+
+    await serviceClient
+      .from('riders')
+      .update({ is_available: false, current_order_id: orderId })
+      .eq('id', rider.id)
+
+    // Send pickup OTP to vendor via WhatsApp (fire-and-forget)
+    const gatewayUrl = process.env.NEXT_PUBLIC_WHATSAPP_GATEWAY_URL || 'http://localhost:3001'
+    const { data: vendor } = await serviceClient
+      .from('entities')
+      .select('whatsapp_no')
+      .eq('id', order.seller_id)
+      .single()
+
+    if (vendor?.whatsapp_no) {
+      fetch(`${gatewayUrl}/api/send-pickup-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vendorPhone: vendor.whatsapp_no,
+          orderNo:     order.order_no,
+          riderName:   rider.name,
+          pickupOtp,
+        }),
+      }).catch(() => {})
+    }
+  } catch (err) {
+    console.error('[assignRider]', err.message)
+  }
+}
+
 // GET — customer views their own order detail, OR vendor views their own order
 export async function GET(request, { params }) {
   try {
@@ -43,7 +107,7 @@ export async function GET(request, { params }) {
         id, order_no, order_type, order_source, status, grand_total, gst_total, subtotal,
         payment_method, delivery_address, delivery_lat, delivery_lng,
         buyer_whatsapp, created_at, updated_at, completed_at, cancelled_at,
-        seller_id, buyer_id,
+        seller_id, buyer_id, delivery_otp,
         seller:entities!seller_id(id, name, tpn_gstin, whatsapp_no)
       `)
       .eq('id', id)
@@ -157,22 +221,9 @@ export async function PATCH(request, { params }) {
     const gatewayUrl = process.env.NEXT_PUBLIC_WHATSAPP_GATEWAY_URL || 'http://localhost:3001'
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
-    // On PROCESSING: dispatch rider via logistics-bridge
-    if (newStatus === 'PROCESSING') {
-      fetch(`${process.env.LOGISTICS_BRIDGE_URL || 'http://localhost:3002'}/api/dispatch-delivery`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orderId: id,
-          deliveryProvider: 'toofan',
-          customerLocation: {
-            address: order.delivery_address,
-            lat: order.delivery_lat,
-            lng: order.delivery_lng,
-          },
-          orderDetails: { orderNo: order.order_no, grandTotal: order.grand_total },
-        }),
-      }).catch(() => {})
+    // On PROCESSING or CONFIRMED: auto-assign an available rider
+    if (newStatus === 'PROCESSING' || newStatus === 'CONFIRMED') {
+      await assignRider(serviceClient, id, order, session.user.id)
     }
 
     // On DELIVERED (vendor fallback): send payment link to customer

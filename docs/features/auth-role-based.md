@@ -73,7 +73,7 @@ RLS policies read `auth.jwt() ->> 'entity_id'` and `auth.jwt() ->> 'role'` — n
 | WHOLESALER | STAFF | None | Orders + Inventory | None |
 | RETAILER | OWNER | Full access | Full access | Browse + Order |
 | RETAILER | MANAGER | Full POS | Reports + Inventory | Browse + Order |
-| RETAILER | CASHIER | POS only | None | None |
+| RETAILER | CASHIER | POS only (Orders view, no Purchases/Products/Inventory/Khata/Registers) | None | None |
 
 ### Permission Flags (fine-grained within sub-role)
 Stored in `permissions TEXT[]`. Checked in middleware and UI guards:

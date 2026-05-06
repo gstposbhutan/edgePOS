@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -9,7 +9,6 @@ const METHODS = [
   { key: 'CASH',   label: 'Cash',    num: '2' },
   { key: 'CREDIT', label: 'Credit',  num: '3' },
 ]
-
 const DENOMINATIONS = [10, 50, 100, 500, 1000]
 
 /**
@@ -17,22 +16,34 @@ const DENOMINATIONS = [10, 50, 100, 500, 1000]
  * Keys 1-5 select method. E = exact, R = round. Enter completes.
  */
 export function PaymentModal({ open, grandTotal, onConfirm, onClose }) {
-  const [method,   setMethod]   = useState('CASH')
-  const [received, setReceived] = useState('')
+  const [method,       setMethod]       = useState('CASH')
+  const [received,     setReceived]     = useState('')
+  const [journalNo,    setJournalNo]    = useState('')
+  const journalRef = useRef(null)
 
   useEffect(() => {
     if (open) {
       setMethod('CASH')
       setReceived('')
+      setJournalNo('')
     }
   }, [open])
+
+  // Auto-focus journal input when ONLINE selected
+  useEffect(() => {
+    if (open && method === 'ONLINE') {
+      setTimeout(() => journalRef.current?.focus(), 100)
+    }
+  }, [open, method])
 
   useEffect(() => {
     if (!open) return
 
     function handleKey(e) {
-      // 1-5: select payment method
-      if (/^[1-3]$/.test(e.key) && !e.ctrlKey) {
+      const inInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)
+
+      // 1-3: select payment method (only when no input focused)
+      if (/^[1-3]$/.test(e.key) && !e.ctrlKey && !inInput) {
         const m = METHODS.find(m => m.num === e.key)
         if (m) { setMethod(m.key); e.preventDefault(); return }
       }
@@ -46,22 +57,22 @@ export function PaymentModal({ open, grandTotal, onConfirm, onClose }) {
       }
 
       // E: exact
-      if (e.key === 'e' || e.key === 'E') {
+      if ((e.key === 'e' || e.key === 'E') && !inInput) {
         setReceived(String(grandTotal))
         e.preventDefault()
         return
       }
 
       // R: round to nearest 5
-      if (e.key === 'r' || e.key === 'R') {
+      if ((e.key === 'r' || e.key === 'R') && !inInput) {
         const rounded = Math.ceil(grandTotal / 5) * 5
         setReceived(String(rounded))
         e.preventDefault()
         return
       }
 
-      // Backspace: clear last char from received
-      if (e.key === 'Backspace' && document.activeElement?.tagName !== 'INPUT') {
+      // Backspace: clear last char from received (CASH, no input focused)
+      if (e.key === 'Backspace' && !inInput) {
         setReceived(prev => prev.slice(0, -1))
         e.preventDefault()
         return
@@ -77,7 +88,8 @@ export function PaymentModal({ open, grandTotal, onConfirm, onClose }) {
       // Enter: complete
       if (e.key === 'Enter') {
         const rec = parseFloat(received || '0')
-        if (method !== 'CASH' || rec >= grandTotal) {
+        const journalReady = method !== 'ONLINE' || journalNo.trim().length > 0
+        if (journalReady && (method !== 'CASH' || rec >= grandTotal)) {
           handleConfirm()
           e.preventDefault()
         }
@@ -89,15 +101,21 @@ export function PaymentModal({ open, grandTotal, onConfirm, onClose }) {
 
     document.addEventListener('keydown', handleKey)
     return () => document.removeEventListener('keydown', handleKey)
-  }, [open, method, received, grandTotal])
+  }, [open, method, received, grandTotal, journalNo])
 
   function handleConfirm() {
-    onConfirm({ method, received: parseFloat(received || grandTotal) })
+    onConfirm({
+      method,
+      received: parseFloat(received || grandTotal),
+      journalNo: method === 'ONLINE' ? journalNo.trim() : null,
+    })
   }
 
   const receivedAmt = parseFloat(received || '0')
   const change = receivedAmt - grandTotal
-  const canComplete = method !== 'CASH' || receivedAmt >= grandTotal
+  const canComplete =
+    (method !== 'CASH' || receivedAmt >= grandTotal) &&
+    (method !== 'ONLINE' || journalNo.trim().length > 0)
 
   if (!open) return null
 
@@ -122,8 +140,8 @@ export function PaymentModal({ open, grandTotal, onConfirm, onClose }) {
         <div className="p-5 space-y-5">
           {/* Method selection */}
           <div>
-            <p className="text-xs text-muted-foreground mb-2">Payment Method (1–5)</p>
-            <div className="grid grid-cols-5 gap-2">
+            <p className="text-xs text-muted-foreground mb-2">Payment Method (1–3)</p>
+            <div className="grid grid-cols-3 gap-2">
               {METHODS.map(m => (
                 <button
                   key={m.key}
@@ -140,6 +158,23 @@ export function PaymentModal({ open, grandTotal, onConfirm, onClose }) {
               ))}
             </div>
           </div>
+
+          {/* Online: journal number */}
+          {method === 'ONLINE' && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">Journal Number *</label>
+              <p className="text-xs text-muted-foreground">Enter the reference number from the customer's payment confirmation.</p>
+              <input
+                ref={journalRef}
+                type="text"
+                value={journalNo}
+                onChange={e => setJournalNo(e.target.value)}
+                className="w-full px-3 py-2.5 text-lg font-mono text-center border border-input rounded-lg bg-background outline-none focus:ring-2 focus:ring-ring"
+                placeholder="Enter journal number"
+                autoFocus
+              />
+            </div>
+          )}
 
           {/* Cash: received amount + denominations */}
           {method === 'CASH' && (

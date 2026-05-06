@@ -41,11 +41,15 @@ Three options: **Online**, **Cash**, **Credit** (DB value: `ONLINE`, `CASH`, `CR
 
 | Key | Method | Notes |
 |-----|--------|-------|
-| 1 | Online | Covers mBoB, mPay, RTGS |
+| 1 | Online | Journal number required (entered from customer's payment confirmation) |
 | 2 | Cash | Denomination tiles, change calculation |
 | 3 | Credit | Requires customer WhatsApp OTP verification |
 
-CREDIT triggers `CustomerOtpModal` before completing the order. A khata account is auto-created for new customers. Legacy `MBOB`/`MPAY`/`RTGS` values were migrated to `ONLINE` (migration 064).
+**Online**: when selected, a mandatory journal number input appears. The vendor enters the reference number from the customer's payment confirmation (mBoB, mPay, RTGS). Stored as `payment_ref` on the order. Input auto-focuses when method is selected.
+
+**Credit**: triggers `CustomerOtpModal` before completing the order. A khata account is auto-created for new customers. Legacy `MBOB`/`MPAY`/`RTGS` values were migrated to `ONLINE` (migration 064).
+
+Both POS modes (keyboard and touch) use the same three payment methods. Touch POS shows the journal number input inline in the cart panel when Online is selected.
 
 ---
 

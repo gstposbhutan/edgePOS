@@ -331,10 +331,11 @@ DevTools access is remapped to `Ctrl+Shift+F12` in development mode only.
        ▼
 [Payment Flow]
        │
-       │ Select method (CASH / MBOB / MPAY / RTGS / CREDIT)
+       │ Select method (ONLINE / CASH / CREDIT)
        ▼
-  if CASH ──→ [Cash Denomination Screen]
-  else     ──→ [Awaiting Confirmation]
+  if ONLINE ──→ [Journal Number Entry] ──→ [Awaiting Confirmation]
+  if CASH   ──→ [Cash Denomination Screen]
+  if CREDIT ──→ [Customer OTP Verification]
        │
        │ Payment confirmed
        ▼

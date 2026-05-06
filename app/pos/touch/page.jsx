@@ -13,12 +13,14 @@ import { CameraCanvas }      from "@/components/pos/camera/camera-canvas"
 import { FaceCamera }        from "@/components/pos/camera/face-camera"
 import { FaceConsentModal }  from "@/components/pos/face-consent-modal"
 import { FaceStore }          from "@/lib/vision/face-store"
-import { PaymentScannerModal } from "@/components/pos/payment-scanner-modal"
 import { RestockModal }       from "@/components/pos/restock/restock-modal"
+import { StartShiftModal }    from "@/components/pos/shift/start-shift-modal"
+import { EndShiftModal }      from "@/components/pos/shift/end-shift-modal"
 import { useCart }         from "@/hooks/use-cart"
 import { useProducts }     from "@/hooks/use-products"
 import { useKhata }        from "@/hooks/use-khata"
 import { useOwnerStores }  from "@/hooks/use-owner-stores"
+import { useShift }        from "@/hooks/use-shift"
 import { getUser, getRoleClaims } from "@/lib/auth"
 import { createClient }    from "@/lib/supabase/client"
 
@@ -31,6 +33,7 @@ export default function PosPage() {
   const [subRole,           setSubRole]           = useState('CASHIER')
   const [activeEntityId,    setActiveEntityId]    = useState(null)
   const [paymentMethod,     setPaymentMethod]     = useState(null)
+  const [journalNo,        setJournalNo]         = useState('')
   const [showCustomerModal, setShowCustomerModal] = useState(false)
   const [checkoutLoading,   setCheckoutLoading]   = useState(false)
   const [checkoutError,     setCheckoutError]     = useState(null)
@@ -38,17 +41,15 @@ export default function PosPage() {
   const [cameraActive,      setCameraActive]      = useState(false)
   const [faceActive,        setFaceActive]        = useState(true)
   const [showConsent,       setShowConsent]        = useState(false)
-  const [showPaymentScan,   setShowPaymentScan]   = useState(false)
-  const [ocrVerifyId,       setOcrVerifyId]       = useState(null)
-  const [ocrReferenceNo,    setOcrReferenceNo]    = useState(null)
   const [khataAccount,      setKhataAccount]      = useState(null)
   const [showCreateKhata,   setShowCreateKhata]   = useState(false)
   const [ownerOverride,     setOwnerOverride]     = useState(false)
   const [showRestock,       setShowRestock]       = useState(false)
   const [showCreditOtp,     setShowCreditOtp]     = useState(false)
+  const [showStartShift,    setShowStartShift]    = useState(false)
+  const [showEndShift,      setShowEndShift]      = useState(false)
 
-  // Payment methods that require OCR verification
-  const OCR_REQUIRED_METHODS = ['MBOB', 'MPAY', 'RTGS']
+  const { shift, openShift, closeShift } = useShift()
 
   useEffect(() => {
     async function load() {
@@ -139,6 +140,18 @@ export default function PosPage() {
 
   // ── Checkout flow ──────────────────────────────────────────────────────────
   async function handleCheckout() {
+    // Shift gate: cashiers must have an active shift
+    if (subRole === 'CASHIER' && !shift) {
+      setCheckoutError('Start a shift before processing sales')
+      return
+    }
+
+    // ONLINE: journal number is required
+    if (paymentMethod === 'ONLINE' && !(journalNo || '').trim()) {
+      setCheckoutError('Enter the journal number from customer\'s payment confirmation')
+      return
+    }
+
     if (!customer?.whatsapp && !customer?.buyerHash) {
       setShowCustomerModal(true)
       return
@@ -216,21 +229,7 @@ export default function PosPage() {
       return
     }
 
-    // OCR verification required for digital payment methods
-    if (OCR_REQUIRED_METHODS.includes(paymentMethod) && !ocrVerifyId) {
-      setCheckoutLoading(false)
-      setShowPaymentScan(true)
-      return
-    }
-
     await processCheckout()
-  }
-
-  function handlePaymentVerified(verifyId, referenceNo) {
-    setOcrVerifyId(verifyId)
-    setOcrReferenceNo(referenceNo)
-    // Proceed to checkout now that OCR is done
-    processCheckout({ verifyId, referenceNo })
   }
 
   async function handleRestockComplete() {
@@ -240,13 +239,10 @@ export default function PosPage() {
     if (shortfalls.length === 0) await processCheckout()
   }
 
-  async function processCheckout(ocr = {}) {
+  async function processCheckout() {
     if (!cartId || !paymentMethod || items.length === 0) return
     setCheckoutLoading(true)
     setCheckoutError(null)
-
-    const finalVerifyId    = ocr.verifyId    ?? ocrVerifyId
-    const finalReferenceNo = ocr.referenceNo ?? ocrReferenceNo
 
     try {
       const year      = new Date().getFullYear()
@@ -273,8 +269,7 @@ export default function PosPage() {
           gst_total:         gstTotal,
           grand_total:       grandTotal,
           payment_method:    paymentMethod,
-          payment_ref:       finalReferenceNo ?? null,
-          ocr_verify_id:     finalVerifyId    ?? null,
+          payment_ref:       journalNo?.trim() || null,
           digital_signature: signature,
           cart_id:           cartId,
           created_by:        user?.id,
@@ -296,7 +291,9 @@ export default function PosPage() {
           name:         item.name,
           quantity:     item.quantity,
           unit_price:   item.unit_price,
-          discount:     item.discount ?? 0,
+          discount:       item.discount ?? 0,
+          discount_type:  item.discount_type || 'FLAT',
+          discount_value: item.discount_value ?? 0,
           gst_5:        item.gst_5,
           total:        item.total,
           status:       'ACTIVE',
@@ -322,10 +319,23 @@ export default function PosPage() {
 
       await clearCart()
       setPaymentMethod(null)
+      setJournalNo('')
       setOcrVerifyId(null)
       setOcrReferenceNo(null)
       setKhataAccount(null)
       setOwnerOverride(false)
+
+      // Track shift transaction (fire-and-forget)
+      fetch('/api/shifts/track-transaction', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_id: order.id,
+          transaction_type: 'SALE',
+          payment_method: paymentMethod,
+          amount: grandTotal,
+        }),
+      }).catch(() => {})
 
       // Auto-send receipt via WhatsApp gateway (fire-and-forget)
       if (customer?.whatsapp) {
@@ -406,6 +416,9 @@ export default function PosPage() {
         onRestock={() => setShowRestock(true)}
         ownedStores={ownedStores}
         onSwitchStore={handleSwitchStore}
+        shift={shift}
+        onStartShift={() => setShowStartShift(true)}
+        onEndShift={() => setShowEndShift(true)}
         faceCamera={
           <FaceCamera
             entityId={entity?.id}
@@ -481,7 +494,9 @@ export default function PosPage() {
             onRemoveItem={removeItem}
             onApplyDiscount={applyDiscount}
             onOverridePrice={overridePrice}
-            onSelectPayment={setPaymentMethod}
+            onSelectPayment={(m) => { setPaymentMethod(m); setJournalNo('') }}
+            journalNo={journalNo}
+            onJournalNoChange={setJournalNo}
             onCheckout={handleCheckout}
             checkoutLoading={checkoutLoading}
             carts={carts}
@@ -492,14 +507,6 @@ export default function PosPage() {
           />
         </div>
       </div>
-
-      <PaymentScannerModal
-        open={showPaymentScan}
-        paymentMethod={paymentMethod}
-        expectedAmount={grandTotal}
-        onVerified={handlePaymentVerified}
-        onClose={() => setShowPaymentScan(false)}
-      />
 
       <FaceConsentModal
         open={showConsent}
@@ -543,6 +550,21 @@ export default function PosPage() {
         open={showRestock}
         onClose={() => setShowRestock(false)}
       />
+
+      {showStartShift && (
+        <StartShiftModal
+          onOpen={openShift}
+          onClose={() => setShowStartShift(false)}
+        />
+      )}
+
+      {showEndShift && shift && (
+        <EndShiftModal
+          shift={shift}
+          onClose={() => setShowEndShift(false)}
+          onEndShift={closeShift}
+        />
+      )}
     </>
   )
 }

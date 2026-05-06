@@ -57,7 +57,7 @@ export function useOrders(entityId) {
     const resolvedEntityId = eidOverride ?? entityId
     const [{ data: order }, { data: items }, { data: timeline }, { data: refunds }, { data: replacements }] =
       await Promise.all([
-        supabase.from('orders').select('*').eq('id', orderId).single(),
+        supabase.from('orders').select('*, sales_order:orders!sales_order_id(id, order_no)').eq('id', orderId).single(),
         supabase.from('order_items').select('*, batch:batch_id(id, batch_number, expires_at, mrp, selling_price)').eq('order_id', orderId).order('created_at'),
         supabase.from('order_status_log').select('*').eq('order_id', orderId).order('created_at'),
         supabase.from('refunds').select('*').eq('order_id', orderId).order('created_at'),

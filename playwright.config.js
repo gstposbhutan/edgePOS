@@ -6,6 +6,7 @@ module.exports = defineConfig({
   expect: { timeout: 15000 },
   fullyParallel: false,
   retries: process.env.CI ? 2 : 0,
+  globalSetup: require.resolve('./e2e/setup/global-setup'),
   reporter: [['html', { open: 'never' }], ['list']],
   use: {
     baseURL: process.env.BASE_URL || 'http://localhost:3000',
@@ -13,7 +14,7 @@ module.exports = defineConfig({
     timezoneId: 'Asia/Thimphu',
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
-    video: 'retain-on-failure',
+    video: 'on',
   },
   projects: [
     {
@@ -22,19 +23,19 @@ module.exports = defineConfig({
     },
     {
       name: 'retailer',
-      testMatch: /v[1-8][a-z]?-.*\.spec\.js|c[1-5]-.*\.spec\.js|system-.*\.spec\.js/,
+      testMatch: /v[1-8][a-z]?-.*\.spec\.js|c[1-5]-.*\.spec\.js|system-.*\.spec\.js|f[1-5]-.*\.spec\.js/,
       use: { ...devices['Desktop Chrome'], storageState: 'e2e/storage/retailer-auth.json' },
       dependencies: ['auth-setup'],
     },
     {
       name: 'manager',
-      testMatch: /v[2-8][a-z]?-.*\.spec\.js|c[4-5]-.*\.spec\.js|system-.*\.spec\.js/,
+      testMatch: /v[2-8][a-z]?-.*\.spec\.js|c[4-5]-.*\.spec\.js|system-.*\.spec\.js|f[2-5]-.*\.spec\.js/,
       use: { ...devices['Desktop Chrome'], storageState: 'e2e/storage/manager-auth.json' },
       dependencies: ['auth-setup'],
     },
     {
       name: 'owner',
-      testMatch: /v[2-8][a-z]?-.*\.spec\.js|c[4-5]-.*\.spec\.js|system-.*\.spec\.js/,
+      testMatch: /v[2-8][a-z]?-.*\.spec\.js|c[4-5]-.*\.spec\.js|system-.*\.spec\.js|f[2-5]-.*\.spec\.js/,
       use: { ...devices['Desktop Chrome'], storageState: 'e2e/storage/owner-auth.json' },
       dependencies: ['auth-setup'],
     },

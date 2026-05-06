@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { ArrowLeft, XCircle, RefreshCw, RotateCcw, Loader2, Receipt, MessageCircle, AlertTriangle, User, Phone, CreditCard, Printer, ChevronDown, ChevronUp, CheckCircle, Plus, Minus, X } from "lucide-react"
+import { ArrowLeft, XCircle, RefreshCw, RotateCcw, Loader2, Receipt, MessageCircle, AlertTriangle, User, Phone, CreditCard, Printer, ChevronDown, ChevronUp, CheckCircle, Plus, Minus, X, KeyRound, Truck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { OrderStatusBadge } from "@/components/pos/orders/order-status-badge"
@@ -44,6 +44,11 @@ export default function OrderDetailPage() {
   const [invoicing,     setInvoicing]    = useState(false)
   const [invoiceResult, setInvoiceResult] = useState(null)
   const [selectedLine,  setSelectedLine] = useState(0)
+  // Delivery fee confirmation
+  const [feeReceiptUrl,  setFeeReceiptUrl]  = useState('')
+  const [feeConfirming,  setFeeConfirming]  = useState(false)
+  const [feeConfirmErr,  setFeeConfirmErr]  = useState(null)
+  const [feeConfirmed,   setFeeConfirmed]   = useState(false)
 
   const supabase = createClient()
   const { fetchOrderDetail, cancelOrder, requestRefund, approveRefund } = useOrders(entityId)
@@ -284,8 +289,90 @@ export default function OrderDetailPage() {
             <p className="text-xs text-muted-foreground">Payment</p>
             <p className="text-sm font-semibold text-foreground">{order.payment_method}</p>
             <p className="text-xs text-muted-foreground">{order.buyer_phone ?? order.buyer_whatsapp ?? 'Face-ID'}</p>
+            {order.payment_ref && (
+              <p className="text-xs text-muted-foreground">
+                Journal: <span className="font-mono font-medium text-foreground">{order.payment_ref}</span>
+              </p>
+            )}
           </div>
         </div>
+
+        {/* Pickup OTP — vendor gives this to rider at collection */}
+        {order.order_type === 'MARKETPLACE' && order.pickup_otp && ['CONFIRMED', 'PROCESSING'].includes(order.status) && (
+          <div className="p-3 rounded-lg border border-gold/30 bg-gold/5 space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+              <KeyRound className="h-3.5 w-3.5" /> Pickup OTP
+            </p>
+            <p className="text-xs text-muted-foreground">Give this code to the rider when they collect the order.</p>
+            <p className="text-2xl font-mono font-bold text-gold tracking-[0.3em] text-center py-2">{order.pickup_otp}</p>
+          </div>
+        )}
+
+        {/* Delivery fee — shown for MARKETPLACE orders after delivery */}
+        {order.order_type === 'MARKETPLACE' && ['DELIVERED', 'COMPLETED'].includes(order.status) && (
+          <div className="p-3 rounded-lg border border-border bg-card space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+              <Minus className="h-3.5 w-3.5" /> Delivery Fee
+            </p>
+            {order.delivery_fee ? (
+              <>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Rider charged</span>
+                  <span className="font-semibold">Nu. {parseFloat(order.delivery_fee).toFixed(2)}</span>
+                </div>
+                {order.delivery_fee_paid ? (
+                  <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-500/10 px-2 py-1.5 rounded">
+                    <CheckCircle className="h-3.5 w-3.5 shrink-0" /> Payment confirmed
+                    {order.delivery_fee_receipt_url && (
+                      <a href={order.delivery_fee_receipt_url} target="_blank" rel="noreferrer"
+                        className="ml-auto text-primary hover:underline">View receipt</a>
+                    )}
+                  </div>
+                ) : feeConfirmed ? (
+                  <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-500/10 px-2 py-1.5 rounded">
+                    <CheckCircle className="h-3.5 w-3.5 shrink-0" /> Payment confirmed
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground">Upload a screenshot of the payment receipt to confirm the rider was paid.</p>
+                    <div className="flex gap-2">
+                      <input
+                        type="url"
+                        value={feeReceiptUrl}
+                        onChange={e => setFeeReceiptUrl(e.target.value)}
+                        placeholder="Paste receipt image URL"
+                        className="flex-1 h-8 px-2 text-xs border border-input rounded bg-background"
+                      />
+                      <Button size="sm" className="h-8 px-3 text-xs"
+                        disabled={feeConfirming || !feeReceiptUrl.trim()}
+                        onClick={async () => {
+                          setFeeConfirming(true); setFeeConfirmErr(null)
+                          try {
+                            const { data: { session } } = await supabase.auth.getSession()
+                            const res = await fetch(`/api/shop/orders/${order.id}/confirm-delivery-fee`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json', authorization: `Bearer ${session?.access_token}` },
+                              body: JSON.stringify({ receipt_url: feeReceiptUrl }),
+                            })
+                            const data = await res.json()
+                            if (!res.ok) { setFeeConfirmErr(data.error); return }
+                            setFeeConfirmed(true)
+                            await loadDetail(entityId)
+                          } catch (err) { setFeeConfirmErr(err.message) }
+                          finally { setFeeConfirming(false) }
+                        }}>
+                        {feeConfirming ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Confirm'}
+                      </Button>
+                    </div>
+                    {feeConfirmErr && <p className="text-xs text-tibetan">{feeConfirmErr}</p>}
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="text-xs text-muted-foreground">Awaiting rider to submit delivery cost.</p>
+            )}
+          </div>
+        )}
 
         {/* Customer details — shown for all CREDIT orders */}
         {order.payment_method === 'CREDIT' && (
@@ -374,7 +461,13 @@ export default function OrderDetailPage() {
                   <p className="text-xs font-medium text-foreground truncate">{item.name}</p>
                   <p className="text-[10px] text-muted-foreground">
                     {item.quantity} × Nu. {parseFloat(item.unit_price).toFixed(2)}
-                    {parseFloat(item.discount) > 0 && ` (−Nu.${parseFloat(item.discount).toFixed(2)} disc.)`}
+                    {parseFloat(item.discount) > 0 && (
+                      <span className="text-emerald-600">
+                        {item.discount_type === 'PERCENTAGE'
+                          ? ` (−${item.discount_value}% = Nu.${parseFloat(item.discount).toFixed(2)} disc.)`
+                          : ` (−Nu.${parseFloat(item.discount).toFixed(2)} disc.)`}
+                      </span>
+                    )}
                   </p>
                   {item.batch?.batch_number && (
                     <p className="text-[10px] text-blue-600">
@@ -485,7 +578,7 @@ export default function OrderDetailPage() {
             </div>
             <div className="mb-3 space-y-0.5">
               <p><strong>Invoice No:</strong> {order?.order_no}</p>
-              {order?.sales_order_id && <p><strong>Sales Order:</strong> {order.sales_order_id?.slice(0, 8)}...</p>}
+              {order?.sales_order_id && <p><strong>Sales Order:</strong> {order.sales_order?.order_no || order.sales_order_id}</p>}
               <p><strong>Date:</strong> {new Date(order?.created_at).toLocaleDateString()}</p>
               <p><strong>Customer:</strong> {detail?.customerName || order?.buyer_whatsapp}</p>
               <p><strong>Payment:</strong> {order?.payment_method}</p>
@@ -629,6 +722,9 @@ function SalesInvoiceOverlay({
           </div>
           <Button variant="outline" size="sm" onClick={handlePrint} className="gap-1.5">
             <Printer className="h-4 w-4" /> Download PDF
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => router.push(`/pos/orders/${inv.id}`)} className="gap-1.5">
+            <Receipt className="h-4 w-4" /> View Invoice
           </Button>
           <Button size="sm" onClick={onClose} className="gap-1.5">
             <ArrowLeft className="h-4 w-4" /> Back to Order

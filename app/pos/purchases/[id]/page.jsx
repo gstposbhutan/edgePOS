@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ShortcutBar } from "@/components/pos/keyboard/shortcut-bar"
 import { usePurchases } from "@/hooks/use-purchases"
+import { getUser, getRoleClaims } from "@/lib/auth"
 
 const STATUS_COLORS = {
   DRAFT:               'bg-muted text-muted-foreground',
@@ -32,6 +33,14 @@ export default function PurchaseDetailPage() {
   const [suppRef,       setSuppRef]       = useState('')
   const [selectedLine,  setSelectedLine]  = useState(0)
   const printRef = useRef(null)
+
+  useEffect(() => {
+    getUser().then(user => {
+      if (!user) return router.push('/login')
+      const { subRole } = getRoleClaims(user)
+      if (subRole === 'CASHIER') return router.push('/pos')
+    })
+  }, [])
 
   useEffect(() => { if (params.id) fetchDetail(params.id) }, [params.id])
 
@@ -159,6 +168,7 @@ export default function PurchaseDetailPage() {
   }
 
   const { order, items, timeline } = detail
+  const relatedInvoices = detail?.relatedInvoices || []
   const isPO      = order.order_type === 'PURCHASE_ORDER'
   const isInvoice = order.order_type === 'PURCHASE_INVOICE'
   const supplierName = order.seller?.name || order.supplier_name || 'Unknown Supplier'
@@ -277,6 +287,30 @@ export default function PurchaseDetailPage() {
             <p className="text-base font-bold text-primary">Total: Nu. {parseFloat(order.grand_total).toFixed(2)}</p>
           </div>
         </div>
+
+        {/* Related invoices */}
+        {isPO && relatedInvoices.length > 0 && (
+          <div className="border border-border rounded-xl overflow-hidden">
+            <div className="px-4 py-2.5 bg-muted/20 border-b border-border">
+              <p className="text-sm font-semibold">Related Invoices ({relatedInvoices.length})</p>
+            </div>
+            <div className="divide-y divide-border">
+              {relatedInvoices.map(inv => (
+                <button key={inv.id} onClick={() => router.push(`/pos/purchases/${inv.id}`)}
+                  className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-muted/30 transition-colors">
+                  <div>
+                    <p className="text-sm font-mono font-medium">{inv.order_no}</p>
+                    <p className="text-xs text-muted-foreground">{new Date(inv.created_at).toLocaleDateString()}</p>
+                  </div>
+                  <div className="text-right">
+                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${STATUS_COLORS[inv.status] || 'bg-muted'}`}>{inv.status}</span>
+                    <p className="text-sm font-semibold text-primary mt-0.5">Nu. {parseFloat(inv.grand_total).toFixed(2)}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Fully received banner */}
         {isPO && order.status === 'CONFIRMED' && (

@@ -7,11 +7,9 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 
 const PAYMENT_METHODS = [
-  { id: 'MBOB',   label: 'mBoB',   activeClass: 'bg-blue-600 text-white border-transparent' },
-  { id: 'MPAY',   label: 'mPay',   activeClass: 'bg-emerald-600 text-white border-transparent' },
-  { id: 'CASH',   label: 'Cash',   activeClass: 'bg-amber-600 text-white border-transparent' },
-  { id: 'RTGS',   label: 'RTGS',   activeClass: 'bg-purple-600 text-white border-transparent' },
-  { id: 'CREDIT', label: 'Credit', activeClass: 'bg-red-500 text-white border-transparent' },
+  { id: 'ONLINE', label: 'Online',  activeClass: 'bg-blue-600 text-white border-transparent' },
+  { id: 'CASH',   label: 'Cash',    activeClass: 'bg-amber-600 text-white border-transparent' },
+  { id: 'CREDIT', label: 'Credit',  activeClass: 'bg-red-500 text-white border-transparent' },
 ]
 
 /**
@@ -31,6 +29,8 @@ const PAYMENT_METHODS = [
  *   onApplyDiscount: (id, amount) => void,
  *   onOverridePrice: (id, price) => void,
  *   onSelectPayment: (method) => void,
+ *   journalNo: string,
+ *   onJournalNoChange: (value: string) => void,
  *   onCheckout: () => void,
  *   checkoutLoading: boolean,
  * }} props
@@ -39,12 +39,12 @@ export function CartPanel({
   items, subtotal, discountTotal, taxableSubtotal, gstTotal, grandTotal,
   customer, paymentMethod, userSubRole = 'CASHIER', khataAccount,
   onUpdateQty, onRemoveItem, onApplyDiscount, onOverridePrice,
-  onSelectPayment, onCheckout, checkoutLoading,
+  onSelectPayment, journalNo, onJournalNoChange, onCheckout, checkoutLoading,
   // Multi-cart props
   carts = [], activeIndex = 0, onHoldCart, onSwitchCart, onCancelCart,
 }) {
   const hasItems    = items.length > 0
-  const canCheckout = hasItems && !!paymentMethod
+  const canCheckout = hasItems && !!paymentMethod && (paymentMethod !== 'ONLINE' || (journalNo || '').trim().length > 0)
   const canDiscount = ['MANAGER', 'OWNER', 'ADMIN'].includes(userSubRole)
   const multiCart   = carts.length > 1 || hasItems
 
@@ -172,6 +172,21 @@ export function CartPanel({
             </div>
           </div>
 
+          {/* Online: journal number */}
+          {paymentMethod === 'ONLINE' && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-muted-foreground">Journal Number *</p>
+              <p className="text-[10px] text-muted-foreground">Enter the reference number from the customer's payment confirmation.</p>
+              <input
+                type="text"
+                value={journalNo || ''}
+                onChange={e => onJournalNoChange?.(e.target.value)}
+                className="w-full px-3 py-2 text-sm font-mono border border-input rounded-lg bg-background outline-none focus:ring-2 focus:ring-ring"
+                placeholder="Enter journal number"
+              />
+            </div>
+          )}
+
           {/* Khata credit info */}
           {paymentMethod === 'CREDIT' && (
             <div className="p-2 rounded-lg bg-card border border-border text-xs space-y-1">
@@ -242,6 +257,7 @@ const PKG_TYPE_COLORS = {
 function CartItem({ item, canDiscount, onUpdateQty, onRemove, onApplyDiscount, onOverridePrice }) {
   const [editMode,        setEditMode]        = useState(null)
   const [inputValue,      setInputValue]      = useState('')
+  const [discountType,    setDiscountType]    = useState('FLAT')
   const [showComponents,  setShowComponents]  = useState(false)
 
   const unitPrice    = parseFloat(item.unit_price)
@@ -255,14 +271,19 @@ function CartItem({ item, canDiscount, onUpdateQty, onRemove, onApplyDiscount, o
   function handleEditConfirm() {
     const val = parseFloat(inputValue)
     if (isNaN(val) || val < 0) { setEditMode(null); return }
-    if (editMode === 'discount') onApplyDiscount(val)
+    if (editMode === 'discount') onApplyDiscount({ type: discountType, value: val })
     if (editMode === 'price')    onOverridePrice(val)
     setEditMode(null)
     setInputValue('')
   }
 
   function openEdit(mode) {
-    setInputValue(mode === 'discount' ? String(discount) : String(unitPrice))
+    if (mode === 'discount') {
+      setDiscountType(item.discount_type || 'FLAT')
+      setInputValue(item.discount_value > 0 ? String(item.discount_value) : '0')
+    } else {
+      setInputValue(String(unitPrice))
+    }
     setEditMode(mode)
   }
 
@@ -285,7 +306,9 @@ function CartItem({ item, canDiscount, onUpdateQty, onRemove, onApplyDiscount, o
             </span>
             {hasDiscount && (
               <Badge className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 text-[10px] px-1 py-0">
-                −Nu.{discount.toFixed(2)} off
+                {item.discount_type === 'PERCENTAGE'
+                  ? `−${item.discount_value}%`
+                  : `−Nu.${discount.toFixed(2)}`}
               </Badge>
             )}
             {/* Toggle component breakdown for packages */}
@@ -306,26 +329,46 @@ function CartItem({ item, canDiscount, onUpdateQty, onRemove, onApplyDiscount, o
 
       {/* Inline edit row */}
       {editMode && (
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs text-muted-foreground shrink-0">
-            {editMode === 'discount' ? 'Discount (Nu):' : 'New price (Nu):'}
-          </span>
-          <Input
-            type="number"
-            min="0"
-            step="0.01"
-            value={inputValue}
-            onChange={e => setInputValue(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') handleEditConfirm(); if (e.key === 'Escape') setEditMode(null) }}
-            className="h-6 text-xs px-2 flex-1"
-            autoFocus
-          />
-          <button onClick={handleEditConfirm} className="text-emerald-600 hover:text-emerald-700">
-            <span className="text-xs font-medium">OK</span>
-          </button>
-          <button onClick={() => setEditMode(null)} className="text-muted-foreground hover:text-foreground">
-            <X className="h-3.5 w-3.5" />
-          </button>
+        <div className="flex flex-col gap-1.5">
+          {editMode === 'discount' && (
+            <div className="flex gap-1">
+              <button
+                onClick={() => { setDiscountType('FLAT'); setInputValue('0') }}
+                className={`flex-1 text-[10px] px-2 py-1 rounded font-medium transition-colors ${
+                  discountType === 'FLAT' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+                }`}
+              >Flat (Nu.)</button>
+              <button
+                onClick={() => { setDiscountType('PERCENTAGE'); setInputValue('0') }}
+                className={`flex-1 text-[10px] px-2 py-1 rounded font-medium transition-colors ${
+                  discountType === 'PERCENTAGE' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+                }`}
+              >Percent (%)</button>
+            </div>
+          )}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground shrink-0">
+              {editMode === 'discount'
+                ? (discountType === 'FLAT' ? 'Discount (Nu):' : 'Discount (%):')
+                : 'New price (Nu):'}
+            </span>
+            <Input
+              type="number"
+              min="0"
+              step={editMode === 'discount' && discountType === 'PERCENTAGE' ? '1' : '0.01'}
+              value={inputValue}
+              onChange={e => setInputValue(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleEditConfirm(); if (e.key === 'Escape') setEditMode(null) }}
+              className="h-6 text-xs px-2 flex-1"
+              autoFocus
+            />
+            <button onClick={handleEditConfirm} className="text-emerald-600 hover:text-emerald-700">
+              <span className="text-xs font-medium">OK</span>
+            </button>
+            <button onClick={() => setEditMode(null)} className="text-muted-foreground hover:text-foreground">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
       )}
 

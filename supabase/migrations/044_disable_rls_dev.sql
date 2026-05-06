@@ -13,8 +13,8 @@ ALTER TABLE face_profiles DISABLE ROW LEVEL SECURITY;
 ALTER TABLE khata_accounts DISABLE ROW LEVEL SECURITY;
 ALTER TABLE khata_transactions DISABLE ROW LEVEL SECURITY;
 ALTER TABLE khata_repayments DISABLE ROW LEVEL SECURITY;
-ALTER TABLE owner_stores DISABLE ROW LEVEL SECURITY;
-ALTER TABLE riders DISABLE ROW LEVEL SECURITY;
+-- Tables created in later migrations — RLS disabled in their own migrations:
+-- owner_stores (050), riders (047), wholesale_orders
 -- ALTER TABLE wholesale_orders DISABLE ROW LEVEL SECURITY; -- May not exist yet
 
 -- Note: These tables will be re-enabled in production
