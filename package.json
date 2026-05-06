@@ -21,6 +21,7 @@
     "test:e2e:v7": "playwright test e2e/specs/v7-stock-alerts",
     "test:e2e:consumer": "playwright test e2e/specs/c*",
     "test:e2e:system": "playwright test e2e/specs/system-*",
+    "test:e2e:pocketbase": "playwright test --project=pocketbase",
     "docker:build": "docker compose build",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down"
@@ -49,7 +50,7 @@
     "zhipuai": "^2.0.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.52.0",
+    "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
