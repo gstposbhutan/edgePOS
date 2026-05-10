@@ -10,26 +10,49 @@
 
 ---
 
-## 🏗️ MONOREPO ARCHITECTURE
+## MONOREPO ARCHITECTURE
 
 This project uses Turborepo for efficient code sharing between high-performance POS terminal and cloud-based SaaS management hub.
 
 ```
-/nexus-bhutan
-├── /apps
-│   ├── /pos-terminal      # Next.js PWA: 4K Camera + YOLO26 Engine (GPU accelerated) [CURRENT DIRECTORY]
-│   ├── /admin-hub         # React-based SaaS for Wholesalers & Retailers (Inventory, Analytics, Credit)
-│   └── /marketplace       # Next.js Consumer Portal: "Amazon-style" local discovery and ordering
-├── /packages
-│   ├── /database          # Shared Prisma/Drizzle schemas, Supabase Client, and Migration scripts
-│   ├── /ai-core           # YOLO26 ONNX weights, Face-ID vector utils, and Gemini Vision prompts
-│   ├── /accounting        # 2026 GST Engine: ITC tracking, Tax reconciliation, and PDF generation
-│   ├── /shared-utils      # Common TypeScript types, validation logic, and currency formatters
-│   └── /ui                # Design System: Custom Shadcn components with Royal Bhutan aesthetic
-├── /services
-│   ├── /whatsapp-gateway  # Meta Cloud API Node.js microservice for PDF delivery and alerts
-│   ├── /sync-worker       # PouchDB-to-Supabase background sync for offline-resilient operations
-│   └── /logistics-bridge  # Webhook handlers for Toofan and Rider app integrations
+/edgePOS
+├── /web                          # Cloud SaaS platform (Next.js + Supabase)
+│   ├── /app                      # Next.js App Router pages and API routes
+│   ├── /components               # React components (ui/, pos/, admin/, shop/, rider/)
+│   ├── /hooks                    # Custom React hooks
+│   ├── /lib                      # Supabase clients, vision engine, utilities
+│   ├── /e2e                      # Playwright end-to-end tests
+│   ├── /apps
+│   │   ├── /admin-hub            # React-based SaaS for Wholesalers & Retailers
+│   │   └── /marketplace          # Next.js Consumer Portal
+│   ├── /packages
+│   │   ├── /database             # Shared Prisma/Drizzle schemas, Supabase Client
+│   │   ├── /ai-core              # YOLO26 ONNX weights, Face-ID vector utils
+│   │   ├── /accounting           # 2026 GST Engine: ITC tracking, PDF generation
+│   │   ├── /shared-utils         # Common TypeScript types, validation logic
+│   │   └── /ui                   # Design System: Shadcn + Royal Bhutan aesthetic
+│   ├── /services
+│   │   ├── /whatsapp-gateway     # Meta Cloud API microservice
+│   │   ├── /sync-worker          # PouchDB-to-Supabase background sync
+│   │   └── /logistics-bridge     # Webhook handlers for delivery integrations
+│   ├── /prisma                   # Prisma schema
+│   ├── /supabase                 # Supabase migrations and RLS policies
+│   ├── /scripts                  # Utility and database scripts
+│   ├── /docs                     # Project documentation
+│   └── proxy.js                  # Next.js 16 middleware (auth, role routing)
+│
+├── /desktop                      # Offline POS Terminal (Electron + PocketBase)
+│   ├── /app                      # Next.js App Router (touch POS, offline-first)
+│   ├── /components               # Desktop-specific React components
+│   ├── /hooks                    # Desktop-specific React hooks
+│   ├── /lib                      # PocketBase client, offline sync, vision engine
+│   ├── /electron                 # Electron shell configuration
+│   ├── /pb                       # PocketBase embedded database
+│   └── package.json              # Electron + PocketBase dependencies
+│
+├── turbo.json                    # Turborepo pipeline configuration
+├── CLAUDE.md                     # This file
+└── README.md                     # Setup and overview
 ```
 
 ---
@@ -47,7 +70,7 @@ Represents every participant in the supply chain.
 - `tpn_gstin`: String (Unique) - Bhutanese Taxpayer Number for GST 2026 compliance
 - `whatsapp_no`: String (E.164 format) - Primary channel for all system communications
 - `credit_limit`: Decimal - Managed by Wholesalers for their Retailer network
-- ~~`parent_entity_id`~~: **Removed** — replaced by `retailer_wholesalers` junction table. Retailers can have multiple Wholesaler relationships per category. See `docs/plan/features/distributor-role.md`.
+- ~~`parent_entity_id`~~: **Removed** — replaced by `retailer_wholesalers` junction table. Retailers can have multiple Wholesaler relationships per category. See `web/docs/features/distributor-role.md`.
 
 ### products (Central Brain Vector Library)
 Shared repository for product identification across Bhutan.
@@ -415,3 +438,8 @@ module.exports = {
 **Architecture Version**: 1.0  
 **Status**: Foundation Phase - UI Framework Setup  
 **Next Milestone**: Shadcn/UI Component Library Integration
+
+
+# IMPORTANT: 
+- **Be Anonymous**, The commit message MUST sound like a human developer wrote it. 
+- **DO NOT** mention "Claude," "AI," "LLM," "assisted by," or any similar terms.
