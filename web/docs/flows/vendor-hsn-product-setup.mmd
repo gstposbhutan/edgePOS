@@ -1,0 +1,32 @@
+flowchart TD
+    V([Vendor / Retailer]) --> PROD_PAGE["Products page\n/pos/products"]
+    PROD_PAGE --> ADD["Click + Add Product"]
+    ADD --> FORM["EntityProductForm\nopens"]
+
+    FORM --> HSN_INPUT["HsnCodeSelector\nType HSN code or keyword"]
+    HSN_INPUT -->|debounce 300ms| HSN_API["GET /api/hsn?q=..."]
+    HSN_API --> HSN_MASTER[("hsn_master\ntable")]
+    HSN_MASTER --> DROPDOWN["Dropdown results\ncode + description + category"]
+
+    DROPDOWN -->|select code| HSN_SELECTED["HSN code stored\nin form state"]
+    HSN_SELECTED --> CATEGORY_DISPLAY["Category path shown:\nChapter → Heading → Category"]
+    HSN_SELECTED --> TAX_DISPLAY["Tax summary:\nCD: X% + ST: 5% + GT: Y%"]
+
+    HSN_SELECTED --> SPEC_LOAD["EntityProductSpecifications\nfetches properties"]
+    SPEC_LOAD --> PROPS_API["GET /api/admin/category-properties\n?hsn_code=..."]
+    PROPS_API --> GET_HSN_PROPS[("get_hsn_properties()\nDB function\nMerges chapter + heading + exact matches")]
+    GET_HSN_PROPS --> SPEC_FIELDS["Dynamic specification fields\nrendered per data_type"]
+
+    SPEC_FIELDS --> FILL["Vendor fills:\n- text_single / text_multi\n- number\n- unit (value + unit selector)\n- datetime (date picker)"]
+
+    FORM --> STD_FIELDS["Standard fields:\nSKU, pricing, stock,\nmanufacturer, batch, expiry"]
+    STD_FIELDS --> SAVE["Submit form"]
+    FILL --> SAVE
+
+    SAVE --> PRODUCT_API["POST /api entity-products"]
+    PRODUCT_API --> ENTITY_PROD[("entity_products\nwith hsn_code")]
+    ENTITY_PROD --> TRIGGER["DB trigger fires on hsn_code\nSets hsn_master_id\nCopies category + subcategory"]
+    PRODUCT_API --> SPEC_SAVE["POST /api/admin/entity-products/[id]/specifications\nUpserts all spec values"]
+
+    TRIGGER --> DONE["Product saved\nwith HSN-inherited category"]
+    SPEC_SAVE --> DONE

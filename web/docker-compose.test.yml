@@ -1,0 +1,23 @@
+services:
+  edgepos-web:
+    env_file: .env.test
+    environment:
+      - NEXT_PUBLIC_SUPABASE_URL=http://supabase-db:5432
+
+  whatsapp-gateway:
+    env_file: ./services/whatsapp-gateway/.env.test
+
+  e2e-runner:
+    build:
+      context: .
+      dockerfile: e2e/Dockerfile
+    depends_on:
+      - edgepos-web
+      - whatsapp-gateway
+      - logistics-bridge
+    environment:
+      - BASE_URL=http://edgepos-web:3000
+      - WHATSAPP_GATEWAY_URL=http://whatsapp-gateway:3001
+    volumes:
+      - ./e2e/test-results:/app/e2e/test-results
+      - ./e2e/storage:/app/e2e/storage

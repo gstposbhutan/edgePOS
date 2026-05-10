@@ -1,0 +1,115 @@
+// NEXUS BHUTAN - Prisma Schema Configuration
+// GST 2026 Compliant Multi-Tenant Supply Chain Database
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Multi-tenant Foundation - Every participant in the supply chain
+model Entity {
+  id             String    @id @default(uuid())
+  name           String
+  role           String    // DISTRIBUTOR, WHOLESALER, RETAILER
+  tpnGstin       String    @unique // Bhutanese Taxpayer Number
+  whatsappNo     String    // E.164 format
+  creditLimit    Decimal   @default(0)
+  parentEntityId String?   @map("parent_entity_id")
+  parent         Entity?   @relation("EntityHierarchy", fields: [parentEntityId], references: [id])
+  children       Entity[]  @relation("EntityHierarchy")
+  soldTransactions Transaction[] @relation("TransactionSeller")
+  auditActions    AuditLog[] @relation("AuditLogActor")
+  inventoryMovements InventoryMovement[] @relation("InventoryMovementEntity")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@index([tpnGstin], map: "entities_tpn_idx")
+  @@index([parentEntityId], map: "entities_parent_idx")
+  @@map("entities")
+}
+
+// Central Brain Vector Library - Shared repository for product identification
+model Product {
+  id             String    @id @default(uuid())
+  name           String
+  hsnCode        String    @map("hsn_code") // Required for GST categorization
+  imageEmbedding String?   @map("image_embedding") // Visual SKU matching (stored as JSON)
+  currentStock   Int       @default(0) @map("current_stock")
+  wholesalePrice Decimal   @default(0) @map("wholesale_price")
+  mrp            Decimal   @default(0) // 2026 regulated maximum retail price
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  inventoryMovements InventoryMovement[]
+
+  @@index([hsnCode], map: "products_hsn_idx")
+  @@index([currentStock], map: "products_stock_idx")
+  @@map("products")
+}
+
+// Accounting Ledger - Tamper-proof record of every sale
+model Transaction {
+  id            String    @id @default(uuid())
+  invNo         String    @unique @map("inv_no") // Formatted as SHOP-YYYY-SERIAL
+  journalNo     BigInt    @map("journal_no") // Sequential double-entry
+  sellerId      String    @map("seller_id")
+  seller        Entity    @relation("TransactionSeller", fields: [sellerId], references: [id])
+  buyerHash     String?   @map("buyer_hash") // Anonymized Face-ID embedding (stored as JSON)
+  items         Json      // Detailed snapshot: [{sku, name, qty, rate, discount, gst_5, total}]
+  subtotal      Decimal   @default(0)
+  gstTotal      Decimal   @default(0) @map("gst_total") // Strict 5% flat calculation
+  grandTotal    Decimal   @default(0) @map("grand_total")
+  paymentMethod String    @map("payment_method") // MBOB, MPAY, RTGS, CASH, CREDIT
+  ocrVerifyId   String?   @map("ocr_verify_id") // Gemini's payment verification ID
+  whatsappStatus String    @default("PENDING") @map("whatsapp_status") // SENT, DELIVERED, READ
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@index([invNo], map: "transactions_inv_idx")
+  @@index([sellerId], map: "transactions_seller_idx")
+  @@index([createdAt], map: "transactions_created_idx")
+  @@map("transactions")
+}
+
+// Compliance + fraud detection tracking
+model AuditLog {
+  id         String   @id @default(uuid())
+  tableName  String   @map("table_name")
+  recordId   String   @map("record_id")
+  operation  String   // INSERT, UPDATE, DELETE
+  oldValues  Json?    @map("old_values")
+  newValues  Json?    @map("new_values")
+  actorId    String?  @map("actor_id")
+  actor      Entity?  @relation("AuditLogActor", fields: [actorId], references: [id])
+  timestamp  DateTime @default(now())
+
+  @@index([tableName], map: "audit_logs_table_idx")
+  @@index([recordId], map: "audit_logs_record_idx")
+  @@index([actorId], map: "audit_logs_actor_idx")
+  @@index([timestamp], map: "audit_logs_timestamp_idx")
+  @@map("audit_logs")
+}
+
+// Stock flow tracking for reconciliation
+model InventoryMovement {
+  id           String   @id @default(uuid())
+  productId    String   @map("product_id")
+  product      Product  @relation(fields: [productId], references: [id])
+  entityId     String   @map("entity_id")
+  entity       Entity   @relation("InventoryMovementEntity", fields: [entityId], references: [id])
+  movementType String   @map("movement_type") // SALE, RESTOCK, TRANSFER, LOSS, DAMAGED
+  quantity     Int
+  referenceId  String?  @map("reference_id") // transaction_id or transfer_id
+  timestamp    DateTime @default(now())
+  notes        String?
+
+  @@index([productId], map: "inventory_movements_product_idx")
+  @@index([entityId], map: "inventory_movements_entity_idx")
+  @@index([movementType], map: "inventory_movements_type_idx")
+  @@index([timestamp], map: "inventory_movements_timestamp_idx")
+  @@map("inventory_movements")
+}

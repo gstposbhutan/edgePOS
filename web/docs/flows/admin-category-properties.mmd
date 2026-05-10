@@ -1,0 +1,40 @@
+flowchart TD
+    A([Super Admin / Distributor]) --> ADMIN["Admin Hub\n/admin/categories"]
+
+    ADMIN --> CAT_LIST["Categories list\nwith property counts"]
+    CAT_LIST --> CLICK["Click category"]
+    CLICK --> MODAL["PropertyConfigModal opens\nFetches existing properties"]
+    MODAL --> PROPS_API["GET /api/admin/category-properties\n?category_id=..."]
+
+    MODAL --> ADD_PROP["Click + Add Property"]
+    ADD_PROP --> PROP_FORM["Property form:\nname, data_type, is_required"]
+
+    PROP_FORM --> TYPE_SELECT{data_type?}
+    TYPE_SELECT -->|text_single| TEXT_CFG["optional: allowed_values list"]
+    TYPE_SELECT -->|text_multi| MULTI_CFG["no extra config"]
+    TYPE_SELECT -->|number| NUM_CFG["optional: min / max"]
+    TYPE_SELECT -->|unit| UNIT_CFG["unit selected from units table"]
+    TYPE_SELECT -->|datetime| DATE_CFG["optional: date_only flag"]
+
+    TEXT_CFG & MULTI_CFG & NUM_CFG & UNIT_CFG & DATE_CFG --> SAVE_PROP["Save property"]
+    SAVE_PROP --> PROP_API["POST /api/admin/category-properties"]
+    PROP_API --> CAT_PROPS[("category_properties\nhsn_chapter / hsn_heading / hsn_code")]
+
+    CAT_PROPS -.->|resolves at runtime| GET_HSN["get_hsn_properties(hsn_code)\nMerges all matching levels"]
+
+    GET_HSN -.->|feeds| PRODUCT_FORM["EntityProductForm\nEntityProductSpecifications"]
+    GET_HSN -.->|feeds| DETAIL_MODAL["Product Detail Modals\n(POS + Shop, read-only)"]
+
+    MODAL --> EDIT_PROP["Edit existing property"]
+    EDIT_PROP --> PATCH_API["PATCH /api/admin/category-properties/[id]"]
+
+    MODAL --> DEL_PROP["Delete property"]
+    DEL_PROP --> DELETE_API["DELETE /api/admin/category-properties/[id]"]
+
+    subgraph "HSN Scope Hierarchy (broader → narrower)"
+        direction LR
+        CH["hsn_chapter\ne.g. '30'\n→ all pharmaceuticals"]
+        HE["hsn_heading\ne.g. '3004'\n→ all medicaments"]
+        CO["hsn_code\ne.g. '3004.10.10'\n→ exact tariff item"]
+        PA["applies_to_hsn_pattern\ne.g. '3004.%'\n→ regex match"]
+    end

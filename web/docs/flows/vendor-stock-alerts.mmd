@@ -1,0 +1,6 @@
+flowchart LR
+    PRED[Stock Prediction System] --> |Below threshold| API["POST /api/send-stock-alert"]
+    API --> GW["Gateway :3001"]
+    GW --> META[Meta Cloud API]
+    META --> WA[WhatsApp delivered]
+    WA --> RETAILER[Retailer phone]
