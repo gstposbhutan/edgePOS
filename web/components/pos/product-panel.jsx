@@ -1,0 +1,154 @@
+"use client"
+
+import { useState } from "react"
+import { Search, Package, AlertTriangle } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
+import { ProductDetailModal } from "./product-detail-modal"
+
+/**
+ * Left panel — product search and grid.
+ * Clicking a product opens detail modal.
+ *
+ * @param {{ products: object[], loading: boolean, onSearch: (q:string)=>void, onAddItem: (p:object)=>void }} props
+ */
+export function ProductPanel({ products, loading, onSearch, onAddItem }) {
+  const [selectedProduct, setSelectedProduct] = useState(null)
+
+  function handleProductClick(product) {
+    setSelectedProduct(product)
+  }
+
+  function handleAddToCart(product) {
+    onAddItem(product)
+    setSelectedProduct(null)
+  }
+
+  return (
+    <>
+      <div className="flex flex-col h-full gap-3">
+        {/* Search bar */}
+        <div className="relative shrink-0">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search products by name or SKU..."
+            onChange={(e) => onSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+
+        {/* Product grid */}
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {Array.from({ length: 9 }).map((_, i) => (
+                <div key={i} className="h-28 rounded-xl bg-muted animate-pulse" />
+              ))}
+            </div>
+          ) : products.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
+              <Package className="h-10 w-10 opacity-30" />
+              <p className="text-sm">No products found</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {products.map((product) => (
+                <ProductCard
+                  key={product.batch_id ?? product.id}
+                  product={product}
+                  onClick={() => handleProductClick(product)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Product detail modal */}
+      <ProductDetailModal
+        open={!!selectedProduct}
+        product={selectedProduct}
+        onAddToCart={handleAddToCart}
+        onClose={() => setSelectedProduct(null)}
+      />
+    </>
+  )
+}
+
+/**
+ * Individual product card in the grid.
+ */
+// Package type label config
+const PKG_LABELS = {
+  BULK:   { label: 'Bulk',   color: 'bg-blue-500/10 text-blue-600 border-blue-500/20' },
+  BUNDLE: { label: 'Bundle', color: 'bg-purple-500/10 text-purple-600 border-purple-500/20' },
+  MIXED:  { label: 'Mixed',  color: 'bg-amber-500/10 text-amber-600 border-amber-500/20' },
+  PALLET: { label: 'Pallet', color: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' },
+}
+
+function ProductCard({ product, onClick }) {
+  const price      = parseFloat(product.mrp ?? product.wholesale_price ?? 0)
+  // Use available_stock (view column) — handles both real stock and computed package qty
+  const stock      = product.available_stock ?? product.current_stock ?? 0
+  const threshold  = product.reorder_point ?? 5
+  const lowStock   = stock > 0 && stock <= threshold
+  const outOfStock = stock <= 0
+  const isPackage  = product.product_type === 'PACKAGE'
+  const pkgLabel   = isPackage ? PKG_LABELS[product.package_type] : null
+
+  return (
+    <button
+      onClick={onClick}
+      className={`
+        group relative flex flex-col gap-2 p-3 rounded-xl border text-left
+        transition-all duration-150 active:scale-95
+        ${outOfStock
+          ? 'opacity-40 cursor-not-allowed border-border bg-muted/30'
+          : 'border-border bg-card hover:border-primary/50 hover:bg-primary/5 cursor-pointer'
+        }
+      `}
+    >
+      {/* Product image / placeholder */}
+      <div className="h-14 w-full rounded-lg bg-muted flex items-center justify-center overflow-hidden relative">
+        {product.image_url
+          ? <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />
+          : <Package className="h-6 w-6 text-muted-foreground/50" />
+        }
+        {/* Package type badge on image */}
+        {pkgLabel && (
+          <span className={`absolute top-1 right-1 text-[9px] font-semibold px-1.5 py-0.5 rounded-full border ${pkgLabel.color}`}>
+            {pkgLabel.label}
+          </span>
+        )}
+      </div>
+
+      {/* Name */}
+      <p className="text-xs font-medium text-foreground leading-tight line-clamp-2">
+        {product.name}
+      </p>
+
+      {/* Price + stock */}
+      <div className="flex items-center justify-between mt-auto">
+        <span className="text-sm font-bold text-primary">
+          Nu. {price.toFixed(2)}
+        </span>
+        {lowStock && !outOfStock && (
+          <AlertTriangle className="h-3 w-3 text-amber-500" />
+        )}
+        {outOfStock && (
+          <Badge variant="destructive" className="text-[10px] px-1 py-0">Out</Badge>
+        )}
+      </div>
+
+      {/* Stock count */}
+      <p className="text-[10px] text-muted-foreground">
+        {outOfStock
+          ? 'Out of stock'
+          : isPackage
+            ? `${stock} ${product.package_type === 'PALLET' ? 'pallets' : 'pkgs'} available`
+            : `${stock} ${product.unit ?? 'pcs'} left`
+        }
+      </p>
+    </button>
+  )
+}
