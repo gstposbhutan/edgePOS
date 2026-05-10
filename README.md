@@ -70,14 +70,18 @@ The system operates on a decentralized model where:
 git clone https://github.com/gstposbhutan/edgePOS.git
 cd edgePOS
 
-# Install dependencies
+# Web app (Cloud SaaS)
+cd web
 npm install
+npm run dev
 
-# Run development server
+# Desktop app (Offline POS Terminal)
+cd desktop
+npm install
 npm run dev
 ```
 
-The POS terminal will be available at: http://localhost:3000
+The web app will be available at: http://localhost:3000
 
 ---
 
