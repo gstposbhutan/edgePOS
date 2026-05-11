@@ -1,24 +1,16 @@
 /**
- * Page object for /shop/[slug] — Consumer-facing marketplace store page.
+ * Page object for /shop/store_[id] — Consumer-facing marketplace store page.
  *
- * Selectors derived from app/shop/[slug]/page.jsx:
- *   - Store name in h1 with class font-serif, text-[#D4AF37]
- *   - Store bio in <p class="text-gray-400 text-sm">
- *   - Category headings in h2 with uppercase tracking-widest
- *   - Product cards: product name in h3, price in <p>, "Order" link (wa.me href)
- *   - 404 state: h1 "Store not found"
- *   - Empty products: <p class="text-gray-500 text-sm">No products available yet.</p>
+ * Selectors derived from app/shop/store_[id]/page.jsx:
+ *   - Store name in h1.text-xl.font-bold
+ *   - "Store Not Found" in h1 with matching text
+ *   - Product cards with h3.text-sm product names
+ *   - Products loaded from entities/products tables
  */
 
-const STORE_NAME = 'h1.text-3xl'
-const STORE_BIO = 'p.text-gray-400.text-sm.max-w-md'
-const CATEGORY_HEADING = 'h2.uppercase.tracking-widest'
-const PRODUCT_CARD = 'article.group'
-const PRODUCT_NAME = 'h3.text-lg'
-const PRODUCT_PRICE = 'p.text-gray-400'
-const ORDER_LINK = 'a:has-text("Order")'
-const NOT_FOUND = 'h1:has-text("Store not found")'
-const EMPTY_PRODUCTS = 'p.text-gray-500.text-sm:has-text("No products available")'
+const STORE_NAME = 'h1'
+const PRODUCT_NAME = 'main h3'
+const NOT_FOUND = 'h1:has-text("Store Not Found")'
 
 class ShopPage {
   /**
@@ -29,11 +21,11 @@ class ShopPage {
   }
 
   /**
-   * Navigate to a store page by slug.
-   * @param {string} slug
+   * Navigate to a store page by entity ID.
+   * @param {string} storeId - Entity UUID
    */
-  async goto(slug) {
-    await this.page.goto(`/shop/${slug}`)
+  async goto(storeId) {
+    await this.page.goto(`/shop/${storeId}`)
   }
 
   /**
@@ -41,19 +33,13 @@ class ShopPage {
    * @param {string} name
    */
   async assertStoreName(name) {
-    const heading = this.page.locator(STORE_NAME)
-    await heading.waitFor({ state: 'visible', timeout: 10000 })
-    const text = await heading.textContent()
+    // Wait for the store info banner to render (client-side hydration)
+    const banner = this.page.locator('h1').first()
+    await banner.waitFor({ state: 'visible', timeout: 15000 })
+    const text = await banner.textContent()
     if (text?.trim() !== name) {
       throw new Error(`Expected store name "${name}", got "${text?.trim()}"`)
     }
-  }
-
-  /**
-   * Assert that product cards are visible on the page.
-   */
-  async assertProductsVisible() {
-    await this.page.locator(PRODUCT_CARD).first().waitFor({ state: 'visible', timeout: 10000 })
   }
 
   /**
@@ -61,13 +47,8 @@ class ShopPage {
    * @returns {Promise<string[]>}
    */
   async getCategoryNames() {
-    const headings = this.page.locator(CATEGORY_HEADING)
-    const count = await headings.count()
-    const names = []
-    for (let i = 0; i < count; i++) {
-      names.push((await headings.nth(i).textContent()).trim())
-    }
-    return names
+    // Current store page has no category grouping
+    return []
   }
 
   /**
@@ -76,6 +57,8 @@ class ShopPage {
    */
   async getProductNames() {
     const names = this.page.locator(PRODUCT_NAME)
+    // Wait for at least one product to render (client-side hydration)
+    await names.first().waitFor({ state: 'visible', timeout: 10000 }).catch(() => {})
     const count = await names.count()
     const result = []
     for (let i = 0; i < count; i++) {
@@ -86,13 +69,12 @@ class ShopPage {
 
   /**
    * Get the WhatsApp Order link href for a specific product.
+   * Current implementation has no per-product WhatsApp links.
    * @param {string} productName
    * @returns {Promise<string|null>}
    */
   async getWhatsAppLink(productName) {
-    const card = this.page.locator(PRODUCT_CARD).filter({ hasText: productName })
-    const link = card.locator(ORDER_LINK)
-    return link.getAttribute('href')
+    return null
   }
 
   /**
@@ -106,18 +88,16 @@ class ShopPage {
    * Assert the empty products state is shown.
    */
   async assertEmpty() {
-    await this.page.locator(EMPTY_PRODUCTS).waitFor({ state: 'visible', timeout: 10000 })
+    await this.page.locator('text=No products available').waitFor({ state: 'visible', timeout: 10000 })
   }
 
   /**
    * Get the store bio text.
+   * Current implementation does not display a bio.
    * @returns {Promise<string|null>}
    */
   async getStoreBio() {
-    const bio = this.page.locator(STORE_BIO)
-    const count = await bio.count()
-    if (count === 0) return null
-    return (await bio.textContent()).trim()
+    return null
   }
 }
 

@@ -98,12 +98,11 @@ class LoginPage extends BasePage {
    * @param {object} [options]
    * @param {number} [options.timeout] - max wait for redirect (default 30 000 ms)
    */
-  async loginWithEmail(email, password, { timeout = 10000 } = {}) {
+  async loginWithEmail(email, password, { timeout = 30000 } = {}) {
     await this.emailInput.fill(email)
     await this.passwordInput.fill(password)
     await this.signInButton.click()
-    // Wait for redirect away from /login (short timeout — errors won't redirect)
-    await this.page.waitForURL('**/pos**', { timeout }).catch(() => {})
+    await this.page.waitForURL('**/pos**', { timeout })
   }
 
   // ── WhatsApp OTP login ─────────────────────────────────────────────
@@ -121,7 +120,7 @@ class LoginPage extends BasePage {
     await this.otpLabel.waitFor({ state: 'visible' })
     await this.fillOtp(otp)
     await this.clickVerifyOtp()
-    await this.page.waitForURL('**/pos**', { timeout: 30000 }).catch(() => {})
+    await this.page.waitForURL('**/pos**', { timeout: 30000 })
   }
 
   // ── OTP helpers ────────────────────────────────────────────────────

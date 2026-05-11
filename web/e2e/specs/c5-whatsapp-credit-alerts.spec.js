@@ -13,7 +13,17 @@ const { TEST_KHATA_ACCOUNTS } = require('../fixtures/test-data')
 
 const GATEWAY_URL = process.env.WHATSAPP_GATEWAY_URL || 'http://localhost:3001'
 
+async function isGatewayAvailable() {
+  try {
+    const res = await fetch(`${GATEWAY_URL}/health`, { signal: AbortSignal.timeout(3000) })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
 test.describe('WhatsApp Credit Alerts', () => {
+  test.skip(async () => !(await isGatewayAvailable()), 'WhatsApp gateway not available')
 
   test('PRE_DUE_3D alert — 3 days before due', async ({ request }) => {
     const account = TEST_KHATA_ACCOUNTS[0]

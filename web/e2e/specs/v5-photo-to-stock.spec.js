@@ -28,7 +28,7 @@ test.describe('Photo-to-Stock (Bill Scanning)', () => {
 
     test('opens scan bill modal from Draft Purchases tab', async ({ page }) => {
       await inventoryPage.clickTab('Draft Purchases')
-      await page.waitForTimeout(500)
+      await page.waitForLoadState('networkidle')
 
       // Click the "Scan Bill" button in drafts tab
       const scanButton = page.locator('button:has-text("Scan Bill")').first()
@@ -191,18 +191,17 @@ test.describe('Photo-to-Stock (Bill Scanning)', () => {
 
       await inventoryPage.goto()
       await inventoryPage.clickTab('Draft Purchases')
-      await page.waitForTimeout(1000)
+      await page.waitForLoadState('networkidle')
 
       // Click on the draft to open review
       const draftCard = page.locator('button:has-text("DRAFT")')
-      if (await draftCard.isVisible({ timeout: 5000 }).catch(() => false)) {
-        await draftCard.click()
+      await expect(draftCard.first()).toBeVisible({ timeout: 5000 })
+      await draftCard.first().click()
 
-        // Should show "Review Draft Purchase" heading
-        await expect(page.locator('text=Review Draft Purchase')).toBeVisible({ timeout: 5000 })
-        // Should show items count
-        await expect(page.locator('text=Items (2)')).toBeVisible()
-      }
+      // Should show "Review Draft Purchase" heading
+      await expect(page.locator('text=Review Draft Purchase')).toBeVisible({ timeout: 5000 })
+      // Should show items count
+      await expect(page.locator('text=Items (2)')).toBeVisible()
     })
 
     test('allows editing qty and price in draft mode', async ({ page }) => {
@@ -246,20 +245,18 @@ test.describe('Photo-to-Stock (Bill Scanning)', () => {
 
       await inventoryPage.goto()
       await inventoryPage.clickTab('Draft Purchases')
-      await page.waitForTimeout(1000)
+      await page.waitForLoadState('networkidle')
 
       const draftCard = page.locator('button:has-text("DRAFT")')
-      if (await draftCard.isVisible({ timeout: 5000 }).catch(() => false)) {
-        await draftCard.click()
+      await expect(draftCard.first()).toBeVisible({ timeout: 5000 })
+      await draftCard.first().click()
 
-        // Find the quantity input for the item
-        const qtyInput = page.locator('input[type="number"]').first()
-        if (await qtyInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-          await qtyInput.fill('10')
-          // The total should update
-          await expect(page.locator('text=680')).toBeVisible({ timeout: 3000 })
-        }
-      }
+      // Find the quantity input for the item
+      const qtyInput = page.locator('input[type="number"]').first()
+      await expect(qtyInput).toBeVisible({ timeout: 3000 })
+      await qtyInput.fill('10')
+      // The total should update
+      await expect(page.locator('text=680')).toBeVisible({ timeout: 3000 })
     })
 
     test('confirm restock updates inventory', async ({ page }) => {
@@ -315,21 +312,19 @@ test.describe('Photo-to-Stock (Bill Scanning)', () => {
 
       await inventoryPage.goto()
       await inventoryPage.clickTab('Draft Purchases')
-      await page.waitForTimeout(1000)
+      await page.waitForLoadState('networkidle')
 
       const draftCard = page.locator('button:has-text("DRAFT")')
-      if (await draftCard.isVisible({ timeout: 5000 }).catch(() => false)) {
-        await draftCard.click()
+      await expect(draftCard.first()).toBeVisible({ timeout: 5000 })
+      await draftCard.first().click()
 
-        // Click "Confirm Restock"
-        const confirmBtn = page.locator('button:has-text("Confirm Restock")')
-        if (await confirmBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-          await confirmBtn.click()
-          // Verify the confirm API was called
-          await page.waitForTimeout(1000)
-          expect(confirmCalled).toBe(true)
-        }
-      }
+      // Click "Confirm Restock"
+      const confirmBtn = page.locator('button:has-text("Confirm Restock")')
+      await expect(confirmBtn).toBeVisible({ timeout: 3000 })
+      await confirmBtn.click()
+      // Verify the confirm API was called
+      await page.waitForLoadState('networkidle')
+      expect(confirmCalled).toBe(true)
     })
 
     test('cancel draft skips inventory update', async ({ page }) => {
@@ -384,20 +379,18 @@ test.describe('Photo-to-Stock (Bill Scanning)', () => {
 
       await inventoryPage.goto()
       await inventoryPage.clickTab('Draft Purchases')
-      await page.waitForTimeout(1000)
+      await page.waitForLoadState('networkidle')
 
       const draftCard = page.locator('button:has-text("DRAFT")')
-      if (await draftCard.isVisible({ timeout: 5000 }).catch(() => false)) {
-        await draftCard.click()
+      await expect(draftCard.first()).toBeVisible({ timeout: 5000 })
+      await draftCard.first().click()
 
-        // Click "Cancel Draft"
-        const cancelBtn = page.locator('button:has-text("Cancel Draft")')
-        if (await cancelBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-          await cancelBtn.click()
-          await page.waitForTimeout(1000)
-          expect(cancelCalled).toBe(true)
-        }
-      }
+      // Click "Cancel Draft"
+      const cancelBtn = page.locator('button:has-text("Cancel Draft")')
+      await expect(cancelBtn).toBeVisible({ timeout: 3000 })
+      await cancelBtn.click()
+      await page.waitForLoadState('networkidle')
+      expect(cancelCalled).toBe(true)
     })
   })
 
@@ -510,7 +503,7 @@ test.describe('Photo-to-Stock (Bill Scanning)', () => {
       await scanModal.assertSuccess()
 
       // Wait for modal to close / draft to open
-      await page.waitForTimeout(1500)
+      await page.waitForLoadState('networkidle')
 
       // Re-open and upload again — API should return duplicate: true
       // The UI may or may not block this, but the API returns the flag

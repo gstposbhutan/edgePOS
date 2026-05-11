@@ -30,14 +30,14 @@ class PosPage {
     // Loading skeleton
     this.loadingSkeleton = page.locator('.animate-pulse')
 
-    // Cart panel header — exact match to avoid "Cart is empty" collision
-    this.cartHeader = page.getByText('Cart', { exact: true }).first()
+    // Cart tab button — rendered as "Cart 1", "Cart 2", etc.
+    this.cartHeader = page.locator('button', { hasText: /^Cart \d/ }).first()
   }
 
   // ── Navigation ──────────────────────────────────────────────────────
 
   async goto() {
-    await this.page.goto('/pos')
+    await this.page.goto('/pos/touch')
   }
 
   // ── Assertions ──────────────────────────────────────────────────────
@@ -62,13 +62,30 @@ class PosPage {
   }
 
   /**
-   * Click the product card to add it to cart. In the current UI the entire
-   * card is clickable and fires onAddItem.
+   * Click the product card to open its detail modal, then click "Add to Cart"
+   * in the modal. The ProductDetailModal opens on card click and requires a
+   * second click on the "Add to Cart" button to actually add the item.
    */
   async addProductToCart(name) {
     const card = this.getProductByName(name)
     await expect(card).toBeVisible()
     await card.click()
+
+    // ProductDetailModal opens — click the "Add to Cart" button inside it
+    const addToCartBtn = this.page.getByRole('button', { name: 'Add to Cart' })
+    await expect(addToCartBtn).toBeVisible({ timeout: 5000 })
+    await addToCartBtn.click()
+
+    // Wait for modal to close
+    await expect(addToCartBtn).toBeHidden({ timeout: 3000 })
+
+    // addItem is async but not awaited by the modal handler — wait for
+    // the item to appear in the cart panel before returning.
+    const cartItem = this.page.locator(
+      '.flex.flex-col.gap-1\\.5.p-2\\.5.rounded-lg.border',
+      { hasText: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`) }
+    ).first()
+    await expect(cartItem).toBeVisible({ timeout: 5000 })
   }
 
   /**
@@ -86,10 +103,12 @@ class PosPage {
 
   /** Number of visible product card <button> elements in the grid. */
   async getProductCount() {
-    // Wait for loading skeletons to clear
-    const hasSkeleton = await this.loadingSkeleton.isVisible().catch(() => false)
-    if (hasSkeleton) {
-      await this.loadingSkeleton.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {})
+    // Wait for loading skeletons to appear (search triggers them) then clear
+    try {
+      await this.loadingSkeleton.first().waitFor({ state: 'visible', timeout: 500 })
+      await this.loadingSkeleton.first().waitFor({ state: 'hidden', timeout: 5000 })
+    } catch {
+      // No loading state — products are already rendered
     }
     return this.productGrid.locator('button').count()
   }

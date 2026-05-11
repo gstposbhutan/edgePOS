@@ -1,6 +1,6 @@
 const {
   test, expect, PosPage, CartPanel,
-  CHEAP_PRODUCT, DAIRY_PRODUCT, LOW_STOCK_PRODUCT, clearCart,
+  CHEAP_PRODUCT, DAIRY_PRODUCT, LOW_STOCK_PRODUCT, clearCart, resetStock, cleanupTestOrders,
 } = require('./v2-helpers')
 
 test.describe('GST Calculation', () => {
@@ -14,7 +14,7 @@ test.describe('GST Calculation', () => {
     await posPage.assertPageLoaded()
   })
 
-  test.afterEach(async () => { await clearCart() })
+  test.afterEach(async () => { await clearCart(); await resetStock(); await cleanupTestOrders() })
 
   test('5% GST on a single regular item', async () => {
     await posPage.addProductToCart(CHEAP_PRODUCT.name)

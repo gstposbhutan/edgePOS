@@ -6,6 +6,7 @@ const test = base.extend({})
 test.describe('Auth Setup', () => {
   const roles = [
     { key: 'retailer', user: TEST_USERS[0], file: 'e2e/storage/retailer-auth.json' },
+    { key: 'cashier', user: TEST_USERS[0], file: 'e2e/storage/cashier-auth.json' },
     { key: 'manager', user: TEST_USERS[1], file: 'e2e/storage/manager-auth.json' },
     { key: 'owner', user: TEST_USERS[2], file: 'e2e/storage/owner-auth.json' },
   ]

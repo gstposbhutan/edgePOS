@@ -1,17 +1,9 @@
 import { NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
-import { createServiceClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 
 async function getAuthContext() {
-  const cookieStore = await cookies()
-  const supabase = createServiceClient()
-
-  const accessToken = cookieStore.get('sb-access-token')?.value
-    || cookieStore.get('supabase-auth-token')?.value
-
-  if (!accessToken) return null
-
-  const { data: { user } } = await supabase.auth.getUser(accessToken)
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
   const entityId = user.app_metadata?.entity_id
@@ -19,7 +11,9 @@ async function getAuthContext() {
   const userId = user.id
   if (!entityId) return null
 
-  return { entityId, subRole, userId, supabase }
+  // Use service client for queries (bypasses RLS)
+  const serviceClient = createServiceClient()
+  return { entityId, subRole, userId, supabase: serviceClient }
 }
 
 // GET /api/shifts — current active shift

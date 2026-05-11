@@ -39,7 +39,7 @@ test.describe('Inventory Management', () => {
 
     test('search filters products by name', async ({ page }) => {
       await inventoryPage.searchProducts('Druk')
-      await page.waitForTimeout(300)
+      await page.waitForLoadState('networkidle')
 
       const count = await inventoryPage.getProductCount()
       expect(count).toBeGreaterThanOrEqual(1)
@@ -54,7 +54,7 @@ test.describe('Inventory Management', () => {
 
     test('search filters products by SKU', async ({ page }) => {
       await inventoryPage.searchProducts('DRK-GEN')
-      await page.waitForTimeout(300)
+      await page.waitForLoadState('networkidle')
 
       const count = await inventoryPage.getProductCount()
       expect(count).toBeGreaterThanOrEqual(1)
@@ -62,7 +62,7 @@ test.describe('Inventory Management', () => {
 
     test('filter ALL shows all products', async ({ page }) => {
       await inventoryPage.filterBy('All')
-      await page.waitForTimeout(300)
+      await page.waitForLoadState('networkidle')
 
       const count = await inventoryPage.getProductCount()
       expect(count).toBeGreaterThanOrEqual(TEST_PRODUCTS.length)
@@ -70,7 +70,7 @@ test.describe('Inventory Management', () => {
 
     test('filter LOW shows only low-stock products', async ({ page }) => {
       await inventoryPage.filterBy(/Low/)
-      await page.waitForTimeout(300)
+      await page.waitForLoadState('networkidle')
 
       const count = await inventoryPage.getProductCount()
       // Products with stock > 0 and stock <= reorder_point (default 10)
@@ -86,7 +86,7 @@ test.describe('Inventory Management', () => {
       // Click the "Out" filter button
       const outButton = page.locator('div.flex.gap-1 button').filter({ hasText: /Out/ }).first()
       await outButton.click()
-      await page.waitForTimeout(300)
+      await page.waitForLoadState('networkidle')
 
       const count = await inventoryPage.getProductCount()
       if (count > 0) {
@@ -106,26 +106,24 @@ test.describe('Inventory Management', () => {
 
     test('empty state when filter has no matches', async ({ page }) => {
       await inventoryPage.searchProducts('ZZZZZZ-NONEXISTENT-PRODUCT')
-      await page.waitForTimeout(300)
+      await page.waitForLoadState('networkidle')
       await inventoryPage.assertEmpty()
     })
 
     test('out-of-stock products shown with red stock text', async ({ page }) => {
       // Parle-G Biscuit 800g has stock 0
       const row = inventoryPage.getStockRow('Parle-G Biscuit 800g')
-      if (await row.isVisible({ timeout: 3000 }).catch(() => false)) {
-        const stockSpan = row.locator('td:nth-child(3) span.font-bold')
-        await expect(stockSpan).toHaveClass(/text-tibetan/)
-      }
+      await expect(row).toBeVisible({ timeout: 5000 })
+      const stockSpan = row.locator('td:nth-child(3) span.font-bold')
+      await expect(stockSpan).toHaveClass(/text-tibetan/)
     })
 
     test('low-stock products shown with amber stock text', async ({ page }) => {
       // Red Bull has stock 6 (low)
       const row = inventoryPage.getStockRow('Red Bull Energy Drink 250ml')
-      if (await row.isVisible({ timeout: 3000 }).catch(() => false)) {
-        const stockSpan = row.locator('td:nth-child(3) span.font-bold')
-        await expect(stockSpan).toHaveClass(/text-amber-600/)
-      }
+      await expect(row).toBeVisible({ timeout: 5000 })
+      const stockSpan = row.locator('td:nth-child(3) span.font-bold')
+      await expect(stockSpan).toHaveClass(/text-amber-600/)
     })
   })
 
@@ -143,7 +141,7 @@ test.describe('Inventory Management', () => {
 
     test('RESTOCK increases stock level', async ({ page }) => {
       const product = TEST_PRODUCTS.find(p => p.current_stock > 0 && p.name === 'Druk 1100 Generator')
-      if (!product) return
+      expect(product).toBeDefined()
 
       const beforeStock = await inventoryPage.getStockLevel(product.name)
 
@@ -164,7 +162,7 @@ test.describe('Inventory Management', () => {
 
     test('LOSS decreases stock level', async ({ page }) => {
       const product = TEST_PRODUCTS.find(p => p.current_stock > 5 && p.name === 'Wai Wai Noodles (Pack of 30)')
-      if (!product) return
+      expect(product).toBeDefined()
 
       const beforeStock = await inventoryPage.getStockLevel(product.name)
 
@@ -184,7 +182,7 @@ test.describe('Inventory Management', () => {
 
     test('DAMAGED decreases stock level', async ({ page }) => {
       const product = TEST_PRODUCTS.find(p => p.current_stock > 2 && p.name === 'Druk Supreme Milk 1L')
-      if (!product) return
+      expect(product).toBeDefined()
 
       const beforeStock = await inventoryPage.getStockLevel(product.name)
 
@@ -205,7 +203,7 @@ test.describe('Inventory Management', () => {
     test('adjustment records movement in history', async ({ page }) => {
       // Make a restock adjustment first
       const product = TEST_PRODUCTS.find(p => p.current_stock > 0)
-      if (!product) return
+      expect(product).toBeDefined()
 
       await inventoryPage.clickAdjustStock(product.name)
       await adjustModal.assertOpen()
@@ -217,7 +215,6 @@ test.describe('Inventory Management', () => {
 
       // Switch to Movement History tab
       await inventoryPage.clickTab('Movement History')
-      await page.waitForTimeout(1000)
 
       // Verify the movement appears
       const movementText = page.locator('text=E2E movement test')
@@ -226,7 +223,7 @@ test.describe('Inventory Management', () => {
 
     test('cannot submit without quantity', async ({ page }) => {
       const product = TEST_PRODUCTS.find(p => p.current_stock > 0)
-      if (!product) return
+      expect(product).toBeDefined()
 
       await inventoryPage.clickAdjustStock(product.name)
       await adjustModal.assertOpen()
@@ -246,7 +243,7 @@ test.describe('Inventory Management', () => {
 
     test('cancel button closes modal without adjustment', async ({ page }) => {
       const product = TEST_PRODUCTS.find(p => p.current_stock > 0)
-      if (!product) return
+      expect(product).toBeDefined()
 
       const beforeStock = await inventoryPage.getStockLevel(product.name)
 
@@ -273,7 +270,6 @@ test.describe('Inventory Management', () => {
 
     test('displays movements after switching to tab', async ({ page }) => {
       await inventoryPage.clickTab('Movement History')
-      await page.waitForTimeout(1000)
 
       // Should show either movements or the empty state
       const emptyState = page.locator('text=No movements recorded yet')
@@ -288,14 +284,13 @@ test.describe('Inventory Management', () => {
     test('movements refresh after an adjustment', async ({ page }) => {
       // Switch to history tab first to get baseline
       await inventoryPage.clickTab('Movement History')
-      await page.waitForTimeout(1000)
 
       const countBefore = await inventoryPage.getMovementCount()
 
       // Go back to stock tab and make an adjustment
       await inventoryPage.clickTab('Stock Levels')
       const product = TEST_PRODUCTS.find(p => p.current_stock > 0)
-      if (!product) return
+      expect(product).toBeDefined()
 
       const adjustModal = new AdjustStockModal(page)
       await inventoryPage.clickAdjustStock(product.name)
@@ -308,7 +303,6 @@ test.describe('Inventory Management', () => {
 
       // Switch back to history tab
       await inventoryPage.clickTab('Movement History')
-      await page.waitForTimeout(1000)
 
       const countAfter = await inventoryPage.getMovementCount()
       expect(countAfter).toBeGreaterThanOrEqual(countBefore)
@@ -327,7 +321,6 @@ test.describe('Inventory Management', () => {
 
     test('displays predictions tab with summary cards', async ({ page }) => {
       await inventoryPage.clickTab('Predictions')
-      await page.waitForTimeout(2000)
 
       // Summary cards should be visible: Critical, At Risk, Healthy
       await expect(page.locator('text=Critical')).toBeVisible({ timeout: 10000 })
@@ -337,7 +330,6 @@ test.describe('Inventory Management', () => {
 
     test('shows summary stats with numeric counts', async ({ page }) => {
       await inventoryPage.clickTab('Predictions')
-      await page.waitForTimeout(2000)
 
       // Each summary card has a count number
       const cards = page.locator('div.grid.grid-cols-3 > div')
@@ -353,15 +345,12 @@ test.describe('Inventory Management', () => {
 
     test('refresh button recalculates predictions', async ({ page }) => {
       await inventoryPage.clickTab('Predictions')
-      await page.waitForTimeout(2000)
 
       const refreshBtn = page.locator('button:has-text("Refresh")')
       if (await refreshBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
         await refreshBtn.click()
-        // Should show spinning state briefly
-        const spinner = page.locator('svg.lucide-refresh-cw.animate-spin')
-        // Wait for it to complete (or not show at all if fast)
-        await page.waitForTimeout(3000)
+        // Wait for spinner to complete
+        await expect(page.locator('svg.lucide-refresh-cw.animate-spin')).not.toBeVisible({ timeout: 5000 }).catch(() => {})
       }
     })
   })

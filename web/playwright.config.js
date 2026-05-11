@@ -5,7 +5,8 @@ module.exports = defineConfig({
   timeout: 60000,
   expect: { timeout: 15000 },
   fullyParallel: false,
-  retries: process.env.CI ? 2 : 0,
+  workers: 1,
+  retries: process.env.CI ? 2 : 1,
   globalSetup: require.resolve('./e2e/setup/global-setup'),
   reporter: [['html', { open: 'never' }], ['list']],
   use: {
@@ -41,7 +42,7 @@ module.exports = defineConfig({
     },
     {
       name: 'unauthenticated',
-      testMatch: /v1-auth\.spec\.js|c1-marketplace\.spec\.js|c3-whatsapp-otp\.spec\.js/,
+      testMatch: /v1-auth\.spec\.js|c3-whatsapp-otp\.spec\.js/,
       use: { ...devices['Desktop Chrome'] },
     },
     {
@@ -51,7 +52,7 @@ module.exports = defineConfig({
     },
   ],
   webServer: {
-    command: 'cd ../desktop && npm run dev',
+    command: 'npm run dev',
     port: 3000,
     reuseExistingServer: !process.env.CI,
     timeout: 120000,

@@ -81,7 +81,7 @@ test.describe('V8. Vendor Restock from Wholesaler', () => {
 
       // Click and wait a moment for the catalog to load
       await wholesalerCard.click()
-      await page.waitForTimeout(2000)
+      await page.waitForLoadState('networkidle')
 
       // Check for error message
       const error = page.locator('[data-testid="restock-error"]')
@@ -214,7 +214,7 @@ test.describe('V8. Vendor Restock from Wholesaler', () => {
       await page.locator('[data-testid="place-order-btn"]').click()
 
       // Wait for success message then modal to close
-      await page.waitForTimeout(3500)
+      await page.waitForLoadState('networkidle')
       await expect(page.locator('[data-testid="restock-modal"]')).not.toBeVisible()
     })
   })

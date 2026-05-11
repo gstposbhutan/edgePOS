@@ -31,7 +31,7 @@ class BasePage {
     // Dismiss loading spinners if present
     const spinner = this.page.locator('[data-loading="true"], .animate-spin').first()
     if (await spinner.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await spinner.waitFor({ state: 'hidden', timeout: 15000 }).catch(() => {})
+      await spinner.waitFor({ state: 'hidden', timeout: 15000 })
     }
   }
 

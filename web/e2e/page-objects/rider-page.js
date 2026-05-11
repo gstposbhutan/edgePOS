@@ -143,7 +143,7 @@ class RiderPage extends BasePage {
     await this.pinInput.fill(pin)
     await this.loginButton.click()
     // Wait for redirect from /rider/login to /rider
-    await this.page.waitForURL('**/rider', { timeout }).catch(() => {})
+    await this.page.waitForURL('**/rider', { timeout })
   }
 
   /**
@@ -223,7 +223,7 @@ class RiderPage extends BasePage {
     await this.fillOtp(otp)
     await this.otpConfirmButton.click()
     // Wait for the modal to close
-    await this.otpModalTitle.waitFor({ state: 'hidden', timeout: 10000 }).catch(() => {})
+    await this.otpModalTitle.waitFor({ state: 'hidden', timeout: 10000 })
   }
 
   /**
@@ -235,7 +235,7 @@ class RiderPage extends BasePage {
     await this.fillOtp(otp)
     await this.otpConfirmButton.click()
     // Wait for the modal to close
-    await this.otpModalTitle.waitFor({ state: 'hidden', timeout: 10000 }).catch(() => {})
+    await this.otpModalTitle.waitFor({ state: 'hidden', timeout: 10000 })
   }
 
   /**
@@ -266,7 +266,7 @@ class RiderPage extends BasePage {
     await this.feeInput.fill(String(fee))
     await this.submitFeeButton.click()
     // Wait for fee confirmation to appear
-    await this.feeSubmittedText.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {})
+    await this.feeSubmittedText.waitFor({ state: 'visible', timeout: 10000 })
   }
 
   /**
@@ -351,7 +351,7 @@ class RiderPage extends BasePage {
    */
   async logout() {
     await this.logoutButton.click()
-    await this.page.waitForURL('**/rider/login', { timeout: 10000 }).catch(() => {})
+    await this.page.waitForURL('**/rider/login', { timeout: 10000 })
   }
 }
 

@@ -33,7 +33,7 @@ class CartPanel {
     this.checkoutButton = page.locator('button', { hasText: /Select Payment Method|Charge Nu\.|Processing\.\.\./ })
 
     // Customer ID warning
-    this.customerIdWarning = page.locator('text=Customer ID required before checkout')
+    this.customerIdWarning = page.locator('text=/Customer ID required before checkout/')
   }
 
   // ── Cart item helpers ───────────────────────────────────────────────
@@ -202,7 +202,7 @@ class CartPanel {
 
   /** Count of item cards currently in the cart. */
   async getCartItemCount() {
-    await this.emptyCartMessage.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {})
+    await this.emptyCartMessage.waitFor({ state: 'hidden', timeout: 5000 })
     return this.page.locator('.flex.flex-col.gap-1\\.5.p-2\\.5.rounded-lg.border').count()
   }
 

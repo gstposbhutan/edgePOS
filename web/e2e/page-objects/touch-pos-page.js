@@ -122,10 +122,10 @@ class TouchPosPage extends BasePage {
     // Either products appear or the loading spinner disappears
     await this.page.waitForLoadState('networkidle')
     // Wait for the product grid or the empty state to be visible
-    await this.productGrid.waitFor({ state: 'visible', timeout: 15000 }).catch(async () => {
-      // Maybe there are no products — check for empty state
-      await this.noProductsText.waitFor({ state: 'visible', timeout: 3000 }).catch(() => {})
-    })
+    const hasProducts = await this.productGrid.isVisible({ timeout: 15000 }).catch(() => false)
+    if (!hasProducts) {
+      await expect(this.noProductsText).toBeVisible({ timeout: 3000 })
+    }
   }
 
   /**
@@ -355,7 +355,7 @@ class TouchPosPage extends BasePage {
     }
 
     // Wait for redirect to order confirmation page
-    await this.page.waitForURL('**/pos/order/**', { timeout }).catch(() => {})
+    await this.page.waitForURL('**/pos/order/**', { timeout })
   }
 
   // ── Multi-cart ─────────────────────────────────────────────────────────

@@ -7,6 +7,7 @@ const { RestockModal } = require('../page-objects/restock-modal')
 const { createClient } = require('@supabase/supabase-js')
 const {
   TEST_PRODUCTS,
+  TEST_BATCHES,
   TEST_WHOLESALER_PRODUCTS,
   TEST_USERS,
   TEST_KHATA_ACCOUNTS,
@@ -49,18 +50,58 @@ function loadEnv() {
   } catch {}
 }
 
-async function clearCart() {
+function getAdminClient() {
   loadEnv()
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!url || !key) return
-  const supabase = createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } })
+  if (!url || !key) {
+    throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY')
+  }
+  return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } })
+}
+
+async function clearCart() {
+  const supabase = getAdminClient()
   const { data: carts } = await supabase.from('carts').select('id').eq('entity_id', ENTITY_ID).eq('status', 'ACTIVE')
   if (carts?.length) {
     for (const c of carts) {
       await supabase.from('cart_items').delete().eq('cart_id', c.id)
     }
     await supabase.from('carts').delete().eq('entity_id', ENTITY_ID).eq('status', 'ACTIVE')
+  }
+}
+
+async function resetStock() {
+  const supabase = getAdminClient()
+  const updates = TEST_PRODUCTS.map(p =>
+    supabase.from('products').update({ current_stock: p.current_stock }).eq('id', p.id)
+  )
+  const batchUpdates = TEST_BATCHES.map(b =>
+    supabase.from('product_batches').update({ quantity: b.quantity }).eq('id', b.id)
+  )
+  await Promise.all([...updates, ...batchUpdates])
+}
+
+async function cleanupTestOrders() {
+  const supabase = getAdminClient()
+  const { data: orders } = await supabase
+    .from('orders')
+    .select('id')
+    .eq('seller_id', ENTITY_ID)
+  if (!orders?.length) return
+
+  const seedOrderIds = new Set([
+    '00000000-0000-4000-8000-000000000301',
+    '00000000-0000-4000-8000-000000000302',
+    '00000000-0000-4000-8000-000000000303',
+    '00000000-0000-4000-8000-000000000304',
+    '00000000-0000-4000-8000-000000000305',
+    '00000000-0000-4000-8000-000000000306',
+  ])
+  const toDelete = orders.filter(o => !seedOrderIds.has(o.id))
+  if (toDelete.length) {
+    await supabase.from('order_items').delete().in('order_id', toDelete.map(o => o.id))
+    await supabase.from('orders').delete().in('id', toDelete.map(o => o.id))
   }
 }
 
@@ -72,5 +113,5 @@ module.exports = {
   CASHIER_USER, MANAGER_USER, OWNER_USER,
   KHATA_ACCOUNT, KHATA_FROZEN, TEST_PHONE,
   TEST_WHOLESALER, TEST_WHOLESALER_PRODUCTS,
-  clearCart,
+  clearCart, resetStock, cleanupTestOrders,
 }

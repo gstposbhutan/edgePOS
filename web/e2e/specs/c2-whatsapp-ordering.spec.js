@@ -15,7 +15,17 @@ const { TEST_ENTITY, TEST_PRODUCTS } = require('../fixtures/test-data')
 const GATEWAY_URL = process.env.WHATSAPP_GATEWAY_URL || 'http://localhost:3001'
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000'
 
+async function isGatewayAvailable() {
+  try {
+    const res = await fetch(`${GATEWAY_URL}/health`, { signal: AbortSignal.timeout(3000) })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
 test.describe('WhatsApp Ordering', () => {
+  test.skip(async () => !(await isGatewayAvailable()), 'WhatsApp gateway not available')
   const testPhone = '+97517900001'
   const testMsgId = `wamid_${Date.now()}`
 

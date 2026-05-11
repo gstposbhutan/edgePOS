@@ -1,7 +1,7 @@
 const {
   test, expect, PosPage, CartPanel,
   IN_STOCK_PRODUCT, CHEAP_PRODUCT, DAIRY_PRODUCT, LOW_STOCK_PRODUCT,
-  OUT_OF_STOCK, clearCart,
+  OUT_OF_STOCK, clearCart, resetStock, cleanupTestOrders,
 } = require('./v2-helpers')
 
 test.describe('Product Selection', () => {
@@ -14,7 +14,7 @@ test.describe('Product Selection', () => {
     await posPage.assertPageLoaded()
   })
 
-  test.afterEach(async () => { await clearCart() })
+  test.afterEach(async () => { await clearCart(); await resetStock(); await cleanupTestOrders() })
 
   test('product grid loads with items', async () => {
     const count = await posPage.getProductCount()
@@ -47,9 +47,11 @@ test.describe('Product Selection', () => {
     expect(restoredCount).toBe(initialCount)
   })
 
-  test('out-of-stock products are disabled', async () => {
+  test('out-of-stock products are not shown in the grid', async () => {
+    // Products with zero stock and no batches are excluded from the
+    // sellable_products view, so they don't appear in the product grid.
     const card = posPage.getProductByName(OUT_OF_STOCK.name)
-    await expect(card).toBeDisabled()
+    await expect(card).not.toBeVisible()
   })
 
   test('add a product to cart by clicking its card', async ({ page }) => {

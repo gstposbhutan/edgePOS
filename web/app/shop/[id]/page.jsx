@@ -30,7 +30,7 @@ export default function StoreDetailPage() {
   async function handleAddToCart(productId) {
     const result = await addToCart(productId)
     if (result.unauthorized) {
-      router.push(`/login?redirect=/shop/store_${storeId}`)
+      router.push(`/login?redirect=/shop/${storeId}`)
     }
   }
 

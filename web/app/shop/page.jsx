@@ -183,7 +183,7 @@ export default function ShopPage() {
                 {stores.map((store) => (
                   <Link
                     key={store.id}
-                    href={`/shop/store_${store.id}`}
+                    href={`/shop/${store.id}`}
                     className="flex-shrink-0 w-36 bg-card rounded-xl p-4 border border-border hover:border-primary/50 transition-colors"
                   >
                     <div className="h-16 w-16 mx-auto rounded-lg bg-muted/50 flex items-center justify-center mb-2">

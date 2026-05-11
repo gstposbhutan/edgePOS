@@ -235,15 +235,14 @@ test.describe('Khata Account Detail', () => {
     await khataDetail.goto(TEST_KHATA_ACCOUNTS[0].id)
 
     // After some activity, transaction types should include these values
-    // This test verifies the badge rendering when transactions exist
     const types = await khataDetail.getTransactionTypes()
     // Even if empty, the ledger label should be visible
     // Types will populate after record-payment tests
-    if (types.length > 0) {
-      const validTypes = ['DEBIT', 'CREDIT', 'ADJUSTMENT']
-      for (const t of types) {
-        expect(validTypes).toContain(t)
-      }
+    test.skip(types.length === 0, 'No transactions found — run after payment tests')
+
+    const validTypes = ['DEBIT', 'CREDIT', 'ADJUSTMENT']
+    for (const t of types) {
+      expect(validTypes).toContain(t)
     }
   })
 
@@ -254,12 +253,12 @@ test.describe('Khata Account Detail', () => {
     // Check if any transaction rows exist with "Bal:" text
     const balanceAfterCells = page.locator('text=Bal:')
     const count = await balanceAfterCells.count()
-    if (count > 0) {
-      // Each should contain "Nu." format
-      for (let i = 0; i < count; i++) {
-        const text = await balanceAfterCells.nth(i).textContent()
-        expect(text).toContain('Nu.')
-      }
+    test.skip(count === 0, 'No transaction rows with balance found')
+
+    // Each should contain "Nu." format
+    for (let i = 0; i < count; i++) {
+      const text = await balanceAfterCells.nth(i).textContent()
+      expect(text).toContain('Nu.')
     }
   })
 })
@@ -341,7 +340,7 @@ test.describe('Record Payment', () => {
     await recordModal.clickSubmit()
 
     // Wait for page to refresh
-    await page.waitForTimeout(1000)
+    await page.waitForLoadState('networkidle')
 
     // Transaction count should increase
     const countAfter = await khataDetail.getTransactionCount()
@@ -361,7 +360,7 @@ test.describe('Record Payment', () => {
     await recordModal.clickSubmit()
 
     // Wait for balance update
-    await page.waitForTimeout(1000)
+    await page.waitForLoadState('networkidle')
 
     const balanceAfter = await khataDetail.getOutstandingBalance()
     // Parse amounts for comparison
@@ -505,7 +504,7 @@ test.describe('Set Credit Limit (OWNER only)', () => {
     await dialog.locator('button:has-text("Set Limit")').click()
     await expect(dialog).not.toBeVisible({ timeout: 10000 })
 
-    await page.waitForTimeout(1000)
+    await page.waitForLoadState('networkidle')
 
     const countAfter = await khataDetail.getTransactionCount()
     expect(countAfter).toBeGreaterThan(countBefore)

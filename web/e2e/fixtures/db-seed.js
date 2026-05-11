@@ -13,6 +13,8 @@ const {
   TEST_WHOLESALER_KHATA,
   TEST_RIDER,
   TEST_BATCHES,
+  TEST_CASH_REGISTER,
+  TEST_SHIFT,
 } = require('./test-data')
 
 function getAdminClient() {
@@ -368,8 +370,45 @@ async function seedDatabase() {
     throw riderErr
   }
 
+  // ── 15. Seed cash register + active shift ─────────────────────────────
+  const { error: regErr } = await supabase
+    .from('cash_registers')
+    .upsert({
+      ...TEST_CASH_REGISTER,
+      created_by: authIdMap[TEST_USERS[1].email],
+    }, { onConflict: 'id' })
+  if (regErr) {
+    console.error('[DB Seed] Cash register upsert failed:', regErr.message)
+    throw regErr
+  }
+
+  // Close any existing active shifts for this entity (avoid unique index conflict)
+  const { data: existingShifts } = await supabase
+    .from('shifts')
+    .select('id')
+    .eq('entity_id', TEST_ENTITY.id)
+    .in('status', ['ACTIVE', 'CLOSING'])
+  if (existingShifts?.length) {
+    await supabase
+      .from('shifts')
+      .update({ status: 'CLOSED', closed_at: new Date().toISOString() })
+      .in('id', existingShifts.map(s => s.id))
+  }
+
+  const { error: shiftErr } = await supabase
+    .from('shifts')
+    .upsert({
+      ...TEST_SHIFT,
+      opened_by: authIdMap[TEST_USERS[0].email],
+      opened_at: new Date().toISOString(),
+    }, { onConflict: 'id' })
+  if (shiftErr) {
+    console.error('[DB Seed] Shift upsert failed:', shiftErr.message)
+    throw shiftErr
+  }
+
   console.log(
-    `[DB Seed] Seeded: 1 retailer, 1 wholesaler, 1 category, ${TEST_PRODUCTS.length} retailer products, ${TEST_WHOLESALER_PRODUCTS.length} wholesaler products, ${TEST_ORDERS.length} orders, ${TEST_KHATA_ACCOUNTS.length} consumer khata + 1 B2B khata, ${TEST_USERS.length} users, ${profiles.length} profiles, ${TEST_BATCHES.length} batches, 1 rider`
+    `[DB Seed] Seeded: 1 retailer, 1 wholesaler, 1 category, ${TEST_PRODUCTS.length} retailer products, ${TEST_WHOLESALER_PRODUCTS.length} wholesaler products, ${TEST_ORDERS.length} orders, ${TEST_KHATA_ACCOUNTS.length} consumer khata + 1 B2B khata, ${TEST_USERS.length} users, ${profiles.length} profiles, ${TEST_BATCHES.length} batches, 1 rider, 1 register, 1 active shift`
   )
   console.log('[DB Seed] Auth ID map:', JSON.stringify(authIdMap, null, 2))
 

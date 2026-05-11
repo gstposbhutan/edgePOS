@@ -139,7 +139,7 @@ test.describe('Order State Machine — Transitions', () => {
         subtotal: 300,
         gst_total: 15,
         grand_total: 315,
-        payment_method: 'MBOB',
+        payment_method: 'ONLINE',
         items: [],
       })
       .select('id, status')
@@ -173,7 +173,7 @@ test.describe('Order State Machine — Transitions', () => {
         subtotal: 150,
         gst_total: 7.5,
         grand_total: 157.5,
-        payment_method: 'MPAY',
+        payment_method: 'ONLINE',
         items: [],
       })
       .select('id, status')
@@ -307,7 +307,7 @@ test.describe('Order State Machine — Transitions', () => {
         subtotal: 90,
         gst_total: 4.5,
         grand_total: 94.5,
-        payment_method: 'MPAY',
+        payment_method: 'ONLINE',
         items: [],
       })
       .select('id, status')
@@ -375,7 +375,7 @@ test.describe('Order State Machine — Transitions', () => {
         subtotal: 85,
         gst_total: 4.25,
         grand_total: 89.25,
-        payment_method: 'MBOB',
+        payment_method: 'ONLINE',
         items: [],
       })
       .select('id, status')
@@ -588,7 +588,7 @@ test.describe('Order State Machine — Transitions', () => {
         subtotal: product.mrp,
         gst_total: product.mrp * 0.05,
         grand_total: product.mrp * 1.05,
-        payment_method: 'MBOB',
+        payment_method: 'ONLINE',
         items: [
           { product_id: product.id, name: product.name, quantity: 1, rate: product.mrp, discount: 0, gst_5: product.mrp * 0.05, total: product.mrp * 1.05 },
         ],

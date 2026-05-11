@@ -1,6 +1,6 @@
 const {
   test, expect, PosPage, CartPanel, CustomerIdModal,
-  CHEAP_PRODUCT, IN_STOCK_PRODUCT, KHATA_ACCOUNT, TEST_PHONE, clearCart,
+  CHEAP_PRODUCT, IN_STOCK_PRODUCT, KHATA_ACCOUNT, TEST_PHONE, clearCart, resetStock, cleanupTestOrders,
 } = require('./v2-helpers')
 
 test.describe('Error Handling', () => {
@@ -15,11 +15,9 @@ test.describe('Error Handling', () => {
     await posPage.assertPageLoaded()
   })
 
-  test.afterEach(async () => { await clearCart() })
+  test.afterEach(async () => { await clearCart(); await resetStock(); await cleanupTestOrders() })
 
-  test('stock confirmation failure shows error message', async () => {
-    // Scenario: stock was consumed between availability check and confirmation
-  })
+  test.fixme('stock confirmation failure shows error message', async () => {})
 
   test('DB insert failure shows error banner', async ({ page }) => {
     await page.route('**/rest/v1/orders*', async (route) => {

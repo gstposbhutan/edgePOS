@@ -13,7 +13,17 @@ const { TEST_ENTITY, TEST_ORDERS } = require('../fixtures/test-data')
 
 const GATEWAY_URL = process.env.WHATSAPP_GATEWAY_URL || 'http://localhost:3001'
 
+async function isGatewayAvailable() {
+  try {
+    const res = await fetch(`${GATEWAY_URL}/health`, { signal: AbortSignal.timeout(3000) })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
 test.describe('WhatsApp Receipt Delivery', () => {
+  test.skip(async () => !(await isGatewayAvailable()), 'WhatsApp gateway not available')
 
   test('receipt is sent after checkout', async ({ request }) => {
     const order = TEST_ORDERS[0] // COMPLETED order

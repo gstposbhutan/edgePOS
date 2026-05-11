@@ -37,8 +37,9 @@ test.describe('Email/Password Login', () => {
     await loginPage.emailInput.fill(CASHIER.email)
     await loginPage.passwordInput.fill('WrongPassword!999')
     await loginPage.signInButton.click()
-    // Wait for error to appear (no redirect on failure)
-    await page.waitForTimeout(2000)
+
+    // Wait for error alert to appear
+    await expect(loginPage.errorAlert).toBeVisible({ timeout: 10000 })
 
     const errorText = await loginPage.getErrorText()
     expect(errorText).not.toBeNull()
@@ -48,7 +49,8 @@ test.describe('Email/Password Login', () => {
     await loginPage.emailInput.fill('nobody@nowhere.bt')
     await loginPage.passwordInput.fill('DoesNotMatter!1')
     await loginPage.signInButton.click()
-    await page.waitForTimeout(2000)
+
+    await expect(loginPage.errorAlert).toBeVisible({ timeout: 10000 })
 
     const errorText = await loginPage.getErrorText()
     expect(errorText).not.toBeNull()
@@ -168,8 +170,8 @@ test.describe('Tab Switching', () => {
     await loginPage.emailInput.fill('bad@user.bt')
     await loginPage.passwordInput.fill('wrong')
     await loginPage.signInButton.click()
-    // Wait briefly for error to appear
-    await page.waitForTimeout(2000)
+    // Wait for error to appear
+    await expect(loginPage.errorAlert).toBeVisible({ timeout: 10000 })
     const errorBefore = await loginPage.getErrorText()
     expect(errorBefore).not.toBeNull()
 
@@ -219,7 +221,7 @@ test.describe('WhatsApp OTP', () => {
     await loginPage.clickVerifyOtp()
 
     // Wait for error response from server
-    await page.waitForTimeout(3000)
+    await expect(loginPage.errorAlert).toBeVisible({ timeout: 10000 })
     const errorText = await loginPage.getErrorText()
     expect(errorText).not.toBeNull()
   })

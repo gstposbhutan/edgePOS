@@ -234,7 +234,7 @@ export function CartPanel({
             }
           </Button>
 
-          {!customer && (
+          {!(customer?.whatsapp || customer?.buyerHash) && (
             <p className="text-xs text-amber-600 text-center">
               ⚠ Customer ID required before checkout
             </p>

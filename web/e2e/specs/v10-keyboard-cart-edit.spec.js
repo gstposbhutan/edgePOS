@@ -19,19 +19,19 @@ test.describe('Keyboard POS Cart Edit', () => {
     // If search modal opens, try to add first product
     const searchModal = page.locator('text=Product Search').or(page.locator('text=Search Results'))
     const modalVisible = await searchModal.isVisible({ timeout: 3000 }).catch(() => false)
-    if (modalVisible) {
-      // Press 1 to add first product
-      await page.keyboard.press('1')
-      await page.waitForTimeout(500)
-      await page.keyboard.press('Escape')
-    }
+    test.skip(!modalVisible, 'Search modal did not open in beforeEach')
+
+    // Press 1 to add first product
+    await page.keyboard.press('1')
+    await page.waitForTimeout(500)
+    await page.keyboard.press('Escape')
   })
 
   test('Enter confirms quantity edit in cart table', async ({ page }) => {
     // Check if there's an item in the cart table
     const cartRows = page.locator('table tbody tr')
     const rowCount = await cartRows.count()
-    if (rowCount === 0) return test.skip()
+    test.skip(rowCount === 0, 'No cart rows available')
 
     // Select first row and press Enter to start editing
     await page.keyboard.press('ArrowDown')
@@ -39,19 +39,17 @@ test.describe('Keyboard POS Cart Edit', () => {
 
     // Wait for qty input to appear
     const qtyInput = page.locator('input[type="number"][min="1"]')
-    const inputVisible = await qtyInput.isVisible({ timeout: 3000 }).catch(() => false)
-    if (!inputVisible) return test.skip()
+    await expect(qtyInput.first()).toBeVisible({ timeout: 3000 })
 
     // Clear and type new quantity
-    await qtyInput.fill('3')
+    await qtyInput.first().fill('3')
 
     // Press Enter to confirm
     await page.keyboard.press('Enter')
     await page.waitForTimeout(500)
 
     // Qty input should be gone (edit mode ended)
-    const inputGone = await qtyInput.isVisible({ timeout: 2000 }).catch(() => true)
-    expect(inputGone).toBe(true)
+    await expect(qtyInput.first()).not.toBeVisible({ timeout: 2000 })
 
     // Cart table should show the new quantity
     const qtyCell = page.locator('table tbody tr').first().locator('td').nth(1)
@@ -62,16 +60,15 @@ test.describe('Keyboard POS Cart Edit', () => {
   test('Tab confirms edit and stays on page', async ({ page }) => {
     const cartRows = page.locator('table tbody tr')
     const rowCount = await cartRows.count()
-    if (rowCount === 0) return test.skip()
+    test.skip(rowCount === 0, 'No cart rows available')
 
     await page.keyboard.press('ArrowDown')
     await page.keyboard.press('Enter')
 
     const qtyInput = page.locator('input[type="number"][min="1"]')
-    const inputVisible = await qtyInput.isVisible({ timeout: 3000 }).catch(() => false)
-    if (!inputVisible) return test.skip()
+    await expect(qtyInput.first()).toBeVisible({ timeout: 3000 })
 
-    await qtyInput.fill('5')
+    await qtyInput.first().fill('5')
     await page.keyboard.press('Tab')
     await page.waitForTimeout(500)
 
@@ -79,8 +76,7 @@ test.describe('Keyboard POS Cart Edit', () => {
     expect(page.url()).toContain('/pos')
 
     // Edit mode should have ended
-    const inputGone = await qtyInput.isVisible({ timeout: 2000 }).catch(() => true)
-    expect(inputGone).toBe(true)
+    await expect(qtyInput.first()).not.toBeVisible({ timeout: 2000 })
 
     // Quantity should be updated
     const qtyCell = page.locator('table tbody tr').first().locator('td').nth(1)
@@ -91,7 +87,7 @@ test.describe('Keyboard POS Cart Edit', () => {
   test('Escape cancels edit and reverts to original qty', async ({ page }) => {
     const cartRows = page.locator('table tbody tr')
     const rowCount = await cartRows.count()
-    if (rowCount === 0) return test.skip()
+    test.skip(rowCount === 0, 'No cart rows available')
 
     // Get original qty
     const qtyCell = page.locator('table tbody tr').first().locator('td').nth(1)
@@ -101,10 +97,9 @@ test.describe('Keyboard POS Cart Edit', () => {
     await page.keyboard.press('Enter')
 
     const qtyInput = page.locator('input[type="number"][min="1"]')
-    const inputVisible = await qtyInput.isVisible({ timeout: 3000 }).catch(() => false)
-    if (!inputVisible) return test.skip()
+    await expect(qtyInput.first()).toBeVisible({ timeout: 3000 })
 
-    await qtyInput.fill('99')
+    await qtyInput.first().fill('99')
     await page.keyboard.press('Escape')
     await page.waitForTimeout(500)
 

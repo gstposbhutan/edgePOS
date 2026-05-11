@@ -1,13 +1,13 @@
 const {
   test, expect, PosPage, CartPanel, CustomerIdModal,
-  CHEAP_PRODUCT, KHATA_ACCOUNT, TEST_PHONE, clearCart,
+  CHEAP_PRODUCT, KHATA_ACCOUNT, TEST_PHONE, clearCart, resetStock, cleanupTestOrders,
 } = require('./v2-helpers')
 
 test.describe('Payment Methods', () => {
   let posPage, cartPanel, customerIdModal
 
   test.beforeEach(async ({ page }) => {
-    await clearCart()
+    await clearCart(); await resetStock(); await cleanupTestOrders()
     posPage = new PosPage(page)
     cartPanel = new CartPanel(page)
     customerIdModal = new CustomerIdModal(page)
@@ -15,7 +15,7 @@ test.describe('Payment Methods', () => {
     await posPage.assertPageLoaded()
   })
 
-  test.afterEach(async () => { await clearCart() })
+  test.afterEach(async () => { await clearCart(); await resetStock(); await cleanupTestOrders() })
 
   test('exactly 3 payment methods shown: Online, Cash, Credit', async () => {
     await cartPanel.assertPaymentMethodCount(3)
@@ -75,13 +75,14 @@ test.describe('Payment Methods', () => {
     await expect(outstandingText).toBeVisible()
   })
 
-  test('blocks CREDIT without customer ID', async () => {
+  test('CREDIT checkout opens customer identification', async ({ page }) => {
     await posPage.addProductToCart(CHEAP_PRODUCT.name)
     await cartPanel.selectPaymentMethod('CREDIT')
-    // Credit requires OTP verification which needs customer — checkout should fail or prompt
-    const checkoutDisabled = await cartPanel.checkoutButton.isDisabled().catch(() => false)
-    // Either button is disabled or clicking triggers customer modal
-    expect(checkoutDisabled || true).toBe(true)
+    // Customer check happens on checkout click, not via disabled state
+    await cartPanel.clickCheckout()
+    // Cashier role shows shift error; manager/owner see the customer modal
+    const modalOrError = page.locator('[role="dialog"], .text-tibetan')
+    await expect(modalOrError.first()).toBeVisible({ timeout: 5000 })
   })
 
   test('ONLINE journal number clears when switching payment method', async ({ page }) => {

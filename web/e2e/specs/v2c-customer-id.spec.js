@@ -1,6 +1,6 @@
 const {
   test, expect, PosPage, CartPanel, CustomerIdModal,
-  CHEAP_PRODUCT, TEST_PHONE, clearCart,
+  CHEAP_PRODUCT, TEST_PHONE, clearCart, resetStock, cleanupTestOrders,
 } = require('./v2-helpers')
 
 test.describe('Customer Identification', () => {
@@ -15,7 +15,7 @@ test.describe('Customer Identification', () => {
     await posPage.assertPageLoaded()
   })
 
-  test.afterEach(async () => { await clearCart() })
+  test.afterEach(async () => { await clearCart(); await resetStock(); await cleanupTestOrders() })
 
   test('customer ID modal is prompted before checkout', async () => {
     await posPage.addProductToCart(CHEAP_PRODUCT.name)

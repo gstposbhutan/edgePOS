@@ -1,6 +1,6 @@
 const {
   test, expect, PosPage, CartPanel,
-  CHEAP_PRODUCT, DAIRY_PRODUCT, clearCart,
+  CHEAP_PRODUCT, DAIRY_PRODUCT, clearCart, resetStock, cleanupTestOrders,
 } = require('./v2-helpers')
 
 test.describe('Cart Management', () => {
@@ -14,7 +14,7 @@ test.describe('Cart Management', () => {
     await posPage.assertPageLoaded()
   })
 
-  test.afterEach(async () => { await clearCart() })
+  test.afterEach(async () => { await clearCart(); await resetStock(); await cleanupTestOrders() })
 
   test('increment quantity with + button', async ({ page }) => {
     await posPage.addProductToCart(CHEAP_PRODUCT.name)

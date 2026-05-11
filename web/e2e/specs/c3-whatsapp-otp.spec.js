@@ -245,8 +245,10 @@ test.describe('WhatsApp OTP Auth', () => {
         used: false,
       })
 
+    // Use a non-mock OTP value to bypass MOCK_WHATSAPP mode and hit the
+    // production verification path where expiry is actually checked.
     const response = await request.post(`${BASE_URL}/api/auth/whatsapp/verify`, {
-      data: { phone: phones.expired, otp: '123456' },
+      data: { phone: phones.expired, otp: '654321' },
     })
 
     expect(response.status()).toBe(400)

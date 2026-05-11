@@ -557,6 +557,24 @@ const TEST_BATCHES = [
   },
 ]
 
+// ── Cash register for shift management ──────────────────────────────────
+const TEST_CASH_REGISTER = {
+  id: '00000000-0000-4000-8000-000000007001',
+  entity_id: TEST_ENTITY.id,
+  name: 'Register 1',
+  default_opening_float: 5000,
+  is_active: true,
+}
+
+const TEST_SHIFT = {
+  id: '00000000-0000-4000-8000-000000007101',
+  entity_id: TEST_ENTITY.id,
+  register_id: TEST_CASH_REGISTER.id,
+  opened_by: TEST_USERS[0].id,
+  opening_float: 5000,
+  status: 'ACTIVE',
+}
+
 module.exports = {
   TEST_PHONE,
   TEST_ENTITY,
@@ -575,6 +593,8 @@ module.exports = {
   OWNER_USER: TEST_USERS[2],
   TEST_RIDER,
   TEST_BATCHES,
+  TEST_CASH_REGISTER,
+  TEST_SHIFT,
 }
 
 // Also export individual constants for easier importing in tests
@@ -594,3 +614,5 @@ module.exports.MANAGER_USER = TEST_USERS[1]
 module.exports.OWNER_USER = TEST_USERS[2]
 module.exports.TEST_RIDER = TEST_RIDER
 module.exports.TEST_BATCHES = TEST_BATCHES
+module.exports.TEST_CASH_REGISTER = TEST_CASH_REGISTER
+module.exports.TEST_SHIFT = TEST_SHIFT

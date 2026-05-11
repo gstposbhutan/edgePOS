@@ -81,7 +81,7 @@ test.describe('Stock Alerts', () => {
     if (await outBanner.isVisible({ timeout: 3000 }).catch(() => false)) {
       // Click the View button inside the banner
       await outBanner.locator('button:has-text("View")').click()
-      await page.waitForTimeout(300)
+      await page.waitForLoadState('networkidle')
 
       // All visible products should be out of stock
       const count = await inventoryPage.getProductCount()
@@ -96,7 +96,7 @@ test.describe('Stock Alerts', () => {
     const lowBanner = page.locator('div.border-amber-500\\/30:has-text("running low")')
     if (await lowBanner.isVisible({ timeout: 3000 }).catch(() => false)) {
       await lowBanner.locator('button:has-text("View")').click()
-      await page.waitForTimeout(300)
+      await page.waitForLoadState('networkidle')
 
       const count = await inventoryPage.getProductCount()
       for (let i = 0; i < count; i++) {
@@ -147,7 +147,7 @@ test.describe('Stock Alerts', () => {
 
       // The alert system may fire asynchronously.
       // If the WhatsApp gateway was called, verify the payload
-      await page.waitForTimeout(2000)
+      await page.waitForLoadState('networkidle')
 
       if (alertPayload) {
         expect(alertPayload).toBeTruthy()
