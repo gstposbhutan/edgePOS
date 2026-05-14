@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useAuth } from "@/hooks/use-auth";
 import { useCustomers } from "@/hooks/use-customers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,7 +32,21 @@ import {
 } from "lucide-react";
 
 export default function CustomersPage() {
+  const { isManager, loading: authLoading } = useAuth();
   const { customers, loading, createCustomer, recordRepayment, refresh } = useCustomers();
+
+  if (authLoading) return <div className="min-h-screen flex items-center justify-center"><p className="text-muted-foreground">Loading...</p></div>;
+  if (!isManager) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center space-y-3">
+          <Users className="h-12 w-12 text-muted-foreground mx-auto" />
+          <p className="text-muted-foreground">Access restricted to managers and owners</p>
+          <Link href="/"><Button variant="outline" size="sm"><ArrowLeft className="h-4 w-4 mr-1" />Back to POS</Button></Link>
+        </div>
+      </div>
+    );
+  }
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [showRepay, setShowRepay] = useState<string | null>(null);

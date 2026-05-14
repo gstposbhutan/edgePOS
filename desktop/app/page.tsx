@@ -532,6 +532,12 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
 
         <div className="flex items-center gap-0.5">
           <div className="hidden md:flex items-center gap-0.5">
+            <Link href="/products">
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
+                <Package className="h-4 w-4 mr-1.5" />
+                Products
+              </Button>
+            </Link>
             <Link href="/inventory">
               <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
                 <Package className="h-4 w-4 mr-1.5" />

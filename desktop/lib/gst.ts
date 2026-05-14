@@ -1,10 +1,10 @@
-import { DEFAULT_GST_RATE } from "./constants";
-import { todayCompact } from "./date-utils";
+import { DEFAULT_GST_RATE, DISCOUNT_TYPE } from "./constants";
 
 export interface CartItemInput {
   unitPrice: number;
   discount: number;
   quantity: number;
+  discountType?: string;
 }
 
 export interface CartItemTotals {
@@ -13,21 +13,31 @@ export interface CartItemTotals {
   total: number;
 }
 
-export function calcItemTotals(input: CartItemInput, gstRate: number = DEFAULT_GST_RATE): CartItemTotals {
+export function calcItemTotals(input: CartItemInput, gstRate: number = DEFAULT_GST_RATE, discountType?: string): CartItemTotals {
   const rate = gstRate / 100;
-  const taxable = Math.max(0, input.unitPrice - input.discount);
+  const dtype = discountType || input.discountType || DISCOUNT_TYPE.FLAT;
+  let discountAmount = input.discount;
+  if (dtype === DISCOUNT_TYPE.PERCENTAGE && input.discount > 0) {
+    discountAmount = (input.unitPrice * input.discount) / 100;
+  }
+  const taxable = Math.max(0, input.unitPrice - discountAmount);
   const gstAmount = parseFloat((taxable * rate * input.quantity).toFixed(2));
   const total = parseFloat(((taxable * (1 + rate)) * input.quantity).toFixed(2));
   return { taxable, gstAmount, total };
 }
 
 export function calcCartTotals(
-  items: { unitPrice: number; discount: number; quantity: number }[],
+  items: { unitPrice: number; discount: number; quantity: number; discountType?: string }[],
   gstRate: number = DEFAULT_GST_RATE
 ) {
   const rate = gstRate / 100;
   const subtotal = items.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
-  const discountTotal = items.reduce((s, i) => s + i.discount * i.quantity, 0);
+  const discountTotal = items.reduce((s, i) => {
+    if ((i.discountType || DISCOUNT_TYPE.FLAT) === DISCOUNT_TYPE.PERCENTAGE && i.discount > 0) {
+      return s + (i.unitPrice * i.discount / 100) * i.quantity;
+    }
+    return s + i.discount * i.quantity;
+  }, 0);
   const taxableSubtotal = subtotal - discountTotal;
   const gstTotal = parseFloat((taxableSubtotal * rate).toFixed(2));
   const grandTotal = parseFloat((taxableSubtotal + gstTotal).toFixed(2));

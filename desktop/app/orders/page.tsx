@@ -224,7 +224,11 @@ export default function OrdersPage() {
               <TableBody>
                 {filtered.map((order) => (
                   <TableRow key={order.id}>
-                    <TableCell className="font-medium">{order.order_no}</TableCell>
+                    <TableCell className="font-medium">
+                      <Link href={`/orders/${order.id}`} className="hover:text-primary hover:underline">
+                        {order.order_no}
+                      </Link>
+                    </TableCell>
                     <TableCell>{order.customer_name || "—"}</TableCell>
                     <TableCell className="uppercase text-xs">{order.payment_method}</TableCell>
                     <TableCell className="text-right font-medium">

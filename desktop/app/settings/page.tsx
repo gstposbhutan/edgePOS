@@ -10,11 +10,24 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { ArrowLeft, Settings, Store, Save, Printer, Wifi, Server } from "lucide-react";
+import { ArrowLeft, Settings, Store, Save, Printer, Wifi, Server, Shield } from "lucide-react";
 
 export default function SettingsPage() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, isOwner, loading: authLoading } = useAuth();
   const { settings, loading, updateSettings } = useSettings();
+
+  if (authLoading) return <div className="min-h-screen flex items-center justify-center"><p className="text-muted-foreground">Loading...</p></div>;
+  if (!isOwner) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center space-y-3">
+          <Shield className="h-12 w-12 text-muted-foreground mx-auto" />
+          <p className="text-muted-foreground">Settings access restricted to store owners only</p>
+          <Link href="/"><Button variant="outline" size="sm"><ArrowLeft className="h-4 w-4 mr-1" />Back to POS</Button></Link>
+        </div>
+      </div>
+    );
+  }
   const { isElectron, api } = usePlatform();
   const [form, setForm] = useState({
     store_name: "",

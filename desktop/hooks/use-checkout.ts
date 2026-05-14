@@ -87,6 +87,7 @@ export function useCheckout(input: CheckoutInput) {
             quantity: i.quantity,
             unit_price: i.unit_price,
             discount: i.discount,
+            discount_type: i.discount_type || "FLAT",
             gst_5: taxExempt ? 0 : i.gst_5,
             total: i.total,
           })),
@@ -102,6 +103,29 @@ export function useCheckout(input: CheckoutInput) {
         };
 
         const result = await pb.collection("orders").create(orderPayload, PB_REQ);
+
+        // Audit log for order with discounts
+        const itemsWithDiscount = items.filter((i) => i.discount > 0);
+        if (itemsWithDiscount.length > 0) {
+          for (const item of itemsWithDiscount) {
+            try {
+              await pb.collection("audit_logs").create({
+                collection_name: "orders",
+                record_id: result.id,
+                operation: "CREATE",
+                new_values: {
+                  item: item.name,
+                  discount: item.discount,
+                  discount_type: item.discount_type || "FLAT",
+                  unit_price: item.unit_price,
+                },
+                actor: user.id,
+                actor_role: (user as any).role || "",
+                notes: `Discount applied in ${orderNo}`,
+              }, PB_REQ);
+            } catch { /* audit log collection may not exist yet */ }
+          }
+        }
 
         for (const item of items) {
           const product = products.find((p) => p.id === item.product);

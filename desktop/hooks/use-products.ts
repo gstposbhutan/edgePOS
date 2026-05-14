@@ -172,6 +172,69 @@ export function useProducts() {
     [updateProductMutation]
   );
 
+  const deleteProductMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return pb.collection("products").delete(id, PB_REQ);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+    },
+  });
+
+  const deleteProduct = useCallback(
+    async (id: string) => {
+      try {
+        await deleteProductMutation.mutateAsync(id);
+        return { success: true };
+      } catch (err: any) {
+        return { success: false, error: err.message };
+      }
+    },
+    [deleteProductMutation]
+  );
+
+  const createCategoryMutation = useMutation({
+    mutationFn: async (data: Partial<Category>) => {
+      return pb.collection("categories").create(data, PB_REQ);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
+    },
+  });
+
+  const createCategory = useCallback(
+    async (data: Partial<Category>) => {
+      try {
+        const record = await createCategoryMutation.mutateAsync(data);
+        return { success: true, record };
+      } catch (err: any) {
+        return { success: false, error: err.message };
+      }
+    },
+    [createCategoryMutation]
+  );
+
+  const updateCategoryMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<Category> }) => {
+      return pb.collection("categories").update(id, data, PB_REQ);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
+    },
+  });
+
+  const updateCategory = useCallback(
+    async (id: string, data: Partial<Category>) => {
+      try {
+        const record = await updateCategoryMutation.mutateAsync({ id, data });
+        return { success: true, record };
+      } catch (err: any) {
+        return { success: false, error: err.message };
+      }
+    },
+    [updateCategoryMutation]
+  );
+
   const availableLetters = useMemo(() => {
     const letters = new Set<string>();
     products.forEach((p) => {
@@ -185,7 +248,7 @@ export function useProducts() {
     const minPrice = priceMin ? parseFloat(priceMin) : null;
     const maxPrice = priceMax ? parseFloat(priceMax) : null;
 
-    let filtered = products.filter((p) => {
+    const filtered = products.filter((p) => {
       const matchesCategory = selectedCategory ? p.category === selectedCategory : true;
       const matchesLetter = selectedLetter ? p.name.charAt(0).toUpperCase() === selectedLetter : true;
       const q = searchQuery.toLowerCase();
@@ -243,7 +306,13 @@ export function useProducts() {
     findById,
     createProduct,
     updateProduct,
-    refresh: () => queryClient.invalidateQueries({ queryKey: ["products"] }),
+    deleteProduct,
+    createCategory,
+    updateCategory,
+    refresh: () => {
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
+    },
     lowStockCount,
     outOfStockCount,
   };

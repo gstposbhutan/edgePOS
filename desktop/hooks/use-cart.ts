@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getPB, PB_REQ } from "@/lib/pb-client";
 import { calcItemTotals, calcCartTotals } from "@/lib/gst";
-import { CART_STATUS } from "@/lib/constants";
+import { CART_STATUS, DISCOUNT_TYPE } from "@/lib/constants";
 import { usePosStore } from "@/stores/pos-store";
 import type { Product } from "./use-products";
 
@@ -15,6 +15,7 @@ export interface CartItem {
   quantity: number;
   unit_price: number;
   discount: number;
+  discount_type?: string;
   gst_5: number;
   total: number;
   expand?: { product?: Product };
@@ -79,7 +80,7 @@ export function useCart() {
   const items = itemsQuery.data ?? [];
 
   const totals = calcCartTotals(
-    items.map((i) => ({ unitPrice: i.unit_price, discount: i.discount, quantity: i.quantity }))
+    items.map((i) => ({ unitPrice: i.unit_price, discount: i.discount, quantity: i.quantity, discountType: i.discount_type }))
   );
 
   const subtotalExTax = totals.taxableSubtotal;
@@ -149,7 +150,7 @@ export function useCart() {
       const item = current.find((i) => i.id === itemId);
       if (!item) throw new Error("Item not found");
       const { gstAmount, total } = calcItemTotals({
-        unitPrice: item.unit_price, discount: item.discount, quantity: newQty,
+        unitPrice: item.unit_price, discount: item.discount, quantity: newQty, discountType: item.discount_type,
       });
       await pb.collection("cart_items").update(itemId, { quantity: newQty, gst_5: gstAmount, total }, PB_REQ);
       return null;
@@ -167,22 +168,27 @@ export function useCart() {
   };
 
   const applyDiscountMutation = useMutation({
-    mutationFn: async ({ itemId, discountPerUnit }: { itemId: string; discountPerUnit: number }) => {
+    mutationFn: async ({ itemId, discountPerUnit, discountType }: { itemId: string; discountPerUnit: number; discountType: string }) => {
       const current = queryClient.getQueryData<CartItem[]>(["cart-items", cartId]) ?? [];
       const item = current.find((i) => i.id === itemId);
       if (!item) throw new Error("Item not found");
-      const clamped = Math.min(Math.max(0, discountPerUnit), item.unit_price);
+      let clamped = Math.min(Math.max(0, discountPerUnit), item.unit_price);
+      if (discountType === DISCOUNT_TYPE.PERCENTAGE) {
+        clamped = Math.min(100, Math.max(0, discountPerUnit));
+      }
       const { gstAmount, total } = calcItemTotals({
         unitPrice: item.unit_price, discount: clamped, quantity: item.quantity,
-      });
-      await pb.collection("cart_items").update(itemId, { discount: clamped, gst_5: gstAmount, total }, PB_REQ);
+      }, undefined, discountType);
+      const updateData: Record<string, unknown> = { discount: clamped, gst_5: gstAmount, total };
+      try { updateData.discount_type = discountType; } catch { /* PB field may not exist yet */ }
+      await pb.collection("cart_items").update(itemId, updateData, PB_REQ);
     },
     onSuccess: () => refetchItems(),
   });
 
-  const applyDiscount = async (itemId: string, discountPerUnit: number): Promise<OpResult> => {
+  const applyDiscount = async (itemId: string, discountPerUnit: number, discountType: string = DISCOUNT_TYPE.FLAT): Promise<OpResult> => {
     try {
-      await applyDiscountMutation.mutateAsync({ itemId, discountPerUnit });
+      await applyDiscountMutation.mutateAsync({ itemId, discountPerUnit, discountType });
       return { success: true };
     } catch (err) {
       return { success: false, error: errMsg(err) };
@@ -196,7 +202,7 @@ export function useCart() {
       if (!item) throw new Error("Item not found");
       const price = Math.max(0, newUnitPrice);
       const { gstAmount, total } = calcItemTotals({
-        unitPrice: price, discount: item.discount, quantity: item.quantity,
+        unitPrice: price, discount: item.discount, quantity: item.quantity, discountType: item.discount_type,
       });
       await pb.collection("cart_items").update(itemId, { unit_price: price, gst_5: gstAmount, total }, PB_REQ);
     },

@@ -59,6 +59,12 @@ export const KHATA_TXN = {
   ADJUSTMENT: "ADJUSTMENT",
 } as const;
 
+export const DISCOUNT_TYPE = {
+  FLAT: "FLAT",
+  PERCENTAGE: "PERCENTAGE",
+} as const;
+export type DiscountType = (typeof DISCOUNT_TYPE)[keyof typeof DISCOUNT_TYPE];
+
 export const CASH_ADJUSTMENT_TYPE = {
   CASH_IN: "CASH_IN",
   CASH_OUT: "CASH_OUT",

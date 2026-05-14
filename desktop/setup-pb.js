@@ -154,6 +154,7 @@ async function setup() {
     { name: 'quantity', type: 'number', required: true, options: { default: 1 } },
     { name: 'unit_price', type: 'number', required: true, options: { default: 0 } },
     { name: 'discount', type: 'number', required: false, options: { default: 0 } },
+    { name: 'discount_type', type: 'text', required: false },
     { name: 'gst_5', type: 'number', required: false, options: { default: 0 } },
     { name: 'total', type: 'number', required: false, options: { default: 0 } },
   ]);
@@ -188,6 +189,7 @@ async function setup() {
     { name: 'completed_at', type: 'date', required: false },
     { name: 'cancelled_at', type: 'date', required: false },
     { name: 'cart_id', type: 'relation', target: 'carts', required: false },
+    { name: 'is_synced', type: 'bool', required: false, options: { default: false } },
   ]);
 
   // ── inventory_movements ────────────────────────────────────────────────────
@@ -254,11 +256,23 @@ async function setup() {
     { name: 'created_by', type: 'relation', target: 'users', required: true },
   ]);
 
+  // ── audit_logs ─────────────────────────────────────────────────────────────
+  await addFields(pb, 'audit_logs', [
+    { name: 'collection_name', type: 'text', required: true },
+    { name: 'record_id', type: 'text', required: false },
+    { name: 'operation', type: 'text', required: true },
+    { name: 'old_values', type: 'json', required: false },
+    { name: 'new_values', type: 'json', required: false },
+    { name: 'actor', type: 'relation', target: 'users', required: false },
+    { name: 'actor_role', type: 'text', required: false },
+    { name: 'notes', type: 'text', required: false },
+  ]);
+
   // ── Access rules ───────────────────────────────────────────────────────────
   const collectionNames = [
     'entities', 'categories', 'products', 'khata_accounts', 'carts', 'cart_items',
     'orders', 'inventory_movements', 'khata_transactions', 'settings', 'shifts',
-    'cash_adjustments'
+    'cash_adjustments', 'audit_logs'
   ];
   console.log('\n🔒 Access rules:');
   for (const name of collectionNames) {

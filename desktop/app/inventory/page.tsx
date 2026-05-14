@@ -35,8 +35,21 @@ const ADJUSTMENT_TYPES: { value: string; label: string }[] = [
 ];
 
 export default function InventoryPage() {
-  const { user } = useAuth();
+  const { user, isManager, loading: authLoading } = useAuth();
   const pb = getPB();
+
+  if (authLoading) return <div className="min-h-screen flex items-center justify-center"><p className="text-muted-foreground">Loading...</p></div>;
+  if (!isManager) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center space-y-3">
+          <Package className="h-12 w-12 text-muted-foreground mx-auto" />
+          <p className="text-muted-foreground">Access restricted to managers and owners</p>
+          <Link href="/"><Button variant="outline" size="sm"><ArrowLeft className="h-4 w-4 mr-1" />Back to POS</Button></Link>
+        </div>
+      </div>
+    );
+  }
   const {
     allProducts,
     loading,

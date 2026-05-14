@@ -3,7 +3,7 @@
 import { useCallback } from "react";
 import { useKeyboardRegistry } from "./use-keyboard-registry";
 import { toast } from "sonner";
-import { LAYOUT_PRESETS } from "@/lib/constants";
+import { LAYOUT_PRESETS, DISCOUNT_TYPE } from "@/lib/constants";
 import type { CartItem } from "./use-cart";
 import type { LayoutPreset } from "@/lib/constants";
 
@@ -24,7 +24,7 @@ interface PosShortcutsInput {
   handleCheckout: () => void;
   handleVoidLast: () => void;
   handleUndo: () => void;
-  applyDiscount: (itemId: string, discount: number) => void;
+  applyDiscount: (itemId: string, discount: number, discountType?: string) => void;
   removeItem: (itemId: string) => void;
   setLayout: (preset: LayoutPreset) => void;
 }
@@ -51,10 +51,10 @@ export function usePosShortcuts(input: PosShortcutsInput) {
         toast("Cart is empty — add items first");
         return;
       }
-      const amt = prompt("Enter discount per unit (Nu.):");
+      const amt = prompt("Enter discount (Nu. or %):");
       if (amt !== null && input.items.length > 0) {
         const discount = parseFloat(amt) || 0;
-        input.applyDiscount(input.items[input.items.length - 1].id, discount);
+        input.applyDiscount(input.items[input.items.length - 1].id, discount, DISCOUNT_TYPE.FLAT);
         toast.success(`Discount set: Nu. ${discount.toFixed(2)}`);
       }
     });
