@@ -4,10 +4,8 @@ import { useState, useEffect, useRef } from "react"
 import { X, Plus, Minus, Trash2, Search, Loader2, Phone } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { createClient } from "@/lib/supabase/client"
 
 export function CreateMarketplaceOrderModal({ open, entityId, onClose, onCreated }) {
-  const supabase = createClient()
 
   // Customer fields
   const [customerPhone,   setCustomerPhone]   = useState('')
@@ -51,14 +49,17 @@ export function CreateMarketplaceOrderModal({ open, entityId, onClose, onCreated
     }
     const timer = setTimeout(async () => {
       setSearching(true)
-      const { data } = await supabase
-        .from('sellable_products')
-        .select('id, name, sku, mrp, available_stock')
-        .or(`name.ilike.%${search}%,sku.ilike.%${search}%`)
-        .gt('available_stock', 0)
-        .eq('is_active', true)
-        .limit(20)
-      setSearchResults(data || [])
+      try {
+        const res = await fetch(`/api/pos/products/search?q=${encodeURIComponent(search)}&table=sellable_products&limit=20`)
+        if (res.ok) {
+          const data = await res.json()
+          setSearchResults(data.products || [])
+        } else {
+          setSearchResults([])
+        }
+      } catch {
+        setSearchResults([])
+      }
       setSearching(false)
     }, 300)
     return () => clearTimeout(timer)

@@ -1,39 +1,18 @@
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { createServiceClient } from '@/lib/supabase/server'
+import { getAuthContext } from '@/lib/supabase/server'
 
 export async function POST(request, { params }) {
   try {
-    const cookieStore = await cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      {
-        cookies: {
-          get(name) { return cookieStore.get(name)?.value },
-          set(name, value, options) { cookieStore.set({ name, value, ...options }) },
-          remove(name, options) { cookieStore.set({ name, value: '', ...options }) },
-        },
-      }
-    )
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const { entityId, userId, supabase } = ctx
+    const vendorEntityId = entityId
 
     const { id: poId } = await params
-    const serviceClient = createServiceClient()
-
-    const { data: profile } = await serviceClient
-      .from('user_profiles')
-      .select('entity_id')
-      .eq('id', session.user.id)
-      .single()
-
-    if (!profile?.entity_id) return NextResponse.json({ error: 'Vendor entity not found' }, { status: 403 })
-    const vendorEntityId = profile.entity_id
 
     // Fetch the original PO
-    const { data: po } = await serviceClient
+    const { data: po } = await supabase
       .from('orders')
       .select('*')
       .eq('id', poId)
@@ -50,7 +29,7 @@ export async function POST(request, { params }) {
     if (!items?.length) return NextResponse.json({ error: 'At least one item is required' }, { status: 400 })
 
     // Fetch original PO items for reference
-    const { data: poItems } = await serviceClient
+    const { data: poItems } = await supabase
       .from('order_items')
       .select('*')
       .eq('order_id', poId)
@@ -59,12 +38,12 @@ export async function POST(request, { params }) {
 
     // Calculate already-invoiced quantities per PO line item across all existing invoices
     // (both DRAFT and CONFIRMED invoices count — we don't want to double-receive)
-    const { data: existingInvoiceItems } = await serviceClient
+    const { data: existingInvoiceItems } = await supabase
       .from('order_items')
       .select('id, quantity, oi_src:orders!order_id(id, purchase_order_id, status, order_type)')
       .in(
         'order_id',
-        (await serviceClient
+        (await supabase
           .from('orders')
           .select('id')
           .eq('purchase_order_id', poId)
@@ -162,7 +141,7 @@ export async function POST(request, { params }) {
 
     // Generate PI number: PI-YYYY-XXXXX
     const year = new Date().getFullYear()
-    const { data: lastInvoice } = await serviceClient
+    const { data: lastInvoice } = await supabase
       .from('orders')
       .select('order_no')
       .like('order_no', `PI-${year}-%`)
@@ -174,7 +153,7 @@ export async function POST(request, { params }) {
     const invoiceNo = `PI-${year}-${String(lastSerial + 1).padStart(5, '0')}`
 
     // Create the Purchase Invoice
-    const { data: invoice, error: invErr } = await serviceClient
+    const { data: invoice, error: invErr } = await supabase
       .from('orders')
       .insert({
         order_type:        'PURCHASE_INVOICE',
@@ -190,7 +169,7 @@ export async function POST(request, { params }) {
         subtotal:          grandTotal,
         gst_total:         0,
         grand_total:       grandTotal,
-        created_by:        session.user.id,
+        created_by:        userId,
       })
       .select('id, order_no, status, grand_total')
       .single()
@@ -198,7 +177,7 @@ export async function POST(request, { params }) {
     if (invErr) throw invErr
 
     // Insert invoice order_items
-    await serviceClient.from('order_items').insert(
+    await supabase.from('order_items').insert(
       invoiceItems.map(item => ({ order_id: invoice.id, ...item }))
     )
 
@@ -223,7 +202,7 @@ export async function POST(request, { params }) {
     }
 
     const newPoStatus = allFullyInvoiced ? 'CONFIRMED' : 'PARTIALLY_RECEIVED'
-    await serviceClient
+    await supabase
       .from('orders')
       .update({ status: newPoStatus })
       .eq('id', poId)

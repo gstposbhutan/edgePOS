@@ -5,7 +5,6 @@ import { ArrowLeft, Check, X, Search, Camera, AlertTriangle, Loader2 } from "luc
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { createClient } from "@/lib/supabase/client"
 
 /**
  * Draft Purchase Review — editable items table with confidence tiers,
@@ -28,8 +27,6 @@ export function DraftPurchaseReview({ draft, onUpdateItem, onConfirm, onCancel, 
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState([])
 
-  const supabase = createClient()
-
   useEffect(() => {
     setItems(draft.draft_purchase_items ?? [])
     setSupplierName(draft.supplier_name || '')
@@ -40,15 +37,17 @@ export function DraftPurchaseReview({ draft, onUpdateItem, onConfirm, onCancel, 
     if (!searching || !searchQuery.trim()) { setSearchResults([]); return }
 
     const timer = setTimeout(async () => {
-      const { data } = await supabase
-        .from('products')
-        .select('id, name, sku, mrp')
-        .eq('entity_id', draft.entity_id)
-        .eq('is_active', true)
-        .ilike('name', `%${searchQuery}%`)
-        .limit(10)
-
-      setSearchResults(data ?? [])
+      try {
+        const res = await fetch(`/api/pos/products/search?q=${encodeURIComponent(searchQuery)}&entity_id=${draft.entity_id}&limit=10`)
+        if (res.ok) {
+          const data = await res.json()
+          setSearchResults(data.products ?? [])
+        } else {
+          setSearchResults([])
+        }
+      } catch {
+        setSearchResults([])
+      }
     }, 300)
 
     return () => clearTimeout(timer)

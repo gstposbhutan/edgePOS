@@ -83,9 +83,20 @@ export function CartProvider({ children }) {
     }
   }
 
-  // Fetch cart on mount and when user logs in
+  // Fetch cart when user has an active session (cookie-based auth)
   useEffect(() => {
-    fetchCart()
+    async function checkSession() {
+      try {
+        const res = await fetch('/api/auth/session')
+        if (res.ok) {
+          const data = await res.json()
+          if (data.user) fetchCart()
+        }
+      } catch {
+        // Not logged in — skip cart fetch
+      }
+    }
+    checkSession()
   }, [])
 
   return (

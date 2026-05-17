@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getUser, getRoleClaims } from '@/lib/auth'
-import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { UserPlus, Trash2, Loader2, ArrowLeft, ShieldCheck } from 'lucide-react'
@@ -32,13 +31,7 @@ export default function TeamPage() {
       if (role === 'RETAILER' && sr !== 'OWNER') { router.push('/pos'); return }
       setSubRole(sr)
 
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/login'); return }
-
-      const res = await fetch('/api/admin/team', {
-        headers: { authorization: `Bearer ${session.access_token}` },
-      })
+      const res = await fetch('/api/admin/team')
       const data = await res.json()
       if (data.team) setTeam(data.team)
       setLoading(false)
@@ -48,11 +41,8 @@ export default function TeamPage() {
 
   async function handleDelete(memberId) {
     if (!confirm('Remove this team member?')) return
-    const supabase = createClient()
-    const { data: { session } } = await supabase.auth.getSession()
     const res = await fetch(`/api/admin/team/${memberId}`, {
       method: 'DELETE',
-      headers: { authorization: `Bearer ${session.access_token}` },
     })
     const data = await res.json()
     if (!res.ok) { alert(data.error); return }
@@ -61,11 +51,9 @@ export default function TeamPage() {
 
   async function handleChangeRole(memberId, newSubRole) {
     if (newSubRole === 'OWNER' && !confirm(`Transfer ownership to this member? You will become a Manager.`)) return
-    const supabase = createClient()
-    const { data: { session } } = await supabase.auth.getSession()
     const res = await fetch(`/api/admin/team/${memberId}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', authorization: `Bearer ${session.access_token}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sub_role: newSubRole }),
     })
     const data = await res.json()

@@ -1,15 +1,12 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { createClient } from "@/lib/supabase/client"
 
 /**
- * Manages inventory data and movements for a store entity.
+ * Manages inventory data and movements for a store entity via API routes.
  * @param {string} entityId
  */
 export function useInventory(entityId) {
-  const supabase = createClient()
-
   const [products,  setProducts]  = useState([])
   const [movements, setMovements] = useState([])
   const [batches,   setBatches]   = useState([])
@@ -23,28 +20,27 @@ export function useInventory(entityId) {
 
   async function fetchProducts() {
     setLoading(true)
-    const { data } = await supabase
-      .from('products')
-      .select('id, name, sku, unit, current_stock, mrp, selling_price, wholesale_price, hsn_code, is_active, reorder_point, barcode')
-      .eq('is_active', true)
-      .order('name')
-
-    setProducts(data ?? [])
+    try {
+      const res = await fetch('/api/inventory')
+      const data = await res.json()
+      if (res.ok) setProducts(data.products ?? [])
+    } catch {
+      // leave unchanged
+    }
     setLoading(false)
   }
 
   async function fetchMovements(productId = null) {
-    let query = supabase
-      .from('inventory_movements')
-      .select('id, movement_type, quantity, notes, created_at, products(name, sku)')
-      .eq('entity_id', entityId)
-      .order('created_at', { ascending: false })
-      .limit(50)
+    try {
+      const params = new URLSearchParams()
+      if (productId) params.set('product_id', productId)
 
-    if (productId) query = query.eq('product_id', productId)
-
-    const { data } = await query
-    setMovements(data ?? [])
+      const res = await fetch(`/api/inventory/movements?${params}`)
+      const data = await res.json()
+      if (res.ok) setMovements(data.movements ?? [])
+    } catch {
+      // leave unchanged
+    }
   }
 
   /**
@@ -55,18 +51,22 @@ export function useInventory(entityId) {
    * @param {string} notes
    */
   const adjustStock = useCallback(async (productId, type, quantity, notes) => {
-    const { error } = await supabase
-      .from('inventory_movements')
-      .insert({
-        product_id:    productId,
-        entity_id:     entityId,
+    const res = await fetch('/api/inventory/movements', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        product_id: productId,
         movement_type: type,
-        quantity,         // DB trigger auto-updates products.current_stock
+        quantity,
         notes,
-      })
+      }),
+    })
+    const data = await res.json()
 
-    if (!error) await fetchProducts()
-    return { error: error?.message ?? null }
+    if (!res.ok) return { error: data.error }
+
+    await fetchProducts()
+    return { error: null }
   }, [entityId])
 
   // Derived filtered list
@@ -80,21 +80,21 @@ export function useInventory(entityId) {
   const lowCount = products.filter(p => p.current_stock > 0 && p.current_stock <= (p.reorder_point ?? 10)).length
   const outCount = products.filter(p => p.current_stock <= 0).length
 
-  // ── Fetch active batches for this entity ─────────────────────────────────
+  // -- Fetch active batches for this entity --
   const fetchBatches = useCallback(async (productId = null) => {
-    let query = supabase
-      .from('product_batches')
-      .select('id, product_id, batch_number, barcode, manufactured_at, expires_at, quantity, unit_cost, mrp, selling_price, status, received_at, products(name, sku, unit)')
-      .eq('entity_id', entityId)
-      .order('expires_at', { ascending: true, nullsFirst: false })
+    try {
+      const params = new URLSearchParams()
+      if (productId) params.set('product_id', productId)
 
-    if (productId) query = query.eq('product_id', productId)
-
-    const { data } = await query
-    setBatches(data ?? [])
+      const res = await fetch(`/api/inventory/batches?${params}`)
+      const data = await res.json()
+      if (res.ok) setBatches(data.batches ?? [])
+    } catch {
+      // leave unchanged
+    }
   }, [entityId])
 
-  // ── Receive stock — creates batch + RESTOCK movement + updates product prices
+  // -- Receive stock — creates batch + RESTOCK movement + updates product prices
   const receiveStock = useCallback(async (formData) => {
     const res = await fetch('/api/inventory/receive', {
       method: 'POST',
@@ -108,31 +108,16 @@ export function useInventory(entityId) {
     return { error: null, batch: data.batch }
   }, [entityId])
 
-  // Products that are bottlenecking an active package (component availability < 1 package)
-  // Computed at the hook level so the inventory page can show a dedicated alert
+  // Products that are bottlenecking an active package
   async function getPackageBottlenecks() {
-    const { data: activePackages } = await supabase
-      .from('product_packages')
-      .select('id, name, package_items(product_id, quantity)')
-      .eq('is_active', true)
-
-    if (!activePackages?.length) return []
-
-    const bottlenecks = []
-    for (const pkg of activePackages) {
-      for (const item of pkg.package_items ?? []) {
-        const product = products.find(p => p.id === item.product_id)
-        if (product && product.current_stock < item.quantity) {
-          bottlenecks.push({
-            packageName:  pkg.name,
-            productName:  product.name,
-            needed:       item.quantity,
-            available:    product.current_stock,
-          })
-        }
-      }
+    try {
+      const res = await fetch('/api/inventory/bottlenecks')
+      const data = await res.json()
+      if (res.ok) return data.bottlenecks ?? []
+    } catch {
+      // fall through
     }
-    return bottlenecks
+    return []
   }
 
   return {

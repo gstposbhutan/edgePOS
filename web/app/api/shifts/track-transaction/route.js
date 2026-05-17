@@ -1,17 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
-
-async function getAuthContext() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-
-  const entityId = user.app_metadata?.entity_id
-  if (!entityId) return null
-
-  const serviceClient = createServiceClient()
-  return { entityId, supabase: serviceClient }
-}
+import { getAuthContext } from '@/lib/supabase/server'
 
 // POST /api/shifts/track-transaction
 export async function POST(request) {

@@ -1,37 +1,18 @@
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { createServiceClient } from '@/lib/supabase/server'
-
-async function getRiderSession(cookieStore) {
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-    {
-      cookies: {
-        get(name) { return cookieStore.get(name)?.value },
-        set(name, value, options) { cookieStore.set({ name, value, ...options }) },
-        remove(name, options) { cookieStore.set({ name, value: '', ...options }) },
-      },
-    }
-  )
-  const { data: { session } } = await supabase.auth.getSession()
-  return session
-}
+import { getAuthContext } from '@/lib/supabase/server'
 
 export async function GET() {
   try {
-    const cookieStore = await cookies()
-    const session = await getRiderSession(cookieStore)
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const serviceClient = createServiceClient()
+    const { supabase, userId } = ctx
 
     // Resolve rider record from auth user
-    const { data: rider } = await serviceClient
+    const { data: rider } = await supabase
       .from('riders')
       .select('id, name, current_order_id')
-      .eq('auth_user_id', session.user.id)
+      .eq('auth_user_id', userId)
       .single()
 
     if (!rider) return NextResponse.json({ error: 'Rider not found' }, { status: 404 })
@@ -39,7 +20,7 @@ export async function GET() {
     // Current assigned order
     let current = null
     if (rider.current_order_id) {
-      const { data: order } = await serviceClient
+      const { data: order } = await supabase
         .from('orders')
         .select(`
           id, order_no, status, grand_total, delivery_address, delivery_lat, delivery_lng,
@@ -51,7 +32,7 @@ export async function GET() {
         .single()
 
       if (order) {
-        const { data: items } = await serviceClient
+        const { data: items } = await supabase
           .from('order_items')
           .select('id, name, quantity')
           .eq('order_id', order.id)
@@ -61,7 +42,7 @@ export async function GET() {
     }
 
     // Delivery history (last 20)
-    const { data: history } = await serviceClient
+    const { data: history } = await supabase
       .from('orders')
       .select('id, order_no, status, grand_total, delivery_address, created_at, completed_at')
       .eq('rider_id', rider.id)

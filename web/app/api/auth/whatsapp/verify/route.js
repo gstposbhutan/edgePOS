@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
 import bcrypt from 'bcryptjs'
 import { createServiceClient } from '@/lib/supabase/server'
 
@@ -255,7 +257,7 @@ export async function POST(request) {
       }
 
       // Return temp credentials for client-side sign in (new users)
-      // Or magic link tokens (existing users)
+      // Or set session cookies server-side (existing users)
       if (tempPassword) {
         console.log('[MOCK VERIFY] Returning temp credentials for new user')
         return NextResponse.json({
@@ -265,13 +267,30 @@ export async function POST(request) {
           temp_password: tempPassword,
         })
       } else {
-        console.log('[MOCK VERIFY] Returning magic link tokens for existing user')
-        return NextResponse.json({
-          success: true,
-          access_token: linkData.properties.access_token,
-          refresh_token: linkData.properties.refresh_token,
-          expires_at: linkData.properties.expires_at,
-        })
+        console.log('[MOCK VERIFY] Setting session cookies for existing user')
+        // Set session cookies via SSR client
+        const cookieStore = await cookies()
+        let response = NextResponse.json({ success: true })
+        const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
+        const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+        if (url && key) {
+          const ssrClient = createServerClient(url, key, {
+            cookieOptions: { name: 'sb-edgepos-auth-token' },
+            cookies: {
+              getAll: () => cookieStore.getAll(),
+              setAll: (cookiesToSet) => {
+                cookiesToSet.forEach(({ name, value, options }) => {
+                  response.cookies.set(name, value, options)
+                })
+              },
+            },
+          })
+          await ssrClient.auth.setSession({
+            access_token: linkData.properties.access_token,
+            refresh_token: linkData.properties.refresh_token,
+          })
+        }
+        return response
       }
     }
 
@@ -482,13 +501,29 @@ export async function POST(request) {
       })
     }
 
-    // For existing users without temp password, use magic link approach
-    return NextResponse.json({
-      success: true,
-      access_token: linkData.properties.access_token,
-      refresh_token: linkData.properties.refresh_token,
-      expires_at: linkData.properties.expires_at,
-    })
+    // For existing users, set session cookies server-side
+    const cookieStore2 = await cookies()
+    let response2 = NextResponse.json({ success: true })
+    const url2 = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
+    const key2 = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    if (url2 && key2) {
+      const ssrClient2 = createServerClient(url2, key2, {
+        cookieOptions: { name: 'sb-edgepos-auth-token' },
+        cookies: {
+          getAll: () => cookieStore2.getAll(),
+          setAll: (cookiesToSet) => {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              response2.cookies.set(name, value, options)
+            })
+          },
+        },
+      })
+      await ssrClient2.auth.setSession({
+        access_token: linkData.properties.access_token,
+        refresh_token: linkData.properties.refresh_token,
+      })
+    }
+    return response2
   } catch (err) {
     console.error('WhatsApp verify OTP error:', err)
     console.error('Error stack:', err.stack)

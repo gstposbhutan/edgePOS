@@ -1,0 +1,2 @@
+WARNING: No mapping for sub-group "Sub Group" (product: Product)
+Stats: 1165 products, 164 HSN codes, 160 categories

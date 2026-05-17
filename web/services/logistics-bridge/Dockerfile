@@ -10,7 +10,7 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
-COPY tsconfig.json ./
+COPY package.json tsconfig.json ./
 COPY src/ ./src/
 
 RUN npm run build

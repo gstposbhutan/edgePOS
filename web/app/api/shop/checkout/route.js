@@ -1,12 +1,10 @@
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { createServiceClient } from '@/lib/supabase/server'
+import { getAuthContext } from '@/lib/supabase/server'
 import { createHash, randomBytes } from 'node:crypto'
 
-async function assignRider(serviceClient, orderId, order) {
+async function assignRider(supabase, orderId, order) {
   try {
-    const { data: riders } = await serviceClient
+    const { data: riders } = await supabase
       .from('riders')
       .select('id, name, whatsapp_no')
       .eq('is_active', true)
@@ -21,7 +19,7 @@ async function assignRider(serviceClient, orderId, order) {
     const pickupOtp = String(Math.floor(100000 + Math.random() * 900000))
     const pickupOtpExpiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
 
-    await serviceClient
+    await supabase
       .from('orders')
       .update({
         rider_id:              rider.id,
@@ -31,7 +29,7 @@ async function assignRider(serviceClient, orderId, order) {
       })
       .eq('id', orderId)
 
-    await serviceClient
+    await supabase
       .from('riders')
       .update({ is_available: false, current_order_id: orderId })
       .eq('id', rider.id)
@@ -56,27 +54,14 @@ async function assignRider(serviceClient, orderId, order) {
 
 export async function POST(request) {
   try {
-    const cookieStore = await cookies()
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      {
-        cookies: {
-          get(name) { return cookieStore.get(name)?.value },
-          set(name, value, options) { cookieStore.set({ name, value, ...options }) },
-          remove(name, options) { cookieStore.set({ name, value: '', ...options }) },
-        },
-      }
-    )
+    const { userId, supabase } = ctx
 
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-    if (sessionError || !session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const customerPhone = session.user.user_metadata?.phone
-    const userId = session.user.id
+    // Get customer phone from user metadata via auth admin
+    const { data: { user } } = await supabase.auth.admin.getUserById(userId)
+    const customerPhone = user?.user_metadata?.phone
 
     if (!customerPhone) {
       return NextResponse.json({ error: 'Customer phone not found in session' }, { status: 400 })
@@ -89,10 +74,8 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Delivery address is required' }, { status: 400 })
     }
 
-    const serviceClient = createServiceClient()
-
     // Get customer's entity record (id = auth user id per migration 041)
-    const { data: customerEntity } = await serviceClient
+    const { data: customerEntity } = await supabase
       .from('entities')
       .select('id')
       .eq('id', userId)
@@ -101,7 +84,7 @@ export async function POST(request) {
     const buyerId = customerEntity?.id ?? null
 
     // Fetch all active carts with items
-    const { data: carts, error: cartsError } = await serviceClient
+    const { data: carts, error: cartsError } = await supabase
       .from('carts')
       .select('id, entity_id, entities!inner(id, name, tpn_gstin, whatsapp_no)')
       .eq('customer_whatsapp', customerPhone)
@@ -114,7 +97,7 @@ export async function POST(request) {
 
     const cartsWithItems = await Promise.all(
       carts.map(async (cart) => {
-        const { data: items } = await serviceClient
+        const { data: items } = await supabase
           .from('cart_items')
           .select('*')
           .eq('cart_id', cart.id)
@@ -131,7 +114,7 @@ export async function POST(request) {
 
     // Generate sequential MKT order number
     async function generateOrderNo() {
-      const { data } = await serviceClient
+      const { data } = await supabase
         .from('orders')
         .select('order_no')
         .like('order_no', `MKT-${year}-%`)
@@ -169,7 +152,7 @@ export async function POST(request) {
         const paymentToken = randomBytes(32).toString('hex')
         const paymentTokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
 
-        const { data: order, error: orderError } = await serviceClient
+        const { data: order, error: orderError } = await supabase
           .from('orders')
           .insert({
             order_type: 'MARKETPLACE',
@@ -198,7 +181,7 @@ export async function POST(request) {
 
         if (orderError) throw new Error(orderError.message)
 
-        await serviceClient.from('order_items').insert(
+        await supabase.from('order_items').insert(
           cart.items.map(item => ({
             order_id:   order.id,
             product_id: item.product_id,
@@ -215,7 +198,7 @@ export async function POST(request) {
         )
 
         // Auto-assign available rider (fire-and-forget)
-        assignRider(serviceClient, order.id, {
+        assignRider(supabase, order.id, {
           order_no:       order.order_no,
           seller_whatsapp: vendor.whatsapp_no,
         })

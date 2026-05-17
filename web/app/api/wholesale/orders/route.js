@@ -1,70 +1,12 @@
 import { NextResponse } from 'next/server'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { createServiceClient as createSSRServiceClient } from '@/lib/supabase/server'
-
-// Create a true service client that bypasses RLS
-function createBypassClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    { auth: { persistSession: false, autoRefreshToken: false } }
-  )
-}
-
-async function getContext(request) {
-  const authHeader = request.headers.get('authorization')
-  if (!authHeader) {
-    console.error('[wholesale/orders] No auth header')
-    return null
-  }
-
-  const token = authHeader.replace('Bearer ', '')
-  const authClient = createSSRServiceClient()
-  const { data: { user }, error: userError } = await authClient.auth.getUser(token)
-
-  if (userError || !user) {
-    console.error('[wholesale/orders] Auth failed:', userError)
-    return null
-  }
-
-  let entityId = user.app_metadata?.entity_id
-  let role = user.app_metadata?.role
-
-  // Fallback: if claims not in app_metadata (hook not registered), query user_profiles
-  if (!entityId || !role) {
-    console.log('[wholesale/orders] Missing claims, querying user_profiles')
-    const supabase = createBypassClient()
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('entity_id, role')
-      .eq('id', user.id)
-      .single()
-
-    if (profile) {
-      entityId = entityId || profile.entity_id
-      role = role || profile.role
-      console.log('[wholesale/orders] Found claims from user_profiles:', { entityId, role })
-    } else {
-      console.error('[wholesale/orders] No profile found for user:', user.id)
-      return null
-    }
-  }
-
-  if (!entityId) {
-    console.error('[wholesale/orders] No entity_id found')
-    return null
-  }
-
-  console.log('[wholesale/orders] Context:', { entityId, role, userId: user.id })
-  return { entityId, role, userId: user.id }
-}
+import { getAuthContext } from '@/lib/supabase/server'
 
 /** POST /api/wholesale/orders — create a purchase order */
 export async function POST(request) {
-  const ctx = await getContext(request)
+  const ctx = await getAuthContext()
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { entityId, role, userId } = ctx
+  const { entityId, role, userId, supabase } = ctx
   if (role !== 'RETAILER') {
     return NextResponse.json({ error: 'Only retailers can place wholesale orders' }, { status: 403 })
   }
@@ -75,9 +17,6 @@ export async function POST(request) {
   if (!wholesaler_id || !items?.length) {
     return NextResponse.json({ error: 'wholesaler_id and items[] required' }, { status: 400 })
   }
-
-  // Use bypass client for all queries
-  const supabase = createBypassClient()
 
   // Verify connection
   const { data: connection } = await supabase
@@ -226,15 +165,13 @@ export async function POST(request) {
 
 /** GET /api/wholesale/orders — list wholesale orders */
 export async function GET(request) {
-  const ctx = await getContext(request)
+  const ctx = await getAuthContext()
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { entityId, role } = ctx
+  const { entityId, role, supabase } = ctx
   const { searchParams } = new URL(request.url)
   const status = searchParams.get('status')
   const limit = parseInt(searchParams.get('limit') || '50')
-
-  const supabase = createBypassClient()
 
   let query = supabase
     .from('orders')

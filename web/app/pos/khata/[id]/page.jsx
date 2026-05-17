@@ -58,21 +58,17 @@ export default function KhataDetailPage() {
 
   async function handleRecordPayment(amount, method, opts) {
     const user = await getUser()
-    const { data: profile } = await (await import('@/lib/supabase/client')).createClient()
-      .from('user_profiles').select('id').eq('id', user.id).single()
 
     return recordPayment(accountId, amount, method, {
       ...opts,
-      profileId: profile?.id ?? user.id,
+      profileId: user.id,
     })
   }
 
   async function handleAdjust(type, amount, reason) {
     const user = await getUser()
-    const { data: profile } = await (await import('@/lib/supabase/client')).createClient()
-      .from('user_profiles').select('id').eq('id', user.id).single()
 
-    const result = await adjustBalance(accountId, type, amount, reason, profile?.id ?? user.id)
+    const result = await adjustBalance(accountId, type, amount, reason, user.id)
     if (!result.error) await loadAccount()
     return result
   }
@@ -80,8 +76,6 @@ export default function KhataDetailPage() {
   async function handleSetLimit() {
     setLimitErr(null)
     const user = await getUser()
-    const { data: profile } = await (await import('@/lib/supabase/client')).createClient()
-      .from('user_profiles').select('id').eq('id', user.id).single()
 
     const limit = parseFloat(newLimit)
     if (isNaN(limit) || limit < 0) {
@@ -89,7 +83,7 @@ export default function KhataDetailPage() {
       return
     }
 
-    const { error } = await setCreditLimit(accountId, limit, profile?.id ?? user.id)
+    const { error } = await setCreditLimit(accountId, limit, user.id)
     if (error) {
       setLimitErr(error)
       return

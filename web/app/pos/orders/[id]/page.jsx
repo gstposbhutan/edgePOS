@@ -12,7 +12,6 @@ import { RefundModal }      from "@/components/pos/orders/refund-modal"
 import { useOrders }        from "@/hooks/use-orders"
 import { useKhata }         from "@/hooks/use-khata"
 import { getUser, getRoleClaims } from "@/lib/auth"
-import { createClient }     from "@/lib/supabase/client"
 import { ShortcutBar }      from "@/components/pos/keyboard/shortcut-bar"
 
 // Statuses where cancellation is still possible
@@ -50,7 +49,6 @@ export default function OrderDetailPage() {
   const [feeConfirmErr,  setFeeConfirmErr]  = useState(null)
   const [feeConfirmed,   setFeeConfirmed]   = useState(false)
 
-  const supabase = createClient()
   const { fetchOrderDetail, cancelOrder, requestRefund, approveRefund } = useOrders(entityId)
 
   useEffect(() => {
@@ -101,17 +99,15 @@ export default function OrderDetailPage() {
 
       // Fetch available batches per product
       const productIds = [...new Set(items.map(i => i.product_id))]
-      supabase
-        .from('product_batches')
-        .select('id, product_id, batch_number, expires_at, quantity, selling_price, mrp')
-        .in('product_id', productIds)
-        .eq('entity_id', entityId)
-        .eq('status', 'ACTIVE')
-        .gt('quantity', 0)
-        .order('expires_at', { ascending: true, nullsFirst: false })
-        .then(({ data }) => {
+      fetch('/api/pos/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productIds }),
+      })
+        .then(r => r.json())
+        .then(({ batches }) => {
           const map = {}
-          for (const b of (data || [])) {
+          for (const b of (batches || [])) {
             if (!map[b.product_id]) map[b.product_id] = []
             map[b.product_id].push(b)
           }
@@ -160,10 +156,9 @@ export default function OrderDetailPage() {
     e.preventDefault()
     setInvoicing(true)
     try {
-      const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch(`/api/sales/${id}/invoice`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${session?.access_token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           items: invoiceLines.map(l => ({
             order_item_id: l.order_item_id,
@@ -348,10 +343,9 @@ export default function OrderDetailPage() {
                         onClick={async () => {
                           setFeeConfirming(true); setFeeConfirmErr(null)
                           try {
-                            const { data: { session } } = await supabase.auth.getSession()
                             const res = await fetch(`/api/shop/orders/${order.id}/confirm-delivery-fee`, {
                               method: 'POST',
-                              headers: { 'Content-Type': 'application/json', authorization: `Bearer ${session?.access_token}` },
+                              headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({ receipt_url: feeReceiptUrl }),
                             })
                             const data = await res.json()
@@ -1070,17 +1064,19 @@ function CreateKhataButton({ phone, name, entityId, onCreated }) {
 
   async function handleCreate() {
     setLoading(true)
-    const supabase = createClient()
-    const { data: customerEntity } = await supabase
-      .from('entities')
-      .select('name')
-      .eq('whatsapp_no', phone)
-      .single()
+    let customerName = name ?? `Customer ${phone.slice(-4)}`
+    try {
+      const entRes = await fetch(`/api/pos/entities?phone=${encodeURIComponent(phone)}`)
+      if (entRes.ok) {
+        const { entity } = await entRes.json()
+        if (entity?.name) customerName = entity.name
+      }
+    } catch {}
 
     const { error } = await createAccount({
       party_type:   'CONSUMER',
       debtor_phone: phone,
-      debtor_name:  name ?? customerEntity?.name ?? `Customer ${phone.slice(-4)}`,
+      debtor_name:  customerName,
       credit_limit: 1000,
     })
 

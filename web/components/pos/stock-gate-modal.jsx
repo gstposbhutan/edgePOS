@@ -5,7 +5,6 @@ import { AlertTriangle, Plus, Trash2, Loader2, Package } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { createClient } from "@/lib/supabase/client"
 
 /**
  * Shown during checkout when one or more cart items have insufficient stock.
@@ -61,8 +60,6 @@ export function StockGateModal({ open, shortfalls, entityId, onRestock, onRemove
  * Individual shortfall row with inline restock form.
  */
 function ShortfallRow({ item, available, needed, entityId, onRestock, onRemove }) {
-  const supabase = createClient()
-
   const [showRestock, setShowRestock] = useState(false)
   const [qty,         setQty]         = useState('')
   const [batchNo,     setBatchNo]     = useState('')
@@ -84,38 +81,33 @@ function ShortfallRow({ item, available, needed, entityId, onRestock, onRemove }
 
     setLoading(true)
 
-    // Create batch record
-    const { data: batch, error: batchError } = await supabase
-      .from('product_batches')
-      .insert({
-        product_id:     item.product_id,
-        entity_id:      entityId,
-        batch_number:   batchNo.trim(),
-        barcode:        barcode.trim() || null,
-        manufactured_at: manufDate || null,
-        expires_at:     expiryDate || null,
-        quantity,
-        status:         'ACTIVE',
-        notes:          `Emergency restock during checkout — order item: ${item.name}`,
-      })
-      .select('id')
-      .single()
-
-    if (batchError) { setError(batchError.message); setLoading(false); return }
-
-    // Record inventory movement linked to batch
-    const { error: movError } = await supabase
-      .from('inventory_movements')
-      .insert({
-        product_id:    item.product_id,
-        entity_id:     entityId,
-        movement_type: 'RESTOCK',
-        quantity,
-        batch_id:      batch.id,
-        notes:         `Restock before checkout: ${item.name} (Batch ${batchNo})`,
+    try {
+      const res = await fetch('/api/inventory/emergency-restock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          product_id:      item.product_id,
+          entity_id:       entityId,
+          batch_number:    batchNo.trim(),
+          barcode:         barcode.trim() || null,
+          manufactured_at: manufDate || null,
+          expires_at:      expiryDate || null,
+          quantity,
+          notes:           `Emergency restock during checkout — order item: ${item.name}`,
+        }),
       })
 
-    if (movError) { setError(movError.message); setLoading(false); return }
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || 'Restock failed')
+        setLoading(false)
+        return
+      }
+    } catch (err) {
+      setError(err.message)
+      setLoading(false)
+      return
+    }
 
     setLoading(false)
     setShowRestock(false)

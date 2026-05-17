@@ -12,6 +12,14 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# Build-time env vars — NEXT_PUBLIC_* are inlined at build time
+# Pass real values via --build-arg or use docker compose build args
+ARG NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:55221
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder
+ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
+ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
+ENV SUPABASE_SERVICE_ROLE_KEY=placeholder
+
 RUN npm run build
 
 # ---- Stage 3: Runner ----

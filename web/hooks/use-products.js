@@ -1,10 +1,9 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { createClient } from "@/lib/supabase/client"
 
 /**
- * Fetches sellable products from the `sellable_products` view.
+ * Fetches sellable products from the `sellable_products` view via API.
  *
  * The view automatically:
  *   - Excludes products marked sold_as_package_only = TRUE
@@ -18,8 +17,6 @@ import { createClient } from "@/lib/supabase/client"
  * @param {string} entityId - Store entity UUID
  */
 export function useProducts(entityId) {
-  const supabase = createClient()
-
   const [products, setProducts] = useState([])
   const [loading,  setLoading]  = useState(true)
   const [query,    setQuery]    = useState('')
@@ -30,13 +27,13 @@ export function useProducts(entityId) {
 
   async function fetchProducts() {
     setLoading(true)
-    const { data } = await supabase
-      .from('sellable_products')
-      .select('id, name, sku, hsn_code, image_url, available_stock, wholesale_price, mrp, selling_price, unit, product_type, package_type, package_def_id, package_barcode, reorder_point, batch_id, batch_number, expires_at, batch_barcode')
-      .order('name')
-      .limit(100)
-
-    setProducts(data ?? [])
+    try {
+      const res = await fetch('/api/products/sellable')
+      const data = await res.json()
+      setProducts(data.products ?? [])
+    } catch {
+      setProducts([])
+    }
     setLoading(false)
   }
 
@@ -45,14 +42,13 @@ export function useProducts(entityId) {
     if (!searchQuery.trim()) return fetchProducts()
 
     setLoading(true)
-    const { data } = await supabase
-      .from('sellable_products')
-      .select('id, name, sku, hsn_code, image_url, available_stock, wholesale_price, mrp, selling_price, unit, product_type, package_type, package_def_id, package_barcode, reorder_point, batch_id, batch_number, expires_at, batch_barcode')
-      .or(`name.ilike.%${searchQuery}%,sku.ilike.%${searchQuery}%`)
-      .order('name')
-      .limit(50)
-
-    setProducts(data ?? [])
+    try {
+      const res = await fetch(`/api/products/sellable?q=${encodeURIComponent(searchQuery)}`)
+      const data = await res.json()
+      setProducts(data.products ?? [])
+    } catch {
+      setProducts([])
+    }
     setLoading(false)
   }, [])
 

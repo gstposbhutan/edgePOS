@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { createServiceClient } from '@/lib/supabase/server'
+import { getAuthContext } from '@/lib/supabase/server'
 
 const VENDOR_TRANSITIONS = {
   CONFIRMED:  ['PROCESSING', 'CANCELLED'],
@@ -11,31 +9,15 @@ const VENDOR_TRANSITIONS = {
   DELIVERED:  ['COMPLETED'],
 }
 
-async function getSession(cookieStore) {
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-    {
-      cookies: {
-        get(name) { return cookieStore.get(name)?.value },
-        set(name, value, options) { cookieStore.set({ name, value, ...options }) },
-        remove(name, options) { cookieStore.set({ name, value: '', ...options }) },
-      },
-    }
-  )
-  const { data: { session }, error } = await supabase.auth.getSession()
-  return error ? null : session
-}
-
 function generateOtp() {
   return String(Math.floor(100000 + Math.random() * 900000))
 }
 
 // Auto-assign the first available active rider, generate pickup OTP, notify vendor
-async function assignRider(serviceClient, orderId, order, actorId) {
+async function assignRider(supabase, orderId, order, actorId) {
   try {
     // Pick the first available active rider not currently on a delivery
-    const { data: riders } = await serviceClient
+    const { data: riders } = await supabase
       .from('riders')
       .select('id, name, whatsapp_no')
       .eq('is_active', true)
@@ -51,7 +33,7 @@ async function assignRider(serviceClient, orderId, order, actorId) {
     const pickupOtpExpiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
 
     // Assign rider + pickup OTP atomically
-    await serviceClient
+    await supabase
       .from('orders')
       .update({
         rider_id:              rider.id,
@@ -61,14 +43,14 @@ async function assignRider(serviceClient, orderId, order, actorId) {
       })
       .eq('id', orderId)
 
-    await serviceClient
+    await supabase
       .from('riders')
       .update({ is_available: false, current_order_id: orderId })
       .eq('id', rider.id)
 
     // Send pickup OTP to vendor via WhatsApp (fire-and-forget)
     const gatewayUrl = process.env.NEXT_PUBLIC_WHATSAPP_GATEWAY_URL || 'http://localhost:3001'
-    const { data: vendor } = await serviceClient
+    const { data: vendor } = await supabase
       .from('entities')
       .select('whatsapp_no')
       .eq('id', order.seller_id)
@@ -94,14 +76,13 @@ async function assignRider(serviceClient, orderId, order, actorId) {
 // GET — customer views their own order detail, OR vendor views their own order
 export async function GET(request, { params }) {
   try {
-    const cookieStore = await cookies()
-    const session = await getSession(cookieStore)
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id } = await params
-    const serviceClient = createServiceClient()
+    const { supabase, entityId, userId } = ctx
 
-    const { data: order, error } = await serviceClient
+    const { data: order, error } = await supabase
       .from('orders')
       .select(`
         id, order_no, order_type, order_source, status, grand_total, gst_total, subtotal,
@@ -116,15 +97,12 @@ export async function GET(request, { params }) {
 
     if (error || !order) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
 
-    const customerPhone = session.user.user_metadata?.phone
-    const { data: profile } = await serviceClient
-      .from('user_profiles')
-      .select('entity_id')
-      .eq('id', session.user.id)
-      .single()
+    // Get customer phone for customer access check
+    const { data: { user } } = await supabase.auth.admin.getUserById(userId)
+    const customerPhone = user?.user_metadata?.phone
 
     const isCustomer = customerPhone && order.buyer_whatsapp === customerPhone
-    const isVendor = profile?.entity_id && order.seller_id === profile.entity_id
+    const isVendor = entityId && order.seller_id === entityId
 
     if (!isCustomer && !isVendor) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -132,8 +110,8 @@ export async function GET(request, { params }) {
 
     // Fetch items and timeline in parallel
     const [{ data: items }, { data: timeline }] = await Promise.all([
-      serviceClient.from('order_items').select('*').eq('order_id', id).order('id'),
-      serviceClient.from('order_status_log').select('*').eq('order_id', id).order('created_at'),
+      supabase.from('order_items').select('*').eq('order_id', id).order('id'),
+      supabase.from('order_status_log').select('*').eq('order_id', id).order('created_at'),
     ])
 
     // Only return payment_token to the customer (and only when DELIVERED)
@@ -157,28 +135,20 @@ export async function GET(request, { params }) {
 // PATCH — vendor updates order status
 export async function PATCH(request, { params }) {
   try {
-    const cookieStore = await cookies()
-    const session = await getSession(cookieStore)
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id } = await params
+    const { entityId, userId, supabase } = ctx
+
     const body = await request.json()
     const { status: newStatus, reason } = body
 
     if (!newStatus) return NextResponse.json({ error: 'Status is required' }, { status: 400 })
 
-    const serviceClient = createServiceClient()
+    if (!entityId) return NextResponse.json({ error: 'Vendor entity not found' }, { status: 403 })
 
-    // Resolve vendor's entity
-    const { data: profile } = await serviceClient
-      .from('user_profiles')
-      .select('entity_id')
-      .eq('id', session.user.id)
-      .single()
-
-    if (!profile?.entity_id) return NextResponse.json({ error: 'Vendor entity not found' }, { status: 403 })
-
-    const { data: order, error: orderError } = await serviceClient
+    const { data: order, error: orderError } = await supabase
       .from('orders')
       .select('id, order_no, status, seller_id, buyer_whatsapp, payment_token, grand_total, delivery_address, delivery_lat, delivery_lng')
       .eq('id', id)
@@ -186,7 +156,7 @@ export async function PATCH(request, { params }) {
       .single()
 
     if (orderError || !order) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
-    if (order.seller_id !== profile.entity_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    if (order.seller_id !== entityId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const allowed = VENDOR_TRANSITIONS[order.status] ?? []
     if (!allowed.includes(newStatus)) {
@@ -200,7 +170,7 @@ export async function PATCH(request, { params }) {
     if (newStatus === 'CANCELLED') updateData.cancelled_at = new Date().toISOString()
     if (newStatus === 'COMPLETED') updateData.completed_at = new Date().toISOString()
 
-    const { error: updateError } = await serviceClient
+    const { error: updateError } = await supabase
       .from('orders')
       .update(updateData)
       .eq('id', id)
@@ -209,11 +179,11 @@ export async function PATCH(request, { params }) {
 
     // Log status change manually (DB trigger handles it, but log reason if provided)
     if (reason) {
-      await serviceClient.from('order_status_log').insert({
+      await supabase.from('order_status_log').insert({
         order_id: id,
         from_status: order.status,
         to_status: newStatus,
-        actor_id: session.user.id,
+        actor_id: userId,
         reason,
       }).catch(() => {})
     }
@@ -223,7 +193,7 @@ export async function PATCH(request, { params }) {
 
     // On PROCESSING or CONFIRMED: auto-assign an available rider
     if (newStatus === 'PROCESSING' || newStatus === 'CONFIRMED') {
-      await assignRider(serviceClient, id, order, session.user.id)
+      await assignRider(supabase, id, order, userId)
     }
 
     // On DELIVERED (vendor fallback): send payment link to customer

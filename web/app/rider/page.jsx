@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button"
 import { OrderStatusBadge } from "@/components/pos/orders/order-status-badge"
 import { OtpInputModal } from "@/components/rider/otp-input-modal"
 import { useRider } from "@/hooks/use-rider"
-import { createClient } from "@/lib/supabase/client"
 import { signOut } from "@/lib/auth"
 
 export default function RiderDashboard() {
@@ -69,11 +68,9 @@ export default function RiderDashboard() {
     setFeeLoading(true)
     setFeeError(null)
     try {
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch(`/api/rider/orders/${current.id}/fee`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${session?.access_token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ delivery_fee: fee }),
       })
       const data = await res.json()

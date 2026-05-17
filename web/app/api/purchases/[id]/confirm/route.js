@@ -1,39 +1,18 @@
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { createServiceClient } from '@/lib/supabase/server'
+import { getAuthContext } from '@/lib/supabase/server'
 
 export async function POST(request, { params }) {
   try {
-    const cookieStore = await cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      {
-        cookies: {
-          get(name) { return cookieStore.get(name)?.value },
-          set(name, value, options) { cookieStore.set({ name, value, ...options }) },
-          remove(name, options) { cookieStore.set({ name, value: '', ...options }) },
-        },
-      }
-    )
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const { entityId, userId, supabase } = ctx
+    const vendorEntityId = entityId
 
     const { id: invoiceId } = await params
-    const serviceClient = createServiceClient()
-
-    const { data: profile } = await serviceClient
-      .from('user_profiles')
-      .select('entity_id')
-      .eq('id', session.user.id)
-      .single()
-
-    if (!profile?.entity_id) return NextResponse.json({ error: 'Vendor entity not found' }, { status: 403 })
-    const vendorEntityId = profile.entity_id
 
     // Fetch the invoice
-    const { data: invoice } = await serviceClient
+    const { data: invoice } = await supabase
       .from('orders')
       .select('id, order_no, status, order_type, buyer_id, seller_id, grand_total, payment_method')
       .eq('id', invoiceId)
@@ -47,7 +26,7 @@ export async function POST(request, { params }) {
     }
 
     // Confirm the invoice — DB trigger restock_on_invoice_confirm fires here
-    const { error: updateErr } = await serviceClient
+    const { error: updateErr } = await supabase
       .from('orders')
       .update({ status: 'CONFIRMED' })
       .eq('id', invoiceId)
@@ -56,7 +35,7 @@ export async function POST(request, { params }) {
 
     // Handle CREDIT payment — create/update supplier khata account
     if (invoice.payment_method === 'CREDIT' && invoice.seller_id) {
-      const { data: existingKhata } = await serviceClient
+      const { data: existingKhata } = await supabase
         .from('khata_accounts')
         .select('id, outstanding_balance')
         .eq('creditor_entity_id', invoice.seller_id)
@@ -68,7 +47,7 @@ export async function POST(request, { params }) {
 
       if (!khataId) {
         // Auto-create supplier khata account
-        const { data: newKhata, error: khataErr } = await serviceClient
+        const { data: newKhata, error: khataErr } = await supabase
           .from('khata_accounts')
           .insert({
             creditor_entity_id: invoice.seller_id,   // supplier is the creditor (owed money)
@@ -87,7 +66,7 @@ export async function POST(request, { params }) {
 
       if (khataId) {
         // Debit — vendor owes supplier this amount
-        await serviceClient
+        await supabase
           .from('khata_accounts')
           .update({
             outstanding_balance: (parseFloat(existingKhata?.outstanding_balance || 0) + parseFloat(invoice.grand_total)).toFixed(2),
@@ -95,7 +74,7 @@ export async function POST(request, { params }) {
           })
           .eq('id', khataId)
 
-        const { error: txErr } = await serviceClient
+        const { error: txErr } = await supabase
           .from('khata_transactions')
           .insert({
             khata_account_id:  khataId,
@@ -104,14 +83,14 @@ export async function POST(request, { params }) {
             amount:            invoice.grand_total,
             balance_after:     (parseFloat(existingKhata?.outstanding_balance || 0) + parseFloat(invoice.grand_total)).toFixed(2),
             notes:             'Purchase Invoice: ' + invoice.order_no,
-            created_by:        session.user.id,
+            created_by:        userId,
           })
         if (txErr) console.error('[purchases/confirm] Khata tx error:', txErr.message)
       }
     }
 
     // Fetch the created batches to return in response
-    const { data: batches } = await serviceClient
+    const { data: batches } = await supabase
       .from('product_batches')
       .select('id, batch_number, product_id, quantity, products(name)')
       .eq('entity_id', vendorEntityId)

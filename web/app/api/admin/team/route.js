@@ -1,30 +1,14 @@
 import { NextResponse } from 'next/server'
-import { createServiceClient } from '@/lib/supabase/server'
+import { getAuthContext } from '@/lib/supabase/server'
 
 const PERMISSIONS_BY_ROLE = {
   MANAGER: ['inventory:read', 'inventory:write', 'orders:read', 'orders:write', 'reports:read', 'khata:read'],
   STAFF: ['orders:read', 'orders:write'],
 }
 
-async function getContext(request) {
-  const authHeader = request.headers.get('authorization')
-  if (!authHeader) return null
-
-  const token = authHeader.replace('Bearer ', '')
-  const supabase = createServiceClient()
-  const { data: { user } } = await supabase.auth.getUser(token)
-  if (!user) return null
-
-  const entityId = user.user_metadata?.entity_id || user.app_metadata?.entity_id
-  const subRole  = user.user_metadata?.sub_role  || user.app_metadata?.sub_role
-  if (!entityId) return null
-
-  return { entityId, subRole, supabase }
-}
-
 /** GET /api/admin/team — list all team members */
 export async function GET(request) {
-  const ctx = await getContext(request)
+  const ctx = await getAuthContext()
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (!['OWNER', 'MANAGER'].includes(ctx.subRole)) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
@@ -53,7 +37,7 @@ export async function GET(request) {
 
 /** POST /api/admin/team — create a new team member */
 export async function POST(request) {
-  const ctx = await getContext(request)
+  const ctx = await getAuthContext()
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (ctx.subRole !== 'OWNER') {
     return NextResponse.json({ error: 'Only owners can add team members' }, { status: 403 })

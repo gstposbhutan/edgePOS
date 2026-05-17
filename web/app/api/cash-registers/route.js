@@ -1,31 +1,14 @@
 import { NextResponse } from 'next/server'
-import { createServiceClient } from '@/lib/supabase/server'
-
-async function getEntityFromRequest(request) {
-  const authHeader = request.headers.get('authorization')
-  if (!authHeader) return null
-
-  const token = authHeader.replace('Bearer ', '')
-  const supabase = createServiceClient()
-  const { data: { user } } = await supabase.auth.getUser(token)
-
-  if (!user) return null
-
-  const entityId = user.app_metadata?.entity_id
-  const subRole = user.app_metadata?.sub_role
-  if (!entityId) return null
-
-  // Only MANAGER, OWNER, ADMIN can manage registers
-  if (!['MANAGER', 'OWNER', 'ADMIN'].includes(subRole)) return null
-
-  return { entityId, supabase, userId: user.id }
-}
+import { getAuthContext } from '@/lib/supabase/server'
 
 export async function GET(request) {
-  const ctx = await getEntityFromRequest(request)
+  const ctx = await getAuthContext()
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { entityId, supabase } = ctx
+  const { entityId, subRole, supabase } = ctx
+  if (!['MANAGER', 'OWNER', 'ADMIN'].includes(subRole)) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  }
   const { data: registers, error } = await supabase
     .from('cash_registers')
     .select('id, name, default_opening_float, is_active, created_at')
@@ -38,10 +21,13 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
-  const ctx = await getEntityFromRequest(request)
+  const ctx = await getAuthContext()
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { entityId, supabase, userId } = ctx
+  const { entityId, subRole, userId, supabase } = ctx
+  if (!['MANAGER', 'OWNER', 'ADMIN'].includes(subRole)) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  }
   const body = await request.json()
 
   const name = (body.name || '').trim()

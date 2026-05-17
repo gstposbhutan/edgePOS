@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createServiceClient } from '@/lib/supabase/server'
+import { getAuthContext } from '@/lib/supabase/server'
 
 const VALID_TRANSITIONS = {
   CONFIRMED: ['PROCESSING', 'CANCELLED'],
@@ -8,26 +8,9 @@ const VALID_TRANSITIONS = {
   DELIVERED: ['COMPLETED'],
 }
 
-async function getContext(request) {
-  const authHeader = request.headers.get('authorization')
-  if (!authHeader) return null
-
-  const token = authHeader.replace('Bearer ', '')
-  const supabase = createServiceClient()
-  const { data: { user } } = await supabase.auth.getUser(token)
-  if (!user) return null
-
-  const entityId = user.app_metadata?.entity_id
-  const role = user.app_metadata?.role
-  const userId = user.id
-  if (!entityId) return null
-
-  return { entityId, role, userId, supabase }
-}
-
 /** GET /api/wholesale/orders/[id] — order detail */
 export async function GET(request, { params }) {
-  const ctx = await getContext(request)
+  const ctx = await getAuthContext()
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { id } = await params
@@ -81,7 +64,7 @@ export async function GET(request, { params }) {
 
 /** PATCH /api/wholesale/orders/[id] — status update (wholesaler only) */
 export async function PATCH(request, { params }) {
-  const ctx = await getContext(request)
+  const ctx = await getAuthContext()
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { entityId, role, userId, supabase } = ctx

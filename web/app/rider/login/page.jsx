@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation"
 import { Phone, Lock, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { createClient } from "@/lib/supabase/client"
 
 export default function RiderLoginPage() {
   const router = useRouter()
@@ -32,13 +31,7 @@ export default function RiderLoginPage() {
         return
       }
 
-      // Establish Supabase session from tokens
-      const supabase = createClient()
-      await supabase.auth.setSession({
-        access_token:  data.access_token,
-        refresh_token: data.refresh_token,
-      })
-
+      // Session is set server-side as httpOnly cookie — just redirect
       router.push('/rider')
     } catch (err) {
       setError(err.message)

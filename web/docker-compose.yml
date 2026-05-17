@@ -1,15 +1,23 @@
+name: edgePOS
+
 services:
   edgepos-web:
-    build: .
+    container_name: edgepos-web
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:55221
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzc3MTIzMDk2LCJleHAiOjIwOTI0ODMwOTZ9.g_YaaglOcasjHcgFXBHUpPTT-VHaoTkLu3lj1TVl_zE}
     ports:
       - "3000:3000"
-    env_file: .env
-    depends_on:
-      whatsapp-gateway:
-        condition: service_started
+    env_file: .env.docker
     restart: unless-stopped
+    networks:
+      - default
+      - supabase
 
   whatsapp-gateway:
+    container_name: whatsapp-gateway
     build: ./services/whatsapp-gateway
     ports:
       - "3001:3001"
@@ -17,6 +25,7 @@ services:
     restart: unless-stopped
 
   logistics-bridge:
+    container_name: logistics-bridge
     build: ./services/logistics-bridge
     ports:
       - "3002:3002"
@@ -24,6 +33,15 @@ services:
     restart: unless-stopped
 
   sync-worker:
+    container_name: sync-worker
     build: ./services/sync-worker
     env_file: ./services/sync-worker/.env
     restart: unless-stopped
+    networks:
+      - default
+      - supabase
+
+networks:
+  supabase:
+    name: supabase_network_edgePOS
+    external: true

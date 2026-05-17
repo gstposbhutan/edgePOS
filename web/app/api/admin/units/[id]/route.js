@@ -1,48 +1,15 @@
 import { NextResponse } from 'next/server'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { createServiceClient as createSSRServiceClient } from '@/lib/supabase/server'
-
-// Create a bypass client for admin operations
-function createBypassClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    { auth: { persistSession: false, autoRefreshToken: false } }
-  )
-}
-
-async function getAuthUser(request) {
-  const authHeader = request.headers.get('authorization')
-  if (!authHeader) return null
-
-  const token = authHeader.replace('Bearer ', '')
-  const authClient = createSSRServiceClient()
-  const { data: { user }, error } = await authClient.auth.getUser(token)
-
-  if (error || !user) return null
-
-  // Check if user is SUPER_ADMIN
-  const supabase = createBypassClient()
-  const { data: profile } = await supabase
-    .from('user_profiles')
-    .select('role, entity_id')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile || profile.role !== 'SUPER_ADMIN') return null
-
-  return { user, profile }
-}
+import { getAuthContext } from '@/lib/supabase/server'
 
 /** GET /api/admin/units/[id] — Get single unit */
 export async function GET(request, { params }) {
   try {
-    const authUser = await getAuthUser(request)
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (ctx.role !== 'SUPER_ADMIN') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const supabase = createBypassClient()
+    const { supabase } = ctx
+
     const { data, error } = await supabase
       .from('units')
       .select('*')
@@ -62,10 +29,9 @@ export async function GET(request, { params }) {
 /** PATCH /api/admin/units/[id] — Update unit */
 export async function PATCH(request, { params }) {
   try {
-    const authUser = await getAuthUser(request)
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (ctx.role !== 'SUPER_ADMIN') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const body = await request.json()
     const { name, abbreviation, category, is_active, sort_order } = body
@@ -77,7 +43,8 @@ export async function PATCH(request, { params }) {
     if (is_active !== undefined) updateData.is_active = is_active
     if (sort_order !== undefined) updateData.sort_order = sort_order
 
-    const supabase = createBypassClient()
+    const { supabase } = ctx
+
     const { data, error } = await supabase
       .from('units')
       .update(updateData)
@@ -103,12 +70,11 @@ export async function PATCH(request, { params }) {
 /** DELETE /api/admin/units/[id] — Delete unit */
 export async function DELETE(request, { params }) {
   try {
-    const authUser = await getAuthUser(request)
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (ctx.role !== 'SUPER_ADMIN') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const supabase = createBypassClient()
+    const { supabase } = ctx
 
     // Check if unit is being used in any category_properties
     const { data: propertiesUsingUnit } = await supabase

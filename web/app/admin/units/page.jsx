@@ -33,7 +33,6 @@ export default function UnitsPage() {
         method,
         headers: {
           'Content-Type': 'application/json',
-          authorization: `Bearer ${await getToken()}`,
         },
         body: JSON.stringify(formData),
       })
@@ -59,7 +58,6 @@ export default function UnitsPage() {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          authorization: `Bearer ${await getToken()}`,
         },
         body: JSON.stringify({ is_active: !unit.is_active }),
       })
@@ -83,7 +81,6 @@ export default function UnitsPage() {
       const res = await fetch(`/api/admin/units/${unit.id}`, {
         method: 'DELETE',
         headers: {
-          authorization: `Bearer ${await getToken()}`,
         },
       })
 
@@ -252,11 +249,4 @@ export default function UnitsPage() {
       </div>
     </div>
   )
-}
-
-async function getToken() {
-  const { createClient } = await import('@/lib/supabase/client')
-  const client = createClient()
-  const { data } = await client.auth.getSession()
-  return data.session?.access_token
 }

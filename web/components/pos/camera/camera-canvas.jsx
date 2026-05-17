@@ -79,7 +79,7 @@ export function CameraCanvas({ onProductRecognized, active = true }) {
       // 3. Init embedding store
       const store = new ProductEmbeddingStore()
       const count = await store.init()
-      await store.syncFromSupabase()
+      await store.syncFromServer()
       embStoreRef.current = store
       setEmbedCount(count)
 

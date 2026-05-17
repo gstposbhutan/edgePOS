@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createServiceClient } from '@/lib/supabase/server'
+import { getAuthContext } from '@/lib/supabase/server'
 
 const OWNER_PERMISSIONS = [
   'pos:sale', 'inventory:read', 'inventory:write',
@@ -15,25 +15,9 @@ const PERMISSIONS_BY_ROLE = {
   STAFF:   ['orders:read', 'orders:write'],
 }
 
-async function getContext(request) {
-  const token = request.headers.get('authorization')?.replace('Bearer ', '')
-  if (!token) return null
-
-  const supabase = createServiceClient()
-  const { data: { user } } = await supabase.auth.getUser(token)
-  if (!user) return null
-
-  const entityId = user.user_metadata?.entity_id || user.app_metadata?.entity_id
-  const subRole  = user.user_metadata?.sub_role  || user.app_metadata?.sub_role
-  const role     = user.user_metadata?.role       || user.app_metadata?.role
-  if (!entityId) return null
-
-  return { entityId, subRole, role, userId: user.id, supabase }
-}
-
 /** PATCH /api/admin/team/[id] — update sub_role or transfer ownership */
 export async function PATCH(request, { params }) {
-  const ctx = await getContext(request)
+  const ctx = await getAuthContext()
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (ctx.subRole !== 'OWNER') {
     return NextResponse.json({ error: 'Only owners can edit team members' }, { status: 403 })
@@ -109,7 +93,7 @@ export async function PATCH(request, { params }) {
 
 /** DELETE /api/admin/team/[id] — remove team member */
 export async function DELETE(request, { params }) {
-  const ctx = await getContext(request)
+  const ctx = await getAuthContext()
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (ctx.subRole !== 'OWNER') {
     return NextResponse.json({ error: 'Only owners can remove team members' }, { status: 403 })

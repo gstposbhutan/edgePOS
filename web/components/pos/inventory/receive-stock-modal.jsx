@@ -5,10 +5,8 @@ import { Search, Loader2, CheckCircle, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { createClient } from "@/lib/supabase/client"
 
 export function ReceiveStockModal({ open, entityId, onReceive, onClose }) {
-  const supabase = createClient()
 
   const [productQuery, setProductQuery]   = useState('')
   const [productResults, setProductResults] = useState([])
@@ -47,13 +45,17 @@ export function ReceiveStockModal({ open, entityId, onReceive, onClose }) {
     if (!productQuery.trim() || selectedProduct) { setProductResults([]); return }
     const t = setTimeout(async () => {
       setSearching(true)
-      const { data } = await supabase
-        .from('products')
-        .select('id, name, sku, mrp, selling_price, wholesale_price, current_stock')
-        .or(`name.ilike.%${productQuery}%,sku.ilike.%${productQuery}%`)
-        .eq('is_active', true)
-        .limit(8)
-      setProductResults(data || [])
+      try {
+        const res = await fetch(`/api/pos/products/search?q=${encodeURIComponent(productQuery)}&limit=8`)
+        if (res.ok) {
+          const data = await res.json()
+          setProductResults(data.products || [])
+        } else {
+          setProductResults([])
+        }
+      } catch {
+        setProductResults([])
+      }
       setSearching(false)
     }, 250)
     return () => clearTimeout(t)

@@ -1,42 +1,18 @@
 import { NextResponse } from 'next/server'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { createServiceClient as createSSRServiceClient } from '@/lib/supabase/server'
+import { getAuthContext, createServiceClient } from '@/lib/supabase/server'
 import bcrypt from 'bcryptjs'
-
-function createBypassClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    { auth: { persistSession: false, autoRefreshToken: false } }
-  )
-}
-
-async function getAdminUser(request) {
-  const token = request.headers.get('authorization')?.replace('Bearer ', '')
-  if (!token) return null
-  const authClient = createSSRServiceClient()
-  const { data: { user } } = await authClient.auth.getUser(token)
-  if (!user) return null
-  const supabase = createBypassClient()
-  const { data: profile } = await supabase
-    .from('user_profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-  if (profile?.role !== 'SUPER_ADMIN') return null
-  return user
-}
 
 // GET — list all riders
 export async function GET(request) {
   try {
-    const admin = await getAdminUser(request)
-    if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const supabase = createBypassClient()
+    const supabase = ctx.supabase
     const { data: riders, error } = await supabase
       .from('riders')
       .select('id, name, whatsapp_no, is_active, is_available, current_order_id, created_at')
+      .eq('entity_id', ctx.entityId)
       .order('created_at', { ascending: false })
 
     if (error) throw error
@@ -49,8 +25,8 @@ export async function GET(request) {
 // POST — create rider
 export async function POST(request) {
   try {
-    const admin = await getAdminUser(request)
-    if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { name, whatsapp_no, pin } = await request.json()
 
@@ -62,7 +38,7 @@ export async function POST(request) {
     }
 
     const phone = whatsapp_no.trim().startsWith('+') ? whatsapp_no.trim() : `+${whatsapp_no.trim()}`
-    const supabase = createBypassClient()
+    const supabase = ctx.supabase
 
     // Create auth user for the rider
     const tempEmail = `rider_${Date.now()}@nexusbhutan.internal`
@@ -90,6 +66,7 @@ export async function POST(request) {
         auth_user_id:  authData.user.id,
         auth_email:    tempEmail,
         auth_password: tempPassword,
+        entity_id:     ctx.entityId,
         is_active:     true,
         is_available:  true,
       })

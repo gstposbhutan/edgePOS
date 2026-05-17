@@ -1,42 +1,15 @@
 import { NextResponse } from 'next/server'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { createServiceClient as createSSRServiceClient } from '@/lib/supabase/server'
-
-function createBypassClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    { auth: { persistSession: false, autoRefreshToken: false } }
-  )
-}
-
-async function getAuthUser(request) {
-  const token = request.headers.get('authorization')?.replace('Bearer ', '')
-  if (!token) return null
-  const authClient = createSSRServiceClient()
-  const { data: { user } } = await authClient.auth.getUser(token)
-  if (!user) return null
-  const supabase = createBypassClient()
-  const { data: profile } = await supabase
-    .from('user_profiles')
-    .select('role, sub_role, entity_id')
-    .eq('id', user.id)
-    .single()
-  if (!profile) return null
-  const canManage = profile.role === 'SUPER_ADMIN' || profile.sub_role === 'OWNER'
-  if (!canManage) return null
-  return { user, profile }
-}
+import { getAuthContext } from '@/lib/supabase/server'
 
 // GET — list stores the caller owns or all stores (SUPER_ADMIN)
-export async function GET(request) {
+export async function GET() {
   try {
-    const auth = await getAuthUser(request)
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const supabase = createBypassClient()
+    const { userId, role, entityId, supabase } = ctx
 
-    if (auth.profile.role === 'SUPER_ADMIN') {
+    if (role === 'SUPER_ADMIN') {
       // Admin sees all retailer entities
       const { data: entities } = await supabase
         .from('entities')
@@ -50,7 +23,7 @@ export async function GET(request) {
     const { data } = await supabase
       .from('owner_stores')
       .select('entity_id, is_primary, entities!inner(id, name, tpn_gstin, whatsapp_no, is_active)')
-      .eq('owner_id', auth.user.id)
+      .eq('owner_id', userId)
 
     return NextResponse.json({
       stores: (data || []).map(r => ({ ...r.entities, is_primary: r.is_primary }))
@@ -63,13 +36,16 @@ export async function GET(request) {
 // POST — owner creates a new store (entity + owner_stores link)
 export async function POST(request) {
   try {
-    const auth = await getAuthUser(request)
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const { userId, role, supabase } = ctx
+    if (role !== 'SUPER_ADMIN' && role !== 'RETAILER') {
+      return NextResponse.json({ error: 'Only owners can create stores' }, { status: 403 })
+    }
 
     const { name, tpn_gstin, whatsapp_no } = await request.json()
     if (!name?.trim()) return NextResponse.json({ error: 'Store name is required' }, { status: 400 })
-
-    const supabase = createBypassClient()
 
     const { data: entity, error: entityErr } = await supabase
       .from('entities')
@@ -83,11 +59,11 @@ export async function POST(request) {
     const { count } = await supabase
       .from('owner_stores')
       .select('id', { count: 'exact', head: true })
-      .eq('owner_id', auth.user.id)
+      .eq('owner_id', userId)
 
     await supabase
       .from('owner_stores')
-      .insert({ owner_id: auth.user.id, entity_id: entity.id, is_primary: (count ?? 0) === 0 })
+      .insert({ owner_id: userId, entity_id: entity.id, is_primary: (count ?? 0) === 0 })
 
     return NextResponse.json({ store: entity })
   } catch (error) {

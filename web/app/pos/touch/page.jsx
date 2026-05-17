@@ -22,11 +22,9 @@ import { useKhata }        from "@/hooks/use-khata"
 import { useOwnerStores }  from "@/hooks/use-owner-stores"
 import { useShift }        from "@/hooks/use-shift"
 import { getUser, getRoleClaims } from "@/lib/auth"
-import { createClient }    from "@/lib/supabase/client"
 
 export default function PosPage() {
   const router   = useRouter()
-  const supabase = createClient()
 
   const [user,              setUser]              = useState(null)
   const [entity,            setEntity]            = useState(null)
@@ -60,27 +58,25 @@ export default function PosPage() {
       setSubRole(sr ?? 'CASHIER')
       if (!entityId) return
       setActiveEntityId(entityId)
-      const { data } = await supabase
-        .from('entities')
-        .select('id, name, tpn_gstin')
-        .eq('id', entityId)
-        .single()
-      setEntity(data)
+      const res = await fetch('/api/pos/entities')
+      if (res.ok) {
+        const { entity } = await res.json()
+        setEntity(entity)
+      }
     }
     load()
   }, [])
 
   const { stores: ownedStores } = useOwnerStores(user?.id, subRole)
 
-  async function handleSwitchStore(entityId) {
-    const { data } = await supabase
-      .from('entities')
-      .select('id, name, tpn_gstin')
-      .eq('id', entityId)
-      .single()
-    if (data) {
-      setEntity(data)
-      setActiveEntityId(entityId)
+  async function handleSwitchStore(switchEntityId) {
+    const res = await fetch(`/api/pos/entities?entityId=${switchEntityId}`)
+    if (res.ok) {
+      const { entity } = await res.json()
+      if (entity) {
+        setEntity(entity)
+        setActiveEntityId(switchEntityId)
+      }
     }
   }
 
@@ -102,34 +98,29 @@ export default function PosPage() {
 
     for (const item of items) {
       if (item.package_id) {
-        // For packages: use DB function to get available qty
-        const { data: avail } = await supabase
-          .rpc('package_available_qty', { p_package_id: item.package_id })
-
-        if ((avail ?? 0) < item.quantity) {
-          shortfalls.push({ item, available: avail ?? 0, needed: item.quantity })
+        const res = await fetch(`/api/pos/products?packageId=${item.package_id}`)
+        if (res.ok) {
+          const { available } = await res.json()
+          if ((available ?? 0) < item.quantity) {
+            shortfalls.push({ item, available: available ?? 0, needed: item.quantity })
+          }
         }
       } else if (item.product_id) {
         if (item.batch_id) {
-          // Batch-specific stock check
-          const { data: batch } = await supabase
-            .from('product_batches')
-            .select('quantity, batch_number')
-            .eq('id', item.batch_id)
-            .single()
-
-          if ((batch?.quantity ?? 0) < item.quantity) {
-            shortfalls.push({ item, available: batch?.quantity ?? 0, needed: item.quantity, batchNumber: batch?.batch_number })
+          const res = await fetch(`/api/pos/products?batchId=${item.batch_id}`)
+          if (res.ok) {
+            const { batch } = await res.json()
+            if ((batch?.quantity ?? 0) < item.quantity) {
+              shortfalls.push({ item, available: batch?.quantity ?? 0, needed: item.quantity, batchNumber: batch?.batch_number })
+            }
           }
         } else {
-          const { data: product } = await supabase
-            .from('products')
-            .select('current_stock')
-            .eq('id', item.product_id)
-            .single()
-
-          if ((product?.current_stock ?? 0) < item.quantity) {
-            shortfalls.push({ item, available: product?.current_stock ?? 0, needed: item.quantity })
+          const res = await fetch(`/api/pos/products?productId=${item.product_id}`)
+          if (res.ok) {
+            const { product } = await res.json()
+            if ((product?.current_stock ?? 0) < item.quantity) {
+              shortfalls.push({ item, available: product?.current_stock ?? 0, needed: item.quantity })
+            }
           }
         }
       }
@@ -178,17 +169,19 @@ export default function PosPage() {
 
     if (!account) {
       // Resolve customer name from their entity record (created during OTP signup)
-      const supabaseClient = createClient()
-      const { data: customerEntity } = await supabaseClient
-        .from('entities')
-        .select('name')
-        .eq('whatsapp_no', phone)
-        .single()
+      let customerName = `Customer ${phone.slice(-4)}`
+      try {
+        const entRes = await fetch(`/api/pos/entities?phone=${encodeURIComponent(phone)}`)
+        if (entRes.ok) {
+          const { entity } = await entRes.json()
+          if (entity?.name) customerName = entity.name
+        }
+      } catch {}
 
       const { account: newAccount, error: createErr } = await createAccount({
         party_type:   'CONSUMER',
         debtor_phone: phone,
-        debtor_name:  customerEntity?.name ?? `Customer ${phone.slice(-4)}`,
+        debtor_name:  customerName,
         credit_limit: 1000, // default limit — manager can adjust later
       })
 
@@ -255,67 +248,50 @@ export default function PosPage() {
       const signature  = Array.from(new Uint8Array(hashBuffer))
         .map(b => b.toString(16).padStart(2, '0')).join('')
 
-      const { data: order, error: orderError } = await supabase
-        .from('orders')
-        .insert({
-          order_type:        'POS_SALE',
-          order_no:          orderNo,
-          status:            'PENDING_PAYMENT',
-          seller_id:         entity.id,
-          buyer_whatsapp:    customer?.whatsapp ?? null,
-          buyer_hash:        customer?.buyerHash ?? null,
-          items,
+      const res = await fetch('/api/pos/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderNo,
+          items: items.map(item => ({
+            product_id:   item.product_id,
+            package_id:   item.package_id   ?? null,
+            batch_id:     item.batch_id     ?? null,
+            package_name: item.package_id   ? item.name : null,
+            package_type: item.package_def?.package_type ?? null,
+            sku:          item.sku,
+            name:         item.name,
+            quantity:     item.quantity,
+            unit_price:   item.unit_price,
+            discount:       item.discount ?? 0,
+            discount_type:  item.discount_type || 'FLAT',
+            discount_value: item.discount_value ?? 0,
+            gst_5:        item.gst_5,
+            total:        item.total,
+          })),
           subtotal,
-          gst_total:         gstTotal,
-          grand_total:       grandTotal,
-          payment_method:    paymentMethod,
-          payment_ref:       journalNo?.trim() || null,
-          digital_signature: signature,
-          cart_id:           cartId,
-          created_by:        user?.id,
-        })
-        .select('id, order_no')
-        .single()
+          gstTotal,
+          grandTotal,
+          paymentMethod,
+          paymentRef: journalNo?.trim() || null,
+          customerWhatsapp: customer?.whatsapp ?? null,
+          buyerHash: customer?.buyerHash ?? null,
+          cartId,
+          digitalSignature: signature,
+        }),
+      })
 
-      if (orderError) throw new Error(orderError.message)
-
-      await supabase.from('order_items').insert(
-        items.map(item => ({
-          order_id:     order.id,
-          product_id:   item.product_id,
-          package_id:   item.package_id   ?? null,
-          batch_id:     item.batch_id     ?? null,
-          package_name: item.package_id   ? item.name : null,
-          package_type: item.package_def?.package_type ?? null,
-          sku:          item.sku,
-          name:         item.name,
-          quantity:     item.quantity,
-          unit_price:   item.unit_price,
-          discount:       item.discount ?? 0,
-          discount_type:  item.discount_type || 'FLAT',
-          discount_value: item.discount_value ?? 0,
-          gst_5:        item.gst_5,
-          total:        item.total,
-          status:       'ACTIVE',
-        }))
-      )
-
-      // CONFIRMED — DB trigger guard_stock_on_confirm fires here.
-      // If any item's qty > current_stock, the entire update is rolled back
-      // and an exception is thrown with the product name and shortfall.
-      const { error: confirmError } = await supabase
-        .from('orders')
-        .update({ status: 'CONFIRMED', payment_verified_at: new Date().toISOString() })
-        .eq('id', order.id)
-
-      if (confirmError) {
-        // Clean up the PENDING_PAYMENT order so it doesn't linger
-        await supabase.from('orders').update({ status: 'CANCELLED', cancellation_reason: 'Stock insufficient at confirmation' }).eq('id', order.id)
-        // Re-check shortfalls to show the stock gate
-        const shortfalls = await checkStockAvailability()
-        setStockShortfalls(shortfalls)
-        throw new Error(confirmError.message)
+      const data = await res.json()
+      if (!res.ok) {
+        // If the server reported a stock issue, re-check to show the stock gate
+        if (data.error?.includes('stock') || data.error?.includes('Stock')) {
+          const shortfalls = await checkStockAvailability()
+          setStockShortfalls(shortfalls)
+        }
+        throw new Error(data.error)
       }
+
+      const order = data.order
 
       await clearCart()
       setPaymentMethod(null)
@@ -324,18 +300,6 @@ export default function PosPage() {
       setOcrReferenceNo(null)
       setKhataAccount(null)
       setOwnerOverride(false)
-
-      // Track shift transaction (fire-and-forget)
-      fetch('/api/shifts/track-transaction', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          order_id: order.id,
-          transaction_type: 'SALE',
-          payment_method: paymentMethod,
-          amount: grandTotal,
-        }),
-      }).catch(() => {})
 
       // Auto-send receipt via WhatsApp gateway (fire-and-forget)
       if (customer?.whatsapp) {

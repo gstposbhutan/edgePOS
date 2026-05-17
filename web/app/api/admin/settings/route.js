@@ -1,24 +1,8 @@
 import { NextResponse } from 'next/server'
-import { createServiceClient } from '@/lib/supabase/server'
-
-async function getEntityFromRequest(request) {
-  const authHeader = request.headers.get('authorization')
-  if (!authHeader) return null
-
-  const token = authHeader.replace('Bearer ', '')
-  const supabase = createServiceClient()
-  const { data: { user } } = await supabase.auth.getUser(token)
-
-  if (!user) return null
-
-  const entityId = user.app_metadata?.entity_id
-  if (!entityId) return null
-
-  return { entityId, supabase }
-}
+import { getAuthContext } from '@/lib/supabase/server'
 
 export async function GET(request) {
-  const ctx = await getEntityFromRequest(request)
+  const ctx = await getAuthContext()
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { entityId, supabase } = ctx
@@ -34,7 +18,7 @@ export async function GET(request) {
 }
 
 export async function PATCH(request) {
-  const ctx = await getEntityFromRequest(request)
+  const ctx = await getAuthContext()
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { entityId, supabase } = ctx

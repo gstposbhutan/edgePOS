@@ -6,7 +6,6 @@ import { CheckCircle, Download, MessageCircle, ShoppingCart, Loader2, AlertCircl
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Receipt } from "@/components/pos/receipt"
-import { createClient } from "@/lib/supabase/client"
 import { getUser, getRoleClaims } from "@/lib/auth"
 
 export default function OrderConfirmationPage() {
@@ -15,7 +14,6 @@ export default function OrderConfirmationPage() {
   const searchParams = useSearchParams()
   const isSuccess    = searchParams.get('success') === 'true'
 
-  const supabase     = createClient()
   const receiptRef   = useRef(null)
 
   const [order,      setOrder]      = useState(null)
@@ -33,40 +31,27 @@ export default function OrderConfirmationPage() {
   async function loadOrder() {
     setLoading(true)
 
-    const [{ data: orderData }, currentUser] = await Promise.all([
-      supabase
-        .from('orders')
-        .select('*')
-        .eq('id', id)
-        .single(),
+    const [orderRes, currentUser] = await Promise.all([
+      fetch(`/api/pos/orders/${id}`).then(r => r.json()),
       getUser(),
     ])
 
-    if (!orderData) {
+    if (!orderRes.order) {
       setLoading(false)
       return
     }
 
-    setOrder(orderData)
-
-    // Load order items
-    const { data: orderItems } = await supabase
-      .from('order_items')
-      .select('*')
-      .eq('order_id', id)
-      .eq('status', 'ACTIVE')
-
-    setItems(orderItems ?? [])
+    setOrder(orderRes.order)
+    setItems(orderRes.items ?? [])
 
     // Load entity
     if (currentUser) {
       const { entityId } = getRoleClaims(currentUser)
-      const { data: entityData } = await supabase
-        .from('entities')
-        .select('id, name, tpn_gstin, whatsapp_no')
-        .eq('id', entityId)
-        .single()
-      setEntity(entityData)
+      const entRes = await fetch('/api/pos/entities')
+      if (entRes.ok) {
+        const { entity } = await entRes.json()
+        setEntity(entity)
+      }
     }
 
     setLoading(false)

@@ -187,8 +187,6 @@ export default function EntityProductForm({
   }
 
   async function saveSpecificationsForProduct(entityProductId) {
-    const token = await getToken()
-
     // Convert specifications object to array format
     const specsArray = Object.entries(specifications).map(([propertyId, value]) => ({
       property_id: propertyId,
@@ -199,7 +197,6 @@ export default function EntityProductForm({
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ specifications: specsArray }),
     })
@@ -528,11 +525,4 @@ export default function EntityProductForm({
       </div>
     </div>
   )
-}
-
-async function getToken() {
-  const { createClient } = await import('@/lib/supabase/client')
-  const client = createClient()
-  const { data } = await client.auth.getSession()
-  return data.session?.access_token
 }

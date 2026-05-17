@@ -1,22 +1,8 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+import { createServiceClient } from '@/lib/supabase/server'
 import bcrypt from 'bcryptjs'
-
-function createAdminClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    { auth: { persistSession: false, autoRefreshToken: false } }
-  )
-}
-
-function createAnonClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-    { auth: { persistSession: false, autoRefreshToken: false } }
-  )
-}
 
 export async function POST(request) {
   try {
@@ -28,7 +14,8 @@ export async function POST(request) {
 
     const normalised = phone.trim().startsWith('+') ? phone.trim() : `+${phone.trim()}`
 
-    const serviceClient = createAdminClient()
+    const serviceClient = createServiceClient()
+    if (!serviceClient) return NextResponse.json({ error: 'Server configuration error' }, { status: 500 })
 
     const { data: rider, error: riderError } = await serviceClient
       .from('riders')
@@ -57,9 +44,32 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Account not fully set up. Contact admin.' }, { status: 500 })
     }
 
-    // Sign in using stored credentials — works for both seeded and API-created users
-    const anonClient = createAnonClient()
-    const { data: signInData, error: signInError } = await anonClient.auth.signInWithPassword({
+    // Sign in via BFF — session stored as httpOnly cookie, never exposed to browser JS
+    const cookieStore = await cookies()
+    let response = NextResponse.json({
+      success: true,
+      rider: { id: rider.id, name: rider.name, whatsapp_no: rider.whatsapp_no },
+    })
+
+    const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    if (!url || !key) {
+      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 })
+    }
+
+    const supabase = createServerClient(url, key, {
+      cookieOptions: { name: 'sb-edgepos-auth-token' },
+      cookies: {
+        getAll: () => cookieStore.getAll(),
+        setAll: (cookiesToSet) => {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set(name, value, options)
+          })
+        },
+      },
+    })
+
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
       email:    rider.auth_email,
       password: rider.auth_password,
     })
@@ -69,12 +79,7 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Failed to create session: ' + (signInError?.message ?? 'unknown') }, { status: 500 })
     }
 
-    return NextResponse.json({
-      success:       true,
-      rider:         { id: rider.id, name: rider.name, whatsapp_no: rider.whatsapp_no },
-      access_token:  signInData.session.access_token,
-      refresh_token: signInData.session.refresh_token,
-    })
+    return response
 
   } catch (error) {
     console.error('[rider/login]', error)

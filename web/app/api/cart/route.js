@@ -1,44 +1,23 @@
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { createServiceClient } from '@/lib/supabase/server'
+import { getAuthContext } from '@/lib/supabase/server'
 
-export async function GET(request) {
+export async function GET() {
   try {
-    const cookieStore = await cookies()
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    // Create server client with cookies
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      {
-        cookies: {
-          get(name) { return cookieStore.get(name)?.value },
-          set(name, value, options) { cookieStore.set({ name, value, ...options }) },
-          remove(name, options) { cookieStore.set({ name, value: '', ...options }) },
-        },
-      }
-    )
+    const { userId, supabase } = ctx
 
-    // Get session from cookies
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-
-    if (sessionError || !session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = session.user.id
-    const customerPhone = session.user.user_metadata?.phone
+    // Get customer phone from user metadata
+    const { data: authUser } = await supabase.auth.admin.getUserById(userId)
+    const customerPhone = authUser?.user?.user_metadata?.phone ?? authUser?.user?.phone
 
     if (!customerPhone) {
       return NextResponse.json({ error: 'Customer phone not found' }, { status: 400 })
     }
 
-    // Use service client for database queries (bypasses RLS for user data)
-    const serviceClient = createServiceClient()
-
     // Get all active carts for this customer (grouped by retailer)
-    const { data: carts, error: cartsError } = await serviceClient
+    const { data: carts, error: cartsError } = await supabase
       .from('carts')
       .select(`
         id,
@@ -55,7 +34,7 @@ export async function GET(request) {
     // Get cart items for each cart
     const cartsWithItems = await Promise.all(
       (carts || []).map(async (cart) => {
-        const { data: items } = await serviceClient
+        const { data: items } = await supabase
           .from('cart_items')
           .select('*')
           .eq('cart_id', cart.id)
@@ -79,27 +58,10 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
-    const cookieStore = await cookies()
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    // Create server client with cookies
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      {
-        cookies: {
-          get(name) { return cookieStore.get(name)?.value },
-          set(name, value, options) { cookieStore.set({ name, value, ...options }) },
-          remove(name, options) { cookieStore.set({ name, value: '', ...options }) },
-        },
-      }
-    )
-
-    // Get session from cookies
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-
-    if (sessionError || !session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const { userId, supabase } = ctx
 
     const body = await request.json()
     const { productId, quantity = 1 } = body
@@ -108,18 +70,15 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Product ID required' }, { status: 400 })
     }
 
-    const userId = session.user.id
-    const customerPhone = session.user.user_metadata?.phone
+    const { data: authUser } = await supabase.auth.admin.getUserById(userId)
+    const customerPhone = authUser?.user?.user_metadata?.phone ?? authUser?.user?.phone
 
     if (!customerPhone) {
       return NextResponse.json({ error: 'Customer phone not found' }, { status: 400 })
     }
 
-    // Use service client for database queries
-    const serviceClient = createServiceClient()
-
     // Get product details
-    const { data: product, error: productError } = await serviceClient
+    const { data: product, error: productError } = await supabase
       .from('products')
       .select('id, name, sku, mrp, created_by, current_stock')
       .eq('id', productId)
@@ -137,7 +96,7 @@ export async function POST(request) {
     const retailerId = product.created_by
 
     // Find or create cart for this retailer
-    let { data: cart, error: cartError } = await serviceClient
+    let { data: cart, error: cartError } = await supabase
       .from('carts')
       .select('*')
       .eq('customer_whatsapp', customerPhone)
@@ -146,8 +105,7 @@ export async function POST(request) {
       .single()
 
     if (cartError || !cart) {
-      // Create new cart
-      const { data: newCart, error: createError } = await serviceClient
+      const { data: newCart, error: createError } = await supabase
         .from('carts')
         .insert({
           entity_id: retailerId,
@@ -163,7 +121,7 @@ export async function POST(request) {
     }
 
     // Check if product already in cart
-    const { data: existingItem } = await serviceClient
+    const { data: existingItem } = await supabase
       .from('cart_items')
       .select('*')
       .eq('cart_id', cart.id)
@@ -171,12 +129,11 @@ export async function POST(request) {
       .single()
 
     if (existingItem) {
-      // Update quantity
       const newQuantity = existingItem.quantity + quantity
       const gst = (parseFloat(product.mrp) * 0.05 * newQuantity).toFixed(2)
       const total = (parseFloat(product.mrp) * newQuantity + parseFloat(gst)).toFixed(2)
 
-      const { error: updateError } = await serviceClient
+      const { error: updateError } = await supabase
         .from('cart_items')
         .update({
           quantity: newQuantity,
@@ -187,11 +144,10 @@ export async function POST(request) {
 
       if (updateError) throw updateError
     } else {
-      // Add new item
       const gst = (parseFloat(product.mrp) * 0.05 * quantity).toFixed(2)
       const total = (parseFloat(product.mrp) * quantity + parseFloat(gst)).toFixed(2)
 
-      const { error: insertError } = await serviceClient
+      const { error: insertError } = await supabase
         .from('cart_items')
         .insert({
           cart_id: cart.id,

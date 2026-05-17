@@ -1,36 +1,15 @@
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { createServiceClient } from '@/lib/supabase/server'
+import { getAuthContext, createServiceClient } from '@/lib/supabase/server'
 
 export async function POST(request, { params }) {
   try {
-    const cookieStore = await cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      {
-        cookies: {
-          get(name) { return cookieStore.get(name)?.value },
-          set(name, value, options) { cookieStore.set({ name, value, ...options }) },
-          remove(name, options) { cookieStore.set({ name, value: '', ...options }) },
-        },
-      }
-    )
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id: soId } = await params
-    const serviceClient = createServiceClient()
-
-    const { data: profile } = await serviceClient
-      .from('user_profiles')
-      .select('entity_id')
-      .eq('id', session.user.id)
-      .single()
-
-    if (!profile?.entity_id) return NextResponse.json({ error: 'Vendor entity not found' }, { status: 403 })
-    const vendorEntityId = profile.entity_id
+    const serviceClient = ctx.supabase
+    const vendorEntityId = ctx.entityId
+    const userId = ctx.userId
 
     // Fetch the Sales Order
     const { data: so } = await serviceClient
@@ -165,7 +144,7 @@ export async function POST(request, { params }) {
         gst_total:         gstTotal,
         grand_total:       grandTotal,
         digital_signature: signature,
-        created_by:        session.user.id,
+        created_by:        userId,
       })
       .select('id, order_no, status, subtotal, gst_total, grand_total, payment_method, buyer_whatsapp, invoice_ref, sales_order_id, created_at')
       .single()
@@ -235,7 +214,7 @@ export async function POST(request, { params }) {
           amount:           grandTotal,
           balance_after:    (parseFloat(existingKhata?.outstanding_balance || 0) + grandTotal).toFixed(2),
           notes:            'Sales Invoice: ' + invoiceNo,
-          created_by:       session.user.id,
+          created_by:       userId,
         })
       }
     }

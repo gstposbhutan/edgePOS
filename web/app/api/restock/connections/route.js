@@ -1,53 +1,13 @@
 import { NextResponse } from 'next/server'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { createServiceClient as createSSRServiceClient } from '@/lib/supabase/server'
-
-// Create a true service client that bypasses RLS
-function createBypassClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    { auth: { persistSession: false, autoRefreshToken: false } }
-  )
-}
+import { getAuthContext } from '@/lib/supabase/server'
 
 export async function GET(request) {
   try {
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const token = authHeader.replace('Bearer ', '')
-    const authClient = createSSRServiceClient()
-    const { data: { user }, error: userError } = await authClient.auth.getUser(token)
-
-    if (userError || !user) {
-      console.error('[connections] Auth failed:', userError)
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    let retailerId = user.app_metadata?.entity_id
-
-    // Fallback: if entity_id not in app_metadata (hook not registered), query user_profiles
-    if (!retailerId) {
-      console.log('[connections] No entity_id in app_metadata, querying user_profiles')
-      const supabase = createBypassClient()
-      const { data: profile } = await supabase
-        .from('user_profiles')
-        .select('entity_id')
-        .eq('id', user.id)
-        .single()
-
-      if (profile) {
-        retailerId = profile.entity_id
-        console.log('[connections] Found entity_id from user_profiles:', retailerId)
-      } else {
-        console.error('[connections] No profile found for user:', user.id)
-        return NextResponse.json({ error: 'No entity' }, { status: 403 })
-      }
-    }
-
-    // Use bypass client to read connections and wholesaler entities without RLS
-    const supabase = createBypassClient()
+    const retailerId = ctx.entityId
+    const supabase = ctx.supabase
     const { data: connections, error: connErr } = await supabase
       .from('retailer_wholesalers')
       .select('wholesaler_id, is_primary, active, category_id, categories(name)')

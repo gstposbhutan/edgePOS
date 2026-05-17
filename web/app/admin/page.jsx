@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { useAdminAuth } from '@/hooks/use-admin-auth'
-import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Users, Package, ShoppingCart, Banknote } from 'lucide-react'
 
@@ -15,22 +14,18 @@ export default function AdminDashboard() {
     if (!entityId) return
 
     async function loadStats() {
-      const supabase = createClient()
-
-      const [teamRes, productsRes, ordersRes] = await Promise.all([
-        supabase.from('user_profiles').select('id', { count: 'exact', head: true }).eq('entity_id', entityId),
-        supabase.from('products').select('id', { count: 'exact', head: true }).eq('created_by', entityId).eq('is_active', true),
-        supabase.from('orders').select('id, grand_total').eq('seller_id', entityId).eq('status', 'COMPLETED'),
-      ])
-
-      const revenue = (ordersRes.data || []).reduce((sum, o) => sum + (parseFloat(o.grand_total) || 0), 0)
-
-      setStats({
-        team: teamRes.count || 0,
-        products: productsRes.count || 0,
-        orders: ordersRes.data?.length || 0,
-        revenue,
-      })
+      try {
+        const res = await fetch('/api/admin/stats')
+        if (res.ok) {
+          const data = await res.json()
+          setStats({
+            team: data.team || 0,
+            products: data.products || 0,
+            orders: data.orders || 0,
+            revenue: data.revenue || 0,
+          })
+        }
+      } catch {}
       setStatsLoading(false)
     }
 

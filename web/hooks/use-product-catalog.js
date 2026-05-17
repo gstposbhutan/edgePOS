@@ -1,15 +1,12 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { createClient } from "@/lib/supabase/client"
 
 /**
- * CRUD operations for the product catalogue.
+ * CRUD operations for the product catalogue via API routes.
  * @param {string} entityId - Store entity UUID (used as created_by)
  */
 export function useProductCatalog(entityId) {
-  const supabase = createClient()
-
   const [products,   setProducts]   = useState([])
   const [categories, setCategories] = useState([])
   const [loading,    setLoading]    = useState(true)
@@ -22,25 +19,27 @@ export function useProductCatalog(entityId) {
 
   async function fetchProducts() {
     setLoading(true)
-    const { data } = await supabase
-      .from('products')
-      .select(`
-        id, name, sku, hsn_code, unit, mrp, wholesale_price, selling_price,
-        current_stock, image_url, is_active, created_at,
-        product_categories(category_id, categories(id, name))
-      `)
-      .order('name')
-
-    setProducts(data ?? [])
+    try {
+      const res = await fetch('/api/products/catalog')
+      const data = await res.json()
+      if (res.ok) {
+        setProducts(data.products ?? [])
+        if (data.categories) setCategories(data.categories)
+      }
+    } catch {
+      // leave unchanged
+    }
     setLoading(false)
   }
 
   async function fetchCategories() {
-    const { data } = await supabase
-      .from('categories')
-      .select('id, name')
-      .order('name')
-    setCategories(data ?? [])
+    try {
+      const res = await fetch('/api/products/catalog')
+      const data = await res.json()
+      if (res.ok && data.categories) setCategories(data.categories)
+    } catch {
+      // leave unchanged
+    }
   }
 
   /**
@@ -51,63 +50,22 @@ export function useProductCatalog(entityId) {
    */
   const createProduct = useCallback(async (formData, categoryIds) => {
     setSaving(true)
-    const { data: product, error } = await supabase
-      .from('products')
-      .insert({
-        name:            formData.name.trim(),
-        sku:             formData.sku?.trim() || null,
-        hsn_code:        formData.hsn_code.trim(),
-        unit:            formData.unit || 'pcs',
-        current_stock:   parseInt(formData.current_stock) || 0,
-        image_url:       formData.image_url?.trim() || null,
-        reorder_point:   parseInt(formData.reorder_point) || 10,
-        is_active:       true,
-        created_by:      entityId,
+    try {
+      const res = await fetch('/api/products/catalog', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ formData, categoryIds }),
       })
-      .select('id')
-      .single()
+      const data = await res.json()
+      if (!res.ok) { setSaving(false); return { error: data.error } }
 
-    if (error) { setSaving(false); return { error: error.message } }
-
-    // Assign categories
-    if (categoryIds.length > 0) {
-      await supabase.from('product_categories').insert(
-        categoryIds.map(cid => ({ product_id: product.id, category_id: cid }))
-      )
+      await fetchProducts()
+      setSaving(false)
+      return { error: null }
+    } catch (err) {
+      setSaving(false)
+      return { error: err.message }
     }
-
-    // If initial stock > 0, create opening batch + RESTOCK movement
-    const openingStock = parseInt(formData.current_stock) || 0
-    if (openingStock > 0) {
-      const batchNo = formData.batch_number?.trim() || `OPEN-${Date.now()}`
-      const { data: batch } = await supabase
-        .from('product_batches')
-        .insert({
-          product_id:     product.id,
-          entity_id:      entityId,
-          batch_number:   batchNo,
-          manufactured_at: formData.manufactured_at || null,
-          expires_at:     formData.expires_at || null,
-          quantity:       openingStock,
-          status:         'ACTIVE',
-          notes:          'Opening stock',
-        })
-        .select('id')
-        .single()
-
-      await supabase.from('inventory_movements').insert({
-        product_id:    product.id,
-        entity_id:     entityId,
-        movement_type: 'RESTOCK',
-        quantity:      openingStock,
-        batch_id:      batch?.id ?? null,
-        notes:         `Opening stock — Batch ${batchNo}`,
-      })
-    }
-
-    await fetchProducts()
-    setSaving(false)
-    return { error: null }
   }, [entityId])
 
   /**
@@ -119,31 +77,22 @@ export function useProductCatalog(entityId) {
    */
   const updateProduct = useCallback(async (productId, formData, categoryIds) => {
     setSaving(true)
-    const { error } = await supabase
-      .from('products')
-      .update({
-        name:            formData.name.trim(),
-        sku:             formData.sku?.trim() || null,
-        hsn_code:        formData.hsn_code.trim(),
-        unit:            formData.unit || 'pcs',
-        image_url:     formData.image_url?.trim() || null,
-        reorder_point: parseInt(formData.reorder_point) || 10,
+    try {
+      const res = await fetch(`/api/products/catalog/${productId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ formData, categoryIds }),
       })
-      .eq('id', productId)
+      const data = await res.json()
+      if (!res.ok) { setSaving(false); return { error: data.error } }
 
-    if (error) { setSaving(false); return { error: error.message } }
-
-    // Replace category assignments
-    await supabase.from('product_categories').delete().eq('product_id', productId)
-    if (categoryIds.length > 0) {
-      await supabase.from('product_categories').insert(
-        categoryIds.map(cid => ({ product_id: productId, category_id: cid }))
-      )
+      await fetchProducts()
+      setSaving(false)
+      return { error: null }
+    } catch (err) {
+      setSaving(false)
+      return { error: err.message }
     }
-
-    await fetchProducts()
-    setSaving(false)
-    return { error: null }
   }, [])
 
   /**
@@ -152,7 +101,11 @@ export function useProductCatalog(entityId) {
    * @param {boolean} isActive
    */
   const toggleActive = useCallback(async (productId, isActive) => {
-    await supabase.from('products').update({ is_active: isActive }).eq('id', productId)
+    await fetch(`/api/products/catalog/${productId}/toggle`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ field: 'is_active', value: isActive }),
+    })
     setProducts(prev => prev.map(p => p.id === productId ? { ...p, is_active: isActive } : p))
   }, [])
 
@@ -160,7 +113,11 @@ export function useProductCatalog(entityId) {
    * Toggle sold_as_package_only flag.
    */
   const togglePackageOnly = useCallback(async (productId, value) => {
-    await supabase.from('products').update({ sold_as_package_only: value }).eq('id', productId)
+    await fetch(`/api/products/catalog/${productId}/toggle`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ field: 'sold_as_package_only', value }),
+    })
     setProducts(prev => prev.map(p => p.id === productId ? { ...p, sold_as_package_only: value } : p))
   }, [])
 
@@ -170,104 +127,54 @@ export function useProductCatalog(entityId) {
    * @param {boolean} visible
    */
   const toggleVisibleOnWeb = useCallback(async (productId, visible) => {
-    await supabase.from('products').update({ visible_on_web: visible }).eq('id', productId)
+    await fetch(`/api/products/catalog/${productId}/toggle`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ field: 'visible_on_web', value: visible }),
+    })
     setProducts(prev => prev.map(p => p.id === productId ? { ...p, visible_on_web: visible } : p))
   }, [])
 
-  // ── Package CRUD ────────────────────────────────────────────────────────────
+  // -- Package CRUD --
 
   /**
    * Fetch all packages created by this entity with their component items.
    */
   async function fetchPackages() {
-    const { data } = await supabase
-      .from('product_packages')
-      .select(`
-        id, name, package_type, barcode, qr_code, wholesale_price, mrp, hsn_code, is_active,
-        product:product_id (id, name, image_url),
-        package_items (
-          id, quantity,
-          product:product_id (id, name, sku, unit, current_stock)
-        )
-      `)
-      .eq('created_by', entityId)
-      .order('name')
-    return data ?? []
+    try {
+      const res = await fetch('/api/products/catalog/_/package')
+      const data = await res.json()
+      if (res.ok) return data.packages ?? []
+    } catch {
+      // fall through
+    }
+    return []
   }
 
   /**
    * Create a new package.
-   * Creates the package product listing + package definition + component items.
    * @param {object} formData  { name, package_type, mrp, wholesale_price, hsn_code, barcode, qr_code, image_url }
    * @param {{ product_id: string, quantity: number }[]} componentItems
    * @param {string[]} categoryIds
    */
   const createPackage = useCallback(async (formData, componentItems, categoryIds) => {
     setSaving(true)
-
-    // 1. Create the package product listing (product_type = 'PACKAGE')
-    const { data: product, error: prodError } = await supabase
-      .from('products')
-      .insert({
-        name:            formData.name.trim(),
-        hsn_code:        formData.hsn_code?.trim() || '9999',
-        mrp:             parseFloat(formData.mrp) || 0,
-        wholesale_price: parseFloat(formData.wholesale_price) || 0,
-        image_url:       formData.image_url?.trim() || null,
-        product_type:    'PACKAGE',
-        is_active:       true,
-        created_by:      entityId,
+    try {
+      const res = await fetch('/api/products/catalog/_/package', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ formData, componentItems, categoryIds }),
       })
-      .select('id').single()
+      const data = await res.json()
+      if (!res.ok) { setSaving(false); return { error: data.error } }
 
-    if (prodError) { setSaving(false); return { error: prodError.message } }
-
-    // 2. Create the package definition
-    const { data: pkg, error: pkgError } = await supabase
-      .from('product_packages')
-      .insert({
-        product_id:      product.id,
-        name:            formData.name.trim(),
-        package_type:    formData.package_type || 'BUNDLE',
-        barcode:         formData.barcode?.trim() || null,
-        qr_code:         formData.qr_code?.trim() || null,
-        wholesale_price: parseFloat(formData.wholesale_price) || 0,
-        mrp:             parseFloat(formData.mrp) || 0,
-        hsn_code:        formData.hsn_code?.trim() || null,
-        is_active:       true,
-        created_by:      entityId,
-      })
-      .select('id').single()
-
-    if (pkgError) { setSaving(false); return { error: pkgError.message } }
-
-    // 3. Insert component items
-    if (componentItems.length > 0) {
-      const { error: itemsError } = await supabase
-        .from('package_items')
-        .insert(componentItems.map(c => ({
-          package_id: pkg.id,
-          product_id: c.product_id,
-          quantity:   c.quantity,
-        })))
-      if (itemsError) { setSaving(false); return { error: itemsError.message } }
+      await fetchProducts()
+      setSaving(false)
+      return { error: null, packageId: data.packageId }
+    } catch (err) {
+      setSaving(false)
+      return { error: err.message }
     }
-
-    // 4. Assign categories to the package product
-    if (categoryIds.length > 0) {
-      await supabase.from('product_categories').insert(
-        categoryIds.map(cid => ({ product_id: product.id, category_id: cid }))
-      )
-    }
-
-    // 5. Associate with entity
-    await supabase.from('entity_packages').insert({
-      entity_id: entityId, package_id: pkg.id, is_default: false,
-    })
-
-    await fetchProducts()
-    setSaving(false)
-    return { error: null, packageId: pkg.id }
   }, [entityId])
 
   /**
@@ -275,58 +182,33 @@ export function useProductCatalog(entityId) {
    */
   const updatePackage = useCallback(async (packageId, productId, formData, componentItems, categoryIds) => {
     setSaving(true)
+    try {
+      const res = await fetch('/api/products/catalog/_/package', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ packageId, productId, formData, componentItems, categoryIds }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setSaving(false); return { error: data.error } }
 
-    // Update package product listing
-    await supabase.from('products').update({
-      name:            formData.name.trim(),
-      hsn_code:        formData.hsn_code?.trim() || '9999',
-      mrp:             parseFloat(formData.mrp) || 0,
-      wholesale_price: parseFloat(formData.wholesale_price) || 0,
-      image_url:       formData.image_url?.trim() || null,
-    }).eq('id', productId)
-
-    // Update package definition
-    const { error } = await supabase.from('product_packages').update({
-      name:            formData.name.trim(),
-      package_type:    formData.package_type,
-      barcode:         formData.barcode?.trim() || null,
-      qr_code:         formData.qr_code?.trim() || null,
-      wholesale_price: parseFloat(formData.wholesale_price) || 0,
-      mrp:             parseFloat(formData.mrp) || 0,
-      hsn_code:        formData.hsn_code?.trim() || null,
-    }).eq('id', packageId)
-
-    if (error) { setSaving(false); return { error: error.message } }
-
-    // Replace component items
-    await supabase.from('package_items').delete().eq('package_id', packageId)
-    if (componentItems.length > 0) {
-      await supabase.from('package_items').insert(
-        componentItems.map(c => ({ package_id: packageId, product_id: c.product_id, quantity: c.quantity }))
-      )
+      await fetchProducts()
+      setSaving(false)
+      return { error: null }
+    } catch (err) {
+      setSaving(false)
+      return { error: err.message }
     }
-
-    // Replace categories
-    await supabase.from('product_categories').delete().eq('product_id', productId)
-    if (categoryIds.length > 0) {
-      await supabase.from('product_categories').insert(
-        categoryIds.map(cid => ({ product_id: productId, category_id: cid }))
-      )
-    }
-
-    await fetchProducts()
-    setSaving(false)
-    return { error: null }
   }, [])
 
   /**
    * Deactivate a package.
    */
   const deactivatePackage = useCallback(async (packageId, productId) => {
-    await Promise.all([
-      supabase.from('product_packages').update({ is_active: false }).eq('id', packageId),
-      supabase.from('products').update({ is_active: false }).eq('id', productId),
-    ])
+    await fetch('/api/products/catalog/_/package', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ packageId, productId }),
+    })
     await fetchProducts()
   }, [])
 

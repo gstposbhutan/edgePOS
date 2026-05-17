@@ -1,38 +1,23 @@
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { createServiceClient } from '@/lib/supabase/server'
+import { getAuthContext } from '@/lib/supabase/server'
 import { createHash, randomBytes } from 'node:crypto'
-
-async function getSession(cookieStore) {
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-    {
-      cookies: {
-        get(name) { return cookieStore.get(name)?.value },
-        set(name, value, options) { cookieStore.set({ name, value, ...options }) },
-        remove(name, options) { cookieStore.set({ name, value: '', ...options }) },
-      },
-    }
-  )
-  const { data: { session }, error } = await supabase.auth.getSession()
-  return error ? null : session
-}
 
 // GET — customer's own MARKETPLACE orders
 export async function GET(request) {
   try {
-    const cookieStore = await cookies()
-    const session = await getSession(cookieStore)
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const customerPhone = session.user.user_metadata?.phone
+    // Customer orders are looked up by buyer_whatsapp matching user metadata phone
+    // getAuthContext doesn't expose the session directly, so we query by userId
+    const { supabase, userId } = ctx
+
+    // Get customer phone from user metadata via auth admin
+    const { data: { user } } = await supabase.auth.admin.getUserById(userId)
+    const customerPhone = user?.user_metadata?.phone
     if (!customerPhone) return NextResponse.json({ error: 'Customer phone not found' }, { status: 400 })
 
-    const serviceClient = createServiceClient()
-
-    const { data: orders, error } = await serviceClient
+    const { data: orders, error } = await supabase
       .from('orders')
       .select(`
         id, order_no, order_source, status, grand_total, gst_total, subtotal,
@@ -56,27 +41,19 @@ export async function GET(request) {
 // POST — vendor creates a MARKETPLACE order on behalf of a customer
 export async function POST(request) {
   try {
-    const cookieStore = await cookies()
-    const session = await getSession(cookieStore)
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const serviceClient = createServiceClient()
+    const { entityId, userId, supabase } = ctx
 
-    // Resolve vendor entity
-    const { data: profile } = await serviceClient
-      .from('user_profiles')
-      .select('entity_id, role')
-      .eq('id', session.user.id)
-      .single()
-
-    if (!profile?.entity_id) {
+    if (!entityId) {
       return NextResponse.json({ error: 'Vendor entity not found' }, { status: 403 })
     }
 
-    const sellerId = profile.entity_id
+    const sellerId = entityId
 
     // Fetch vendor entity for GST + WhatsApp
-    const { data: vendor } = await serviceClient
+    const { data: vendor } = await supabase
       .from('entities')
       .select('id, name, tpn_gstin, whatsapp_no')
       .eq('id', sellerId)
@@ -101,7 +78,7 @@ export async function POST(request) {
     const phone = customer_whatsapp.startsWith('+') ? customer_whatsapp : `+${customer_whatsapp}`
 
     // Find or auto-create customer entity
-    let { data: customerEntity } = await serviceClient
+    let { data: customerEntity } = await supabase
       .from('entities')
       .select('id')
       .eq('whatsapp_no', phone)
@@ -113,7 +90,7 @@ export async function POST(request) {
       const tempEmail = `customer_${Date.now()}@example.com`
       const tempPassword = 'TempPass' + Math.random().toString(36).substring(2, 10) + Date.now().toString().substring(0, 6)
 
-      const { data: authData, error: authError } = await serviceClient.auth.admin.createUser({
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
         email: tempEmail,
         password: tempPassword,
         email_confirm: true,
@@ -126,18 +103,18 @@ export async function POST(request) {
       const authUserId = authData.user.id
       const displayName = customer_name?.trim() || `Customer ${phone.slice(-4)}`
 
-      const { data: newEntity, error: entityError } = await serviceClient
+      const { data: newEntity, error: entityError } = await supabase
         .from('entities')
         .insert({ id: authUserId, name: displayName, whatsapp_no: phone, role: 'CUSTOMER', is_active: true })
         .select('id')
         .single()
 
       if (entityError || !newEntity) {
-        await serviceClient.auth.admin.deleteUser(authUserId)
+        await supabase.auth.admin.deleteUser(authUserId)
         return NextResponse.json({ error: 'Failed to create customer entity' }, { status: 500 })
       }
 
-      await serviceClient.from('user_profiles').insert({
+      await supabase.from('user_profiles').insert({
         id: authUserId,
         entity_id: newEntity.id,
         role: 'CUSTOMER',
@@ -145,7 +122,7 @@ export async function POST(request) {
         full_name: displayName,
       })
 
-      await serviceClient.auth.admin.updateUserById(authUserId, {
+      await supabase.auth.admin.updateUserById(authUserId, {
         user_metadata: { phone, phone_verified: false, role: 'CUSTOMER' },
       })
 
@@ -154,7 +131,7 @@ export async function POST(request) {
 
     // Validate products are active and this vendor has stock (batch or product-level)
     const productIds = items.map(i => i.product_id)
-    const { data: products, error: productsError } = await serviceClient
+    const { data: products, error: productsError } = await supabase
       .from('products')
       .select('id, name, sku, mrp, current_stock, is_active')
       .in('id', productIds)
@@ -164,7 +141,7 @@ export async function POST(request) {
     const productMap = Object.fromEntries((products || []).map(p => [p.id, p]))
 
     // Fetch this vendor's active batch totals for each product
-    const { data: batchTotals } = await serviceClient
+    const { data: batchTotals } = await supabase
       .from('product_batches')
       .select('product_id, quantity')
       .eq('entity_id', sellerId)
@@ -214,7 +191,7 @@ export async function POST(request) {
     // Generate order number
     const year = new Date().getFullYear()
     const prefix = isSalesOrder ? 'SO' : 'MKT'
-    const { data: lastOrder } = await serviceClient
+    const { data: lastOrder } = await supabase
       .from('orders')
       .select('order_no')
       .like('order_no', `${prefix}-${year}-%`)
@@ -232,7 +209,7 @@ export async function POST(request) {
     const paymentToken = randomBytes(32).toString('hex')
     const paymentTokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
 
-    const { data: order, error: orderError } = await serviceClient
+    const { data: order, error: orderError } = await supabase
       .from('orders')
       .insert({
         order_type:   isSalesOrder ? 'SALES_ORDER' : 'MARKETPLACE',
@@ -253,14 +230,14 @@ export async function POST(request) {
         payment_token: isSalesOrder ? null : paymentToken,
         payment_token_expires_at: isSalesOrder ? null : paymentTokenExpiresAt,
         digital_signature: signature,
-        created_by: session.user.id,
+        created_by: userId,
       })
       .select('id, order_no')
       .single()
 
     if (orderError) throw new Error(orderError.message)
 
-    await serviceClient.from('order_items').insert(
+    await supabase.from('order_items').insert(
       orderItems.map(item => ({ order_id: order.id, ...item }))
     )
 

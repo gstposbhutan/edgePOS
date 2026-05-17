@@ -29,9 +29,12 @@ export async function proxy(request) {
   let response = NextResponse.next({ request })
 
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     {
+      cookieOptions: {
+        name: 'sb-edgepos-auth-token',
+      },
       cookies: {
         getAll: () => request.cookies.getAll(),
         setAll: (cookiesToSet) => {
@@ -43,16 +46,16 @@ export async function proxy(request) {
     }
   )
 
-  const { data: { session } } = await supabase.auth.getSession()
+  const { data: { user } } = await supabase.auth.getUser()
 
-  // No session → redirect to login
-  if (!session) {
+  // No valid user → redirect to login
+  if (!user) {
     const loginUrl = new URL('/login', request.url)
     loginUrl.searchParams.set('redirect', pathname)
     return NextResponse.redirect(loginUrl)
   }
 
-  const role = session.user?.user_metadata?.role || session.user?.app_metadata?.role
+  const role = user.user_metadata?.role || user.app_metadata?.role
 
   // Redirect root to role home
   if (pathname === '/') {
@@ -60,7 +63,7 @@ export async function proxy(request) {
   }
 
   // Block RETAILER from /admin — except OWNERs who manage multiple stores
-  const subRole = session.user?.user_metadata?.sub_role || session.user?.app_metadata?.sub_role
+  const subRole = user.user_metadata?.sub_role || user.app_metadata?.sub_role
   if (pathname.startsWith('/admin') && role === 'RETAILER' && subRole !== 'OWNER') {
     return NextResponse.redirect(new URL('/pos', request.url))
   }

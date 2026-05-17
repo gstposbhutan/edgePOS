@@ -1,15 +1,13 @@
 /**
  * Face Profile Store
- * Manages face embedding lookup — local cache + Supabase sync.
+ * Manages face embedding lookup — local cache + server sync via API.
  * No raw images are stored anywhere. Vectors only.
  */
 
-import { createClient }    from '@/lib/supabase/client'
 import { FaceEngine, FACE_MATCH_THRESHOLD } from './face-engine'
 
 export class FaceStore {
   constructor() {
-    this.supabase = createClient()
     this.cache    = []  // [{ id, whatsapp_no, name, embedding: Float32Array }]
   }
 
@@ -18,14 +16,11 @@ export class FaceStore {
    * @param {string} entityId
    */
   async loadForEntity(entityId) {
-    const { data } = await this.supabase
-      .from('face_profiles')
-      .select('id, whatsapp_no, name, embedding')
-      .eq('entity_id', entityId)
-      .is('deleted_at', null)
-      .not('embedding', 'is', null)
+    const res = await fetch(`/api/face-profiles?entity_id=${entityId}`)
+    if (!res.ok) return 0
 
-    this.cache = (data ?? []).map(p => ({
+    const { profiles } = await res.json()
+    this.cache = (profiles ?? []).map(p => ({
       ...p,
       embedding: new Float32Array(p.embedding),
     }))
@@ -61,24 +56,29 @@ export class FaceStore {
    * @returns {{ error: string|null, profileId: string|null }}
    */
   async enroll({ entityId, whatsapp, name, embedding, consentToken, consentAt }) {
-    const { data, error } = await this.supabase
-      .from('face_profiles')
-      .insert({
-        entity_id:     entityId,
-        whatsapp_no:   whatsapp,
-        name:          name ?? null,
-        embedding:     Array.from(embedding),
-        consent_at:    consentAt,
-        consent_token: consentToken,
+    try {
+      const res = await fetch('/api/face-profiles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entity_id:     entityId,
+          whatsapp_no:   whatsapp,
+          name:          name ?? null,
+          embedding:     Array.from(embedding),
+          consent_token: consentToken,
+          consent_at:    consentAt,
+        }),
       })
-      .select('id')
-      .single()
 
-    if (error) return { error: error.message, profileId: null }
+      const data = await res.json()
+      if (!res.ok) return { error: data.error || 'Enrollment failed', profileId: null }
 
-    // Add to local cache
-    this.cache.push({ id: data.id, whatsapp_no: whatsapp, name, embedding })
-    return { error: null, profileId: data.id }
+      // Add to local cache
+      this.cache.push({ id: data.profileId, whatsapp_no: whatsapp, name, embedding })
+      return { error: null, profileId: data.profileId }
+    } catch (err) {
+      return { error: err.message, profileId: null }
+    }
   }
 
   /**
@@ -86,14 +86,17 @@ export class FaceStore {
    * @param {string} profileId
    */
   async deleteProfile(profileId) {
-    const { error } = await this.supabase.rpc('delete_face_profile', {
-      p_profile_id: profileId,
-    })
+    try {
+      const res = await fetch(`/api/face-profiles/${profileId}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const data = await res.json()
+        return { error: data.error || 'Deletion failed' }
+      }
 
-    if (!error) {
       this.cache = this.cache.filter(p => p.id !== profileId)
+      return { error: null }
+    } catch (err) {
+      return { error: err.message }
     }
-
-    return { error: error?.message ?? null }
   }
 }

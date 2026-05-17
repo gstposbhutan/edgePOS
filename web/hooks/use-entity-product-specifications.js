@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { createClient } from '@/lib/supabase/client'
 
 /**
  * Hook for managing entity product specifications
@@ -42,10 +41,7 @@ export function useEntityProductSpecifications(entityProductId = null) {
     try {
       const res = await fetch(`/api/admin/entity-products/${id}/specifications`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          authorization: `Bearer ${(await createClient().auth.getSession()).data.session?.access_token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ specifications: specsData }),
       })
 

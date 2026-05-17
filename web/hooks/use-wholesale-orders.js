@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { createClient } from '@/lib/supabase/client'
 
 /**
  * Hook for wholesaler order management.
@@ -13,26 +12,16 @@ export function useWholesaleOrders() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
-  async function getToken() {
-    const supabase = createClient()
-    const { data: { session } } = await supabase.auth.getSession()
-    return session?.access_token
-  }
-
   /** Fetch incoming wholesale orders */
   const fetchOrders = useCallback(async (status = null) => {
     setLoading(true)
     setError(null)
 
     try {
-      const token = await getToken()
       const params = new URLSearchParams()
       if (status) params.set('status', status)
 
-      const res = await fetch(`/api/wholesale/orders?${params}`, {
-        headers: { authorization: `Bearer ${token}` },
-      })
-
+      const res = await fetch(`/api/wholesale/orders?${params}`)
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
 
@@ -51,11 +40,7 @@ export function useWholesaleOrders() {
     setOrderDetail(null)
 
     try {
-      const token = await getToken()
-      const res = await fetch(`/api/wholesale/orders/${orderId}`, {
-        headers: { authorization: `Bearer ${token}` },
-      })
-
+      const res = await fetch(`/api/wholesale/orders/${orderId}`)
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
 
@@ -72,13 +57,9 @@ export function useWholesaleOrders() {
     setError(null)
 
     try {
-      const token = await getToken()
       const res = await fetch(`/api/wholesale/orders/${orderId}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus, reason }),
       })
 

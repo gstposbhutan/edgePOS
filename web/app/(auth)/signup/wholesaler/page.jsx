@@ -6,7 +6,6 @@ import { Eye, EyeOff, Loader2, Phone, Building2, ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { createClient } from '@/lib/supabase/client'
 
 function SignupForm() {
   const router = useRouter()
@@ -50,16 +49,10 @@ function SignupForm() {
         return
       }
 
-      // If session tokens returned, set session and redirect
-      if (data.access_token) {
-        const supabase = createClient()
-        await supabase.auth.setSession({
-          access_token: data.access_token,
-          refresh_token: data.refresh_token,
-        })
+      // Session is set server-side as httpOnly cookie — redirect to admin hub
+      if (data.success) {
         router.push('/admin')
       } else {
-        // Account created but no session — go to login
         router.push('/login?message=Account+created.+Please+sign+in.')
       }
     } catch {

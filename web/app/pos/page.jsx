@@ -10,8 +10,7 @@ import { ShortcutBar }        from "@/components/pos/keyboard/shortcut-bar"
 import { DiscountModal }      from "@/components/pos/keyboard/discount-modal"
 import { useCart }            from "@/hooks/use-cart"
 import { useKhata }           from "@/hooks/use-khata"
-import { getUser, getRoleClaims, signOut } from "@/lib/auth"
-import { createClient }       from "@/lib/supabase/client"
+import { getUser, getEnrichedClaims, signOut } from "@/lib/auth"
 import { ShiftStatusBadge }   from "@/components/pos/shift/shift-status-badge"
 import { StartShiftModal }    from "@/components/pos/shift/start-shift-modal"
 import { EndShiftModal }      from "@/components/pos/shift/end-shift-modal"
@@ -24,21 +23,20 @@ import { Button } from "@/components/ui/button"
 import { CustomerOtpModal } from "@/components/pos/customer-otp-modal"
 
 export default function KeyboardPosPage() {
-  const router   = useRouter()
-  const supabase = createClient()
+  const router = useRouter()
 
   const [user,         setUser]         = useState(null)
   const [entity,       setEntity]       = useState(null)
   const [subRole,      setSubRole]      = useState('CASHIER')
   const [selectedRow,  setSelectedRow]  = useState(0)
-  const editRowRef = useRef(null) // callback set by CartTable to trigger inline edit
+  const editRowRef = useRef(null)
   const [searchOpen,   setSearchOpen]   = useState(false)
   const [searchQuery,  setSearchQuery]  = useState('')
   const [paymentOpen,   setPaymentOpen]   = useState(false)
   const [helpOpen,      setHelpOpen]      = useState(false)
   const [checkoutErr,   setCheckoutErr]   = useState(null)
   const [creditOtpOpen, setCreditOtpOpen] = useState(false)
-  const pendingPayment  = useRef(null) // stores { method, received } while OTP is open
+  const pendingPayment  = useRef(null)
   const [lastOrderNo,  setLastOrderNo]  = useState(null)
   const [showDiscount, setShowDiscount] = useState(false)
   const [showStartShift, setShowStartShift] = useState(false)
@@ -51,15 +49,15 @@ export default function KeyboardPosPage() {
       const currentUser = await getUser()
       if (!currentUser) return router.push('/login')
       setUser(currentUser)
-      const { entityId, subRole: sr } = getRoleClaims(currentUser)
+      const { entityId, subRole: sr } = await getEnrichedClaims(currentUser)
       setSubRole(sr ?? 'CASHIER')
       if (!entityId) return
-      const { data } = await supabase
-        .from('entities')
-        .select('id, name, tpn_gstin')
-        .eq('id', entityId)
-        .single()
-      setEntity(data)
+      // Fetch entity info via BFF
+      const res = await fetch('/api/pos/entities')
+      if (res.ok) {
+        const data = await res.json()
+        setEntity(data.entity)
+      }
     }
     load()
   }, [])
@@ -74,38 +72,35 @@ export default function KeyboardPosPage() {
 
   const { lookupAccount, createAccount } = useKhata(entity?.id)
 
-  // Snap selection to last row when items shrink, or to 0 when first item added
   useEffect(() => {
     if (items.length === 0) { setSelectedRow(0); return }
     if (selectedRow >= items.length) setSelectedRow(items.length - 1)
     else if (items.length === 1) setSelectedRow(0)
   }, [items.length])
 
-  // Global key capture — any printable char opens search
   useEffect(() => {
     function handleKeyDown(e) {
-      // Skip if a modal is open or an input has focus
       if (searchOpen || paymentOpen || helpOpen) return
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return
 
       if (e.key === 'F1')  { e.preventDefault(); setHelpOpen(true); return }
       if (e.key === 'F2')  { e.preventDefault(); handleNewTransaction(); return }
       if (e.key === 'F3')  { e.preventDefault(); openSearch(''); return }
-      if (e.key === 'F4')  { e.preventDefault(); holdCart(); return }           // F4  = new cart (hold current)
+      if (e.key === 'F4')  { e.preventDefault(); holdCart(); return }
       if (e.key === 'F5')  { e.preventDefault(); if (items.length > 0) setPaymentOpen(true); return }
-      if (e.key === 'F6')  { e.preventDefault(); cancelCart(activeIndex); return } // F6 = cancel/clear active cart
+      if (e.key === 'F6')  { e.preventDefault(); cancelCart(activeIndex); return }
       if (e.key === 'F7')  { e.preventDefault(); voidSelected(); return }
       if (e.ctrlKey && e.key === 'm') {
         e.preventDefault()
         if (items.length > 0 && items[selectedRow]) setShowDiscount(true)
         return
       }
-      if (e.key === 'Tab' && !e.shiftKey) {                                    // Tab = next cart
+      if (e.key === 'Tab' && !e.shiftKey) {
         e.preventDefault()
         if (carts.length > 1) switchCart((activeIndex + 1) % carts.length)
         return
       }
-      if (e.key === 'Tab' && e.shiftKey) {                                     // Shift+Tab = prev cart
+      if (e.key === 'Tab' && e.shiftKey) {
         e.preventDefault()
         if (carts.length > 1) switchCart((activeIndex - 1 + carts.length) % carts.length)
         return
@@ -116,14 +111,12 @@ export default function KeyboardPosPage() {
       if (e.key === 'ArrowUp')   { e.preventDefault(); if (items.length > 0) setSelectedRow(r => (r - 1 + items.length) % items.length); return }
       if (e.key === 'Enter' && items.length > 0) { e.preventDefault(); editRowRef.current?.(selectedRow); return }
 
-      // Ctrl+1..9 — jump directly to cart by number
       if (e.ctrlKey && /^[1-9]$/.test(e.key)) {
         const target = parseInt(e.key, 10) - 1
         if (target < carts.length) { e.preventDefault(); switchCart(target) }
         return
       }
 
-      // Any printable character → open search with that character
       if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
         e.preventDefault()
         openSearch(e.key)
@@ -162,7 +155,6 @@ export default function KeyboardPosPage() {
     const batchQty = product.available_stock ?? Infinity
 
     if (product.batch_id && qty > batchQty) {
-      // Requested qty exceeds this batch — cap at batch qty and warn
       if (batchQty > 0) {
         addItem({ ...product, quantity: batchQty })
         setSelectedRow(items.length)
@@ -185,7 +177,6 @@ export default function KeyboardPosPage() {
 
     if (!cartId || items.length === 0) return
 
-    // CREDIT requires customer OTP verification before completing
     if (method === 'CREDIT') {
       pendingPayment.current = { method, received, journalNo }
       setCreditOtpOpen(true)
@@ -199,19 +190,15 @@ export default function KeyboardPosPage() {
     setCreditOtpOpen(false)
     await setCustomerIdentity({ whatsapp: phone, buyerHash: null })
 
-    // Auto-create khata account if customer is new
     let { account } = await lookupAccount(phone)
     if (!account) {
-      const { data: customerEntity } = await supabase
-        .from('entities')
-        .select('name')
-        .eq('whatsapp_no', phone)
-        .single()
+      const res = await fetch(`/api/pos/entities?phone=${encodeURIComponent(phone)}`)
+      const entityData = res.ok ? await res.json() : null
 
       const { account: newAccount } = await createAccount({
         party_type:   'CONSUMER',
         debtor_phone: phone,
-        debtor_name:  customerEntity?.name ?? `Customer ${phone.slice(-4)}`,
+        debtor_name:  entityData?.entity?.name ?? `Customer ${phone.slice(-4)}`,
         credit_limit: 1000,
       })
       account = newAccount
@@ -224,7 +211,6 @@ export default function KeyboardPosPage() {
   }
 
   async function processPayment({ method, received, journalNo }) {
-    // Shift gate: cashiers must have an active shift
     if (subRole === 'CASHIER' && !shift) {
       setCheckoutErr('Start a shift before processing sales')
       return
@@ -235,83 +221,40 @@ export default function KeyboardPosPage() {
       const serial = String(Math.floor(Math.random() * 99999)).padStart(5, '0')
       const orderNo = `${entity?.name?.substring(0, 4).toUpperCase() ?? 'POS'}-${year}-${serial}`
 
-      const { createHash } = await import('crypto').catch(() => ({ createHash: null }))
       let signature = ''
-      if (createHash) {
-        signature = createHash('sha256')
-          .update(`${orderNo}:${grandTotal}:${entity?.tpn_gstin ?? ''}`)
-          .digest('hex')
-      }
+      try {
+        const { createHash } = await import('crypto')
+        if (createHash) {
+          signature = createHash('sha256')
+            .update(`${orderNo}:${grandTotal}:${entity?.tpn_gstin ?? ''}`)
+            .digest('hex')
+        }
+      } catch { /* crypto not available in browser, skip signature */ }
 
-      // Insert order_items first so the deduct trigger can read them on INSERT
-      // We insert the order at PENDING_PAYMENT, insert items, then confirm atomically
-      const { data: order, error: orderError } = await supabase
-        .from('orders')
-        .insert({
-          order_type:    'POS_SALE',
-          order_no:      orderNo,
-          status:        'PENDING_PAYMENT',
-          seller_id:     entity.id,
-          buyer_whatsapp: customer?.whatsapp ?? null,
-          buyer_hash:    customer?.buyerHash ?? null,
-          items,
-          subtotal,
-          gst_total:     gstTotal,
-          grand_total:   grandTotal,
-          payment_method: method,
-          payment_ref:   journalNo || null,
-          digital_signature: signature,
-          cart_id:       cartId,
-          created_by:    user?.id,
-        })
-        .select('id, order_no')
-        .single()
-
-      if (orderError) throw new Error(orderError.message)
-
-      const { error: itemsError } = await supabase.from('order_items').insert(
-        items.map(item => ({
-          order_id:   order.id,
-          product_id: item.product_id,
-          batch_id:   item.batch_id ?? null,
-          sku:        item.sku,
-          name:       item.name,
-          quantity:   item.quantity,
-          unit_price: item.unit_price,
-          discount:       item.discount ?? 0,
-          discount_type:  item.discount_type || 'FLAT',
-          discount_value: item.discount_value ?? 0,
-          gst_5:      item.gst_5,
-          total:      item.total,
-          status:     'ACTIVE',
-        }))
-      )
-
-      if (itemsError) throw new Error(itemsError.message)
-
-      // Confirm — triggers guard_stock_on_confirm (BEFORE) and deduct_stock_on_confirm (AFTER)
-      const { error: confirmError } = await supabase
-        .from('orders')
-        .update({ status: 'CONFIRMED', payment_verified_at: new Date().toISOString() })
-        .eq('id', order.id)
-
-      if (confirmError) throw new Error(confirmError.message)
-
-      setLastOrderNo(order.order_no)
-      await clearCart()
-      setSelectedRow(0)
-
-      // Track shift transaction (fire-and-forget)
-      fetch('/api/shifts/track-transaction', {
+      const res = await fetch('/api/pos/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          order_id: order.id,
-          transaction_type: 'SALE',
-          payment_method: method,
-          amount: grandTotal,
+          orderNo,
+          items,
+          subtotal,
+          gstTotal,
+          grandTotal,
+          paymentMethod: method,
+          paymentRef: journalNo || null,
+          customerWhatsapp: customer?.whatsapp ?? null,
+          buyerHash: customer?.buyerHash ?? null,
+          cartId,
+          digitalSignature: signature,
         }),
-      }).catch(() => {})
+      })
+
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Order failed')
+
+      setLastOrderNo(data.order.order_no)
+      await clearCart()
+      setSelectedRow(0)
 
     } catch (err) {
       setCheckoutErr(err.message)
@@ -333,9 +276,8 @@ export default function KeyboardPosPage() {
 
   return (
     <div className="flex flex-col h-screen bg-background select-none">
-      {/* Nav header — mirrors touch POS header */}
+      {/* Nav header */}
       <header className="glassmorphism border-b border-border px-4 py-2 flex items-center justify-between gap-3 shrink-0">
-        {/* Left — branding + store + customer */}
         <div className="flex items-center gap-3 min-w-0">
           <div className="h-7 w-7 rounded-lg bg-primary flex items-center justify-center shrink-0">
             <span className="text-sm">🏔️</span>
@@ -351,7 +293,6 @@ export default function KeyboardPosPage() {
           )}
         </div>
 
-        {/* Right — nav icons */}
         <div className="flex items-center gap-1 shrink-0">
           {subRole === 'OWNER' && (
             <Button variant="ghost" size="icon-sm" onClick={() => router.push('/admin/stores')} title="Manage Stores">
@@ -396,21 +337,18 @@ export default function KeyboardPosPage() {
         </div>
       </header>
 
-      {/* Success banner */}
       {lastOrderNo && (
         <div className="px-4 py-2 bg-emerald-500/10 border-b border-emerald-500/30 text-sm text-emerald-700 font-medium shrink-0">
           ✓ Order {lastOrderNo} completed — press F2 for new transaction
         </div>
       )}
 
-      {/* Error banner */}
       {checkoutErr && (
         <div className="px-4 py-2 bg-tibetan/10 border-b border-tibetan/30 text-sm text-tibetan shrink-0">
           {checkoutErr}
         </div>
       )}
 
-      {/* Multi-cart tab bar */}
       {(carts.length > 1 || items.length > 0) && (
         <div className="flex items-center gap-1 px-3 py-1.5 border-b border-border bg-muted/10 shrink-0 overflow-x-auto">
           {carts.map((cart, i) => {
@@ -453,7 +391,6 @@ export default function KeyboardPosPage() {
         </div>
       )}
 
-      {/* Cart table — main screen */}
       <CartTable
         items={items}
         onUpdateQty={(itemId, qty) => updateQty(itemId, qty)}
@@ -463,7 +400,6 @@ export default function KeyboardPosPage() {
         onEditRequest={editRowRef}
       />
 
-      {/* Totals row */}
       {items.length > 0 && (
         <div className="border-t border-border px-4 py-2 flex items-center justify-end gap-6 text-sm tabular-nums shrink-0 bg-muted/10">
           <span className="text-muted-foreground">Subtotal: <strong>Nu. {subtotal.toFixed(2)}</strong></span>
@@ -472,10 +408,8 @@ export default function KeyboardPosPage() {
         </div>
       )}
 
-      {/* Shortcut bar */}
       <ShortcutBar />
 
-      {/* Modals */}
       <ProductSearchModal
         open={searchOpen}
         initialQuery={searchQuery}

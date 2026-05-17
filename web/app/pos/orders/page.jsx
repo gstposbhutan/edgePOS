@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input"
 import { OrderStatusBadge } from "@/components/pos/orders/order-status-badge"
 import { useOrders } from "@/hooks/use-orders"
 import { getUser, getRoleClaims } from "@/lib/auth"
-import { createClient } from "@/lib/supabase/client"
 
 const POS_FILTERS = ['ALL', 'ACTIVE', 'COMPLETED', 'CANCELLED', 'REFUNDS']
 
@@ -35,7 +34,6 @@ export default function OrdersPageWrapper() {
 function OrdersPage() {
   const router       = useRouter()
   const searchParams = useSearchParams()
-  const supabase = createClient()
 
   const [entityId, setEntityId]     = useState(null)
   const [search,   setSearch]       = useState('')
@@ -70,20 +68,14 @@ function OrdersPage() {
 
   async function loadSalesOrders() {
     setSalesLoading(true)
-    let query = supabase
-      .from('orders')
-      .select('id, order_no, order_type, order_source, status, grand_total, gst_total, buyer_whatsapp, payment_method, created_at, sales_order_id, sales_orders:orders!sales_order_id(order_no)')
-      .eq('seller_id', entityId)
-      .order('created_at', { ascending: false })
-      .limit(100)
-
-    if (salesTab === 'SO')  query = query.eq('order_type', 'SALES_ORDER')
-    else if (salesTab === 'SI')  query = query.eq('order_type', 'SALES_INVOICE')
-    else if (salesTab === 'MKT') query = query.eq('order_type', 'MARKETPLACE')
-    else if (salesTab === 'WA')  query = query.eq('order_source', 'WHATSAPP')
-
-    const { data } = await query
-    setSalesOrders(data || [])
+    const params = new URLSearchParams({ tab: salesTab })
+    try {
+      const res = await fetch(`/api/pos/orders/sales?${params}`)
+      if (res.ok) {
+        const { orders } = await res.json()
+        setSalesOrders(orders || [])
+      }
+    } catch {}
     setSalesLoading(false)
   }
 

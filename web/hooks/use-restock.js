@@ -1,9 +1,6 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { createClient as createServiceClient } from '@supabase/supabase-js'
-import { getUser, getRoleClaims, getSession as getAuthSession } from '@/lib/auth'
 
 /**
  * Hook for retailer restock operations.
@@ -16,42 +13,13 @@ export function useRestock() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
-  async function getSession() {
-    // Use the auth library's getSession which handles cookies properly
-    const sessionData = await getAuthSession()
-
-    if (!sessionData) {
-      console.error('[getSession] No session found')
-      const supabase = createClient()
-      return { supabase, token: null, user: null }
-    }
-
-    const { session, error } = sessionData
-    if (error || !session) {
-      console.error('[getSession] Session error:', error)
-      const supabase = createClient()
-      return { supabase, token: null, user: null }
-    }
-
-    console.log('[getSession] Session found, token:', session.access_token ? 'yes' : 'no')
-
-    // Also get the user for getUser calls
-    const supabase = createClient()
-    return { supabase, token: session.access_token, user: session.user }
-  }
-
   /** Fetch connected wholesalers for the current retailer */
   const fetchConnections = useCallback(async () => {
     setLoading(true)
     setError(null)
 
     try {
-      const { token } = await getSession()
-
-      const res = await fetch('/api/restock/connections', {
-        headers: { authorization: `Bearer ${token}` },
-      })
-
+      const res = await fetch('/api/restock/connections')
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
 
@@ -70,14 +38,10 @@ export function useRestock() {
     setError(null)
 
     try {
-      const { token } = await getSession()
       const params = new URLSearchParams({ wholesaler_id: wholesalerId })
       if (search) params.set('search', search)
 
-      const res = await fetch(`/api/wholesale/catalog?${params}`, {
-        headers: { authorization: `Bearer ${token}` },
-      })
-
+      const res = await fetch(`/api/wholesale/catalog?${params}`)
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
 
@@ -96,26 +60,12 @@ export function useRestock() {
     setError(null)
 
     try {
-      const { token } = await getSession()
-
-      if (!token) {
-        console.error('[placeOrder] No token available')
-        setError('Authentication failed. Please log in again.')
-        return null
-      }
-
-      console.log('[placeOrder] Creating order for wholesaler:', wholesalerId, 'items:', items)
-
-      // Add timeout to prevent hanging
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 30000)
 
       const res = await fetch('/api/wholesale/orders', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ wholesaler_id: wholesalerId, items }),
         signal: controller.signal,
       })
@@ -123,17 +73,11 @@ export function useRestock() {
       clearTimeout(timeoutId)
 
       const data = await res.json()
-      console.log('[placeOrder] Response:', { status: res.status, data })
 
-      if (!res.ok) {
-        console.error('[placeOrder] Error:', data.error)
-        throw new Error(data.error || 'Failed to place order')
-      }
+      if (!res.ok) throw new Error(data.error || 'Failed to place order')
 
-      console.log('[placeOrder] Order created:', data.order)
       return data.order
     } catch (err) {
-      console.error('[placeOrder] Exception:', err)
       setError(err.message || 'Failed to place order')
       return null
     } finally {
@@ -147,14 +91,10 @@ export function useRestock() {
     setError(null)
 
     try {
-      const { token } = await getSession()
       const params = new URLSearchParams()
       if (status) params.set('status', status)
 
-      const res = await fetch(`/api/wholesale/orders?${params}`, {
-        headers: { authorization: `Bearer ${token}` },
-      })
-
+      const res = await fetch(`/api/wholesale/orders?${params}`)
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
 

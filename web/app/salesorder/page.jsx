@@ -9,12 +9,10 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ShortcutBar } from "@/components/pos/keyboard/shortcut-bar"
-import { createClient } from "@/lib/supabase/client"
 import { getUser, getRoleClaims } from "@/lib/auth"
 
 // ── Fullscreen product search modal (same pattern as keyboard POS) ──────────
 function ProductSearchModal({ open, initialQuery, entityId, onAdd, onClose }) {  // entityId scopes all queries to this vendor's stock
-  const supabase = createClient()
   const [query,    setQuery]    = useState(initialQuery)
   const [results,  setResults]  = useState([])
   const [selected, setSelected] = useState(0)
@@ -54,15 +52,17 @@ function ProductSearchModal({ open, initialQuery, entityId, onAdd, onClose }) { 
     if (/^\d{8,}$/.test(query.trim())) {
       setLoading(true)
       ;(async () => {
-        const { data } = await supabase
-          .from('product_batches')
-          .select('id, batch_number, expires_at, mrp, selling_price, quantity, barcode, products!inner(id, name, sku, unit)')
-          .eq('entity_id', entityId)
-          .eq('barcode', query.trim())
-          .eq('status', 'ACTIVE')
-          .gt('quantity', 0)
-          .limit(1)
-        if (data?.[0]) { onAdd(mapBatch(data[0]), parseInt(qty, 10) || 1); onClose() }
+        try {
+          const res = await fetch(`/api/pos/products?barcode=${encodeURIComponent(query.trim())}`)
+          if (res.ok) {
+            const { results } = await res.json()
+            if (results?.[0]) {
+              const b = results[0]
+              onAdd(mapBatch(b), parseInt(qty, 10) || 1)
+              onClose()
+            }
+          }
+        } catch {}
         setLoading(false)
       })()
       return
@@ -70,28 +70,25 @@ function ProductSearchModal({ open, initialQuery, entityId, onAdd, onClose }) { 
 
     const t = setTimeout(async () => {
       setLoading(true)
-      const { data } = await supabase
-        .from('product_batches')
-        .select('id, batch_number, expires_at, mrp, selling_price, quantity, barcode, products!inner(id, name, sku, unit)')
-        .eq('entity_id', entityId)
-        .eq('status', 'ACTIVE')
-        .gt('quantity', 0)
-        .or(`name.ilike.%${query}%,sku.ilike.%${query}%`, { referencedTable: 'products' })
-        .order('expires_at', { ascending: true, nullsFirst: false })
-        .limit(50)
-
-      // Deduplicate by product — aggregate stock, keep earliest-expiry batch metadata
-      const seen = new Map()
-      for (const b of (data || [])) {
-        const pid = b.products.id
-        if (!seen.has(pid)) {
-          seen.set(pid, { ...mapBatch(b), available_stock: b.quantity })
-        } else {
-          seen.get(pid).available_stock += b.quantity
+      try {
+        const res = await fetch(`/api/pos/products?q=${encodeURIComponent(query)}`)
+        if (res.ok) {
+          const { results } = await res.json()
+          // Deduplicate by product — aggregate stock, keep earliest-expiry batch metadata
+          const seen = new Map()
+          for (const b of (results || [])) {
+            const pid = b.products?.id
+            if (!pid) continue
+            if (!seen.has(pid)) {
+              seen.set(pid, { ...mapBatch(b), available_stock: b.quantity })
+            } else {
+              seen.get(pid).available_stock += b.quantity
+            }
+          }
+          setResults([...seen.values()].slice(0, 9))
+          setSelected(0)
         }
-      }
-      setResults([...seen.values()].slice(0, 9))
-      setSelected(0)
+      } catch {}
       setLoading(false)
     }, 200)
     return () => clearTimeout(t)
@@ -234,10 +231,8 @@ function ProductSearchModal({ open, initialQuery, entityId, onAdd, onClose }) { 
 // ── Main page ────────────────────────────────────────────────────────────────
 export default function SalesOrderPage() {
   const router   = useRouter()
-  const supabase = createClient()
 
   const [entity,    setEntity]    = useState(null)
-  const [token,     setToken]     = useState('')
   const [phone,     setPhone]     = useState('')
   const [name,      setName]      = useState('')
   const [address,   setAddress]   = useState('')
@@ -264,10 +259,11 @@ export default function SalesOrderPage() {
       if (!user) { router.push('/login'); return }
       const { entityId } = getRoleClaims(user)
       if (!entityId) { router.push('/pos'); return }
-      const { data } = await supabase.from('entities').select('id, name, tpn_gstin').eq('id', entityId).single()
-      setEntity(data)
-      const { data: { session } } = await supabase.auth.getSession()
-      setToken(session?.access_token ?? '')
+      const res = await fetch('/api/pos/entities')
+      if (res.ok) {
+        const { entity } = await res.json()
+        setEntity(entity)
+      }
       setTimeout(() => phoneRef.current?.focus(), 100)
     }
     init()
@@ -387,7 +383,7 @@ export default function SalesOrderPage() {
 
       const res = await fetch('/api/shop/orders', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           order_type:        'SALES_ORDER',
           customer_whatsapp: normalPhone,

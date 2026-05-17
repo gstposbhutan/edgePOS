@@ -1,20 +1,11 @@
 import { NextResponse } from 'next/server'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { createServiceClient as createSSRServiceClient } from '@/lib/supabase/server'
-
-// Create a bypass client for reads
-function createBypassClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    { auth: { persistSession: false, autoRefreshToken: false } }
-  )
-}
+import { createServiceClient } from '@/lib/supabase/server'
 
 /** GET /api/entity-products/[id]/specifications — Get specifications for a vendor product */
 export async function GET(request, { params }) {
   try {
-    const supabase = createBypassClient()
+    const supabase = createServiceClient()
+    if (!supabase) return NextResponse.json({ error: 'Server configuration error' }, { status: 500 })
 
     const { data, error } = await supabase
       .from('entity_product_specifications')

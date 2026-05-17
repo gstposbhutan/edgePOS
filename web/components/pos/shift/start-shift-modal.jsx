@@ -4,10 +4,7 @@ import { useState, useEffect } from "react"
 import { X, Landmark } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { createClient } from "@/lib/supabase/client"
-
 export function StartShiftModal({ onOpen, onClose }) {
-  const supabase = createClient()
   const [registers, setRegisters] = useState([])
   const [selected, setSelected] = useState(null)
   const [float, setFloat] = useState('')
@@ -17,12 +14,9 @@ export function StartShiftModal({ onOpen, onClose }) {
 
   useEffect(() => {
     async function loadRegisters() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { setLoading(false); return }
+      const res = await fetch('/api/cash-registers')
+      if (!res.ok) { setLoading(false); return }
 
-      const res = await fetch('/api/cash-registers', {
-        headers: { authorization: `Bearer ${session.access_token}` },
-      })
       const data = await res.json()
       const active = (data.registers || []).filter(r => r.is_active)
       setRegisters(active)

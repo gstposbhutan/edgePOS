@@ -5,25 +5,24 @@ import { useParams, useRouter } from "next/navigation"
 import { Search, ShoppingBag, Store, Phone, ArrowLeft, LogOut, ClipboardList, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { createClient } from "@/lib/supabase/client"
 import Image from "next/image"
 import Link from "next/link"
 import { ProductDetailModal } from "@/components/shop/product-detail-modal"
 import { CartDrawer } from "@/components/shop/cart-drawer"
 import { useCart } from "@/lib/cart-context"
+import { signOut } from "@/lib/auth"
 
 export default function StoreDetailPage() {
   const params = useParams()
   const storeId = params.id
 
-  const supabase = createClient()
   const router = useRouter()
   const { addToCart, itemCount, setIsOpen } = useCart()
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef(null)
 
   async function handleSignOut() {
-    await supabase.auth.signOut()
+    await signOut()
     router.push('/login')
   }
 
@@ -49,27 +48,13 @@ export default function StoreDetailPage() {
   async function loadStoreData() {
     setLoading(true)
     try {
-      // Load store details
-      const { data: storeData } = await supabase
-        .from("entities")
-        .select("*")
-        .eq("id", storeId)
-        .eq("is_active", true)
-        .single()
-
-      if (storeData) {
-        setStore(storeData)
-
-        // Load store's products using created_by
-        const { data: productsData } = await supabase
-          .from("products")
-          .select("*")
-          .eq("created_by", storeId)
-          .eq("is_active", true)
-          .gt("current_stock", 0)
-          .order("name")
-
-        setProducts(productsData || [])
+      const res = await fetch(`/api/shop/stores/${storeId}`)
+      if (res.ok) {
+        const data = await res.json()
+        if (data.store) {
+          setStore(data.store)
+          setProducts(data.products || [])
+        }
       }
     } catch (err) {
       console.error("Error loading store:", err)

@@ -6,7 +6,6 @@ import { ArrowLeft, Plus, Pencil, Trash2, Landmark } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { getUser, getRoleClaims } from "@/lib/auth"
-import { createClient } from "@/lib/supabase/client"
 
 export default function RegistersPage() {
   const router = useRouter()
@@ -19,8 +18,6 @@ export default function RegistersPage() {
   const [formName, setFormName] = useState('')
   const [formFloat, setFormFloat] = useState('')
   const [saving, setSaving] = useState(false)
-
-  const supabase = createClient()
 
   useEffect(() => {
     async function load() {
@@ -40,12 +37,7 @@ export default function RegistersPage() {
 
   async function fetchRegisters(eid) {
     setLoading(true)
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return
-
-    const res = await fetch('/api/cash-registers', {
-      headers: { authorization: `Bearer ${session.access_token}` },
-    })
+    const res = await fetch('/api/cash-registers')
     const json = await res.json()
     setRegisters(json.registers || [])
     setLoading(false)
@@ -69,21 +61,19 @@ export default function RegistersPage() {
     if (!formName.trim()) return
     setSaving(true)
 
-    const { data: { session } } = await supabase.auth.getSession()
-    const token = session.access_token
     const body = { name: formName.trim(), default_opening_float: parseFloat(formFloat) || 0 }
 
     let res
     if (editing) {
       res = await fetch(`/api/cash-registers/${editing.id}`, {
         method: 'PATCH',
-        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
       })
     } else {
       res = await fetch('/api/cash-registers', {
         method: 'POST',
-        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
       })
     }
@@ -96,10 +86,8 @@ export default function RegistersPage() {
   }
 
   async function handleDeactivate(reg) {
-    const { data: { session } } = await supabase.auth.getSession()
     await fetch(`/api/cash-registers/${reg.id}`, {
       method: 'DELETE',
-      headers: { authorization: `Bearer ${session.access_token}` },
     })
     fetchRegisters(entityId)
   }

@@ -4,11 +4,9 @@
  * Uses cosine similarity to match YOLO crop vectors against product embeddings.
  *
  * Flow:
- *   1. On POS load → sync embeddings from Supabase to IndexedDB
+ *   1. On POS load → sync embeddings from server API to IndexedDB
  *   2. On detection → extract crop vector → cosine match → return product
  */
-
-import { createClient } from '@/lib/supabase/client'
 
 const DB_NAME    = 'nexus_embeddings'
 const DB_VERSION = 1
@@ -22,7 +20,6 @@ export class ProductEmbeddingStore {
   constructor() {
     this.db          = null
     this.cache       = []   // In-memory cache for fast matching
-    this.supabase    = createClient()
   }
 
   /**
@@ -35,23 +32,21 @@ export class ProductEmbeddingStore {
   }
 
   /**
-   * Sync product embeddings from Supabase to IndexedDB.
+   * Sync product embeddings from server API to IndexedDB.
    * Only downloads products with image_embedding set.
    */
-  async syncFromSupabase() {
-    const { data: products } = await this.supabase
-      .from('products')
-      .select('id, name, sku, image_embedding')
-      .not('image_embedding', 'is', null)
-      .eq('is_active', true)
+  async syncFromServer() {
+    const res = await fetch('/api/vision/product-embeddings')
+    if (!res.ok) return 0
 
+    const { products } = await res.json()
     if (!products?.length) return 0
 
     const tx    = this.db.transaction(STORE_NAME, 'readwrite')
     const store = tx.objectStore(STORE_NAME)
 
     for (const p of products) {
-      // image_embedding comes as array from Supabase vector type
+      // image_embedding comes as array from API (Supabase vector type)
       const vector = new Float32Array(p.image_embedding)
       store.put({ productId: p.id, name: p.name, sku: p.sku, vector })
     }
@@ -63,6 +58,13 @@ export class ProductEmbeddingStore {
 
     await this._loadCache()
     return this.cache.length
+  }
+
+  /**
+   * @deprecated Use syncFromServer() instead.
+   */
+  async syncFromSupabase() {
+    return this.syncFromServer()
   }
 
   /**

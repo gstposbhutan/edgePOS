@@ -1,51 +1,17 @@
 import { NextResponse } from 'next/server'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { createServiceClient as createSSRServiceClient } from '@/lib/supabase/server'
-
-// Create a bypass client for admin operations
-function createBypassClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    { auth: { persistSession: false, autoRefreshToken: false } }
-  )
-}
-
-async function getAuthUser(request) {
-  const authHeader = request.headers.get('authorization')
-  if (!authHeader) return null
-
-  const token = authHeader.replace('Bearer ', '')
-  const authClient = createSSRServiceClient()
-  const { data: { user }, error } = await authClient.auth.getUser(token)
-
-  if (error || !user) return null
-
-  const supabase = createBypassClient()
-  const { data: profile } = await supabase
-    .from('user_profiles')
-    .select('role, entity_id')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile) return null
-
-  const canManage = profile.role === 'SUPER_ADMIN' || profile.role === 'DISTRIBUTOR'
-
-  if (!canManage) return null
-
-  return { user, profile }
-}
+import { getAuthContext } from '@/lib/supabase/server'
 
 /** GET /api/admin/category-properties/[id] — Get single property */
 export async function GET(request, { params }) {
   try {
-    const authUser = await getAuthUser(request)
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const supabase = createBypassClient()
+    const canManage = ctx.role === 'SUPER_ADMIN' || ctx.role === 'DISTRIBUTOR'
+    if (!canManage) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const { supabase } = ctx
+
     const { data, error } = await supabase
       .from('category_properties')
       .select('*, categories(id, name)')
@@ -56,8 +22,8 @@ export async function GET(request, { params }) {
     if (!data) return NextResponse.json({ error: 'Property not found' }, { status: 404 })
 
     // For DISTRIBUTOR, verify they own this category
-    if (authUser.profile.role === 'DISTRIBUTOR') {
-      if (data.categories?.distributor_id !== authUser.profile.entity_id) {
+    if (ctx.role === 'DISTRIBUTOR') {
+      if (data.categories?.distributor_id !== ctx.entityId) {
         return NextResponse.json({ error: 'Unauthorized for this category' }, { status: 403 })
       }
     }
@@ -72,13 +38,15 @@ export async function GET(request, { params }) {
 /** PATCH /api/admin/category-properties/[id] — Update property */
 export async function PATCH(request, { params }) {
   try {
-    const authUser = await getAuthUser(request)
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const canManage = ctx.role === 'SUPER_ADMIN' || ctx.role === 'DISTRIBUTOR'
+    if (!canManage) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const { supabase } = ctx
 
     // First, verify ownership
-    const supabase = createBypassClient()
     const { data: existingProp } = await supabase
       .from('category_properties')
       .select('*, categories(id, name, distributor_id)')
@@ -90,8 +58,8 @@ export async function PATCH(request, { params }) {
     }
 
     // For DISTRIBUTOR, verify they own this category
-    if (authUser.profile.role === 'DISTRIBUTOR') {
-      if (existingProp.categories?.distributor_id !== authUser.profile.entity_id) {
+    if (ctx.role === 'DISTRIBUTOR') {
+      if (existingProp.categories?.distributor_id !== ctx.entityId) {
         return NextResponse.json({ error: 'Unauthorized for this category' }, { status: 403 })
       }
     }
@@ -133,12 +101,13 @@ export async function PATCH(request, { params }) {
 /** DELETE /api/admin/category-properties/[id] — Delete property */
 export async function DELETE(request, { params }) {
   try {
-    const authUser = await getAuthUser(request)
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const supabase = createBypassClient()
+    const canManage = ctx.role === 'SUPER_ADMIN' || ctx.role === 'DISTRIBUTOR'
+    if (!canManage) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const { supabase } = ctx
 
     // First, verify ownership
     const { data: existingProp } = await supabase
@@ -152,8 +121,8 @@ export async function DELETE(request, { params }) {
     }
 
     // For DISTRIBUTOR, verify they own this category
-    if (authUser.profile.role === 'DISTRIBUTOR') {
-      if (existingProp.categories?.distributor_id !== authUser.profile.entity_id) {
+    if (ctx.role === 'DISTRIBUTOR') {
+      if (existingProp.categories?.distributor_id !== ctx.entityId) {
         return NextResponse.json({ error: 'Unauthorized for this category' }, { status: 403 })
       }
     }

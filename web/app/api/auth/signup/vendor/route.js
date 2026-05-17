@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
 import { createServiceClient } from '@/lib/supabase/server'
 
 const OWNER_PERMISSIONS = [
@@ -102,22 +104,41 @@ export async function POST(request) {
       .insert({ owner_id: authData.user.id, entity_id: entity.id, is_primary: true })
       .catch(() => {}) // non-fatal if owner_stores table not ready
 
-    // 5. Generate session tokens
-    const { data: linkData, error: linkErr } = await supabase.auth.admin.generateLink({
-      type: 'magiclink',
-      email: email.trim().toLowerCase(),
-    })
+    // 5. Establish session via httpOnly cookie (BFF pattern)
+    const cookieStore = await cookies()
+    let response = NextResponse.json({ success: true, role })
 
-    if (linkErr || !linkData?.properties?.access_token) {
-      return NextResponse.json({ success: true, warning: 'Account created. Please sign in.' })
+    const sbUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
+    const sbKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    if (!sbUrl || !sbKey) {
+      // Account created but can't set session cookie — redirect to login
+      return NextResponse.json({ success: true, role, warning: 'Account created. Please sign in.' })
     }
 
-    return NextResponse.json({
-      success: true,
-      role,
-      access_token: linkData.properties.access_token,
-      refresh_token: linkData.properties.refresh_token,
+    const sessionClient = createServerClient(sbUrl, sbKey, {
+      cookieOptions: { name: 'sb-edgepos-auth-token' },
+      cookies: {
+        getAll: () => cookieStore.getAll(),
+        setAll: (cookiesToSet) => {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set(name, value, options)
+          })
+        },
+      },
     })
+
+    // Sign in with the newly created credentials to establish a session
+    const { error: sessionErr } = await sessionClient.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password,
+    })
+
+    if (sessionErr) {
+      // Account was created successfully, just can't auto-session
+      return NextResponse.json({ success: true, role, warning: 'Account created. Please sign in.' })
+    }
+
+    return response
   } catch (err) {
     console.error('Vendor signup error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

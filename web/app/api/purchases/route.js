@@ -1,46 +1,20 @@
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { createServiceClient } from '@/lib/supabase/server'
-
-async function getVendorSession(cookieStore) {
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-    {
-      cookies: {
-        get(name) { return cookieStore.get(name)?.value },
-        set(name, value, options) { cookieStore.set({ name, value, ...options }) },
-        remove(name, options) { cookieStore.set({ name, value: '', ...options }) },
-      },
-    }
-  )
-  const { data: { session } } = await supabase.auth.getSession()
-  return session
-}
+import { getAuthContext } from '@/lib/supabase/server'
 
 // GET — list POs and Invoices for the authenticated vendor
 export async function GET(request) {
   try {
-    const cookieStore = await cookies()
-    const session = await getVendorSession(cookieStore)
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const serviceClient = createServiceClient()
-    const { data: profile } = await serviceClient
-      .from('user_profiles')
-      .select('entity_id')
-      .eq('id', session.user.id)
-      .single()
-
-    if (!profile?.entity_id) return NextResponse.json({ error: 'Vendor entity not found' }, { status: 403 })
+    const { entityId, supabase } = ctx
 
     const { searchParams } = new URL(request.url)
     const type   = searchParams.get('type')   // 'PO' | 'INVOICE' | null = all
     const status = searchParams.get('status')
     const limit  = Math.min(parseInt(searchParams.get('limit') || '50', 10), 200)
 
-    let query = serviceClient
+    let query = supabase
       .from('orders')
       .select(`
         id, order_no, order_type, status, grand_total, gst_total, subtotal,
@@ -48,7 +22,7 @@ export async function GET(request) {
         purchase_order_id, received_at, created_at, updated_at,
         seller:entities!seller_id(id, name, whatsapp_no)
       `)
-      .eq('buyer_id', profile.entity_id)
+      .eq('buyer_id', entityId)
       .order('created_at', { ascending: false })
       .limit(limit)
 
@@ -64,7 +38,7 @@ export async function GET(request) {
     // Enrich invoices with referenced PO order_no
     const poIds = (orders || []).filter(o => o.purchase_order_id).map(o => o.purchase_order_id)
     if (poIds.length > 0) {
-      const { data: poOrders } = await serviceClient
+      const { data: poOrders } = await supabase
         .from('orders')
         .select('id, order_no')
         .in('id', poIds)
@@ -85,20 +59,11 @@ export async function GET(request) {
 // POST — create a new Purchase Order
 export async function POST(request) {
   try {
-    const cookieStore = await cookies()
-    const session = await getVendorSession(cookieStore)
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const serviceClient = createServiceClient()
-    const { data: profile } = await serviceClient
-      .from('user_profiles')
-      .select('entity_id')
-      .eq('id', session.user.id)
-      .single()
-
-    if (!profile?.entity_id) return NextResponse.json({ error: 'Vendor entity not found' }, { status: 403 })
-
-    const vendorEntityId = profile.entity_id
+    const { entityId, userId, supabase } = ctx
+    const vendorEntityId = entityId
 
     const body = await request.json()
     const { supplier_id, supplier_name, supplier_ref, expected_delivery, payment_method, items } = body
@@ -115,7 +80,7 @@ export async function POST(request) {
 
     if (!supplierEntityId && resolvedSupplierName) {
       // Look up by name (case-insensitive) or create new WHOLESALER entity
-      const { data: existing } = await serviceClient
+      const { data: existing } = await supabase
         .from('entities')
         .select('id, name')
         .ilike('name', resolvedSupplierName)
@@ -127,7 +92,7 @@ export async function POST(request) {
         supplierEntityId = existing.id
         resolvedSupplierName = existing.name
       } else {
-        const { data: newEntity, error: entityErr } = await serviceClient
+        const { data: newEntity, error: entityErr } = await supabase
           .from('entities')
           .insert({ name: resolvedSupplierName, role: 'WHOLESALER', is_active: true })
           .select('id')
@@ -143,7 +108,7 @@ export async function POST(request) {
 
     // Validate products
     const productIds = items.map(i => i.product_id)
-    const { data: products } = await serviceClient
+    const { data: products } = await supabase
       .from('products')
       .select('id, name, sku, mrp, wholesale_price, is_active')
       .in('id', productIds)
@@ -183,7 +148,7 @@ export async function POST(request) {
 
     // Generate PO number: PO-YYYY-XXXXX
     const year = new Date().getFullYear()
-    const { data: lastOrder } = await serviceClient
+    const { data: lastOrder } = await supabase
       .from('orders')
       .select('order_no')
       .like('order_no', `PO-${year}-%`)
@@ -195,7 +160,7 @@ export async function POST(request) {
     const orderNo = `PO-${year}-${String(lastSerial + 1).padStart(5, '0')}`
 
     // Create order
-    const { data: order, error: orderErr } = await serviceClient
+    const { data: order, error: orderErr } = await supabase
       .from('orders')
       .insert({
         order_type:        'PURCHASE_ORDER',
@@ -211,7 +176,7 @@ export async function POST(request) {
         subtotal:          grandTotal,
         gst_total:         0,
         grand_total:       grandTotal,
-        created_by:        session.user.id,
+        created_by:        userId,
       })
       .select('id, order_no, status, grand_total')
       .single()
@@ -219,7 +184,7 @@ export async function POST(request) {
     if (orderErr) throw orderErr
 
     // Insert order_items
-    await serviceClient.from('order_items').insert(
+    await supabase.from('order_items').insert(
       orderItems.map(item => ({ order_id: order.id, ...item }))
     )
 

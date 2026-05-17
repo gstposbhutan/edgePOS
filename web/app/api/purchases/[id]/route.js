@@ -1,30 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { createServiceClient } from '@/lib/supabase/server'
-
-async function getVendorContext(cookieStore) {
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-    {
-      cookies: {
-        get(name) { return cookieStore.get(name)?.value },
-        set(name, value, options) { cookieStore.set({ name, value, ...options }) },
-        remove(name, options) { cookieStore.set({ name, value: '', ...options }) },
-      },
-    }
-  )
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session) return null
-  const serviceClient = createServiceClient()
-  const { data: profile } = await serviceClient
-    .from('user_profiles')
-    .select('entity_id')
-    .eq('id', session.user.id)
-    .single()
-  return { session, entityId: profile?.entity_id, serviceClient }
-}
+import { getAuthContext } from '@/lib/supabase/server'
 
 const PO_VALID_TRANSITIONS = {
   DRAFT: ['SENT', 'CANCELLED'],
@@ -34,14 +9,13 @@ const PO_VALID_TRANSITIONS = {
 // GET — single PO or Invoice detail
 export async function GET(request, { params }) {
   try {
-    const cookieStore = await cookies()
-    const ctx = await getVendorContext(cookieStore)
+    const ctx = await getAuthContext()
     if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id } = await params
-    const { entityId, serviceClient } = ctx
+    const { entityId, supabase } = ctx
 
-    const { data: order, error } = await serviceClient
+    const { data: order, error } = await supabase
       .from('orders')
       .select(`
         id, order_no, order_type, status, grand_total, gst_total, subtotal,
@@ -57,13 +31,13 @@ export async function GET(request, { params }) {
     if (error || !order) return NextResponse.json({ error: 'Purchase order not found' }, { status: 404 })
     if (order.buyer_id !== entityId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-    const { data: items } = await serviceClient
+    const { data: items } = await supabase
       .from('order_items')
       .select('*')
       .eq('order_id', id)
       .order('id')
 
-    const { data: timeline } = await serviceClient
+    const { data: timeline } = await supabase
       .from('order_status_log')
       .select('*')
       .eq('order_id', id)
@@ -72,7 +46,7 @@ export async function GET(request, { params }) {
     // Fetch related invoices for POs
     let relatedInvoices = []
     if (order.order_type === 'PURCHASE_ORDER') {
-      const { data: invoices } = await serviceClient
+      const { data: invoices } = await supabase
         .from('orders')
         .select('id, order_no, status, grand_total, created_at')
         .eq('purchase_order_id', id)
@@ -92,17 +66,16 @@ export async function GET(request, { params }) {
 // PATCH — update PO status (DRAFT→SENT, SENT→CANCELLED, etc.)
 export async function PATCH(request, { params }) {
   try {
-    const cookieStore = await cookies()
-    const ctx = await getVendorContext(cookieStore)
+    const ctx = await getAuthContext()
     if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id } = await params
-    const { entityId, serviceClient } = ctx
+    const { entityId, supabase } = ctx
     const { status: newStatus, reason } = await request.json()
 
     if (!newStatus) return NextResponse.json({ error: 'status is required' }, { status: 400 })
 
-    const { data: order } = await serviceClient
+    const { data: order } = await supabase
       .from('orders')
       .select('id, status, order_type, buyer_id')
       .eq('id', id)
@@ -119,10 +92,10 @@ export async function PATCH(request, { params }) {
     const updates = { status: newStatus }
     if (newStatus === 'CANCELLED') updates.cancelled_at = new Date().toISOString()
 
-    await serviceClient.from('orders').update(updates).eq('id', id)
+    await supabase.from('orders').update(updates).eq('id', id)
 
     if (reason) {
-      await serviceClient.from('order_status_log').insert({
+      await supabase.from('order_status_log').insert({
         order_id:  id,
         from_status: order.status,
         to_status:   newStatus,

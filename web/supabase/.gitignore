@@ -2,6 +2,9 @@
 .branches
 .temp
 
+# Docker configs with embedded secrets
+docker/kong.yml
+
 # dotenvx
 .env.keys
 .env.local

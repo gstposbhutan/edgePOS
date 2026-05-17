@@ -1,10 +1,5 @@
-import { createClient } from '@supabase/supabase-js'
+import { getServiceClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-)
 
 /**
  * GET /api/hsn
@@ -17,6 +12,9 @@ const supabase = createClient(
  */
 export async function GET(request) {
   try {
+    const supabase = getServiceClient()
+    if (!supabase) return NextResponse.json({ error: 'Database not configured' }, { status: 503 })
+
     const { searchParams } = new URL(request.url)
     const query = searchParams.get('q') || ''
     const chapter = searchParams.get('chapter')
@@ -69,6 +67,9 @@ export async function GET(request) {
  */
 export async function POST(request) {
   try {
+    const supabase = getServiceClient()
+    if (!supabase) return NextResponse.json({ error: 'Database not configured' }, { status: 503 })
+
     const { codes } = await request.json()
 
     if (!Array.isArray(codes) || codes.length === 0) {

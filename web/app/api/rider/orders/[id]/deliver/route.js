@@ -1,24 +1,10 @@
 import { NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
-import { createServerClient } from '@supabase/ssr'
-import { createServiceClient } from '@/lib/supabase/server'
+import { getAuthContext } from '@/lib/supabase/server'
 
 export async function POST(request, { params }) {
   try {
-    const cookieStore = await cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      {
-        cookies: {
-          get(name) { return cookieStore.get(name)?.value },
-          set(name, value, options) { cookieStore.set({ name, value, ...options }) },
-          remove(name, options) { cookieStore.set({ name, value: '', ...options }) },
-        },
-      }
-    )
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id: orderId } = await params
     const { otp } = await request.json()
@@ -27,17 +13,17 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: '6-digit OTP is required' }, { status: 400 })
     }
 
-    const serviceClient = createServiceClient()
+    const { supabase, userId } = ctx
 
-    const { data: rider } = await serviceClient
+    const { data: rider } = await supabase
       .from('riders')
       .select('id, name')
-      .eq('auth_user_id', session.user.id)
+      .eq('auth_user_id', userId)
       .single()
 
     if (!rider) return NextResponse.json({ error: 'Rider not found' }, { status: 404 })
 
-    const { data: order } = await serviceClient
+    const { data: order } = await supabase
       .from('orders')
       .select('id, order_no, status, delivery_otp, delivery_otp_expires_at, buyer_whatsapp, payment_token, grand_total, rider_id, entities!seller_id(name)')
       .eq('id', orderId)
@@ -59,7 +45,7 @@ export async function POST(request, { params }) {
     }
 
     // Mark DELIVERED
-    await serviceClient
+    await supabase
       .from('orders')
       .update({
         status: 'DELIVERED',
@@ -69,7 +55,7 @@ export async function POST(request, { params }) {
       .eq('id', orderId)
 
     // Free up rider
-    await serviceClient
+    await supabase
       .from('riders')
       .update({ is_available: true, current_order_id: null })
       .eq('id', rider.id)

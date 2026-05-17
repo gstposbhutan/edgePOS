@@ -19,7 +19,6 @@ import { useInventory }      from "@/hooks/use-inventory"
 import { useStockPredictions } from "@/hooks/use-stock-predictions"
 import { useDraftPurchases } from "@/hooks/use-draft-purchases"
 import { getUser, getRoleClaims } from "@/lib/auth"
-import { createClient } from "@/lib/supabase/client"
 
 const TABS = [
   { id: 'stock',       label: 'Stock Levels',    icon: Package },
@@ -31,7 +30,6 @@ const TABS = [
 
 export default function InventoryPage() {
   const router   = useRouter()
-  const supabase = createClient()
 
   const [entityId,        setEntityId]        = useState(null)
   const [activeTab,       setActiveTab]       = useState('stock')

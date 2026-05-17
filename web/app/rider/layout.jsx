@@ -2,7 +2,6 @@
 
 import { useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 
 export default function RiderLayout({ children }) {
   const router   = useRouter()
@@ -11,9 +10,14 @@ export default function RiderLayout({ children }) {
   useEffect(() => {
     if (pathname === '/rider/login') return
     async function checkAuth() {
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) router.push('/rider/login')
+      try {
+        const res = await fetch('/api/auth/session')
+        if (!res.ok) { router.push('/rider/login'); return }
+        const { user } = await res.json()
+        if (!user) router.push('/rider/login')
+      } catch {
+        router.push('/rider/login')
+      }
     }
     checkAuth()
   }, [pathname, router])

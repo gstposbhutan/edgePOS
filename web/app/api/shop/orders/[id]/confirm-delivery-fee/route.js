@@ -1,24 +1,10 @@
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { createServiceClient } from '@/lib/supabase/server'
+import { getAuthContext } from '@/lib/supabase/server'
 
 export async function POST(request, { params }) {
   try {
-    const cookieStore = await cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      {
-        cookies: {
-          get(name) { return cookieStore.get(name)?.value },
-          set(name, value, options) { cookieStore.set({ name, value, ...options }) },
-          remove(name, options) { cookieStore.set({ name, value: '', ...options }) },
-        },
-      }
-    )
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id: orderId } = await params
     const body = await request.json()
@@ -28,24 +14,18 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: 'Receipt image URL is required' }, { status: 400 })
     }
 
-    const serviceClient = createServiceClient()
+    const { supabase, entityId } = ctx
 
-    const { data: profile } = await serviceClient
-      .from('user_profiles')
-      .select('entity_id')
-      .eq('id', session.user.id)
-      .single()
+    if (!entityId) return NextResponse.json({ error: 'Vendor not found' }, { status: 403 })
 
-    if (!profile?.entity_id) return NextResponse.json({ error: 'Vendor not found' }, { status: 403 })
-
-    const { data: order } = await serviceClient
+    const { data: order } = await supabase
       .from('orders')
       .select('id, status, seller_id, delivery_fee, rider_id')
       .eq('id', orderId)
       .single()
 
     if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
-    if (order.seller_id !== profile.entity_id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    if (order.seller_id !== entityId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     if (!['DELIVERED', 'COMPLETED'].includes(order.status)) {
       return NextResponse.json({ error: 'Order must be delivered before confirming fee' }, { status: 400 })
     }
@@ -53,7 +33,7 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: 'No delivery fee set by rider yet' }, { status: 400 })
     }
 
-    await serviceClient
+    await supabase
       .from('orders')
       .update({
         delivery_fee_paid:         true,

@@ -1,52 +1,17 @@
 import { NextResponse } from 'next/server'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { createServiceClient as createSSRServiceClient } from '@/lib/supabase/server'
-
-// Create a bypass client for admin operations
-function createBypassClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    { auth: { persistSession: false, autoRefreshToken: false } }
-  )
-}
-
-async function getAuthUser(request) {
-  const authHeader = request.headers.get('authorization')
-  if (!authHeader) return null
-
-  const token = authHeader.replace('Bearer ', '')
-  const authClient = createSSRServiceClient()
-  const { data: { user }, error } = await authClient.auth.getUser(token)
-
-  if (error || !user) return null
-
-  const supabase = createBypassClient()
-  const { data: profile } = await supabase
-    .from('user_profiles')
-    .select('role, entity_id')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile) return null
-
-  // Vendors (WHOLESALER, DISTRIBUTOR) can edit their own product specs
-  const canEdit = ['WHOLESALER', 'DISTRIBUTOR'].includes(profile.role)
-
-  if (!canEdit) return null
-
-  return { user, profile }
-}
+import { getAuthContext } from '@/lib/supabase/server'
 
 /** GET /api/admin/entity-products/[id]/specifications — Get specifications for a vendor product */
 export async function GET(request, { params }) {
   try {
-    const authUser = await getAuthUser(request)
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const supabase = createBypassClient()
+    // Vendors (WHOLESALER, DISTRIBUTOR) can edit their own product specs
+    const canEdit = ['WHOLESALER', 'DISTRIBUTOR'].includes(ctx.role)
+    if (!canEdit) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const { supabase } = ctx
 
     // Verify the entity_product belongs to this vendor
     const { data: entityProduct } = await supabase
@@ -59,7 +24,7 @@ export async function GET(request, { params }) {
       return NextResponse.json({ error: 'Entity product not found' }, { status: 404 })
     }
 
-    if (entityProduct.entity_id !== authUser.profile.entity_id) {
+    if (entityProduct.entity_id !== ctx.entityId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
     }
 
@@ -93,10 +58,11 @@ export async function GET(request, { params }) {
 /** POST /api/admin/entity-products/[id]/specifications — Save specifications for a vendor product */
 export async function POST(request, { params }) {
   try {
-    const authUser = await getAuthUser(request)
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const canEdit = ['WHOLESALER', 'DISTRIBUTOR'].includes(ctx.role)
+    if (!canEdit) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const body = await request.json()
     const { specifications } = body
@@ -105,7 +71,7 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: 'specifications must be an array' }, { status: 400 })
     }
 
-    const supabase = createBypassClient()
+    const { supabase } = ctx
 
     // Verify the entity_product belongs to this vendor
     const { data: entityProduct } = await supabase
@@ -118,7 +84,7 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: 'Entity product not found' }, { status: 404 })
     }
 
-    if (entityProduct.entity_id !== authUser.profile.entity_id) {
+    if (entityProduct.entity_id !== ctx.entityId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
     }
 

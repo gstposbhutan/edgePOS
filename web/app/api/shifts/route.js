@@ -1,20 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
-
-async function getAuthContext() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-
-  const entityId = user.app_metadata?.entity_id
-  const subRole = user.app_metadata?.sub_role
-  const userId = user.id
-  if (!entityId) return null
-
-  // Use service client for queries (bypasses RLS)
-  const serviceClient = createServiceClient()
-  return { entityId, subRole, userId, supabase: serviceClient }
-}
+import { getAuthContext } from '@/lib/supabase/server'
 
 // GET /api/shifts — current active shift
 export async function GET() {

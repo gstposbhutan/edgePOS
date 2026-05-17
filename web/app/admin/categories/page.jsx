@@ -1,16 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Settings, ChevronRight } from 'lucide-react'
+import { Settings, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useCategoryProperties } from '@/hooks/use-category-properties'
 import PropertyConfigModal from '@/components/admin/categories/property-config-modal'
 
-/**
- * Admin Categories Page
- * Allows admins to configure category-specific properties
- */
 export default function CategoriesPage() {
   const [categories, setCategories] = useState([])
   const [loading, setLoading] = useState(true)
@@ -24,33 +19,11 @@ export default function CategoriesPage() {
   async function fetchCategories() {
     setLoading(true)
     try {
-      const { createClient } = await import('@/lib/supabase/client')
-      const client = createClient()
-
-      const { data, error } = await client
-        .from('categories')
-        .select('id, name, distributor_id, distributors(name)')
-        .order('name')
-
-      if (error) throw error
-
-      // For each category, fetch property count
-      const categoriesWithCounts = await Promise.all(
-        (data || []).map(async (cat) => {
-          const token = (await client.auth.getSession()).data.session?.access_token
-          const res = await fetch(`/api/admin/category-properties?category_id=${cat.id}`, {
-            headers: { authorization: `Bearer ${token}` },
-          })
-          const propsData = await res.json()
-
-          return {
-            ...cat,
-            propertyCount: propsData.properties?.length || 0,
-          }
-        })
-      )
-
-      setCategories(categoriesWithCounts)
+      const res = await fetch('/api/categories')
+      if (res.ok) {
+        const data = await res.json()
+        setCategories(data.categories || [])
+      }
     } catch (err) {
       console.error('[CategoriesPage] Error:', err)
     } finally {
@@ -109,7 +82,7 @@ export default function CategoriesPage() {
           onClose={() => {
             setShowPropertyModal(false)
             setSelectedCategory(null)
-            fetchCategories() // Refresh to update property counts
+            fetchCategories()
           }}
         />
       )}

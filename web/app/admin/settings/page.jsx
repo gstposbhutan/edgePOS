@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { useAdminAuth } from '@/hooks/use-admin-auth'
-import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -19,13 +18,7 @@ export default function SettingsPage() {
     async function loadSettings() {
       if (!user) return
 
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return
-
-      const res = await fetch('/api/admin/settings', {
-        headers: { authorization: `Bearer ${session.access_token}` },
-      })
+      const res = await fetch('/api/admin/settings')
       const data = await res.json()
 
       if (data.entity) {
@@ -48,15 +41,10 @@ export default function SettingsPage() {
     setSaving(true)
     setMessage(null)
 
-    const supabase = createClient()
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return
-
     const res = await fetch('/api/admin/settings', {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
-        authorization: `Bearer ${session.access_token}`,
       },
       body: JSON.stringify(form),
     })

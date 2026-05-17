@@ -7,9 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Store, Plus, X, Loader2, ArrowLeft } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
 
-function AddStoreModal({ open, onClose, onAdded, token }) {
+function AddStoreModal({ open, onClose, onAdded }) {
   const [name,    setName]    = useState('')
   const [tpn,     setTpn]     = useState('')
   const [phone,   setPhone]   = useState('')
@@ -24,7 +23,7 @@ function AddStoreModal({ open, onClose, onAdded, token }) {
     try {
       const res = await fetch('/api/admin/stores', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, tpn_gstin: tpn, whatsapp_no: phone }),
       })
       const data = await res.json()
@@ -76,7 +75,6 @@ export default function AdminStoresPage() {
   const [stores,    setStores]    = useState([])
   const [loading,   setLoading]   = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
-  const [token,     setToken]     = useState('')
   const [subRole,   setSubRole]   = useState(null)
 
   useEffect(() => {
@@ -89,14 +87,7 @@ export default function AdminStoresPage() {
       if (role === 'RETAILER' && sr !== 'OWNER') { router.push('/pos'); return }
       setSubRole(sr)
 
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/login'); return }
-      setToken(session.access_token)
-
-      const res = await fetch('/api/admin/stores', {
-        headers: { authorization: `Bearer ${session.access_token}` },
-      })
+      const res = await fetch('/api/admin/stores')
       const data = await res.json()
       if (data.stores) setStores(data.stores)
       setLoading(false)
@@ -172,7 +163,6 @@ export default function AdminStoresPage() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         onAdded={store => setStores(prev => [...prev, { ...store, is_primary: prev.length === 0 }])}
-        token={token}
       />
     </div>
   )

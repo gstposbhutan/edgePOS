@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
-import { createServerClient } from '@supabase/ssr'
-import { createServiceClient } from '@/lib/supabase/server'
+import { getAuthContext } from '@/lib/supabase/server'
 
 function generateOtp() {
   return String(Math.floor(100000 + Math.random() * 900000))
@@ -9,20 +7,8 @@ function generateOtp() {
 
 export async function POST(request, { params }) {
   try {
-    const cookieStore = await cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      {
-        cookies: {
-          get(name) { return cookieStore.get(name)?.value },
-          set(name, value, options) { cookieStore.set({ name, value, ...options }) },
-          remove(name, options) { cookieStore.set({ name, value: '', ...options }) },
-        },
-      }
-    )
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id: orderId } = await params
     const { otp } = await request.json()
@@ -31,17 +17,17 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: '6-digit OTP is required' }, { status: 400 })
     }
 
-    const serviceClient = createServiceClient()
+    const { supabase, userId } = ctx
 
-    const { data: rider } = await serviceClient
+    const { data: rider } = await supabase
       .from('riders')
       .select('id, name, whatsapp_no')
-      .eq('auth_user_id', session.user.id)
+      .eq('auth_user_id', userId)
       .single()
 
     if (!rider) return NextResponse.json({ error: 'Rider not found' }, { status: 404 })
 
-    const { data: order } = await serviceClient
+    const { data: order } = await supabase
       .from('orders')
       .select('id, order_no, status, pickup_otp, pickup_otp_expires_at, buyer_whatsapp, rider_id')
       .eq('id', orderId)
@@ -66,7 +52,7 @@ export async function POST(request, { params }) {
     const deliveryOtp = generateOtp()
     const deliveryOtpExpiresAt = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()
 
-    await serviceClient
+    await supabase
       .from('orders')
       .update({
         status: 'DISPATCHED',

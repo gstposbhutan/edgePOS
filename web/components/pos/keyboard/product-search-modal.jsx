@@ -2,33 +2,38 @@
 
 import { useState, useEffect, useRef } from "react"
 import { Search, X } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
 
 const BARCODE_THRESHOLD_MS = 200
 const BARCODE_MIN_DIGITS   = 8
 
-/**
- * Full-screen product search modal for keyboard POS.
- * Triggered by F3, "/" or any printable keypress on the cart.
- *
- * @param {{ open: boolean, initialQuery: string, entityId: string, onAdd: (product, qty, unit) => void, onClose: () => void }} props
- */
-export function ProductSearchModal({ open, initialQuery = '', entityId, onAdd, onClose }) {
-  const supabase = createClient()
+function mapBatch(b) {
+  return {
+    product_id:      b.products.id,
+    id:              b.products.id,
+    name:            b.products.name,
+    sku:             b.products.sku,
+    unit:            b.products.unit,
+    mrp:             b.mrp ?? b.products.mrp,
+    selling_price:   b.selling_price ?? b.products.selling_price ?? b.mrp,
+    available_stock: b.quantity,
+    batch_id:        b.id,
+    batch_number:    b.batch_number,
+    expires_at:      b.expires_at,
+  }
+}
 
+export function ProductSearchModal({ open, initialQuery = '', entityId, onAdd, onClose }) {
   const [query,    setQuery]    = useState(initialQuery)
   const [results,  setResults]  = useState([])
   const [selected, setSelected] = useState(0)
   const [loading,  setLoading]  = useState(false)
   const [qty,      setQty]      = useState('1')
-  const [unit,     setUnit]     = useState(0) // index into product.variants
+  const [unit,     setUnit]     = useState(0)
 
   const inputRef = useRef(null)
-  // Barcode scanner detection
   const barcodeBuffer = useRef('')
   const barcodeTimer  = useRef(null)
 
-  // Reset state on open
   useEffect(() => {
     if (open) {
       setQuery(initialQuery)
@@ -40,11 +45,9 @@ export function ProductSearchModal({ open, initialQuery = '', entityId, onAdd, o
     }
   }, [open, initialQuery])
 
-  // Search when query changes
   useEffect(() => {
     if (!query.trim()) { setResults([]); return }
 
-    // Barcode: all digits, 8+ chars — exact lookup
     if (/^\d{8,}$/.test(query.trim())) {
       lookupBarcode(query.trim())
       return
@@ -54,35 +57,16 @@ export function ProductSearchModal({ open, initialQuery = '', entityId, onAdd, o
     return () => clearTimeout(timer)
   }, [query, entityId])
 
-  function mapBatch(b) {
-    return {
-      product_id:      b.products.id,
-      id:              b.products.id,   // kept for legacy callers
-      name:            b.products.name,
-      sku:             b.products.sku,
-      unit:            b.products.unit,
-      mrp:             b.mrp ?? b.products.mrp,
-      selling_price:   b.selling_price ?? b.products.selling_price ?? b.mrp,
-      available_stock: b.quantity,
-      batch_id:        b.id,
-      batch_number:    b.batch_number,
-      expires_at:      b.expires_at,
-    }
-  }
-
   async function searchProducts(q) {
     if (!entityId) return
     setLoading(true)
-    const { data } = await supabase
-      .from('product_batches')
-      .select('id, batch_number, expires_at, mrp, selling_price, quantity, products!inner(id, name, sku, unit, mrp, selling_price)')
-      .eq('entity_id', entityId)
-      .eq('status', 'ACTIVE')
-      .gt('quantity', 0)
-      .or(`name.ilike.%${q}%,sku.ilike.%${q}%`, { referencedTable: 'products' })
-      .order('expires_at', { ascending: true, nullsFirst: false })
-      .limit(9)
-    setResults((data || []).map(mapBatch))
+    try {
+      const res = await fetch(`/api/pos/products?q=${encodeURIComponent(q)}`)
+      if (res.ok) {
+        const data = await res.json()
+        setResults((data.results || []).map(mapBatch))
+      }
+    } catch { /* silently fail */ }
     setSelected(0)
     setLoading(false)
   }
@@ -90,39 +74,18 @@ export function ProductSearchModal({ open, initialQuery = '', entityId, onAdd, o
   async function lookupBarcode(code) {
     if (!entityId) return
     setLoading(true)
-
-    // Try batch barcode first (entity-scoped)
-    const { data: byBarcode } = await supabase
-      .from('product_batches')
-      .select('id, batch_number, expires_at, mrp, selling_price, quantity, products!inner(id, name, sku, unit, mrp, selling_price)')
-      .eq('entity_id', entityId)
-      .eq('barcode', code)
-      .eq('status', 'ACTIVE')
-      .gt('quantity', 0)
-      .limit(1)
-
-    if (byBarcode?.[0]) {
-      handleAdd(mapBatch(byBarcode[0]))
-      setLoading(false)
-      return
-    }
-
-    // Fallback: match by product SKU within entity batches
-    const { data: bySku } = await supabase
-      .from('product_batches')
-      .select('id, batch_number, expires_at, mrp, selling_price, quantity, products!inner(id, name, sku, unit, mrp, selling_price)')
-      .eq('entity_id', entityId)
-      .eq('status', 'ACTIVE')
-      .gt('quantity', 0)
-      .or(`sku.eq.${code}`, { referencedTable: 'products' })
-      .order('expires_at', { ascending: true, nullsFirst: false })
-      .limit(1)
-
-    if (bySku?.[0]) {
-      handleAdd(mapBatch(bySku[0]))
-    } else {
-      setResults([])
-    }
+    try {
+      const res = await fetch(`/api/pos/products?barcode=${encodeURIComponent(code)}`)
+      if (res.ok) {
+        const data = await res.json()
+        const mapped = (data.results || []).map(mapBatch)
+        if (mapped[0]) {
+          handleAdd(mapped[0])
+        } else {
+          setResults([])
+        }
+      }
+    } catch { /* silently fail */ }
     setLoading(false)
   }
 
@@ -144,7 +107,6 @@ export function ProductSearchModal({ open, initialQuery = '', entityId, onAdd, o
       e.preventDefault()
       if (results[selected]) handleAdd(results[selected])
     } else if (/^[1-9]$/.test(e.key) && !e.ctrlKey && !e.altKey) {
-      // 1–9 shortcut — only fire if the key matches an existing result row
       const idx = parseInt(e.key, 10) - 1
       if (results[idx]) {
         e.preventDefault()
@@ -157,7 +119,6 @@ export function ProductSearchModal({ open, initialQuery = '', entityId, onAdd, o
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background/95 backdrop-blur-sm">
-      {/* Search input */}
       <div className="border-b border-border px-4 py-3 flex items-center gap-3">
         <Search className="h-5 w-5 text-muted-foreground shrink-0" />
         <input
@@ -182,7 +143,6 @@ export function ProductSearchModal({ open, initialQuery = '', entityId, onAdd, o
         </button>
       </div>
 
-      {/* Results table */}
       <div className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="p-4 text-sm text-muted-foreground text-center">Searching...</div>
@@ -247,7 +207,6 @@ export function ProductSearchModal({ open, initialQuery = '', entityId, onAdd, o
         )}
       </div>
 
-      {/* Bottom: qty input + keyboard hints */}
       <div className="border-t border-border px-4 py-3 flex items-center gap-6 bg-muted/20">
         <div className="flex items-center gap-2">
           <label className="text-xs text-muted-foreground">Qty:</label>

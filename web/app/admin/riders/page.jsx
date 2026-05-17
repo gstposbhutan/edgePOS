@@ -2,13 +2,12 @@
 
 import { useState, useEffect } from 'react'
 import { useAdminAuth } from '@/hooks/use-admin-auth'
-import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { UserPlus, Bike, ToggleLeft, ToggleRight, X, Loader2 } from 'lucide-react'
 
-function AddRiderModal({ open, onClose, onAdded, token }) {
+function AddRiderModal({ open, onClose, onAdded }) {
   const [name,    setName]    = useState('')
   const [phone,   setPhone]   = useState('')
   const [pin,     setPin]     = useState('')
@@ -25,7 +24,7 @@ function AddRiderModal({ open, onClose, onAdded, token }) {
     try {
       const res = await fetch('/api/admin/riders', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, whatsapp_no: phone, pin }),
       })
       const data = await res.json()
@@ -81,16 +80,9 @@ export default function AdminRidersPage() {
   const [riders,    setRiders]    = useState([])
   const [loading,   setLoading]   = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
-  const [token,     setToken]     = useState('')
 
   async function loadRiders() {
-    const supabase = createClient()
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return
-    setToken(session.access_token)
-    const res = await fetch('/api/admin/riders', {
-      headers: { authorization: `Bearer ${session.access_token}` },
-    })
+    const res = await fetch('/api/admin/riders')
     const data = await res.json()
     if (data.riders) setRiders(data.riders)
     setLoading(false)
@@ -99,11 +91,9 @@ export default function AdminRidersPage() {
   useEffect(() => { if (user) loadRiders() }, [user])
 
   async function toggleActive(rider) {
-    const supabase = createClient()
-    const { data: { session } } = await supabase.auth.getSession()
     await fetch(`/api/admin/riders/${rider.id}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', authorization: `Bearer ${session.access_token}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ is_active: !rider.is_active }),
     })
     setRiders(prev => prev.map(r => r.id === rider.id ? { ...r, is_active: !r.is_active } : r))
@@ -186,7 +176,6 @@ export default function AdminRidersPage() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         onAdded={rider => setRiders(prev => [rider, ...prev])}
-        token={token}
       />
     </div>
   )

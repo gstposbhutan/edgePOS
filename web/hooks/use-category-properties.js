@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { createClient } from '@/lib/supabase/client'
 
 /**
  * Hook for managing category properties
@@ -18,7 +17,6 @@ export function useCategoryProperties(categoryId = null, hsnCode = null) {
     setError(null)
 
     try {
-      // Build URL with HSN code or category_id parameter
       const params = new URLSearchParams()
       if (code) {
         params.set('hsn_code', code)
@@ -28,11 +26,7 @@ export function useCategoryProperties(categoryId = null, hsnCode = null) {
 
       const url = `/api/admin/category-properties${params.toString() ? '?' + params.toString() : ''}`
 
-      const res = await fetch(url, {
-        headers: {
-          authorization: `Bearer ${(await createClient().auth.getSession()).data.session?.access_token}`,
-        },
-      })
+      const res = await fetch(url)
       const data = await res.json()
 
       if (!res.ok) throw new Error(data.error)
@@ -53,10 +47,7 @@ export function useCategoryProperties(categoryId = null, hsnCode = null) {
     try {
       const res = await fetch('/api/admin/category-properties', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          authorization: `Bearer ${(await createClient().auth.getSession()).data.session?.access_token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(propertyData),
       })
 
@@ -64,7 +55,7 @@ export function useCategoryProperties(categoryId = null, hsnCode = null) {
 
       if (!res.ok) throw new Error(data.error)
 
-      await fetchProperties() // Refresh the list
+      await fetchProperties()
       return data.property
     } catch (err) {
       console.error('[useCategoryProperties] Create error:', err)
@@ -82,10 +73,7 @@ export function useCategoryProperties(categoryId = null, hsnCode = null) {
     try {
       const res = await fetch(`/api/admin/category-properties/${id}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          authorization: `Bearer ${(await createClient().auth.getSession()).data.session?.access_token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
       })
 
@@ -93,7 +81,7 @@ export function useCategoryProperties(categoryId = null, hsnCode = null) {
 
       if (!res.ok) throw new Error(data.error)
 
-      await fetchProperties() // Refresh the list
+      await fetchProperties()
       return data.property
     } catch (err) {
       console.error('[useCategoryProperties] Update error:', err)
@@ -111,16 +99,13 @@ export function useCategoryProperties(categoryId = null, hsnCode = null) {
     try {
       const res = await fetch(`/api/admin/category-properties/${id}`, {
         method: 'DELETE',
-        headers: {
-          authorization: `Bearer ${(await createClient().auth.getSession()).data.session?.access_token}`,
-        },
       })
 
       const data = await res.json()
 
       if (!res.ok) throw new Error(data.error)
 
-      await fetchProperties() // Refresh the list
+      await fetchProperties()
       return true
     } catch (err) {
       console.error('[useCategoryProperties] Delete error:', err)

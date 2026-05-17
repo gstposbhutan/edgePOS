@@ -8,13 +8,11 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { createClient } from "@/lib/supabase/client"
 import { getUser, getRoleClaims } from "@/lib/auth"
 import { usePurchases } from "@/hooks/use-purchases"
 
 // ── Fullscreen product search modal (same pattern as /salesorder) ─────────────
 function ProductSearchModal({ open, initialQuery, entityId, onAdd, onClose }) {
-  const supabase = createClient()
   const [query,    setQuery]    = useState(initialQuery)
   const [results,  setResults]  = useState([])
   const [selected, setSelected] = useState(0)
@@ -32,25 +30,23 @@ function ProductSearchModal({ open, initialQuery, entityId, onAdd, onClose }) {
     if (!query.trim() || !entityId) { setResults([]); return }
     const t = setTimeout(async () => {
       setLoading(true)
-      // Query distinct products this entity has batches for
-      const { data } = await supabase
-        .from('product_batches')
-        .select('unit_cost, mrp, products!inner(id, name, sku, wholesale_price, unit)')
-        .eq('entity_id', entityId)
-        .or(`name.ilike.%${query}%,sku.ilike.%${query}%`, { referencedTable: 'products' })
-        .order('batch_number', { ascending: false })
-        .limit(20)
-
-      // Deduplicate by product_id, keeping most recent batch cost
-      const seen = new Map()
-      for (const b of (data || [])) {
-        if (!seen.has(b.products.id)) seen.set(b.products.id, {
-          ...b.products,
-          wholesale_price: b.unit_cost ?? b.mrp ?? b.products.wholesale_price,
-        })
-      }
-      setResults([...seen.values()].slice(0, 9))
-      setSelected(0)
+      try {
+        const res = await fetch(`/api/pos/products?q=${encodeURIComponent(query)}`)
+        if (res.ok) {
+          const { results } = await res.json()
+          // Map batch results to product-like objects
+          const seen = new Map()
+          for (const b of (results || [])) {
+            const pid = b.products?.id
+            if (pid && !seen.has(pid)) seen.set(pid, {
+              ...b.products,
+              wholesale_price: b.unit_cost ?? b.mrp ?? b.products?.wholesale_price,
+            })
+          }
+          setResults([...seen.values()].slice(0, 9))
+          setSelected(0)
+        }
+      } catch {}
       setLoading(false)
     }, 200)
     return () => clearTimeout(t)
@@ -138,7 +134,6 @@ function ProductSearchModal({ open, initialQuery, entityId, onAdd, onClose }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function NewPurchaseOrderPage() {
   const router = useRouter()
-  const supabase = createClient()
   const { createPO } = usePurchases()
 
   const [entity,        setEntity]        = useState(null)
@@ -167,8 +162,11 @@ export default function NewPurchaseOrderPage() {
       const { entityId, subRole } = getRoleClaims(user)
       if (subRole === 'CASHIER') { router.push('/pos'); return }
       if (!entityId) { router.push('/pos'); return }
-      const { data } = await supabase.from('entities').select('id, name, tpn_gstin').eq('id', entityId).single()
-      setEntity(data)
+      const res = await fetch('/api/pos/entities')
+      if (res.ok) {
+        const { entity } = await res.json()
+        setEntity(entity)
+      }
     }
     init()
   }, [])
@@ -177,9 +175,13 @@ export default function NewPurchaseOrderPage() {
   useEffect(() => {
     if (!supplierQuery.trim() || selectedSupplier) { setSupplierResults([]); return }
     const t = setTimeout(async () => {
-      const { data } = await supabase.from('entities')
-        .select('id, name, whatsapp_no').eq('role', 'WHOLESALER').ilike('name', `%${supplierQuery}%`).limit(8)
-      setSupplierResults(data || [])
+      try {
+        const res = await fetch(`/api/pos/entities?supplierSearch=${encodeURIComponent(supplierQuery)}`)
+        if (res.ok) {
+          const { suppliers } = await res.json()
+          setSupplierResults(suppliers || [])
+        }
+      } catch { setSupplierResults([]) }
     }, 250)
     return () => clearTimeout(t)
   }, [supplierQuery, selectedSupplier])

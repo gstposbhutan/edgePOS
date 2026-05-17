@@ -42,7 +42,7 @@ app.get('/health', (_req, res) => {
 
 // ─── Core: send WhatsApp text message ──────────────────────────────────────
 
-async function sendTextMessage(phone: string, text: string) {
+async function sendTextMessage(phone: string, text: string): Promise<any> {
   if (!WA_TOKEN || !WA_PHONE_ID) return null;
 
   const response = await fetch(`${WA_API}/${WA_PHONE_ID}/messages`, {
@@ -64,7 +64,7 @@ async function sendTextMessage(phone: string, text: string) {
 
 // ─── Core: send WhatsApp template message ──────────────────────────────────
 
-async function sendTemplateMessage(phone: string, templateName: string, components: any[]) {
+async function sendTemplateMessage(phone: string, templateName: string, components: any[]): Promise<any> {
   if (!WA_TOKEN || !WA_PHONE_ID) return null;
 
   const response = await fetch(`${WA_API}/${WA_PHONE_ID}/messages`, {

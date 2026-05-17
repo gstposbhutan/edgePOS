@@ -1,56 +1,21 @@
 import { NextResponse } from 'next/server'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { createServiceClient as createSSRServiceClient } from '@/lib/supabase/server'
-
-// Create a bypass client for admin operations
-function createBypassClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    { auth: { persistSession: false, autoRefreshToken: false } }
-  )
-}
-
-async function getAuthUser(request) {
-  const authHeader = request.headers.get('authorization')
-  if (!authHeader) return null
-
-  const token = authHeader.replace('Bearer ', '')
-  const authClient = createSSRServiceClient()
-  const { data: { user }, error } = await authClient.auth.getUser(token)
-
-  if (error || !user) return null
-
-  const supabase = createBypassClient()
-  const { data: profile } = await supabase
-    .from('user_profiles')
-    .select('role, entity_id')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile) return null
-
-  // SUPER_ADMIN can do everything, DISTRIBUTOR can only manage their categories
-  const canManage = profile.role === 'SUPER_ADMIN' || profile.role === 'DISTRIBUTOR'
-
-  if (!canManage) return null
-
-  return { user, profile }
-}
+import { getAuthContext } from '@/lib/supabase/server'
 
 /** GET /api/admin/category-properties — List properties (optionally filtered by category or HSN code) */
 export async function GET(request) {
   try {
-    const authUser = await getAuthUser(request)
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    // SUPER_ADMIN can do everything, DISTRIBUTOR can only manage their categories
+    const canManage = ctx.role === 'SUPER_ADMIN' || ctx.role === 'DISTRIBUTOR'
+    if (!canManage) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { searchParams } = new URL(request.url)
     const categoryId = searchParams.get('category_id')
     const hsnCode = searchParams.get('hsn_code')
 
-    const supabase = createBypassClient()
+    const { supabase } = ctx
 
     let properties = []
 
@@ -78,8 +43,8 @@ export async function GET(request) {
       }
 
       // If DISTRIBUTOR, only show properties for their categories
-      if (authUser.profile.role === 'DISTRIBUTOR') {
-        query = query.over('categories', 'distributor_id', authUser.profile.entity_id)
+      if (ctx.role === 'DISTRIBUTOR') {
+        query = query.over('categories', 'distributor_id', ctx.entityId)
       }
 
       const { data, error } = await query
@@ -99,10 +64,11 @@ export async function GET(request) {
 /** POST /api/admin/category-properties — Create new property */
 export async function POST(request) {
   try {
-    const authUser = await getAuthUser(request)
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const canManage = ctx.role === 'SUPER_ADMIN' || ctx.role === 'DISTRIBUTOR'
+    if (!canManage) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const body = await request.json()
     const { category_id, name, slug, data_type, is_required, validation_rules } = body
@@ -121,24 +87,23 @@ export async function POST(request) {
       }, { status: 400 })
     }
 
+    const { supabase } = ctx
+
     // For DISTRIBUTOR, verify they own this category
-    if (authUser.profile.role === 'DISTRIBUTOR') {
-      const supabase = createBypassClient()
+    if (ctx.role === 'DISTRIBUTOR') {
       const { data: category } = await supabase
         .from('categories')
         .select('distributor_id')
         .eq('id', category_id)
         .single()
 
-      if (!category || category.distributor_id !== authUser.profile.entity_id) {
+      if (!category || category.distributor_id !== ctx.entityId) {
         return NextResponse.json({ error: 'Unauthorized for this category' }, { status: 403 })
       }
     }
 
     // Generate slug from name if not provided
     const finalSlug = slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '_')
-
-    const supabase = createBypassClient()
 
     // Get max sort_order for this category
     const { data: lastProp } = await supabase

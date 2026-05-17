@@ -5,8 +5,6 @@ import { Loader2, Plus, Trash2, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input }  from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { createClient } from "@/lib/supabase/client"
-
 const PKG_TYPES = [
   { id: 'BULK',   label: 'Bulk',   desc: 'Same product in large quantity (carton, case)' },
   { id: 'BUNDLE', label: 'Bundle', desc: 'Multiple different products as a combo' },
@@ -27,7 +25,6 @@ const EMPTY_FORM = {
  * @param {{ open, pkg, allProducts, categories, saving, onSave, onClose }} props
  */
 export function PackageForm({ open, pkg, allProducts, categories, saving, onSave, onClose }) {
-  const supabase  = createClient()
   const isEdit    = !!pkg
 
   const [form,       setForm]       = useState(EMPTY_FORM)

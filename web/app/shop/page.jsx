@@ -5,15 +5,14 @@ import { useRouter } from "next/navigation"
 import { Search, ShoppingBag, Store, Phone, Home, LogOut, ClipboardList, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { createClient } from "@/lib/supabase/client"
 import Image from "next/image"
 import Link from "next/link"
 import { ProductDetailModal } from "@/components/shop/product-detail-modal"
 import { CartDrawer } from "@/components/shop/cart-drawer"
 import { useCart } from "@/lib/cart-context"
+import { getUser, signOut } from "@/lib/auth"
 
 export default function ShopPage() {
-  const supabase = createClient()
   const router = useRouter()
   const { addToCart, itemCount, setIsOpen } = useCart()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -27,7 +26,7 @@ export default function ShopPage() {
   }
 
   async function handleSignOut() {
-    await supabase.auth.signOut()
+    await signOut()
     router.push('/login')
   }
 
@@ -46,39 +45,13 @@ export default function ShopPage() {
   async function loadShopContent() {
     setLoading(true)
     try {
-      // Load products from all active retailers
-      const { data: productsData } = await supabase
-        .from("products")
-        .select("*")
-        .eq("is_active", true)
-        .gt("current_stock", 0)
-        .order("name")
-        .limit(50)
-
-      // Load active stores/retailers
-      const { data: storesData } = await supabase
-        .from("entities")
-        .select("id, name, whatsapp_no, tpn_gstin")
-        .eq("role", "RETAILER")
-        .eq("is_active", true)
-        .order("name")
-
-      // Create a map of entities for quick lookup by created_by
-      const entityMap = {}
-      if (storesData) {
-        storesData.forEach(store => {
-          entityMap[store.id] = store
-        })
+      // Load products and stores from the shop API
+      const res = await fetch('/api/shop/products')
+      if (res.ok) {
+        const data = await res.json()
+        setProducts(data.products || [])
+        setStores(data.stores || [])
       }
-
-      // Attach entity info to each product using created_by field
-      const productsWithEntities = (productsData || []).map(product => ({
-        ...product,
-        entities: entityMap[product.created_by] || null
-      }))
-
-      setProducts(productsWithEntities)
-      setStores(storesData || [])
     } catch (err) {
       console.error("Error loading shop:", err)
     } finally {
@@ -87,8 +60,8 @@ export default function ShopPage() {
   }
 
   async function checkAuth() {
-    const { data: { session } } = await supabase.auth.getSession()
-    setUser(session?.user || null)
+    const currentUser = await getUser()
+    setUser(currentUser || null)
   }
 
   const filteredProducts = products.filter(p =>
