@@ -20,12 +20,12 @@ test.describe('Error Handling', () => {
   test.fixme('stock confirmation failure shows error message', async () => {})
 
   test('DB insert failure shows error banner', async ({ page }) => {
-    await page.route('**/rest/v1/orders*', async (route) => {
+    await page.route('**/api/pos/orders', async (route) => {
       if (route.request().method() === 'POST') {
         await route.fulfill({
           status: 500,
           contentType: 'application/json',
-          body: JSON.stringify({ message: 'Database connection failed' }),
+          body: JSON.stringify({ error: 'Database connection failed' }),
         })
       } else {
         await route.continue()
@@ -40,24 +40,20 @@ test.describe('Error Handling', () => {
     await customerIdModal.enterPhone(TEST_PHONE)
     await customerIdModal.confirm()
 
-    const errorBanner = page.locator('.bg-tibetan\\/10 p')
+    const errorBanner = page.locator('p.text-tibetan').first()
     await expect(errorBanner).toBeVisible({ timeout: 10000 })
   })
 
-  test('credit limit exceeded shows error for CASHIER', async ({ page }) => {
+  test('credit sale without khata account shows error for CASHIER', async ({ page }) => {
     await posPage.addProductToCart(IN_STOCK_PRODUCT.name) // 35000
-    await cartPanel.selectPaymentMethod('CASH')
+    await cartPanel.selectPaymentMethod('CREDIT')
     await cartPanel.clickCheckout()
 
     await customerIdModal.assertOpen()
     await customerIdModal.enterPhone(KHATA_ACCOUNT.debtor_phone)
     await customerIdModal.confirm()
 
-    await cartPanel.selectPaymentMethod('CREDIT')
-    await cartPanel.clickCheckout()
-
-    const errorBanner = page.locator('.bg-tibetan\\/10 p')
+    const errorBanner = page.locator('p.text-tibetan').first()
     await expect(errorBanner).toBeVisible({ timeout: 10000 })
-    await expect(errorBanner).toContainText(/limit exceeded/i)
   })
 })

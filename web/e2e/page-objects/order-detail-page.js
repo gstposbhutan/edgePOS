@@ -13,11 +13,11 @@ class OrderDetailPage {
     this.page = page
 
     // ── Locators ─────────────────────────────────────────────────────
-    // Header
-    this.orderNoHeading = page.locator('h1.font-mono.font-bold')
+    // Header — breadcrumb contains order_no in a span with font-mono
+    this.orderNoHeading = page.locator('span.text-foreground.font-mono.font-medium')
 
-    // WhatsApp source badge
-    this.whatsappBadge = page.locator('span:has-text("WhatsApp Order")')
+    // WhatsApp source badge — green badge with "WhatsApp" text and MessageCircle icon
+    this.whatsappBadge = page.locator('span.inline-flex', { hasText: 'WhatsApp' }).first()
 
     // Status badge (rendered by OrderStatusBadge component)
     this.statusBadge = page.locator('span.inline-flex.rounded-full').last()
@@ -56,14 +56,15 @@ class OrderDetailPage {
 
   async goto(orderId) {
     await this.page.goto(`/pos/orders/${orderId}`)
-    await this.page.waitForLoadState('networkidle')
+    // Wait for the breadcrumb order number to appear (confirms data loaded)
+    await expect(this.orderNoHeading).toBeVisible({ timeout: 15000 })
   }
 
   /** Click the back arrow button to return to orders list. */
   async clickBack() {
     const backButton = this.page.locator('button:has(svg.lucide-arrow-left)').first()
     await backButton.click()
-    await this.page.waitForURL('**/pos/orders')
+    await this.page.waitForURL(/\/pos\/orders/, { timeout: 15000 })
   }
 
   // ── Summary Queries ─────────────────────────────────────────────────

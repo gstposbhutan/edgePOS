@@ -37,7 +37,7 @@ const TEST_PHONE    = '+97517100011'
 const ENTITY_ID = TEST_USERS[0].entity_id
 
 function loadEnv() {
-  if (process.env.NEXT_PUBLIC_SUPABASE_URL) return
+  if (process.env.SUPABASE_URL) return
   try {
     const fs = require('fs')
     const path = require('path')
@@ -52,10 +52,10 @@ function loadEnv() {
 
 function getAdminClient() {
   loadEnv()
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!url || !key) {
-    throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY')
+    throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY')
   }
   return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } })
 }
@@ -91,12 +91,12 @@ async function cleanupTestOrders() {
   if (!orders?.length) return
 
   const seedOrderIds = new Set([
-    '00000000-0000-4000-8000-000000000301',
-    '00000000-0000-4000-8000-000000000302',
-    '00000000-0000-4000-8000-000000000303',
-    '00000000-0000-4000-8000-000000000304',
-    '00000000-0000-4000-8000-000000000305',
-    '00000000-0000-4000-8000-000000000306',
+    '00000000-0000-4000-8000-000000003001',
+    '00000000-0000-4000-8000-000000003002',
+    '00000000-0000-4000-8000-000000003003',
+    '00000000-0000-4000-8000-000000003004',
+    '00000000-0000-4000-8000-000000003005',
+    '00000000-0000-4000-8000-000000003006',
   ])
   const toDelete = orders.filter(o => !seedOrderIds.has(o.id))
   if (toDelete.length) {

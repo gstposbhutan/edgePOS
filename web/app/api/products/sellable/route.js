@@ -12,7 +12,7 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url)
     const q = searchParams.get('q') ?? ''
     const limit = parseInt(searchParams.get('limit') || '100')
-    const supabase = ctx.supabase
+    const supabase = ctx.userClient ?? ctx.supabase
 
     if (!q.trim()) {
       const { data, error } = await supabase

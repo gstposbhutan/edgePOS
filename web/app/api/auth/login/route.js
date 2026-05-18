@@ -9,7 +9,6 @@ export async function POST(request) {
   }
 
   const cookieStore = await cookies()
-  let response = NextResponse.json({ success: true })
 
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -17,12 +16,17 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 })
   }
 
+  // Collect cookies set by Supabase SSR
+  const setCookies = []
+  let response = NextResponse.json({ success: true })
+
   const supabase = createServerClient(url, key, {
     cookieOptions: { name: 'sb-edgepos-auth-token' },
     cookies: {
       getAll: () => cookieStore.getAll(),
       setAll: (cookiesToSet) => {
         cookiesToSet.forEach(({ name, value, options }) => {
+          setCookies.push({ name, value, options })
           response.cookies.set(name, value, options)
         })
       },
@@ -35,14 +39,13 @@ export async function POST(request) {
     return NextResponse.json({ error: error.message }, { status: 401 })
   }
 
-  // Fetch enriched profile for the response
   const { data: profile } = await supabase
     .from('user_profiles')
     .select('entity_id, sub_role, role')
     .eq('id', data.user.id)
     .single()
 
-  return NextResponse.json({
+  const body = {
     success: true,
     user: {
       id: data.user.id,
@@ -52,5 +55,12 @@ export async function POST(request) {
       role: profile?.role ?? data.user.user_metadata?.role ?? null,
       subRole: profile?.sub_role ?? data.user.user_metadata?.sub_role ?? null,
     },
-  })
+  }
+
+  // Build final response with body + collected auth cookies
+  const finalResponse = NextResponse.json(body)
+  for (const { name, value, options } of setCookies) {
+    finalResponse.cookies.set(name, value, options)
+  }
+  return finalResponse
 }

@@ -296,8 +296,6 @@ export default function PosPage() {
       await clearCart()
       setPaymentMethod(null)
       setJournalNo('')
-      setOcrVerifyId(null)
-      setOcrReferenceNo(null)
       setKhataAccount(null)
       setOwnerOverride(false)
 

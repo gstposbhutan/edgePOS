@@ -14,7 +14,7 @@ async function globalSetup(config) {
   console.log('[E2E Setup] Database seeded successfully')
 
   // Clean stale carts so each test starts fresh
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (url && key) {
     const supabase = createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } })

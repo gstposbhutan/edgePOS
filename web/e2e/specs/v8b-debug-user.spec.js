@@ -3,7 +3,7 @@ const { seedDatabase } = require('../fixtures/db-seed')
 const { MANAGER_USER } = require('../fixtures/test-data')
 
 function loadEnv() {
-  if (process.env.NEXT_PUBLIC_SUPABASE_URL) return
+  if (process.env.SUPABASE_URL) return
   try {
     const fs = require('fs')
     const path = require('path')
@@ -22,8 +22,7 @@ test.describe('v8b. Debug User Data', () => {
     await seedDatabase()
   })
 
-  test('check user session data', async ({ page }) => {
-    // Listen for console messages
+  test('check user session via BFF API', async ({ page }) => {
     page.on('console', msg => {
       if (msg.text().includes('[fetchConnections]') ||
           msg.text().includes('[placeOrder]') ||
@@ -33,34 +32,26 @@ test.describe('v8b. Debug User Data', () => {
       }
     })
 
-    // Sign in
-    loadEnv()
+    // Sign in via UI
     await page.goto('/login')
     await page.locator('input[type="email"]').fill(MANAGER_USER.email)
     await page.locator('input[type="password"]').fill(MANAGER_USER.password)
     await page.locator('button[type="submit"]').click()
     await page.waitForURL('**/pos', { timeout: 10000 })
 
-    // Check user data from localStorage
-    const userKey = `sb-${process.env.NEXT_PUBLIC_SUPABASE_URL?.replace('https://', '').replace(/\/.*/, '')}-auth-token`
-    const authData = await page.evaluate((key) => {
-      const item = localStorage.getItem(key)
-      if (item) {
-        const parsed = JSON.parse(item)
-        return {
-          currentSession: parsed.currentSession,
-          user: parsed.user
-        }
-      }
-      return null
-    }, userKey)
+    // Verify session via BFF API (cookies are sent automatically)
+    const sessionData = await page.evaluate(async () => {
+      const res = await fetch('/api/auth/session')
+      const data = await res.json()
+      return data
+    })
 
-    console.log('Auth data from localStorage:', JSON.stringify(authData, null, 2))
+    console.log('Session data from /api/auth/session:', JSON.stringify(sessionData, null, 2))
+    expect(sessionData.user).toBeDefined()
+    expect(sessionData.user.entityId).toBeDefined()
 
     // Open restock modal to trigger fetchConnections
     await page.locator('[data-testid="restock-btn"]').click()
-
-    // Wait a bit for the fetch to complete
     await page.waitForTimeout(3000)
 
     // Check if wholesalers are displayed
@@ -68,11 +59,9 @@ test.describe('v8b. Debug User Data', () => {
     const isVisible = await wholesalerList.isVisible()
     console.log('Wholesaler list visible:', isVisible)
 
-    // Check for wholesaler cards
     const wholesalerCardCount = await page.locator('[data-testid^="wholesaler-"]').count()
     console.log('Wholesaler cards count:', wholesalerCardCount)
 
-    // Get the first wholesaler card's data-testid
     const firstCard = page.locator('[data-testid^="wholesaler-"]').first()
     if (await firstCard.isVisible()) {
       const testId = await firstCard.getAttribute('data-testid')
@@ -83,7 +72,6 @@ test.describe('v8b. Debug User Data', () => {
     const noDataVisible = await noWholesalers.isVisible()
     console.log('No wholesalers message visible:', noDataVisible)
 
-    // Click on the first wholesaler to open catalog
     const wsCards = page.locator('button[data-testid^="wholesaler-"]:not([data-testid="wholesaler-list"])')
     const cardCount = await wsCards.count()
     console.log('Wholesaler card count (excluding list):', cardCount)
@@ -93,7 +81,6 @@ test.describe('v8b. Debug User Data', () => {
       await wsCards.first().click()
       await page.waitForTimeout(2000)
 
-      // Check if product grid is visible
       const productGrid = page.locator('[data-testid="product-grid"]')
       const gridVisible = await productGrid.isVisible()
       console.log('Product grid visible:', gridVisible)
@@ -104,8 +91,6 @@ test.describe('v8b. Debug User Data', () => {
         console.log('Product count in grid:', productCount)
       }
 
-      // Try placing an order
-      // Use a more specific selector to avoid clicking on product-grid
       const product = page.locator('button[data-testid^="product-"]').first()
       if (await product.isVisible({ timeout: 5000 })) {
         const productName = await product.getAttribute('data-testid')
@@ -113,23 +98,10 @@ test.describe('v8b. Debug User Data', () => {
         await product.click()
         await page.waitForTimeout(2000)
 
-        // Check if cart has items
         const cartItems = page.locator('[data-testid^="cart-item-"]')
         const cartCount = await cartItems.count()
         console.log('Cart items count after clicking product:', cartCount)
 
-        // Check for error messages
-        const error = page.locator('[data-testid="restock-error"]')
-        const errorVisible = await error.isVisible()
-        if (errorVisible) {
-          console.log('Error visible:', await error.textContent())
-        }
-
-        // Check if place order button exists
-        const placeOrderBtnExists = await page.locator('[data-testid="place-order-btn"]').count()
-        console.log('Place order button element count:', placeOrderBtnExists)
-
-        // Check if place order button is enabled
         const placeOrderBtn = page.locator('[data-testid="place-order-btn"]')
         const isEnabled = await placeOrderBtn.isEnabled()
         console.log('Place order button enabled:', isEnabled)
@@ -137,35 +109,14 @@ test.describe('v8b. Debug User Data', () => {
         if (isEnabled) {
           console.log('Clicking place order button')
           await placeOrderBtn.click()
-
-          // Wait longer for the order to be processed
           await page.waitForTimeout(5000)
 
-          // Check for success or error
           const success = page.locator('[data-testid="restock-success"]')
           const error = page.locator('[data-testid="restock-error"]')
           const successVisible = await success.isVisible()
           const errorVisible = await error.isVisible()
           console.log('Success visible:', successVisible, 'Error visible:', errorVisible)
-
-          if (errorVisible) {
-            const errorText = await error.textContent()
-            console.log('Error message:', errorText)
-          }
-
-          if (successVisible) {
-            const successText = await success.textContent()
-            console.log('Success message:', successText)
-          }
-
-          // Check modal state
-          const modalVisible = await page.locator('[data-testid="restock-modal"]').isVisible()
-          console.log('Modal visible after order:', modalVisible)
-        } else {
-          console.log('Place order button is disabled')
         }
-      } else {
-        console.log('No products found in catalog')
       }
     }
   })

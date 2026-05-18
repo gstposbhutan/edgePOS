@@ -18,12 +18,12 @@ const {
 } = require('./test-data')
 
 function getAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
   if (!supabaseUrl || !serviceRoleKey) {
     throw new Error(
-      'Missing env vars: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set for E2E seeding.'
+      'Missing env vars: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set for E2E seeding.'
     )
   }
 

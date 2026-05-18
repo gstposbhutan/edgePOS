@@ -5,7 +5,7 @@ const test = base.extend({})
 
 test.describe('Auth Setup', () => {
   const roles = [
-    { key: 'retailer', user: TEST_USERS[0], file: 'e2e/storage/retailer-auth.json' },
+    { key: 'retailer', user: TEST_USERS[2], file: 'e2e/storage/retailer-auth.json' },
     { key: 'cashier', user: TEST_USERS[0], file: 'e2e/storage/cashier-auth.json' },
     { key: 'manager', user: TEST_USERS[1], file: 'e2e/storage/manager-auth.json' },
     { key: 'owner', user: TEST_USERS[2], file: 'e2e/storage/owner-auth.json' },
@@ -14,7 +14,6 @@ test.describe('Auth Setup', () => {
   for (const { key, user, file } of roles) {
     test(`sign in as ${key} and save storage state`, async ({ page }) => {
       await page.goto('/login')
-      // Wait for login form to render
       await page.getByPlaceholder('you@business.bt').waitFor({ state: 'visible' })
 
       await page.getByPlaceholder('you@business.bt').fill(user.email)

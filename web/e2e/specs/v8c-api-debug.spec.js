@@ -3,7 +3,7 @@ const { seedDatabase } = require('../fixtures/db-seed')
 const { MANAGER_USER, TEST_WHOLESALER, TEST_WHOLESALER_PRODUCTS } = require('../fixtures/test-data')
 
 function loadEnv() {
-  if (process.env.NEXT_PUBLIC_SUPABASE_URL) return
+  if (process.env.SUPABASE_URL) return
   try {
     const fs = require('fs')
     const path = require('path')
@@ -22,59 +22,39 @@ test.describe('v8c. API Debug', () => {
     await seedDatabase()
   })
 
-  test('wholesale orders API works', async ({ page }) => {
-    // Sign in
-    loadEnv()
+  test('wholesale orders API works via cookie auth', async ({ page }) => {
+    // Sign in via UI to get session cookies
     await page.goto('/login')
     await page.locator('input[type="email"]').fill(MANAGER_USER.email)
     await page.locator('input[type="password"]').fill(MANAGER_USER.password)
     await page.locator('button[type="submit"]').click()
     await page.waitForURL('**/pos', { timeout: 10000 })
 
-    // Get session token
-    const storageInfo = await page.evaluate(() => {
-      // List all localStorage keys
-      const keys = Object.keys(localStorage)
-      const authKey = keys.find(k => k.includes('auth-token'))
-
-      if (authKey) {
-        const data = JSON.parse(localStorage.getItem(authKey))
-        return {
-          keys,
-          authKey,
-          hasCurrentSession: !!data.currentSession,
-          hasUser: !!data.user,
-          userId: data.user?.id,
-          userAppMetadata: data.user?.app_metadata,
-          token: data.currentSession?.access_token
-        }
-      }
-      return { keys, authKey: null }
+    // Verify session is active
+    const session = await page.evaluate(async () => {
+      const res = await fetch('/api/auth/session')
+      return res.json()
     })
+    expect(session.user).toBeDefined()
+    console.log('Session user:', session.user.email, 'entityId:', session.user.entityId)
 
-    console.log('Storage info:', JSON.stringify(storageInfo, null, 2))
-
-    const token = storageInfo.token
-    const user = storageInfo.userAppMetadata ? { app_metadata: storageInfo.userAppMetadata } : null
-
-    // Call the API directly
+    // Call the wholesale orders API (cookies sent automatically, no Bearer token needed)
     const items = [{
       product_id: TEST_WHOLESALER_PRODUCTS[0].id,
       quantity: 1,
     }]
 
-    const response = await page.evaluate(async ({ token, wholesalerId, items }) => {
+    const response = await page.evaluate(async ({ wholesalerId, items }) => {
       const res = await fetch('/api/wholesale/orders', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({ wholesaler_id: wholesalerId, items }),
       })
       const data = await res.json()
       return { status: res.status, data }
-    }, { token, wholesalerId: TEST_WHOLESALER.id, items })
+    }, { wholesalerId: TEST_WHOLESALER.id, items })
 
     console.log('API Response:', response)
 

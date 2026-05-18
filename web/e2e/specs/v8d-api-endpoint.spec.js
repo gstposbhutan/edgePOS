@@ -3,7 +3,7 @@ const { seedDatabase } = require('../fixtures/db-seed')
 const { MANAGER_USER, TEST_WHOLESALER } = require('../fixtures/test-data')
 
 function loadEnv() {
-  if (process.env.NEXT_PUBLIC_SUPABASE_URL) return
+  if (process.env.SUPABASE_URL) return
   try {
     const fs = require('fs')
     const path = require('path')

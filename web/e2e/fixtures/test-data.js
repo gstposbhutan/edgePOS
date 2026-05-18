@@ -8,25 +8,25 @@
 // ── Test phone (WhatsApp) ────────────────────────────────────────────
 const TEST_PHONE = '+97517100001'
 
-// ── Test entity ──────────────────────────────────────────────────────
+// ── Test entity (maps to Dawai Tshongkhang from seed) ──────────────
 const TEST_ENTITY = {
-  id: '00000000-0000-4000-8000-000000000001',
-  name: 'Test Store',
+  id: 'a0000000-0000-4000-8000-000000000004',
+  name: 'Dawai Tshongkhang',
   role: 'RETAILER',
-  tpn_gstin: 'TPN0000001',
-  whatsapp_no: TEST_PHONE,
-  shop_slug: 'test-store',
+  tpn_gstin: 'TPN9990004',
+  whatsapp_no: '+97517000004',
+  shop_slug: 'dawai-tshongkhang',
   is_active: true,
 }
 
-// ── Test wholesaler entity ─────────────────────────────────────────────
+// ── Test wholesaler entity (maps to Thimphu Wholesale from seed) ──────
 const TEST_WHOLESALER = {
-  id: '00000000-0000-4000-8000-000000000010',
-  name: 'Test Wholesaler',
+  id: 'a0000000-0000-4000-8000-000000000003',
+  name: 'Thimphu Wholesale',
   role: 'WHOLESALER',
-  tpn_gstin: 'TPN0000010',
-  whatsapp_no: '+97517100010',
-  shop_slug: 'test-wholesaler',
+  tpn_gstin: 'TPN9990003',
+  whatsapp_no: '+97517000003',
+  shop_slug: 'thimphu-wholesale',
   is_active: true,
 }
 
@@ -193,21 +193,22 @@ const TEST_PRODUCTS = [
   },
 ]
 
-// ── Test users (cashier, manager, owner) ─────────────────────────────
+// ── Test users (maps to seeded vendor accounts) ─────────────────────
+// All passwords: test1234 (from migration 074)
 const TEST_USERS = [
   {
-    id: '00000000-0000-4000-8000-000000002001',
-    email: 'cashier@teststore.bt',
-    password: 'TestCashier@2026',
+    id: 'a1000000-0000-4000-a000-000000000006',
+    email: 'cashier@nexus.bt',
+    password: 'test1234',
     role: 'RETAILER',
     sub_role: 'CASHIER',
     permissions: ['pos:read', 'pos:sale', 'pos:refund:view'],
     entity_id: TEST_ENTITY.id,
   },
   {
-    id: '00000000-0000-4000-8000-000000002002',
-    email: 'manager@teststore.bt',
-    password: 'TestManager@2026',
+    id: 'a1000000-0000-4000-a000-000000000009',
+    email: 'manager@nexus.bt',
+    password: 'test1234',
     role: 'RETAILER',
     sub_role: 'MANAGER',
     permissions: [
@@ -220,9 +221,9 @@ const TEST_USERS = [
     entity_id: TEST_ENTITY.id,
   },
   {
-    id: '00000000-0000-4000-8000-000000002003',
-    email: 'owner@teststore.bt',
-    password: 'TestOwner@2026',
+    id: 'a1000000-0000-4000-a000-000000000004',
+    email: 'retailer@nexus.bt',
+    password: 'test1234',
     role: 'RETAILER',
     sub_role: 'OWNER',
     permissions: [
@@ -383,7 +384,7 @@ const TEST_RETAILER_WHOLESALER = {
   active: true,
 }
 
-// ── Wholesaler products ─────────────────────────────────────────────────
+// ── Wholesaler products (separate SKUs for test isolation) ────────────
 const TEST_WHOLESALER_PRODUCTS = [
   {
     id: '00000000-0000-4000-8000-000000001011',
@@ -455,6 +456,19 @@ const TEST_RIDER = {
   vehicle_type: 'motorcycle',
   is_active: true,
   entity_id: TEST_ENTITY.id,
+}
+
+// ── Seeded vendor accounts (for tests that need direct DB references) ──
+const VENDOR_USERS = {
+  admin:     { id: 'a1000000-0000-4000-a000-000000000001', email: 'admin@nexus.bt',      password: 'test1234', role: 'SUPER_ADMIN', entityId: 'a0000000-0000-4000-8000-000000000001' },
+  distributor: { id: 'a1000000-0000-4000-a000-000000000002', email: 'distributor@nexus.bt', password: 'test1234', role: 'DISTRIBUTOR', entityId: 'a0000000-0000-4000-8000-000000000002' },
+  wholesaler: { id: 'a1000000-0000-4000-a000-000000000003', email: 'wholesaler@nexus.bt',  password: 'test1234', role: 'WHOLESALER',  entityId: 'a0000000-0000-4000-8000-000000000003' },
+  retailer:   { id: 'a1000000-0000-4000-a000-000000000004', email: 'retailer@nexus.bt',    password: 'test1234', role: 'RETAILER',    entityId: 'a0000000-0000-4000-8000-000000000004' },
+  retailer2:  { id: 'a1000000-0000-4000-a000-000000000005', email: 'retailer2@nexus.bt',   password: 'test1234', role: 'RETAILER',    entityId: 'a0000000-0000-4000-8000-000000000005' },
+  cashier:    { id: 'a1000000-0000-4000-a000-000000000006', email: 'cashier@nexus.bt',     password: 'test1234', role: 'RETAILER',    entityId: 'a0000000-0000-4000-8000-000000000004' },
+  staff:      { id: 'a1000000-0000-4000-a000-000000000007', email: 'staff@nexus.bt',       password: 'test1234', role: 'RETAILER',    entityId: 'a0000000-0000-4000-8000-000000000004' },
+  customer:   { id: 'a1000000-0000-4000-a000-000000000008', email: 'customer@nexus.bt',    password: 'test1234', role: 'CUSTOMER',    entityId: 'a0000000-0000-4000-8000-000000000006' },
+  manager:    { id: 'a1000000-0000-4000-a000-000000000009', email: 'manager@nexus.bt',     password: 'test1234', role: 'RETAILER',    entityId: 'a0000000-0000-4000-8000-000000000004' },
 }
 
 // ── Test product batches (for PO/SO flows) ───────────────────────────
@@ -587,6 +601,7 @@ module.exports = {
   TEST_KHATA_ACCOUNTS,
   TEST_RETAILER_WHOLESALER,
   TEST_WHOLESALER_KHATA,
+  VENDOR_USERS,
   // User role aliases
   CASHIER_USER: TEST_USERS[0],
   MANAGER_USER: TEST_USERS[1],
@@ -609,6 +624,7 @@ module.exports.TEST_ORDERS = TEST_ORDERS
 module.exports.TEST_KHATA_ACCOUNTS = TEST_KHATA_ACCOUNTS
 module.exports.TEST_RETAILER_WHOLESALER = TEST_RETAILER_WHOLESALER
 module.exports.TEST_WHOLESALER_KHATA = TEST_WHOLESALER_KHATA
+module.exports.VENDOR_USERS = VENDOR_USERS
 module.exports.CASHIER_USER = TEST_USERS[0]
 module.exports.MANAGER_USER = TEST_USERS[1]
 module.exports.OWNER_USER = TEST_USERS[2]

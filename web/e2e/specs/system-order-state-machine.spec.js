@@ -25,7 +25,7 @@ const GATEWAY_URL = process.env.WHATSAPP_GATEWAY_URL || 'http://localhost:3001'
 
 // Load .env.local if env vars are missing
 function loadEnv() {
-  if (process.env.NEXT_PUBLIC_SUPABASE_URL) return
+  if (process.env.SUPABASE_URL) return
   try {
     const fs = require('fs')
     const path = require('path')
@@ -40,10 +40,10 @@ function loadEnv() {
 loadEnv()
 
 function getAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!supabaseUrl || !serviceRoleKey) {
-    throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY')
+    throw new Error('Missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY')
   }
   return createClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },

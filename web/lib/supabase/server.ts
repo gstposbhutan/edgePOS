@@ -91,5 +91,6 @@ export async function getAuthContext() {
     role: p.role,
     userId: user.id,
     supabase: serviceClient,
+    userClient: supabase,
   }
 }

@@ -13,11 +13,12 @@ class OrdersListPage {
     this.page = page
 
     // ── Locators ─────────────────────────────────────────────────────
-    this.heading = page.locator('h1.font-serif:text("Orders")')
+    this.heading = page.locator('span:text-is("Orders")')
     this.searchInput = page.locator('input[placeholder="Search by order no. or WhatsApp..."]')
     this.refreshButton = page.locator('button:has(svg.lucide-refresh-cw)').first()
     this.emptyState = page.locator('text=No orders found')
     this.loadingSkeleton = page.locator('.animate-pulse')
+    this.posTabButton = page.locator('button', { hasText: /POS Orders/ })
 
     // Filter buttons row
     this.filterButtons = page.locator('div.flex.gap-1.overflow-x-auto button')
@@ -34,6 +35,12 @@ class OrdersListPage {
   async goto() {
     await this.page.goto('/pos/orders')
     await this.page.waitForLoadState('networkidle')
+    // Manager defaults to SALES section — switch to POS Orders
+    const posTab = this.posTabButton
+    if (await posTab.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await posTab.click()
+      await this.page.waitForLoadState('networkidle')
+    }
   }
 
   // ── Actions ─────────────────────────────────────────────────────────

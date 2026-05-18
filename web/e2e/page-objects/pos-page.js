@@ -67,8 +67,14 @@ class PosPage {
    * second click on the "Add to Cart" button to actually add the item.
    */
   async addProductToCart(name) {
+    // Search first — with 1,172+ products the grid only shows 100, so the
+    // target product may not be visible without filtering.
+    // Strip parenthetical content to avoid breaking PostgREST .or() filter.
+    const query = name.replace(/\s*\(.*?\)/g, '').trim()
+    await this.searchInput.fill(query)
+
     const card = this.getProductByName(name)
-    await expect(card).toBeVisible()
+    await expect(card).toBeVisible({ timeout: 5000 })
     await card.click()
 
     // ProductDetailModal opens — click the "Add to Cart" button inside it

@@ -1,5 +1,5 @@
 const {
-  test, expect, PosPage, CartPanel, PaymentScannerModal, CustomerIdModal,
+  test, expect, PosPage, CartPanel, StockGateModal, CustomerIdModal,
   CHEAP_PRODUCT, LOW_STOCK_PRODUCT, TEST_PHONE, clearCart, resetStock, cleanupTestOrders,
 } = require('./v2-helpers')
 

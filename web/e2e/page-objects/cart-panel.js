@@ -70,6 +70,7 @@ class CartPanel {
   async removeItem(itemName) {
     const item = this.getCartItemByName(itemName)
     await item.locator('button svg.lucide-trash-2').locator('..').click()
+    await expect(item).toBeHidden({ timeout: 5000 })
   }
 
   /**

@@ -1404,7 +1404,8 @@ FROM (
     ('a1000000-0000-4000-a000-000000000005'::UUID, 'retailer2@nexus.bt',   '+97517000005'::TEXT, 'RETAILER'),
     ('a1000000-0000-4000-a000-000000000006'::UUID, 'cashier@nexus.bt',     '+97517000006'::TEXT, 'CASHIER'),
     ('a1000000-0000-4000-a000-000000000007'::UUID, 'staff@nexus.bt',       '+97517000007'::TEXT, 'STAFF'),
-    ('a1000000-0000-4000-a000-000000000008'::UUID, 'customer@nexus.bt',    '+97517000008'::TEXT, 'CUSTOMER')
+    ('a1000000-0000-4000-a000-000000000008'::UUID, 'customer@nexus.bt',    '+97517000008'::TEXT, 'CUSTOMER'),
+    ('a1000000-0000-4000-a000-000000000009'::UUID, 'manager@nexus.bt',     '+97517000009'::TEXT, 'MANAGER')
 ) AS u(id, email, phone, app_role)
 WHERE NOT EXISTS (
   SELECT 1 FROM auth.users WHERE auth.users.id = u.id
@@ -1435,7 +1436,8 @@ FROM (
     ('a1000000-0000-4000-a000-000000000005'::UUID, 'retailer2@nexus.bt'),
     ('a1000000-0000-4000-a000-000000000006'::UUID, 'cashier@nexus.bt'),
     ('a1000000-0000-4000-a000-000000000007'::UUID, 'staff@nexus.bt'),
-    ('a1000000-0000-4000-a000-000000000008'::UUID, 'customer@nexus.bt')
+    ('a1000000-0000-4000-a000-000000000008'::UUID, 'customer@nexus.bt'),
+    ('a1000000-0000-4000-a000-000000000009'::UUID, 'manager@nexus.bt')
 ) AS u(id, email)
 WHERE NOT EXISTS (
   SELECT 1 FROM auth.identities WHERE auth.identities.id = u.id
@@ -1501,7 +1503,14 @@ VALUES
    'a0000000-0000-4000-8000-000000000006',
    'CUSTOMER', 'CUSTOMER',
    ARRAY['orders:create', 'orders:view', 'profile:edit'],
-   'Tenzin Dorji')
+   'Tenzin Dorji'),
+
+  -- RETAILER manager (Dawai Tshongkhang)
+  ('a1000000-0000-4000-a000-000000000009',
+   'a0000000-0000-4000-8000-000000000004',
+   'RETAILER', 'MANAGER',
+   ARRAY['pos:read', 'pos:sale', 'pos:refund:create', 'inventory:read', 'inventory:write', 'orders:read', 'orders:write', 'khata:read', 'reports:read'],
+   'Deki Yangzom')
 ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================
