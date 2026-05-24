@@ -47,13 +47,15 @@ test.describe('Marketplace Store Page', () => {
     expect(productNames.length).toBeGreaterThan(0)
   })
 
-  test.fixme('products are grouped by category', async () => {
-    // Current store page has no category grouping
-  })
+  // BLOCKED ON PRODUCT: marketplace page web/app/shop/[id]/page.jsx renders a
+  // flat product grid with no per-category sections. Unblock when category
+  // grouping is added to the store page.
+  test.fixme('products are grouped by category', async () => {})
 
-  test.fixme('WhatsApp Order button has correct wa.me link with pre-filled message', async () => {
-    // Current store page has no per-product WhatsApp order links
-  })
+  // BLOCKED ON PRODUCT: store page renders the store's whatsapp_no once at the
+  // top but no per-product wa.me deep-links. Unblock when each product card
+  // gets its own "Order on WhatsApp" CTA with a pre-filled message.
+  test.fixme('WhatsApp Order button has correct wa.me link with pre-filled message', async () => {})
 
   test('returns 404 for non-existent store', async ({ page }) => {
     await page.goto('/shop/00000000-0000-0000-0000-000000000000')
@@ -78,11 +80,10 @@ test.describe('Marketplace Store Page', () => {
     }
   })
 
-  test.fixme('powered by footer is present', async () => {
-    // Current store page has no "powered by" footer
-  })
+  // BLOCKED ON PRODUCT: no footer rendered on the store page.
+  test.fixme('powered by footer is present', async () => {})
 
-  test.fixme('store page has correct page title', async () => {
-    // Page title handling not implemented for store pages
-  })
+  // BLOCKED ON PRODUCT: web/app/shop/[id]/layout.jsx (or page.jsx metadata)
+  // does not set a store-specific <title>. The shared layout title is generic.
+  test.fixme('store page has correct page title', async () => {})
 })

@@ -184,7 +184,7 @@ export default function PurchaseDetailPage() {
             <span>/</span>
             <button onClick={() => router.push('/pos/purchases')} className="hover:text-foreground transition-colors">Purchases</button>
             <span>/</span>
-            <span className="text-foreground font-mono font-medium truncate">{order.order_no}</span>
+            <span data-testid="purchase-order-no" className="text-foreground font-mono font-medium truncate">{order.order_no}</span>
           </div>
           <div className="flex items-center gap-2">
             <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${STATUS_COLORS[order.status] || 'bg-muted'}`}>{order.status}</span>
@@ -478,10 +478,10 @@ function PurchaseInvoiceOverlay({
   )
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background select-none">
+    <div data-testid="convert-to-invoice-overlay" className="fixed inset-0 z-50 flex flex-col bg-background select-none">
       {/* Header */}
       <header className="glassmorphism border-b border-border px-4 py-2 flex items-center gap-3 shrink-0">
-        <Button variant="ghost" size="icon-sm" onClick={onClose}>
+        <Button variant="ghost" size="icon-sm" data-testid="convert-overlay-back" onClick={onClose}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex-1 min-w-0">
@@ -499,7 +499,7 @@ function PurchaseInvoiceOverlay({
             Nu. {grandTotal.toFixed(2)}
           </span>
         )}
-        <Button variant="ghost" size="icon-sm" onClick={onClose}><X className="h-4 w-4" /></Button>
+        <Button variant="ghost" size="icon-sm" data-testid="convert-overlay-close" onClick={onClose}><X className="h-4 w-4" /></Button>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
@@ -509,14 +509,14 @@ function PurchaseInvoiceOverlay({
 
           <div className="space-y-1">
             <label className="text-xs text-muted-foreground">Payment Method</label>
-            <select value={payMethod} onChange={e => setPayMethod(e.target.value)}
+            <select data-testid="convert-pay-method" value={payMethod} onChange={e => setPayMethod(e.target.value)}
               className="w-full h-8 px-2 text-sm border border-input rounded bg-background">
               {['ONLINE','CASH','CREDIT'].map(m => <option key={m}>{m}</option>)}
             </select>
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted-foreground">Supplier Invoice Ref</label>
-            <input value={suppRef} onChange={e => setSuppRef(e.target.value)}
+            <input data-testid="convert-supplier-ref" value={suppRef} onChange={e => setSuppRef(e.target.value)}
               placeholder="e.g. INV-888"
               className="w-full h-8 px-2 text-sm border border-input rounded bg-background" />
           </div>
@@ -528,7 +528,10 @@ function PurchaseInvoiceOverlay({
               const ok = qty === l.original_quantity
               const origItem = items.find(it => it.id === l.order_item_id)
               return (
-                <button key={l.order_item_id} onClick={() => setSelectedLine(i)}
+                <button key={l.order_item_id}
+                  data-testid="convert-line-item"
+                  data-line-index={i}
+                  onClick={() => setSelectedLine(i)}
                   className={`w-full flex items-center justify-between px-2 py-1.5 rounded text-left transition-colors ${
                     selectedLine === i ? 'bg-primary/10 text-primary' : 'hover:bg-muted/50'
                   }`}>

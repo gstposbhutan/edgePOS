@@ -4,6 +4,7 @@ const { CartPanel } = require('../page-objects/cart-panel')
 const { CustomerIdModal } = require('../page-objects/customer-id-modal')
 const { StockGateModal } = require('../page-objects/stock-gate-modal')
 const { RestockModal } = require('../page-objects/restock-modal')
+const { CustomerOtpModal } = require('../page-objects/customer-otp-modal')
 const { createClient } = require('@supabase/supabase-js')
 const {
   TEST_PRODUCTS,
@@ -107,7 +108,7 @@ async function cleanupTestOrders() {
 
 module.exports = {
   test, expect,
-  PosPage, CartPanel, CustomerIdModal, StockGateModal, RestockModal,
+  PosPage, CartPanel, CustomerIdModal, StockGateModal, RestockModal, CustomerOtpModal,
   IN_STOCK_PRODUCT, CHEAP_PRODUCT, DAIRY_PRODUCT, LOW_STOCK_PRODUCT,
   OUT_OF_STOCK, NOODLES_PRODUCT, SOAP_PRODUCT,
   CASHIER_USER, MANAGER_USER, OWNER_USER,

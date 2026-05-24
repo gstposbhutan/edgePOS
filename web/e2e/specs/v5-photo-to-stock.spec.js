@@ -28,7 +28,6 @@ test.describe('Photo-to-Stock (Bill Scanning)', () => {
 
     test('opens scan bill modal from Draft Purchases tab', async ({ page }) => {
       await inventoryPage.clickTab('Draft Purchases')
-      await page.waitForLoadState('networkidle')
 
       // Click the "Scan Bill" button in drafts tab
       const scanButton = page.locator('button:has-text("Scan Bill")').first()
@@ -191,7 +190,6 @@ test.describe('Photo-to-Stock (Bill Scanning)', () => {
 
       await inventoryPage.goto()
       await inventoryPage.clickTab('Draft Purchases')
-      await page.waitForLoadState('networkidle')
 
       // Click on the draft to open review
       const draftCard = page.locator('button:has-text("DRAFT")')
@@ -245,7 +243,6 @@ test.describe('Photo-to-Stock (Bill Scanning)', () => {
 
       await inventoryPage.goto()
       await inventoryPage.clickTab('Draft Purchases')
-      await page.waitForLoadState('networkidle')
 
       const draftCard = page.locator('button:has-text("DRAFT")')
       await expect(draftCard.first()).toBeVisible({ timeout: 5000 })
@@ -312,7 +309,6 @@ test.describe('Photo-to-Stock (Bill Scanning)', () => {
 
       await inventoryPage.goto()
       await inventoryPage.clickTab('Draft Purchases')
-      await page.waitForLoadState('networkidle')
 
       const draftCard = page.locator('button:has-text("DRAFT")')
       await expect(draftCard.first()).toBeVisible({ timeout: 5000 })
@@ -323,7 +319,6 @@ test.describe('Photo-to-Stock (Bill Scanning)', () => {
       await expect(confirmBtn).toBeVisible({ timeout: 3000 })
       await confirmBtn.click()
       // Verify the confirm API was called
-      await page.waitForLoadState('networkidle')
       expect(confirmCalled).toBe(true)
     })
 
@@ -379,7 +374,6 @@ test.describe('Photo-to-Stock (Bill Scanning)', () => {
 
       await inventoryPage.goto()
       await inventoryPage.clickTab('Draft Purchases')
-      await page.waitForLoadState('networkidle')
 
       const draftCard = page.locator('button:has-text("DRAFT")')
       await expect(draftCard.first()).toBeVisible({ timeout: 5000 })
@@ -389,7 +383,6 @@ test.describe('Photo-to-Stock (Bill Scanning)', () => {
       const cancelBtn = page.locator('button:has-text("Cancel Draft")')
       await expect(cancelBtn).toBeVisible({ timeout: 3000 })
       await cancelBtn.click()
-      await page.waitForLoadState('networkidle')
       expect(cancelCalled).toBe(true)
     })
   })
@@ -503,7 +496,6 @@ test.describe('Photo-to-Stock (Bill Scanning)', () => {
       await scanModal.assertSuccess()
 
       // Wait for modal to close / draft to open
-      await page.waitForLoadState('networkidle')
 
       // Re-open and upload again — API should return duplicate: true
       // The UI may or may not block this, but the API returns the flag

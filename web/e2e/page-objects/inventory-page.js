@@ -18,20 +18,28 @@ class InventoryPage {
     this.heading = page.locator('h1.font-serif:text("Inventory")')
     this.refreshButton = page.locator('button[title="Refresh"]')
 
-    // Alert banners
-    this.outOfStockBanner = page.locator('div.border-tibetan\\/30:has-text("out of stock")')
-    this.lowStockBanner = page.locator('div.border-amber-500\\/30:has-text("running low")')
+    // Alert banners — see app/pos/inventory/page.jsx
+    this.outOfStockBanner = page.locator('[data-testid="out-of-stock-banner"]')
+      .or(page.locator('div.border-tibetan\\/30:has-text("out of stock")'))
+      .first()
+    this.lowStockBanner = page.locator('[data-testid="low-stock-banner"]')
+      .or(page.locator('div.border-amber-500\\/30:has-text("running low")'))
+      .first()
 
-    // Tabs
-    this.tabButtons = page.locator('div.flex.gap-1 button, div.flex.gap-1.px-4.pt-3 button')
+    // Tabs — testid'd container holds all tab buttons
+    this.tabButtons = page.locator('[data-testid="inventory-tabs"] button')
 
     // Stock tab specific
     this.searchInput = page.locator('input[placeholder="Search by name or SKU..."]')
-    this.scanBillButton = page.locator('button:has(svg.lucide-camera)').first()
-    this.filterButtons = page.locator('div.flex.gap-1 button')
+    this.scanBillButton = page.locator('[data-testid="inventory-scan-btn"]')
+      .or(page.locator('button:has(svg.lucide-camera)').first())
+      .first()
+    this.filterButtons = page.locator('[data-testid="inventory-filters"] button[data-testid^="inventory-filter-"]')
 
     // Individual filter: ALL, LOW, OUT
-    this.filterButton = (name) => page.locator(`div.flex.gap-1 button:has-text("${name}")`)
+    this.filterButton = (name) => page.locator(`[data-testid="inventory-filter-${name}"]`)
+      .or(page.locator(`div.flex.gap-1 button:has-text("${name}")`))
+      .first()
 
     // Stock table
     this.stockTable = page.locator('table.w-full')
@@ -54,18 +62,27 @@ class InventoryPage {
 
   async goto() {
     await this.page.goto('/pos/inventory')
-    await this.page.waitForLoadState('networkidle')
   }
 
   // ── Tab Navigation ──────────────────────────────────────────────────
 
   /**
-   * Click a tab by its label.
-   * Valid tabs: Stock Levels, Draft Purchases, Predictions, Movement History
+   * Click a tab by its label OR id.
+   * Tab IDs (from app/pos/inventory/page.jsx TABS array): stock, draft, predictions, movements.
+   * Labels: "Stock Levels", "Draft Purchases", "Predictions", "Movement History".
    */
   async clickTab(tabName) {
-    const tab = this.page.locator(`button:has-text("${tabName}")`).first()
-    await tab.click()
+    const idMap = {
+      'Stock Levels': 'stock',
+      'Draft Purchases': 'draft',
+      'Predictions': 'predictions',
+      'Movement History': 'movements',
+    }
+    const id = idMap[tabName] ?? tabName
+    const byTestid = this.page.locator(`[data-testid="inventory-tab-${id}"]`)
+    const byLabel = this.page.locator(`[data-testid="inventory-tabs"] button:has-text("${tabName}")`)
+    const fallback = this.page.locator(`button:has-text("${tabName}")`).first()
+    await byTestid.or(byLabel).or(fallback).first().click()
   }
 
   // ── Search & Filter ─────────────────────────────────────────────────

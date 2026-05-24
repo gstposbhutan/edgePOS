@@ -11,7 +11,7 @@
 const HEADING = 'h1:text-is("Khata (Credit)")'
 const SEARCH_INPUT = 'input[placeholder="Search by name or phone..."]'
 const NEW_BUTTON = 'button:has-text("New")'
-const ACCOUNT_ROW = '[class*="bg-card"]' // account rows are buttons with bg-card
+const ACCOUNT_ROW = '[data-testid="khata-account-row"]'
 const EMPTY_STATE = 'text=No khata accounts yet'
 const EMPTY_SEARCH = 'text=No accounts match your search'
 const LOADING_SPINNER = '.animate-spin'
@@ -32,8 +32,11 @@ class KhataListPage {
   async searchAccounts(query) {
     const input = this.page.locator(SEARCH_INPUT)
     await input.fill(query)
-    // Wait for the filtered list to settle
-    await this.page.waitForTimeout(300)
+    const { expect } = require('@playwright/test')
+    await expect(input).toHaveValue(query)
+    await expect(
+      this.page.locator(ACCOUNT_ROW).first().or(this.page.locator(EMPTY_SEARCH))
+    ).toBeVisible()
   }
 
   async clickCreateAccount() {
@@ -56,9 +59,7 @@ class KhataListPage {
    * @returns {Promise<number>}
    */
   async getAccountCount() {
-    // Each account is rendered as a button with class containing "bg-card" inside the scrollable list
-    const rows = this.page.locator('button.w-full.text-left')
-    return rows.count()
+    return this.page.locator(ACCOUNT_ROW).count()
   }
 
   /**
@@ -91,7 +92,10 @@ class KhataListPage {
    * @returns {import('@playwright/test').Locator}
    */
   getAccountRow(name) {
-    return this.page.locator('button.w-full.text-left').filter({ hasText: name })
+    const safe = name.replace(/"/g, '\\"')
+    return this.page.locator(`${ACCOUNT_ROW}[data-account-name="${safe}"]`)
+      .or(this.page.locator(ACCOUNT_ROW).filter({ hasText: name }))
+      .first()
   }
 
   /**

@@ -31,11 +31,23 @@ Tests run across multiple auth projects (defined in `web/playwright.config.js`):
 | Project | Auth | Used For |
 |---------|------|----------|
 | `auth-setup` | None | Signs in users, saves storage state to `e2e/storage/*.json` |
-| `retailer` | retailer-auth.json | Default project for v1-v8 and c1-c5 specs |
-| `manager` | manager-auth.json | v2+ specs with cancel/refund permissions |
-| `owner` | owner-auth.json | v2+ specs with full permissions |
+| `retailer` | retailer-auth.json (OWNER) | v2*, v8, v9, v10, c1/c2/c4/c5, system, f1-f5 |
+| `manager` | manager-auth.json | v3, v4, v5, v6, v7 (these hard-code `test.use` so they only run here) |
 | `unauthenticated` | None | v1-auth, c3-whatsapp-otp |
-| `cashier` | cashier-auth.json | v9-cashier-access (via inline `test.use`) |
+| `pocketbase-auth-flow` | None | p0 — exercises the login form itself |
+| `pocketbase-pos` | pocketbase-auth.json | p1 — POS/cart/settings against PocketBase backend |
+
+`cashier-auth.json` and `owner-auth.json` are used via inline `test.use` inside specs (v9 and v6 respectively); they aren't tied to a project.
+
+The `owner` project was removed — `owner-auth.json` is the same user as `retailer-auth.json` (both TEST_USERS[2]). The `manager`/`owner` projects ran identical `testMatch` patterns, doubling work for no behavioral coverage gain.
+
+### Re-seed control
+
+`globalSetup` skips `seedDatabase()` if the sentinel rows already exist. Override with:
+- `E2E_FORCE_SEED=1` — re-seed unconditionally (use after schema changes)
+- `E2E_SKIP_SEED=1` — skip the check entirely
+
+Cart cleanup still runs on every startup.
 
 ## Test Data
 
@@ -198,12 +210,26 @@ Auth: manager-auth.json
 
 ## Known Gaps
 
-- **CREDIT OTP flow**: Bypassed in v2h tests — see `credit-otp-flow.md` for implementation plan
-- **v3 WHATSAPP filter**: `test.fixme` — POS_FILTERS doesn't include WHATSAPP
-- **v3 Cancel with reason**: `test.fixme` — needs cancel API implementation
-- **v3 Status timeline**: Skipped — `order_status_log` not seeded
-- **v3 Partial/full refund**: Skipped for manager/owner projects when prior project mutated order data
-- **v2e Payment scanner**: All `test.fixme` — payment scanner not implemented
+### Tests blocked on product work (do not "fix" the test — fix the product)
+
+Each fixme below has a comment in the spec describing the missing product code.
+
+| File | Test | What's missing in the product |
+|------|------|-------------------------------|
+| `v2e-checkout.spec.js` | 4× payment-scanner fixmes | `PaymentScannerModal` component exists at `components/pos/payment-scanner-modal.jsx` but isn't wired into the POS checkout flow |
+| `c1-marketplace.spec.js` | category grouping | `app/shop/[id]/page.jsx` renders a flat product grid |
+| `c1-marketplace.spec.js` | wa.me per-product link | no per-product WhatsApp CTA on the store page |
+| `c1-marketplace.spec.js` | powered-by footer | no footer rendered |
+| `c1-marketplace.spec.js` | store page title | layout doesn't set a store-specific `<title>` |
+| `v3-order-management.spec.js` | WHATSAPP filter | `POS_FILTERS` array doesn't include `WHATSAPP` |
+| `system-order-state-machine.spec.js` | PROCESSING / REFUND_REJECTED / REFUNDED transitions, cancel-restores-stock | no API endpoints for those transitions; stock restoration lives in a DB trigger |
+
+### Skipped at runtime (data dependency)
+
+- `v3 Status timeline` — `order_status_log` not always populated; assertion gates on visibility
+- `v3 Partial/full refund` — defensive skip when a prior test in the same run already mutated the seed order
+- `v6 Khata` — 2 skips when prior payment tests haven't populated the ledger
+- `c2/c4/c5 WhatsApp` — skipped when the gateway at `WHATSAPP_GATEWAY_URL` is unreachable
 
 ## Running Tests
 

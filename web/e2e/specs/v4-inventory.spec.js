@@ -39,7 +39,6 @@ test.describe('Inventory Management', () => {
 
     test('search filters products by name', async ({ page }) => {
       await inventoryPage.searchProducts('Druk')
-      await page.waitForLoadState('networkidle')
 
       const count = await inventoryPage.getProductCount()
       expect(count).toBeGreaterThanOrEqual(1)
@@ -54,7 +53,6 @@ test.describe('Inventory Management', () => {
 
     test('search filters products by SKU', async ({ page }) => {
       await inventoryPage.searchProducts('DRK-GEN')
-      await page.waitForLoadState('networkidle')
 
       const count = await inventoryPage.getProductCount()
       expect(count).toBeGreaterThanOrEqual(1)
@@ -62,7 +60,6 @@ test.describe('Inventory Management', () => {
 
     test('filter ALL shows all products', async ({ page }) => {
       await inventoryPage.filterBy('All')
-      await page.waitForLoadState('networkidle')
 
       const count = await inventoryPage.getProductCount()
       expect(count).toBeGreaterThanOrEqual(TEST_PRODUCTS.length)
@@ -70,7 +67,6 @@ test.describe('Inventory Management', () => {
 
     test('filter LOW shows only low-stock products', async ({ page }) => {
       await inventoryPage.filterBy(/Low/)
-      await page.waitForLoadState('networkidle')
 
       const count = await inventoryPage.getProductCount()
       // Products with stock > 0 and stock <= reorder_point (default 10)
@@ -86,7 +82,6 @@ test.describe('Inventory Management', () => {
       // Click the "Out" filter button
       const outButton = page.locator('div.flex.gap-1 button').filter({ hasText: /Out/ }).first()
       await outButton.click()
-      await page.waitForLoadState('networkidle')
 
       const count = await inventoryPage.getProductCount()
       if (count > 0) {
@@ -106,7 +101,6 @@ test.describe('Inventory Management', () => {
 
     test('empty state when filter has no matches', async ({ page }) => {
       await inventoryPage.searchProducts('ZZZZZZ-NONEXISTENT-PRODUCT')
-      await page.waitForLoadState('networkidle')
       await inventoryPage.assertEmpty()
     })
 

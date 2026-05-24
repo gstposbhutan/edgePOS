@@ -58,7 +58,6 @@ test.describe('Order Management', () => {
 
       await ordersPage.searchOrders(orderNo)
       // Wait for filtered results to render
-      await page.waitForLoadState('networkidle')
 
       const count = await ordersPage.getOrderCount()
       expect(count).toBeGreaterThanOrEqual(1)
@@ -70,7 +69,6 @@ test.describe('Order Management', () => {
       const orderNo = order.order_no || `SHOP-2026-${order.id.slice(-3)}`
 
       await ordersPage.searchOrders(orderNo)
-      await page.waitForLoadState('networkidle')
 
       const count = await ordersPage.getOrderCount()
       expect(count).toBeGreaterThanOrEqual(1)
@@ -78,7 +76,6 @@ test.describe('Order Management', () => {
 
     test('filter by COMPLETED shows only completed orders', async ({ page }) => {
       await ordersPage.filterBy('Completed')
-      await page.waitForLoadState('networkidle')
 
       const count = await ordersPage.getOrderCount()
       // With COMPLETED filter active, all visible orders should have completed statuses
@@ -93,7 +90,6 @@ test.describe('Order Management', () => {
 
     test('filter by CANCELLED shows only cancelled orders', async ({ page }) => {
       await ordersPage.filterBy('Cancelled')
-      await page.waitForLoadState('networkidle')
 
       const count = await ordersPage.getOrderCount()
       if (count > 0) {
@@ -105,10 +101,13 @@ test.describe('Order Management', () => {
       }
     })
 
+    // BLOCKED ON PRODUCT: web/app/pos/orders/page.jsx defines
+    //   POS_FILTERS = ['ALL', 'ACTIVE', 'COMPLETED', 'CANCELLED', 'REFUNDS']
+    // The WHATSAPP filter only exists under the SALES section. Unblock by
+    // adding 'WHATSAPP' to POS_FILTERS or by switching this test to the
+    // /pos/orders?section=SALES tab.
     test.fixme('filter by WHATSAPP shows only WhatsApp-sourced orders', async ({ page }) => {
-      // POS_FILTERS does not include WHATSAPP — filter is only in SALES section
       await ordersPage.filterBy('Whatsapp')
-      await page.waitForLoadState('networkidle')
 
       const count = await ordersPage.getOrderCount()
       // All visible orders should have the WA badge
@@ -121,7 +120,6 @@ test.describe('Order Management', () => {
 
     test('empty state shows when search matches nothing', async ({ page }) => {
       await ordersPage.searchOrders('ZZZZZZ-NONEXISTENT-ORDER')
-      await page.waitForLoadState('networkidle')
       await ordersPage.assertEmpty()
     })
 
@@ -251,27 +249,43 @@ test.describe('Order Management', () => {
       await detailPage.assertCancelButtonNotVisible()
     })
 
-    test.fixme('cancel with reason updates status to CANCELLED', async ({ page }) => {
-      // TODO: CASHIER lacks orders:cancel permission; needs manager/owner project
+    test('cancel with reason updates status to CANCELLED', async ({ page }) => {
+      // v3 runs only under the 'manager' project (see playwright.config.js);
+      // manager has orders:cancel.
       const draftOrder = TEST_ORDERS.find(o => o.status === 'DRAFT')
-      if (!draftOrder) return
+      expect(draftOrder, 'A DRAFT seed order must exist for cancel test').toBeDefined()
 
       await detailPage.goto(draftOrder.id)
+
+      // If a prior run already cancelled this order, the button is hidden — skip
+      // explicitly so the failure mode is informative.
+      const statusText = await detailPage.getStatus()
+      test.skip(statusText !== 'Draft', `Order is ${statusText}, not Draft — already cancelled by an earlier run`)
+
       await detailPage.clickCancelOrder()
 
-      // Cancel modal should appear
       const modal = page.locator('[role="dialog"]')
       await expect(modal).toBeVisible()
 
-      // Enter reason
       const reasonInput = modal.locator('input[placeholder="e.g. Customer changed mind, wrong item..."]')
-      await reasonInput.fill('Test cancellation — E2E')
+      const reason = `E2E cancel — ${Date.now()}`
+      await reasonInput.fill(reason)
 
-      // Submit
+      // Verify the cancel POST is fired with the typed reason — not just that
+      // the modal closes (which can happen on a no-op too).
+      const cancelResponse = page.waitForResponse(
+        (res) => res.url().includes(`/api/pos/orders/${draftOrder.id}/cancel`) && res.request().method() === 'POST'
+      )
+
       await modal.getByRole('button', { name: /Cancel Order/i }).click()
 
-      // Modal should close
-      await expect(modal).not.toBeVisible({ timeout: 10000 })
+      const res = await cancelResponse
+      const payload = JSON.parse(res.request().postData())
+      expect(payload.reason).toBe(reason)
+      expect(res.ok()).toBe(true)
+
+      await expect(modal).not.toBeVisible()
+      await expect(page.getByText('Cancelled', { exact: false })).toBeVisible()
     })
 
     test('stock restored notice shown in cancel modal', async ({ page }) => {

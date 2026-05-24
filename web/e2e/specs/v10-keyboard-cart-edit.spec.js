@@ -1,110 +1,88 @@
 const { test, expect } = require('@playwright/test')
-const { TEST_PRODUCTS, TEST_USERS } = require('../fixtures/test-data')
-
-const MANAGER_USER = TEST_USERS[1]
+const { TEST_PRODUCTS } = require('../fixtures/test-data')
+const { clearCart } = require('./v2-helpers')
 
 test.describe('Keyboard POS Cart Edit', () => {
   test.use({ storageState: 'e2e/storage/manager-auth.json' })
 
   test.beforeEach(async ({ page }) => {
-    // Navigate to keyboard POS and add an item via search
+    // Each test needs a fresh cart — without this the qty accumulates across
+    // tests and the Escape-reverts assertion races with the prior add.
+    await clearCart()
     await page.goto('/pos')
-    await page.waitForLoadState('networkidle')
 
-    // Type a product name to open search modal
-    const productName = TEST_PRODUCTS[0].name.substring(0, 4)
-    await page.keyboard.press(productName.charAt(0))
-    await page.waitForTimeout(300)
+    // Pressing any printable key in keyboard POS opens the product search modal
+    // (see app/pos/page.jsx keyDown handler) and pre-fills with that character.
+    const productInitial = TEST_PRODUCTS[0].name.charAt(0)
+    await page.keyboard.press(productInitial)
 
-    // If search modal opens, try to add first product
-    const searchModal = page.locator('text=Product Search').or(page.locator('text=Search Results'))
-    const modalVisible = await searchModal.isVisible({ timeout: 3000 }).catch(() => false)
-    test.skip(!modalVisible, 'Search modal did not open in beforeEach')
+    const searchModal = page.locator('[data-testid="keyboard-product-search-modal"]')
+    await expect(searchModal).toBeVisible()
 
-    // Press 1 to add first product
+    // Wait for at least one result row to render before pressing the numeric
+    // shortcut — the search is async (server roundtrip).
+    await expect(searchModal.locator('table tbody tr').first()).toBeVisible()
+
+    // Numeric shortcut "1" adds results[0] and closes the modal.
     await page.keyboard.press('1')
-    await page.waitForTimeout(500)
-    await page.keyboard.press('Escape')
+    await expect(searchModal).not.toBeVisible()
+
+    // Cart row appears for the just-added product. Qty defaults to 1 — wait
+    // for that to be reflected so downstream reads don't race with the add.
+    await expect(page.locator('table tbody tr').first()).toBeVisible()
+    await expect(page.locator('table tbody tr').first().locator('td').nth(1)).toHaveText('1')
   })
 
   test('Enter confirms quantity edit in cart table', async ({ page }) => {
-    // Check if there's an item in the cart table
-    const cartRows = page.locator('table tbody tr')
-    const rowCount = await cartRows.count()
-    test.skip(rowCount === 0, 'No cart rows available')
-
-    // Select first row and press Enter to start editing
     await page.keyboard.press('ArrowDown')
     await page.keyboard.press('Enter')
 
-    // Wait for qty input to appear
-    const qtyInput = page.locator('input[type="number"][min="1"]')
-    await expect(qtyInput.first()).toBeVisible({ timeout: 3000 })
+    const qtyInput = page.locator('input[type="number"][min="1"]').first()
+    await expect(qtyInput).toBeVisible()
+    await expect(qtyInput).toBeFocused()
 
-    // Clear and type new quantity
-    await qtyInput.first().fill('3')
-
-    // Press Enter to confirm
+    await qtyInput.fill('3')
     await page.keyboard.press('Enter')
-    await page.waitForTimeout(500)
 
-    // Qty input should be gone (edit mode ended)
-    await expect(qtyInput.first()).not.toBeVisible({ timeout: 2000 })
-
-    // Cart table should show the new quantity
-    const qtyCell = page.locator('table tbody tr').first().locator('td').nth(1)
-    const qtyText = await qtyCell.textContent()
-    expect(qtyText.trim()).toBe('3')
+    await expect(qtyInput).not.toBeVisible()
+    await expect(page.locator('table tbody tr').first().locator('td').nth(1)).toHaveText('3')
   })
 
   test('Tab confirms edit and stays on page', async ({ page }) => {
-    const cartRows = page.locator('table tbody tr')
-    const rowCount = await cartRows.count()
-    test.skip(rowCount === 0, 'No cart rows available')
-
     await page.keyboard.press('ArrowDown')
     await page.keyboard.press('Enter')
 
-    const qtyInput = page.locator('input[type="number"][min="1"]')
-    await expect(qtyInput.first()).toBeVisible({ timeout: 3000 })
+    const qtyInput = page.locator('input[type="number"][min="1"]').first()
+    await expect(qtyInput).toBeVisible()
+    // The cart-table component runs a setTimeout(20) to .select() the input
+    // after mounting. fill() races with that focus call. Wait for focus.
+    await expect(qtyInput).toBeFocused()
 
-    await qtyInput.first().fill('5')
+    await qtyInput.fill('5')
     await page.keyboard.press('Tab')
-    await page.waitForTimeout(500)
 
-    // Should still be on POS page (Tab doesn't navigate to browser chrome)
     expect(page.url()).toContain('/pos')
-
-    // Edit mode should have ended
-    await expect(qtyInput.first()).not.toBeVisible({ timeout: 2000 })
-
-    // Quantity should be updated
-    const qtyCell = page.locator('table tbody tr').first().locator('td').nth(1)
-    const qtyText = await qtyCell.textContent()
-    expect(qtyText.trim()).toBe('5')
+    await expect(qtyInput).not.toBeVisible()
+    await expect(page.locator('table tbody tr').first().locator('td').nth(1)).toHaveText('5')
   })
 
   test('Escape cancels edit and reverts to original qty', async ({ page }) => {
-    const cartRows = page.locator('table tbody tr')
-    const rowCount = await cartRows.count()
-    test.skip(rowCount === 0, 'No cart rows available')
-
-    // Get original qty
     const qtyCell = page.locator('table tbody tr').first().locator('td').nth(1)
-    const originalQty = await qtyCell.textContent()
+    const originalQty = (await qtyCell.textContent()).trim()
 
     await page.keyboard.press('ArrowDown')
     await page.keyboard.press('Enter')
 
-    const qtyInput = page.locator('input[type="number"][min="1"]')
-    await expect(qtyInput.first()).toBeVisible({ timeout: 3000 })
+    const qtyInput = page.locator('input[type="number"][min="1"]').first()
+    await expect(qtyInput).toBeVisible()
+    // The cart-table component runs a setTimeout(20) to .select() the input
+    // after mounting. fill() races with that focus call. Wait for focus.
+    await expect(qtyInput).toBeFocused()
 
-    await qtyInput.first().fill('99')
+    await qtyInput.fill('99')
     await page.keyboard.press('Escape')
-    await page.waitForTimeout(500)
 
-    // Qty should revert to original
-    const revertedQty = await qtyCell.textContent()
-    expect(revertedQty.trim()).toBe(originalQty.trim())
+    await expect(qtyInput).not.toBeVisible()
+    await expect(qtyCell).toHaveText(originalQty)
   })
 })

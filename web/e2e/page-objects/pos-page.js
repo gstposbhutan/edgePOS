@@ -21,8 +21,9 @@ class PosPage {
     // Product search input
     this.searchInput = page.getByPlaceholder('Search products by name or SKU...')
 
-    // Product grid container (the grid inside the scrollable area)
-    this.productGrid = page.locator('.grid.grid-cols-2.sm\\:grid-cols-3')
+    // Product grid container — see web/components/pos/product-panel.jsx
+    this.productGrid = page.locator('[data-testid="product-grid"]')
+    this.productCards = page.locator('[data-testid="product-card"]')
 
     // Empty state
     this.emptyProductsMessage = page.getByText('No products found')
@@ -54,11 +55,19 @@ class PosPage {
   // ── Product helpers ─────────────────────────────────────────────────
 
   /**
-   * Returns the locator for a product card button matching the given name.
-   * Product cards are <button> elements containing the product name text.
+   * Returns the locator for the product card with the given name.
+   * Uses the data-product-name attribute exposed by product-panel.jsx, with
+   * a hasText fallback for older builds before the attr was added.
    */
   getProductByName(name) {
-    return this.productGrid.locator('button', { hasText: name }).first()
+    const safe = name.replace(/"/g, '\\"')
+    return this.page.locator(`[data-testid="product-card"][data-product-name="${safe}"]`)
+      .or(this.productCards.filter({ hasText: name }).first())
+      .first()
+  }
+
+  getProductById(id) {
+    return this.page.locator(`[data-testid="product-card"][data-product-id="${id}"]`)
   }
 
   /**
@@ -87,10 +96,12 @@ class PosPage {
 
     // addItem is async but not awaited by the modal handler — wait for
     // the item to appear in the cart panel before returning.
-    const cartItem = this.page.locator(
-      '.flex.flex-col.gap-1\\.5.p-2\\.5.rounded-lg.border',
-      { hasText: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`) }
-    ).first()
+    const cartItem = this.page.locator('[data-testid="cart-item"]', { hasText: name })
+      .or(this.page.locator(
+        '.flex.flex-col.gap-1\\.5.p-2\\.5.rounded-lg.border',
+        { hasText: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`) }
+      ))
+      .first()
     await expect(cartItem).toBeVisible({ timeout: 5000 })
   }
 
@@ -116,7 +127,7 @@ class PosPage {
     } catch {
       // No loading state — products are already rendered
     }
-    return this.productGrid.locator('button').count()
+    return this.productCards.count()
   }
 
   /**

@@ -118,12 +118,13 @@ export function ProductSearchModal({ open, initialQuery = '', entityId, onAdd, o
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background/95 backdrop-blur-sm">
+    <div data-testid="keyboard-product-search-modal" className="fixed inset-0 z-50 flex flex-col bg-background/95 backdrop-blur-sm">
       <div className="border-b border-border px-4 py-3 flex items-center gap-3">
         <Search className="h-5 w-5 text-muted-foreground shrink-0" />
         <input
           ref={inputRef}
           type="text"
+          data-testid="keyboard-product-search-input"
           value={query}
           onChange={e => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}

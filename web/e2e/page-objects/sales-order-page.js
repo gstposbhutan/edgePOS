@@ -54,13 +54,13 @@ class SalesOrderPage {
     this.viewOrderButton = page.getByRole('button', { name: 'View Order', exact: true })
     this.viewOrdersButton = page.getByRole('button', { name: /view orders/i })
 
-    // ── Product search modal ─────────────────────────────────────────
-    this.searchModal = page.locator('.fixed.inset-0.z-50')
-    this.searchInput = page.locator('.fixed.inset-0.z-50 input[type="text"]')
-    this.searchResults = page.locator('.fixed.inset-0.z-50 table tbody tr')
-    this.searchQtyInput = page.locator('.fixed.inset-0.z-50 input[type="number"]')
-    this.searchCloseButton = page.locator('.fixed.inset-0.z-50 button:has-text("Esc")')
-    this.searchNoResults = page.locator('.fixed.inset-0.z-50').locator('text=No products found')
+    // ── Product search modal — testids exposed by app/salesorder/page.jsx ──
+    this.searchModal = page.locator('[data-testid="product-search-modal"]')
+    this.searchInput = this.searchModal.locator('[data-testid="product-search-input"]')
+    this.searchResults = this.searchModal.locator('[data-testid="product-search-result"]')
+    this.searchQtyInput = this.searchModal.locator('input[type="number"]')
+    this.searchCloseButton = this.searchModal.locator('button:has-text("Esc")')
+    this.searchNoResults = this.searchModal.locator('text=No products found')
 
     // ── Loading spinner ──────────────────────────────────────────────
     this.loadingSpinner = page.locator('svg.lucide-loader-2.animate-spin')
@@ -68,10 +68,9 @@ class SalesOrderPage {
 
   // ── Navigation ──────────────────────────────────────────────────────
 
-  /** Navigate to the Sales Order page and wait for network idle. */
+  /** Navigate to the Sales Order page. */
   async goto() {
     await this.page.goto('/salesorder')
-    await this.page.waitForLoadState('networkidle')
   }
 
   // ── Customer Details ────────────────────────────────────────────────
@@ -132,19 +131,9 @@ class SalesOrderPage {
    */
   async searchProduct(query) {
     await this.searchInput.fill(query)
-    // Wait for either results or "no results" to appear
-    await this.page.waitForTimeout(300) // debounce
-    await this.page.waitForFunction(
-      (modalSel) => {
-        const modal = document.querySelector(modalSel)
-        if (!modal) return false
-        const rows = modal.querySelectorAll('table tbody tr')
-        const noResults = modal.textContent.includes('No products found')
-        return rows.length > 0 || noResults
-      },
-      '.fixed.inset-0.z-50',
-      { timeout: 10000 }
-    )
+    // Wait for the debounced query to settle — either a result row or
+    // the explicit "no products found" message appears. No fixed sleep.
+    await expect(this.searchResults.first().or(this.searchNoResults)).toBeVisible()
   }
 
   /**

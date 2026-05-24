@@ -54,10 +54,9 @@ class CheckoutPage {
 
   // ── Navigation ──────────────────────────────────────────────────────
 
-  /** Navigate to the Checkout page and wait for network idle. */
+  /** Navigate to the Checkout page. */
   async goto() {
     await this.page.goto('/shop/checkout')
-    await this.page.waitForLoadState('networkidle')
   }
 
   /** Click the back arrow to return to /shop. */

@@ -104,6 +104,10 @@ export default function KhataPage() {
           displayed.map(account => (
             <button
               key={account.id}
+              data-testid="khata-account-row"
+              data-account-id={account.id}
+              data-account-name={account.debtor_name || account.debtor_phone}
+              data-account-phone={account.debtor_phone}
               onClick={() => router.push(`/pos/khata/${account.id}`)}
               className="w-full text-left p-3 rounded-lg border border-border bg-card hover:border-primary/40 transition-all"
             >

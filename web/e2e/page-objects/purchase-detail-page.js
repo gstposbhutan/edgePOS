@@ -24,7 +24,9 @@ class PurchaseDetailPage {
     this.page = page
 
     // ── Header locators ──────────────────────────────────────────────
-    this.orderNoText = page.locator('.font-mono.font-medium.truncate')
+    this.orderNoText = page.locator('[data-testid="purchase-order-no"]')
+      .or(page.locator('.font-mono.font-medium.truncate'))
+      .first()
     this.statusBadge = page.locator('span.rounded-full').first()
     this.refreshButton = page.locator('button[title="Refresh [F5]"]')
     this.printButton = page.getByRole('button', { name: /print/i })
@@ -72,15 +74,25 @@ class PurchaseDetailPage {
     this.backToPurchasesButton = page.getByRole('button', { name: /back to purchases/i })
 
     // ── Convert overlay (PurchaseInvoiceOverlay) ─────────────────────
-    this.convertOverlay = page.locator('.fixed.inset-0.z-50')
-    this.overlayCloseButton = page.locator('.fixed.inset-0.z-50 button:has(svg.lucide-x)').last()
-    this.payMethodSelect = page.locator('.fixed.inset-0.z-50 select').first()
-    this.supplierRefInput = page.locator('.fixed.inset-0.z-50 input[placeholder="e.g. INV-888"]')
+    // Testids on app/pos/purchases/[id]/page.jsx convert-to-invoice overlay.
+    this.convertOverlay = page.locator('[data-testid="convert-to-invoice-overlay"]')
+      .or(page.locator('.fixed.inset-0.z-50'))
+      .first()
+    this.overlayCloseButton = page.locator('[data-testid="convert-overlay-close"]')
+      .or(page.locator('.fixed.inset-0.z-50 button:has(svg.lucide-x)').last())
+      .first()
+    this.payMethodSelect = page.locator('[data-testid="convert-pay-method"]')
+      .or(page.locator('.fixed.inset-0.z-50 select').first())
+      .first()
+    this.supplierRefInput = page.locator('[data-testid="convert-supplier-ref"]')
+      .or(page.locator('.fixed.inset-0.z-50 input[placeholder="e.g. INV-888"]'))
+      .first()
     this.createInvoiceButton = page.getByRole('button', { name: /create purchase invoice/i })
     this.addBatchButtons = page.locator('button:has-text("+ Batch")')
 
     // ── Convert overlay — line items in left panel ───────────────────
-    this.convertLineItems = page.locator('.fixed.inset-0.z-50 button:has(span.text-xs.truncate)')
+    this.convertLineItems = page.locator('[data-testid="convert-line-item"]')
+      .or(page.locator('.fixed.inset-0.z-50 button:has(span.text-xs.truncate)'))
 
     // ── Loading spinner ──────────────────────────────────────────────
     this.loadingSpinner = page.locator('svg.lucide-loader-2.animate-spin')
@@ -94,7 +106,6 @@ class PurchaseDetailPage {
    */
   async goto(id) {
     await this.page.goto(`/pos/purchases/${id}`)
-    await this.page.waitForLoadState('networkidle')
   }
 
   /** Click the back arrow button to return to the purchases list. */
@@ -187,7 +198,8 @@ class PurchaseDetailPage {
    * @param {string} value
    */
   async fillBatchField(lineIndex, batchIndex, field, value) {
-    const lineEl = this.page.locator('.fixed.inset-0.z-50 .flex-1.overflow-y-auto > div').nth(lineIndex)
+    const lineEl = this.convertOverlay
+      .locator('.flex-1.overflow-y-auto > div').nth(lineIndex)
     const subBatchGrid = lineEl.locator('.grid.grid-cols-12').nth(batchIndex)
     const inputLocator = field === 'expires_at'
       ? subBatchGrid.locator('input[type="date"]')

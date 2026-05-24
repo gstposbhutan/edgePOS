@@ -23,14 +23,14 @@ class BasePage {
   }
 
   /**
-   * Wait until the page reaches a settled state — network idle
-   * and any visible loading spinner gone.
+   * Wait until any loading spinner is gone. We deliberately don't wait
+   * for `networkidle` — Supabase's realtime websocket prevents it from
+   * ever firing, which manifested as flaky 30s timeouts across the suite.
+   * Each page object should also assert a known element via assertPageLoaded.
    */
   async waitForPageLoad() {
-    await this.page.waitForLoadState('networkidle')
-    // Dismiss loading spinners if present
     const spinner = this.page.locator('[data-loading="true"], .animate-spin').first()
-    if (await spinner.isVisible({ timeout: 2000 }).catch(() => false)) {
+    if (await spinner.isVisible({ timeout: 1000 }).catch(() => false)) {
       await spinner.waitFor({ state: 'hidden', timeout: 15000 })
     }
   }

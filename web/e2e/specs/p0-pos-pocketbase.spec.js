@@ -128,8 +128,7 @@ test.describe('POS Core (PocketBase)', () => {
     await expect(searchInput).toBeVisible({ timeout: 5000 })
     await searchInput.fill('Druk')
 
-    // Should filter to show Druk products
-    await page.waitForTimeout(500) // wait for filter
+    // expect auto-retries on the debounced result — no fixed sleep needed
     await expect(page.getByText('Druk 1104 Beer', { exact: false })).toBeVisible({ timeout: 5000 })
   })
 

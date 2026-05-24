@@ -111,7 +111,7 @@ export default function InventoryPage() {
       {(outCount > 0 || lowCount > 0) && (
         <div className="px-4 pt-3 space-y-2 shrink-0">
           {outCount > 0 && (
-            <div className="flex items-center gap-2 p-3 bg-tibetan/10 border border-tibetan/30 rounded-lg">
+            <div data-testid="out-of-stock-banner" data-count={outCount} className="flex items-center gap-2 p-3 bg-tibetan/10 border border-tibetan/30 rounded-lg">
               <XCircle className="h-4 w-4 text-tibetan shrink-0" />
               <p className="text-xs text-tibetan font-medium">
                 {outCount} product{outCount > 1 ? 's' : ''} out of stock
@@ -119,6 +119,7 @@ export default function InventoryPage() {
               <Button
                 variant="ghost"
                 size="xs"
+                data-testid="view-out-of-stock"
                 className="ml-auto text-tibetan text-xs"
                 onClick={() => setFilter('OUT')}
               >
@@ -127,7 +128,7 @@ export default function InventoryPage() {
             </div>
           )}
           {lowCount > 0 && (
-            <div className="flex items-center gap-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+            <div data-testid="low-stock-banner" data-count={lowCount} className="flex items-center gap-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
               <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
               <p className="text-xs text-amber-600 font-medium">
                 {lowCount} product{lowCount > 1 ? 's' : ''} running low (≤10 units)
@@ -135,6 +136,7 @@ export default function InventoryPage() {
               <Button
                 variant="ghost"
                 size="xs"
+                data-testid="view-low-stock"
                 className="ml-auto text-amber-600 text-xs"
                 onClick={() => setFilter('LOW')}
               >
@@ -146,12 +148,14 @@ export default function InventoryPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 px-4 pt-3 shrink-0 border-b border-border pb-0">
+      <div data-testid="inventory-tabs" className="flex gap-1 px-4 pt-3 shrink-0 border-b border-border pb-0">
         {TABS.map(tab => {
           const Icon = tab.icon
           return (
             <button
               key={tab.id}
+              data-testid={`inventory-tab-${tab.id}`}
+              data-active={activeTab === tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`
                 flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 transition-colors
@@ -180,13 +184,13 @@ export default function InventoryPage() {
                 onChange={(e) => setSearch(e.target.value)}
                 className="flex-1"
               />
-              <div className="flex gap-1">
-                <Button size="sm" variant="outline" onClick={() => setReceiveOpen(true)}
+              <div data-testid="inventory-filters" className="flex gap-1">
+                <Button size="sm" variant="outline" data-testid="inventory-receive-btn" onClick={() => setReceiveOpen(true)}
                   className="gap-1.5 border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/5">
                   <PackagePlus className="h-4 w-4" />
                   <span className="hidden sm:inline text-xs">Receive</span>
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => setScanOpen(true)}
+                <Button size="sm" variant="outline" data-testid="inventory-scan-btn" onClick={() => setScanOpen(true)}
                   className="border-primary/30 text-primary hover:bg-primary/5">
                   <Camera className="h-4 w-4" />
                 </Button>
@@ -194,6 +198,8 @@ export default function InventoryPage() {
                   <Button
                     key={f}
                     size="sm"
+                    data-testid={`inventory-filter-${f}`}
+                    data-active={filter === f}
                     variant={filter === f ? 'default' : 'outline'}
                     onClick={() => setFilter(f)}
                     className={filter === f ? 'bg-primary' : ''}

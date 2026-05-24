@@ -125,8 +125,6 @@ class RiderPage extends BasePage {
    */
   async goto() {
     await this.navigate('/rider')
-    // Allow the page to finish loading orders
-    await this.page.waitForLoadState('networkidle')
   }
 
   // ── Login ──────────────────────────────────────────────────────────────

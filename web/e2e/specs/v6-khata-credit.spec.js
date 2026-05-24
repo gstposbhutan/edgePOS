@@ -340,7 +340,6 @@ test.describe('Record Payment', () => {
     await recordModal.clickSubmit()
 
     // Wait for page to refresh
-    await page.waitForLoadState('networkidle')
 
     // Transaction count should increase
     const countAfter = await khataDetail.getTransactionCount()
@@ -360,7 +359,6 @@ test.describe('Record Payment', () => {
     await recordModal.clickSubmit()
 
     // Wait for balance update
-    await page.waitForLoadState('networkidle')
 
     const balanceAfter = await khataDetail.getOutstandingBalance()
     // Parse amounts for comparison
@@ -504,7 +502,6 @@ test.describe('Set Credit Limit (OWNER only)', () => {
     await dialog.locator('button:has-text("Set Limit")').click()
     await expect(dialog).not.toBeVisible({ timeout: 10000 })
 
-    await page.waitForLoadState('networkidle')
 
     const countAfter = await khataDetail.getTransactionCount()
     expect(countAfter).toBeGreaterThan(countBefore)

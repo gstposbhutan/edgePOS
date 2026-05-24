@@ -1,9 +1,13 @@
 const { defineConfig, devices } = require('@playwright/test')
 
+// Note on parallelism: every spec mutates the same entity_id via clearCart/resetStock/
+// cleanupTestOrders in e2e/specs/v2-helpers.js. Running tests in parallel against the
+// same Supabase project causes cart/stock/order races. Keep workers:1 until the seed
+// is sharded per worker (e.g. one entity_id per worker).
 module.exports = defineConfig({
   testDir: './e2e',
   timeout: 60000,
-  expect: { timeout: 15000 },
+  expect: { timeout: 10000 },
   fullyParallel: false,
   workers: 1,
   retries: process.env.CI ? 2 : 1,
@@ -15,29 +19,31 @@ module.exports = defineConfig({
     timezoneId: 'Asia/Thimphu',
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
-    video: 'on',
+    video: 'retain-on-failure',
   },
   projects: [
     {
       name: 'auth-setup',
       testMatch: /auth-setup\.js/,
     },
+    // Default project: runs the role-agnostic POS/cart/checkout/marketplace/system flows
+    // once under cashier (retailer) auth. Anything role-gated is covered by the
+    // 'manager' project below or by inline `test.use` inside the spec itself.
     {
       name: 'retailer',
-      testMatch: /v[1-8][a-z]?-.*\.spec\.js|c[1-5]-.*\.spec\.js|system-.*\.spec\.js|f[1-5]-.*\.spec\.js/,
+      // v1-auth runs unauthenticated only; v3-v7 run under 'manager' only.
+      testMatch: /v2[a-z]?-.*\.spec\.js|v8-.*\.spec\.js|v9-.*\.spec\.js|v10-.*\.spec\.js|c[1-2]-.*\.spec\.js|c[4-5]-.*\.spec\.js|system-.*\.spec\.js|f[1-5]-.*\.spec\.js/,
       use: { ...devices['Desktop Chrome'], storageState: 'e2e/storage/retailer-auth.json' },
       dependencies: ['auth-setup'],
     },
+    // Specs that hard-code `test.use({ storageState: 'manager-auth.json' })` at file
+    // level (v3, v4, v5, v7) or declare per-describe auth (v6). Running these under
+    // multiple projects would just repeat identical work — the spec's own test.use
+    // overrides the project storageState.
     {
       name: 'manager',
-      testMatch: /v[2-8][a-z]?-.*\.spec\.js|c[4-5]-.*\.spec\.js|system-.*\.spec\.js|f[2-5]-.*\.spec\.js/,
+      testMatch: /v[34567]-.*\.spec\.js/,
       use: { ...devices['Desktop Chrome'], storageState: 'e2e/storage/manager-auth.json' },
-      dependencies: ['auth-setup'],
-    },
-    {
-      name: 'owner',
-      testMatch: /v[2-8][a-z]?-.*\.spec\.js|c[4-5]-.*\.spec\.js|system-.*\.spec\.js|f[2-5]-.*\.spec\.js/,
-      use: { ...devices['Desktop Chrome'], storageState: 'e2e/storage/owner-auth.json' },
       dependencies: ['auth-setup'],
     },
     {
@@ -45,10 +51,18 @@ module.exports = defineConfig({
       testMatch: /v1-auth\.spec\.js|c3-whatsapp-otp\.spec\.js/,
       use: { ...devices['Desktop Chrome'] },
     },
+    // p0 exercises the login form itself — must start logged out.
     {
-      name: 'pocketbase',
-      testMatch: /p[01]-.*\.spec\.js/,
+      name: 'pocketbase-auth-flow',
+      testMatch: /p0-.*\.spec\.js/,
       use: { ...devices['Desktop Chrome'] },
+    },
+    // p1 covers POS/cart/settings flows — uses saved PocketBase storage state.
+    {
+      name: 'pocketbase-pos',
+      testMatch: /p1-.*\.spec\.js/,
+      use: { ...devices['Desktop Chrome'], storageState: 'e2e/storage/pocketbase-auth.json' },
+      dependencies: ['auth-setup'],
     },
   ],
   webServer: {

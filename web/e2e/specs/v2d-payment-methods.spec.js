@@ -1,5 +1,5 @@
 const {
-  test, expect, PosPage, CartPanel, CustomerIdModal,
+  test, expect, PosPage, CartPanel, CustomerIdModal, CustomerOtpModal,
   CHEAP_PRODUCT, KHATA_ACCOUNT, TEST_PHONE, clearCart, resetStock, cleanupTestOrders,
 } = require('./v2-helpers')
 
@@ -18,6 +18,8 @@ test.describe('Payment Methods', () => {
   test.afterEach(async () => { await clearCart(); await resetStock(); await cleanupTestOrders() })
 
   test('exactly 3 payment methods shown: Online, Cash, Credit', async () => {
+    // Payment-method buttons only render when the cart has items.
+    await posPage.addProductToCart(CHEAP_PRODUCT.name)
     await cartPanel.assertPaymentMethodCount(3)
   })
 
@@ -60,19 +62,43 @@ test.describe('Payment Methods', () => {
   })
 
   test('CREDIT with valid khata account proceeds', async ({ page }) => {
+    // Mock WhatsApp OTP — no live gateway needed.
+    await page.route('**/api/auth/whatsapp/send', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, mock: true, otp: '123456' }),
+      })
+    })
+    await page.route('**/api/auth/whatsapp/verify', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true }),
+      })
+    })
+
+    const otpModal = new CustomerOtpModal(page)
+
     await posPage.addProductToCart(CHEAP_PRODUCT.name)
-    await cartPanel.selectPaymentMethod('CASH')
+    await cartPanel.selectPaymentMethod('CREDIT')
     await cartPanel.clickCheckout()
 
+    // Customer ID modal captures the phone.
     await customerIdModal.assertOpen()
     await customerIdModal.enterPhone(KHATA_ACCOUNT.debtor_phone)
     await customerIdModal.confirm()
 
-    await cartPanel.selectPaymentMethod('CREDIT')
-    await cartPanel.clickCheckout()
+    // Then the OTP modal opens for WhatsApp verification — this drives
+    // handleCreditOtpVerified, which runs the khata lookup, credit limit
+    // check, and then initiateCheckout.
+    await otpModal.assertOpen()
+    await otpModal.fillAndVerify(KHATA_ACCOUNT.debtor_phone, '123456')
 
-    const outstandingText = page.locator('text=Outstanding')
-    await expect(outstandingText).toBeVisible()
+    // CHEAP_PRODUCT is Nu. 60 → grand total 63. Outstanding 500 + 63 << 5000
+    // → credit limit passes → order lands on receipt.
+    await page.waitForURL('**/pos/order/**')
+    expect(page.url()).toContain('/pos/order/')
   })
 
   test('CREDIT checkout opens customer identification', async ({ page }) => {

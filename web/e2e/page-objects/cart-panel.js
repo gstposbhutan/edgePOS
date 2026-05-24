@@ -29,8 +29,11 @@ class CartPanel {
     this.gstLabel = page.locator('text=GST @ 5% (on taxable)')
     this.totalLabel = page.locator('span:text("Total")')
 
-    // "Select Payment Method" or "Charge Nu. ..." button
-    this.checkoutButton = page.locator('button', { hasText: /Select Payment Method|Charge Nu\.|Processing\.\.\./ })
+    // "Select Payment Method" / "Charge Nu. ..." / "Processing..." button.
+    // The label text changes by state; the data-testid stays stable.
+    this.checkoutButton = page.locator('[data-testid="checkout-btn"]')
+      .or(page.locator('button', { hasText: /Select Payment Method|Charge Nu\.|Processing\.\.\./ }))
+      .first()
 
     // Customer ID warning
     this.customerIdWarning = page.locator('text=/Customer ID required before checkout/')
@@ -40,26 +43,40 @@ class CartPanel {
 
   /**
    * Returns the locator for a cart item card containing the given name.
-   * Each cart item lives in a div with class "p-2.5 rounded-lg border".
+   * Prefers the data-item-name attribute exposed by cart-panel.jsx; falls
+   * back to the old class-chain selector for any older bundles.
    */
   getCartItemByName(name) {
-    return this.page.locator('.flex.flex-col.gap-1\\.5.p-2\\.5.rounded-lg.border', { hasText: new RegExp(`^${escapeRegex(name)}`) }).first()
+    const safe = name.replace(/"/g, '\\"')
+    return this.page.locator(`[data-testid="cart-item"][data-item-name="${safe}"]`)
+      .or(this.page.locator('[data-testid="cart-item"]', { hasText: new RegExp(`^${escapeRegex(name)}`) }))
+      .or(this.page.locator('.flex.flex-col.gap-1\\.5.p-2\\.5.rounded-lg.border', { hasText: new RegExp(`^${escapeRegex(name)}`) }))
+      .first()
   }
 
   /**
-   * Update the quantity of a cart item.
+   * Update the quantity of a cart item. The +/- click triggers an async cart
+   * update; we wait for the displayed quantity AND the cart totals to reflect
+   * the new value before returning, so downstream `getSubtotal()` etc. don't
+   * race with the server roundtrip.
+   *
    * @param {string} itemName - display name of the cart item
    * @param {number} delta   - +1 to increment, -1 to decrement
-   *
-   * In the UI the minus button is first, then the quantity span, then the plus button.
    */
   async updateQuantity(itemName, delta) {
     const item = this.getCartItemByName(itemName)
-    const qtyDiv = item.locator('div.flex.items-center.gap-1')
+    const qtyDiv = item.locator('div.flex.items-center.gap-1').first()
+    const qtySpan = qtyDiv.locator('span').first()
+    const before = parseInt((await qtySpan.textContent()).trim(), 10)
+    const expected = before + delta
+
     if (delta > 0) {
       await qtyDiv.locator('button').nth(1).click()
     } else {
       await qtyDiv.locator('button').first().click()
+    }
+    if (expected > 0) {
+      await expect(qtySpan).toHaveText(String(expected))
     }
   }
 
@@ -82,19 +99,20 @@ class CartPanel {
    */
   async applyDiscount(itemName, amount, type = 'FLAT') {
     const item = this.getCartItemByName(itemName)
-    // Click the Tag (discount) icon button
     await item.locator('button[title="Apply discount"]').click()
 
-    // Select discount type if percentage
     if (type === 'PERCENTAGE') {
       await item.locator('button', { hasText: /percent/i }).click()
     }
 
-    // Fill the inline input
     const input = item.locator('input[type="number"]')
     await input.fill(String(amount))
-    // Click OK to confirm
     await item.locator('button', { hasText: 'OK' }).click()
+
+    // The discount POST is async — wait for the inline edit form to close AND
+    // for the discount badge to appear, signaling totals have re-rendered.
+    await expect(input).not.toBeVisible()
+    await expect(item.locator('.bg-emerald-500\\/10').first()).toBeVisible()
   }
 
   /**
@@ -112,13 +130,15 @@ class CartPanel {
    */
   async overridePrice(itemName, price) {
     const item = this.getCartItemByName(itemName)
-    // Click the Pencil (price override) icon button
     await item.locator('button[title="Override price"]').click()
-    // Fill the inline input
     const input = item.locator('input[type="number"]')
     await input.fill(String(price))
-    // Click OK to confirm
     await item.locator('button', { hasText: 'OK' }).click()
+
+    // Wait for the inline edit form to close (override POST settled).
+    await expect(input).not.toBeVisible()
+    // And for the displayed unit price to reflect the new value.
+    await expect(item.locator(`text=Nu. ${parseFloat(price).toFixed(2)}`).first()).toBeVisible()
   }
 
   // ── Payment methods ─────────────────────────────────────────────────
@@ -128,22 +148,19 @@ class CartPanel {
    * Valid values: ONLINE, CASH, CREDIT
    */
   async selectPaymentMethod(method) {
-    const labels = { ONLINE: 'Online', CASH: 'Cash', CREDIT: 'Credit' }
-    const label = labels[method] ?? method
-    const btn = this.page.locator('.grid.grid-cols-3 button', { hasText: new RegExp(`^${escapeRegex(label)}$`, 'i') })
+    const btn = this.page.locator(`[data-testid="payment-method-${method}"]`)
+      .or(this.page.locator('.grid.grid-cols-3 button', { hasText: new RegExp(`^${escapeRegex(method)}$`, 'i') }))
+      .first()
     await btn.click()
   }
 
   /**
    * Assert that a specific payment method button is visually selected.
-   * When selected, the button has a colored background (no border-border).
+   * Reads the data-active attribute exposed by cart-panel.jsx.
    */
   async assertPaymentMethodSelected(method) {
-    const labels = { ONLINE: 'Online', CASH: 'Cash', CREDIT: 'Credit' }
-    const label = labels[method] ?? method
-    const btn = this.page.locator('.grid.grid-cols-3 button', { hasText: new RegExp(`^${escapeRegex(label)}$`, 'i') })
-    // Selected buttons have text-white class
-    await expect(btn).toHaveClass(/text-white/)
+    const btn = this.page.locator(`[data-testid="payment-method-${method}"]`)
+    await expect(btn).toHaveAttribute('data-active', 'true')
   }
 
   /**
@@ -165,7 +182,7 @@ class CartPanel {
    * Assert the count of payment method buttons shown.
    */
   async assertPaymentMethodCount(count) {
-    const btns = this.page.locator('.grid.grid-cols-3 button')
+    const btns = this.page.locator('[data-testid="payment-methods"] button')
     await expect(btns).toHaveCount(count)
   }
 
@@ -173,7 +190,7 @@ class CartPanel {
    * Returns all payment method button locators.
    */
   getPaymentMethods() {
-    return this.page.locator('.grid.grid-cols-3 button')
+    return this.page.locator('[data-testid="payment-methods"] button')
   }
 
   // ── Totals ──────────────────────────────────────────────────────────
@@ -204,7 +221,7 @@ class CartPanel {
   /** Count of item cards currently in the cart. */
   async getCartItemCount() {
     await this.emptyCartMessage.waitFor({ state: 'hidden', timeout: 5000 })
-    return this.page.locator('.flex.flex-col.gap-1\\.5.p-2\\.5.rounded-lg.border').count()
+    return this.page.locator('[data-testid="cart-item"]').count()
   }
 
   /** Verify the empty cart message is visible. */

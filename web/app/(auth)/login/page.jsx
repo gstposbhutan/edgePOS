@@ -213,8 +213,8 @@ function LoginForm() {
               </div>
 
               {error && (
-                <div className="p-3 bg-tibetan/10 border border-tibetan/30 rounded-lg">
-                  <p className="text-xs text-tibetan">{error}</p>
+                <div data-testid="login-error-alert" className="p-3 bg-tibetan/10 border border-tibetan/30 rounded-lg">
+                  <p data-testid="login-error-message" className="text-xs text-tibetan">{error}</p>
                 </div>
               )}
 
@@ -257,8 +257,8 @@ function LoginForm() {
               </div>
 
               {error && (
-                <div className="p-3 bg-tibetan/10 border border-tibetan/30 rounded-lg">
-                  <p className="text-xs text-tibetan">{error}</p>
+                <div data-testid="login-error-alert" className="p-3 bg-tibetan/10 border border-tibetan/30 rounded-lg">
+                  <p data-testid="login-error-message" className="text-xs text-tibetan">{error}</p>
                 </div>
               )}
 
@@ -291,7 +291,7 @@ function LoginForm() {
                 <label className="text-sm font-medium text-foreground text-center block">
                   Enter 6-digit code
                 </label>
-                <div className="flex gap-2 justify-center">
+                <div data-testid="otp-input-row" className="flex gap-2 justify-center">
                   {[0, 1, 2, 3, 4, 5].map(i => (
                     <Input
                       key={i}
@@ -331,8 +331,8 @@ function LoginForm() {
               </div>
 
               {error && (
-                <div className="p-3 bg-tibetan/10 border border-tibetan/30 rounded-lg">
-                  <p className="text-xs text-tibetan">{error}</p>
+                <div data-testid="login-error-alert" className="p-3 bg-tibetan/10 border border-tibetan/30 rounded-lg">
+                  <p data-testid="login-error-message" className="text-xs text-tibetan">{error}</p>
                 </div>
               )}
 

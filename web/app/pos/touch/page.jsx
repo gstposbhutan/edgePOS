@@ -337,11 +337,17 @@ export default function PosPage() {
   async function handleCustomerIdentified(whatsapp) {
     await setCustomerIdentity({ whatsapp, buyerHash: null })
     setShowCustomerModal(false)
-    // Look up khata account for the identified customer
+
+    // CREDIT requires WhatsApp OTP verification before we touch the khata
+    // ledger. Route through the same OTP gate as handleCheckout uses for
+    // an already-identified customer — without this, initiateCheckout
+    // skips the credit-limit check in handleCreditOtpVerified and the
+    // DB trigger khata_debit_on_confirm rejects the order.
     if (paymentMethod === 'CREDIT') {
-      const { account } = await lookupAccount(whatsapp)
-      setKhataAccount(account)
+      setShowCreditOtp(true)
+      return
     }
+
     await initiateCheckout()
   }
 

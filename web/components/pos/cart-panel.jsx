@@ -151,10 +151,12 @@ export function CartPanel({
           {/* Payment method */}
           <div className="space-y-1.5">
             <p className="text-xs font-medium text-muted-foreground">Payment Method</p>
-            <div className="grid grid-cols-3 gap-1.5">
+            <div data-testid="payment-methods" className="grid grid-cols-3 gap-1.5">
               {PAYMENT_METHODS.map(method => (
                 <button
                   key={method.id}
+                  data-testid={`payment-method-${method.id}`}
+                  data-active={paymentMethod === method.id}
                   onClick={() => onSelectPayment(method.id)}
                   className={`
                     py-1.5 px-2 rounded-lg text-xs font-medium border transition-all
@@ -223,6 +225,8 @@ export function CartPanel({
 
           {/* Checkout */}
           <Button
+            data-testid="checkout-btn"
+            data-loading={checkoutLoading}
             onClick={onCheckout}
             disabled={!canCheckout || checkoutLoading}
             className="w-full bg-primary hover:bg-primary/90 h-11 text-base font-semibold"
@@ -288,7 +292,12 @@ function CartItem({ item, canDiscount, onUpdateQty, onRemove, onApplyDiscount, o
   }
 
   return (
-    <div className="flex flex-col gap-1.5 p-2.5 rounded-lg border border-border bg-card">
+    <div
+      data-testid="cart-item"
+      data-item-id={item.id}
+      data-item-name={item.name}
+      className="flex flex-col gap-1.5 p-2.5 rounded-lg border border-border bg-card"
+    >
       {/* Top row — name + remove */}
       <div className="flex items-start gap-2">
         <div className="flex-1 min-w-0">

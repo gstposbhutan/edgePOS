@@ -158,7 +158,14 @@ class KhataDetailPage {
    * @returns {import('@playwright/test').Locator}
    */
   getTransactionRow(type) {
-    return this.page.locator('div.flex.items-center.gap-3').filter({ hasText: new RegExp(`\\b${type}\\b`) })
+    return this.page.locator(`[data-testid="khata-transaction-row"][data-transaction-type="${type}"]`)
+      .or(this.page.locator('div.flex.items-center.gap-3').filter({ hasText: new RegExp(`\\b${type}\\b`) }))
+  }
+
+  /** All transaction rows (any type). */
+  getAllTransactionRows() {
+    return this.page.locator('[data-testid="khata-transaction-row"]')
+      .or(this.page.locator('div.flex.items-center.gap-3').filter({ hasText: /\b(DEBIT|CREDIT|ADJUSTMENT)\b/ }))
   }
 }
 

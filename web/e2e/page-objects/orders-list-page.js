@@ -34,12 +34,10 @@ class OrdersListPage {
 
   async goto() {
     await this.page.goto('/pos/orders')
-    await this.page.waitForLoadState('networkidle')
-    // Manager defaults to SALES section — switch to POS Orders
+    // Manager defaults to SALES section — switch to POS Orders if the tab exists.
     const posTab = this.posTabButton
-    if (await posTab.isVisible({ timeout: 3000 }).catch(() => false)) {
+    if (await posTab.isVisible({ timeout: 2000 }).catch(() => false)) {
       await posTab.click()
-      await this.page.waitForLoadState('networkidle')
     }
   }
 

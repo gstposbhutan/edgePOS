@@ -113,13 +113,14 @@ function ProductSearchModal({ open, initialQuery, entityId, onAdd, onClose }) { 
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background/95 backdrop-blur-sm">
+    <div data-testid="product-search-modal" className="fixed inset-0 z-50 flex flex-col bg-background/95 backdrop-blur-sm">
       {/* Search input */}
       <div className="border-b border-border px-4 py-3 flex items-center gap-3">
         <Search className="h-5 w-5 text-muted-foreground shrink-0" />
         <input
           ref={inputRef}
           type="text"
+          data-testid="product-search-input"
           value={query}
           onChange={e => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -162,6 +163,8 @@ function ProductSearchModal({ open, initialQuery, entityId, onAdd, onClose }) { 
               {results.map((product, i) => (
                 <tr
                   key={product.batch_id ?? product.id}
+                  data-testid="product-search-result"
+                  data-product-id={product.id}
                   onClick={() => handleAdd(product)}
                   onMouseEnter={() => setSelected(i)}
                   className={`border-b border-border cursor-pointer transition-colors ${

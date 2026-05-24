@@ -191,7 +191,11 @@ export default function KhataDetailPage() {
         ) : (
           <div className="space-y-1">
             {transactions.map(txn => (
-              <div key={txn.id} className="flex items-center gap-3 p-2 rounded-md text-xs border border-transparent hover:border-border transition-colors">
+              <div key={txn.id}
+                data-testid="khata-transaction-row"
+                data-transaction-type={txn.transaction_type}
+                data-transaction-id={txn.id}
+                className="flex items-center gap-3 p-2 rounded-md text-xs border border-transparent hover:border-border transition-colors">
                 <span className="text-muted-foreground w-20 shrink-0 tabular-nums">
                   {new Date(txn.created_at).toLocaleDateString()}
                 </span>

@@ -18,7 +18,6 @@ test.describe('Cashier Access Restriction', () => {
 
   test('cashier can access POS home', async ({ page }) => {
     await page.goto('/pos')
-    await page.waitForLoadState('networkidle')
     expect(page.url()).toContain('/pos')
     // Should not be redirected away
     expect(page.url()).not.toContain('/login')
@@ -26,7 +25,6 @@ test.describe('Cashier Access Restriction', () => {
 
   test('cashier can access orders page (POS section only)', async ({ page }) => {
     await page.goto('/pos/orders')
-    await page.waitForLoadState('networkidle')
     expect(page.url()).toContain('/pos/orders')
     // Sales tab should NOT be visible
     const salesTab = page.locator('button', { hasText: /^Sales$/ })
@@ -36,7 +34,6 @@ test.describe('Cashier Access Restriction', () => {
   for (const route of RESTRICTED_ROUTES) {
     test(`cashier is redirected from ${route.name} (${route.path})`, async ({ page }) => {
       await page.goto(route.path)
-      await page.waitForLoadState('networkidle')
       // Wait for redirect — should end up at /pos
       await page.waitForURL('**/pos', { timeout: 10000 }).catch(() => {})
       expect(page.url()).toMatch(/\/pos$/)
@@ -45,7 +42,6 @@ test.describe('Cashier Access Restriction', () => {
 
   test('cashier does not see restricted nav buttons in keyboard POS', async ({ page }) => {
     await page.goto('/pos')
-    await page.waitForLoadState('networkidle')
 
     // These nav buttons should not exist for CASHIER
     const restrictedButtons = ['Purchases', 'Products', 'Inventory', 'Khata', 'Registers']

@@ -1,51 +1,68 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { Trash2 } from "lucide-react"
 
 /**
  * Full-width cart table for keyboard POS.
  * Row selection via ↑↓. Qty editing by pressing Enter on selected row.
+ *
+ * Edit input uses `defaultValue` (uncontrolled) so cart re-syncs from the
+ * server can't clobber what the cashier is typing. Commit reads the current
+ * DOM value at the moment Enter / Tab is pressed.
  */
 export function CartTable({ items, onUpdateQty, onRemoveItem, selectedRow, onSelectRow, onEditRequest }) {
   const [editingRow, setEditingRow]   = useState(null)
-  const [editQty,    setEditQty]      = useState('')
   const editInputRef                  = useRef(null)
   const committedRef                  = useRef(false)
+  const itemsRef                      = useRef(items)
+  useEffect(() => { itemsRef.current = items }, [items])
 
-  // Called by parent keyboard handler (Enter key) to start editing the selected row
-  if (onEditRequest) onEditRequest.current = (index) => {
-    if (items[index] != null) startEdit(index)
-  }
-
-  function startEdit(index) {
+  const startEdit = useCallback((index) => {
+    if (itemsRef.current[index] == null) return
     committedRef.current = false
     setEditingRow(index)
-    setEditQty(String(items[index].quantity))
     setTimeout(() => editInputRef.current?.select(), 20)
-  }
+  }, [])
 
-  function confirmEdit(index) {
+  const confirmEdit = useCallback((index) => {
     if (committedRef.current) return
     committedRef.current = true
-    const qty = parseInt(editQty, 10)
-    if (!isNaN(qty) && qty > 0) {
-      onUpdateQty(items[index].id, qty)
+    const qty = parseInt(editInputRef.current?.value, 10)
+    const item = itemsRef.current[index]
+    if (item && !isNaN(qty) && qty > 0) {
+      onUpdateQty(item.id, qty)
     }
     setEditingRow(null)
-    setEditQty('')
-  }
+  }, [onUpdateQty])
 
-  function cancelEdit() {
+  const cancelEdit = useCallback(() => {
     committedRef.current = true
     setEditingRow(null)
-    setEditQty('')
-  }
+  }, [])
+
+  // Expose the imperative edit-start handle. Done in an effect so we never
+  // mutate the ref during render, which avoids React 19 Strict Mode issues.
+  useEffect(() => {
+    if (!onEditRequest) return
+    onEditRequest.current = startEdit
+    return () => { if (onEditRequest.current === startEdit) onEditRequest.current = null }
+  }, [onEditRequest, startEdit])
 
   function handleEditKeyDown(e, index) {
-    if (e.key === 'Enter')  { e.preventDefault(); confirmEdit(index) }
-    if (e.key === 'Tab')    { e.preventDefault(); confirmEdit(index) }
-    if (e.key === 'Escape') { e.preventDefault(); cancelEdit() }
+    // Stop the event reaching the parent's document-level keydown listener
+    // (app/pos/page.jsx), which would otherwise re-trigger edit mode for
+    // Enter (or switch cart for Tab). React synthetic stopPropagation alone
+    // doesn't stop NATIVE document listeners — need stopImmediatePropagation
+    // on the underlying nativeEvent.
+    if (e.key === 'Enter' || e.key === 'Tab' || e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      e.nativeEvent.stopImmediatePropagation()
+    }
+    if (e.key === 'Enter') confirmEdit(index)
+    if (e.key === 'Tab')   confirmEdit(index)
+    if (e.key === 'Escape') cancelEdit()
   }
 
   if (items.length === 0) {
@@ -95,15 +112,19 @@ export function CartTable({ items, onUpdateQty, onRemoveItem, selectedRow, onSel
                 <td className="px-2 py-2 text-center">
                   {isEditing ? (
                     <input
+                      // Keyed so React re-mounts the input whenever editing
+                      // moves to a different row, ensuring defaultValue reads
+                      // fresh. Uncontrolled — DOM owns the value during edit.
+                      key={`qty-edit-${item.id}`}
                       ref={editInputRef}
                       type="number"
                       min="1"
-                      value={editQty}
-                      onChange={e => setEditQty(e.target.value)}
+                      defaultValue={item.quantity}
                       onKeyDown={e => handleEditKeyDown(e, i)}
                       onBlur={() => { if (!committedRef.current) confirmEdit(i) }}
                       className="w-16 px-1 py-0.5 text-sm text-center border border-primary rounded bg-background outline-none"
                       onClick={e => e.stopPropagation()}
+                      autoFocus
                     />
                   ) : (
                     <span

@@ -118,14 +118,9 @@ class TouchPosPage extends BasePage {
    */
   async goto() {
     await this.navigate('/pos/touch')
-    // Wait for POS to fully load (entity resolved, products fetched)
-    // Either products appear or the loading spinner disappears
-    await this.page.waitForLoadState('networkidle')
-    // Wait for the product grid or the empty state to be visible
-    const hasProducts = await this.productGrid.isVisible({ timeout: 15000 }).catch(() => false)
-    if (!hasProducts) {
-      await expect(this.noProductsText).toBeVisible({ timeout: 3000 })
-    }
+    // The page is "loaded" when either the product grid or the empty state shows.
+    // Asserting on the .or() locator gives us a single timeout with no networkidle wait.
+    await expect(this.productGrid.or(this.noProductsText)).toBeVisible()
   }
 
   /**
@@ -144,8 +139,11 @@ class TouchPosPage extends BasePage {
    */
   async searchProducts(query) {
     await this.productSearchInput.fill(query)
-    // Wait for filtered results to settle
-    await this.page.waitForTimeout(300)
+    // Filtered results settle once the input value matches what we typed and
+    // the grid (or empty state) is visible. The 300ms debounce is handled by
+    // expect's auto-retry; no fixed sleep needed.
+    await expect(this.productSearchInput).toHaveValue(query)
+    await expect(this.productGrid.or(this.noProductsText)).toBeVisible()
   }
 
   /**

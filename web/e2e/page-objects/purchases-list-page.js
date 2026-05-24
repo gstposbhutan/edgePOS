@@ -42,10 +42,9 @@ class PurchasesListPage {
 
   // ── Navigation ──────────────────────────────────────────────────────
 
-  /** Navigate to the Purchases list page and wait for network idle. */
+  /** Navigate to the Purchases list page. */
   async goto() {
     await this.page.goto('/pos/purchases')
-    await this.page.waitForLoadState('networkidle')
   }
 
   // ── Actions ─────────────────────────────────────────────────────────

@@ -51,7 +51,7 @@ export function ProductPanel({ products, loading, onSearch, onAddItem }) {
               <p className="text-sm">No products found</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div data-testid="product-grid" className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {products.map((product) => (
                 <ProductCard
                   key={product.batch_id ?? product.id}
@@ -99,6 +99,9 @@ function ProductCard({ product, onClick }) {
   return (
     <button
       onClick={onClick}
+      data-testid="product-card"
+      data-product-id={product.id}
+      data-product-name={product.name}
       className={`
         group relative flex flex-col gap-2 p-3 rounded-xl border text-left
         transition-all duration-150 active:scale-95

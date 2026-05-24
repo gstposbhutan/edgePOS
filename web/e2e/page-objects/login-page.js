@@ -52,15 +52,19 @@ class LoginPage extends BasePage {
 
     // OTP verification form
     this.otpLabel = page.getByText('Enter 6-digit code')
-    this.otpInputContainer = page.locator('div.flex.gap-2.justify-center')
+    this.otpInputContainer = page.locator('[data-testid="otp-input-row"]')
+      .or(page.locator('div.flex.gap-2.justify-center'))
+      .first()
     this.verifyOtpButton = page.getByRole('button', { name: /verify & sign in/i })
 
     // OTP actions
     this.changeNumberButton = page.getByRole('button', { name: /change number/i })
     this.resendCodeButton = page.getByRole('button', { name: /resend code/i })
 
-    // Error alert (bg-tibetan container)
-    this.errorAlert = page.locator('div.bg-tibetan\\/10 p')
+    // Error alert (visible in any of email/OTP-send/OTP-verify tabs)
+    this.errorAlert = page.locator('[data-testid="login-error-message"]')
+      .or(page.locator('div.bg-tibetan\\/10 p'))
+      .first()
   }
 
   // ── Navigation ─────────────────────────────────────────────────────
