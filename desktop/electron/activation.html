@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'" />
+  <title>Activate NEXUS POS</title>
+  <style>
+    :root { --obsidian:#0F172A; --gold:#D4AF37; --emerald:#10B981; --tibetan:#EF4444; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 28px 32px; background: var(--obsidian); color: #E2E8F0;
+      font-family: 'Noto Sans', system-ui, -apple-system, sans-serif; min-height: 100vh;
+    }
+    h1 { font-family: 'Noto Serif', serif; font-size: 20px; margin: 0 0 4px; color: #fff; }
+    .sub { color: #94A3B8; font-size: 12px; margin-bottom: 22px; }
+    .card { background: rgba(30,41,59,0.5); border: 1px solid #1E293B; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+    label { display: block; font-size: 12px; font-weight: 600; color: #CBD5E1; margin-bottom: 6px; }
+    .mono { font-family: ui-monospace, monospace; }
+    .machine { font-size: 13px; color: var(--gold); word-break: break-all; background: #0B1220; border: 1px solid #1E293B; border-radius: 8px; padding: 8px 10px; }
+    input, textarea {
+      width: 100%; background: #0B1220; border: 1px solid #334155; border-radius: 8px;
+      color: #E2E8F0; padding: 8px 10px; font-size: 13px; outline: none;
+    }
+    input:focus, textarea:focus { border-color: var(--gold); }
+    textarea { resize: vertical; min-height: 96px; font-family: ui-monospace, monospace; font-size: 11px; }
+    .row { display: flex; gap: 8px; align-items: flex-end; }
+    .row > div { flex: 1; }
+    button {
+      background: var(--gold); color: #0B1220; border: 0; border-radius: 8px; padding: 9px 16px;
+      font-weight: 700; font-size: 13px; cursor: pointer; white-space: nowrap;
+    }
+    button.ghost { background: transparent; color: #CBD5E1; border: 1px solid #334155; }
+    button:disabled { opacity: 0.5; cursor: default; }
+    .status { font-size: 12px; margin-top: 12px; min-height: 18px; }
+    .status.ok { color: var(--emerald); }
+    .status.err { color: var(--tibetan); }
+    .status.info { color: #94A3B8; }
+    .hint { font-size: 11px; color: #64748B; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <h1>Activate this terminal</h1>
+  <div class="sub">This POS needs a license (.lic) before it can run. Each license is locked to this machine.</div>
+
+  <div class="card">
+    <label>Machine ID (give this to your administrator)</label>
+    <div class="machine mono" id="machineId">…</div>
+  </div>
+
+  <div class="card">
+    <label>1. Request a license</label>
+    <div class="row">
+      <div>
+        <input id="serverUrl" type="text" placeholder="https://your-cloud-url" />
+      </div>
+      <button class="ghost" id="requestBtn">Request license</button>
+    </div>
+    <div class="hint">Pre-configured for your cloud — just click to register this machine so an administrator can issue its license. (The cloud address is set at build time.)</div>
+  </div>
+
+  <div class="card">
+    <label>2. Activate with your license (.lic)</label>
+    <div class="row" style="margin-bottom:10px;">
+      <div>
+        <input id="licFile" type="file" accept=".lic,application/octet-stream,text/plain" style="display:none" />
+        <button class="ghost" id="chooseBtn">Choose .lic file…</button>
+        <span id="fileName" class="hint" style="margin-left:8px;"></span>
+      </div>
+    </div>
+    <label class="hint" style="font-weight:400;">…or paste its contents:</label>
+    <textarea id="licInput" placeholder="nxslic.…"></textarea>
+    <div style="margin-top:10px; text-align:right;">
+      <button id="activateBtn">Activate</button>
+    </div>
+  </div>
+
+  <div class="status info" id="status"></div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const setStatus = (msg, cls) => { const s = $("status"); s.textContent = msg; s.className = "status " + (cls || "info"); };
+
+    (async () => {
+      try { $("machineId").textContent = await window.activation.getMachineId(); }
+      catch { $("machineId").textContent = "(unavailable)"; }
+      try {
+        const url = await window.activation.getDefaultCloudUrl();
+        if (url) $("serverUrl").value = url;
+      } catch { /* leave field blank */ }
+    })();
+
+    $("requestBtn").addEventListener("click", async () => {
+      const url = $("serverUrl").value.trim();
+      if (!url) { setStatus("Enter your cloud server URL first.", "err"); return; }
+      setStatus("Registering this machine…", "info");
+      const r = await window.activation.request(url);
+      if (r && r.ok) setStatus("Registered. Ask your administrator to issue the license, then paste it below.", "ok");
+      else setStatus("Request failed: " + ((r && r.error) || "unknown error"), "err");
+    });
+
+    async function doActivate(lic) {
+      if (!lic) { setStatus("Choose your .lic file (or paste its contents) first.", "err"); return; }
+      $("activateBtn").disabled = true;
+      setStatus("Verifying license…", "info");
+      const reasons = {
+        missing: "No license provided.", malformed: "This doesn't look like a valid .lic file.",
+        bad_signature: "License signature is invalid.", bad_payload: "License is corrupted.",
+        expired: "This license has expired.", machine_mismatch: "This license is for a different machine.",
+        verify_error: "Could not verify the license.",
+      };
+      const res = await window.activation.activate(lic);
+      if (!res || !res.ok) {
+        $("activateBtn").disabled = false;
+        setStatus(reasons[res && res.reason] || ("Activation failed" + (res && res.error ? ": " + res.error : "")), "err");
+        return;
+      }
+      const store = (res.payload && res.payload.store_name) || "this store";
+      const b = res.bootstrap;
+      const bMsg = b && b.ok ? ` Pulled ${b.products} products.` : (b ? ` (catalog sync deferred: ${b.error})` : "");
+      setStatus(`Activated for ${store}.${bMsg} Opening POS…`, "ok");
+      setTimeout(() => window.activation.proceed(), 900);
+    }
+
+    // Upload a .lic file → read it (FileReader, renderer-safe) → activate.
+    $("chooseBtn").addEventListener("click", () => $("licFile").click());
+    $("licFile").addEventListener("change", (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      $("fileName").textContent = file.name;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const text = String(reader.result || "").trim();
+        $("licInput").value = text;
+        doActivate(text);
+      };
+      reader.onerror = () => setStatus("Could not read that file.", "err");
+      reader.readAsText(file);
+    });
+
+    $("activateBtn").addEventListener("click", () => doActivate($("licInput").value.trim()));
+  </script>
+</body>
+</html>

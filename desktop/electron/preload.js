@@ -14,12 +14,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
     platform: process.platform,
   },
 
+  // System / hardware identity (binds this terminal to its register)
+  system: {
+    getMachineId: () => ipcRenderer.invoke("system:get-machine-id"),
+  },
+
   // Sync
   sync: {
     getStatus: () => ipcRenderer.invoke("sync:get-status"),
     start: (config) => ipcRenderer.invoke("sync:start", config),
     stop: () => ipcRenderer.invoke("sync:stop"),
     forceSync: () => ipcRenderer.invoke("sync:force"),
+    bootstrap: () => ipcRenderer.invoke("sync:bootstrap"),
   },
 
   // PocketBase

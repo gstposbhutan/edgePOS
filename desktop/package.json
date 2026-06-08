@@ -14,16 +14,19 @@
     "test": "vitest",
     "pb:serve": "./pb/pocketbase serve --http=127.0.0.1:8090 --dir=./pb_data --migrationsDir=./pb/pb_migrations",
     "pb:setup": "node setup-pb.js",
+    "pb:fetch": "node scripts/fetch-pocketbase.mjs",
     "test:e2e": "playwright test --project=pocketbase",
     "test:e2e:headed": "playwright test --project=pocketbase --headed",
     "electron:dev": "concurrently \"next dev\" \"wait-on http://localhost:3000 && electron .\"",
-    "electron:build": "next build && electron-builder",
-    "electron:pack": "next build && electron-builder --dir"
+    "electron:build": "node scripts/fetch-pocketbase.mjs && next build && electron-builder",
+    "electron:build:win": "node scripts/fetch-pocketbase.mjs --platform win32 && next build && electron-builder --win",
+    "electron:pack": "node scripts/fetch-pocketbase.mjs && next build && electron-builder --dir"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",
     "@supabase/supabase-js": "^2.39.0",
     "@tanstack/react-query": "^5.17.0",
+    "bwip-js": "^4.11.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "escpos": "^3.0.0-alpha.6",
@@ -48,11 +51,13 @@
     "zustand": "^4.4.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/pouchdb": "^6.4.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "adm-zip": "^0.5.17",
     "concurrently": "^9.2.1",
     "electron": "^41.3.0",
     "electron-builder": "^26.8.1",
@@ -90,16 +95,22 @@
       "main": "electron/main.js"
     },
     "linux": {
-      "target": ["AppImage"],
+      "target": [
+        "AppImage"
+      ],
       "category": "Office",
       "icon": "public/favicon.ico"
     },
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "icon": "public/favicon.ico"
     },
     "mac": {
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "icon": "public/favicon.ico",
       "category": "public.app-category.business"
     },

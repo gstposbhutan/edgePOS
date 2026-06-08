@@ -17,6 +17,7 @@ export interface ElectronAPI {
     start: (config: any) => Promise<boolean>;
     stop: () => Promise<boolean>;
     forceSync: () => Promise<boolean>;
+    bootstrap: () => Promise<{ ok: boolean; products?: number; categories?: number; khata?: number; error?: string }>;
   };
   pb: {
     getUrl: () => Promise<string>;

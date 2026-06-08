@@ -19,18 +19,21 @@ function getAppBase() {
 function getPocketBaseBinary() {
   const base = path.join(getAppBase(), "pb");
   const platform = process.platform;
+  // Platform-correct binary name. On Windows this is ALWAYS pocketbase.exe — never the bare
+  // "pocketbase" (the repo ships a Linux ELF by that name, which would fail to run on Win).
+  const exeName = platform === "win32" ? "pocketbase.exe" : "pocketbase";
+  const archExt = platform === "win32" ? ".exe" : "";
 
   const candidates = [
-    path.join(base, `pocketbase_${platform}_${process.arch}`),
-    path.join(base, "pocketbase"),
-    path.join(base, platform === "win32" ? "pocketbase.exe" : "pocketbase"),
+    path.join(base, `pocketbase_${platform}_${process.arch}${archExt}`),
+    path.join(base, exeName),
   ];
 
   for (const c of candidates) {
     if (fs.existsSync(c)) return c;
   }
 
-  return "pocketbase";
+  return exeName;
 }
 
 function waitForPBReady(retries = 0) {

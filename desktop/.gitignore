@@ -12,6 +12,8 @@
 
 # testing
 /coverage
+/test-results
+/playwright-report
 
 # next.js
 /.next/
@@ -40,3 +42,11 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 release/
+
+# PocketBase server binaries — fetched per-platform via `npm run pb:fetch`
+# (scripts/fetch-pocketbase.mjs), not committed. NOTE: the Linux `pb/pocketbase` is
+# currently still tracked; it can be untracked (git rm --cached pb/pocketbase) and fetched
+# the same way for a fully binary-free repo.
+pb/pocketbase.exe
+pb/pocketbase_*
+pb/pocketbase.darwin
