@@ -9,6 +9,7 @@
     "test": "vitest"
   },
   "dependencies": {
+    "@nexus-bhutan/sync-core": "file:../../packages/sync-core",
     "@supabase/supabase-js": "^2.39.0",
     "pouchdb": "^8.0.1",
     "zod": "^3.22.4",

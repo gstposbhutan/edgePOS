@@ -38,12 +38,18 @@ class SyncWorker {
     try {
       console.log('Performing sync...');
 
-      // TODO: Implement PouchDB to Supabase sync logic
-      // 1. Get local changes from PouchDB
-      // 2. Push changes to Supabase
-      // 3. Pull changes from Supabase
-      // 4. Resolve conflicts using operational transformation
-      // 5. Update local PouchDB
+      // Register + order mapping sketch — see ./register-order-sync.ts:
+      //   1. For each terminal with unsynced rows (pushed here, or pulled from its
+      //      PocketBase), assemble a TerminalBatch { entityId, registers, orders }.
+      //   2. syncTerminalBatch(supabase, batch): upserts registers by
+      //      (entity_id, machine_id) → builds a local→cloud register id map →
+      //      upserts orders by order_no, remapping register_id + stamping seller_id.
+      //   3. Mark the terminal's rows synced (e.g. is_synced=true) and advance a cursor.
+      // TODO (blockers): wire a Supabase service client + terminal transport/auth;
+      //   extend to order_items / inventory_movements / khata. TRIGGER SAFETY is
+      //   handled (origin='TERMINAL_SYNC' + Migration 074 WHEN-guards on the confirm
+      //   triggers); the remaining khata follow-up is reconciling the cloud balance
+      //   from synced khata_transactions. Verify digital_signature on ingest (P1-3).
 
       return {
         lastSyncTime: new Date(),
