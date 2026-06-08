@@ -1,3 +1,5 @@
+> ⚠️ **SUPERSEDED (2026-06-08).** The "DISTRIBUTOR = platform operator/governor" model below is folded into **`SUPER_ADMIN`** (one central governor). `DISTRIBUTOR` is retained only as a **plain commercial supply-chain entity** (peer to WHOLESALER/RETAILER), not a governance role. The category-scoped governance + Admin Hub described here now belongs to SUPER_ADMIN. See `super-admin-console-plan.md`. (Kept for the schema/relationship reference — `categories`, `entity_categories`, `product_categories`, `retailer_wholesalers` — which remain valid as *commercial* links.)
+
 # Feature: Distributor Role — Platform Operator
 
 **Feature ID**: F-DIST-001  

@@ -49,9 +49,9 @@ function SignupForm() {
         return
       }
 
-      // Session is set server-side as httpOnly cookie — redirect to admin hub
+      // Session is set server-side as httpOnly cookie — redirect to the wholesaler console
       if (data.success) {
-        router.push('/admin')
+        router.push('/wholesaler')
       } else {
         router.push('/login?message=Account+created.+Please+sign+in.')
       }

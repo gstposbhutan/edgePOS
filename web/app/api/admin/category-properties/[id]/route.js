@@ -7,7 +7,7 @@ export async function GET(request, { params }) {
     const ctx = await getAuthContext()
     if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const canManage = ctx.role === 'SUPER_ADMIN' || ctx.role === 'DISTRIBUTOR'
+    const canManage = ctx.role === 'SUPER_ADMIN' // category governance is SUPER_ADMIN-only (re-term 2026-06-08)
     if (!canManage) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { supabase } = ctx
@@ -41,7 +41,7 @@ export async function PATCH(request, { params }) {
     const ctx = await getAuthContext()
     if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const canManage = ctx.role === 'SUPER_ADMIN' || ctx.role === 'DISTRIBUTOR'
+    const canManage = ctx.role === 'SUPER_ADMIN' // category governance is SUPER_ADMIN-only (re-term 2026-06-08)
     if (!canManage) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { supabase } = ctx
@@ -104,7 +104,7 @@ export async function DELETE(request, { params }) {
     const ctx = await getAuthContext()
     if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const canManage = ctx.role === 'SUPER_ADMIN' || ctx.role === 'DISTRIBUTOR'
+    const canManage = ctx.role === 'SUPER_ADMIN' // category governance is SUPER_ADMIN-only (re-term 2026-06-08)
     if (!canManage) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { supabase } = ctx

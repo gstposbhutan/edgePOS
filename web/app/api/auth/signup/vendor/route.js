@@ -15,8 +15,8 @@ export async function POST(request) {
     const body = await request.json()
     const { role, name, whatsapp_no, tpn_gstin, email, password, full_name } = body
 
-    if (!['RETAILER', 'WHOLESALER'].includes(role)) {
-      return NextResponse.json({ error: 'Role must be RETAILER or WHOLESALER' }, { status: 400 })
+    if (!['RETAILER', 'WHOLESALER', 'DISTRIBUTOR'].includes(role)) {
+      return NextResponse.json({ error: 'Role must be RETAILER, WHOLESALER or DISTRIBUTOR' }, { status: 400 })
     }
     if (!name || name.trim().length < 2) {
       return NextResponse.json({ error: 'Business name is required (min 2 characters)' }, { status: 400 })
@@ -98,11 +98,13 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Failed to create user profile' }, { status: 500 })
     }
 
-    // 4. Link to owner_stores so multi-store selector works from day 1
-    await supabase
-      .from('owner_stores')
-      .insert({ owner_id: authData.user.id, entity_id: entity.id, is_primary: true })
-      .catch(() => {}) // non-fatal if owner_stores table not ready
+    // 4. RETAILER owners link to owner_stores for the multi-store selector (N/A for wholesaler/distributor)
+    if (role === 'RETAILER') {
+      await supabase
+        .from('owner_stores')
+        .insert({ owner_id: authData.user.id, entity_id: entity.id, is_primary: true })
+        .catch(() => {}) // non-fatal if owner_stores table not ready
+    }
 
     // 5. Establish session via httpOnly cookie (BFF pattern)
     const cookieStore = await cookies()

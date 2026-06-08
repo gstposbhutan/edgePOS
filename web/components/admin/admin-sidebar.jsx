@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, Settings, LogOut, Building2, Ruler, FolderTree, Bike, Store } from 'lucide-react'
+import { LayoutDashboard, Settings, LogOut, Building2, Ruler, FolderTree, Bike, Network, KeyRound, UserCog } from 'lucide-react'
 import { signOut, getUser, getRoleClaims } from '@/lib/auth'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
@@ -10,11 +10,12 @@ import { useState, useEffect } from 'react'
 // roles: null = all, array = allowed sub_roles / roles
 const NAV_ITEMS = [
   { href: '/admin',            label: 'Dashboard',  icon: LayoutDashboard, roles: null },
-  { href: '/admin/stores',     label: 'Stores',     icon: Store,           roles: null },
-  { href: '/admin/team',       label: 'Team',       icon: Users,           roles: null },
-  { href: '/admin/categories', label: 'Categories', icon: FolderTree,      roles: ['SUPER_ADMIN', 'DISTRIBUTOR'] },
-  { href: '/admin/units',      label: 'Units',      icon: Ruler,           roles: ['SUPER_ADMIN', 'DISTRIBUTOR'] },
+  { href: '/admin/entities',   label: 'Entities',   icon: Network,         roles: ['SUPER_ADMIN'] },
+  { href: '/admin/users',      label: 'Users',      icon: UserCog,         roles: ['SUPER_ADMIN'] },
+  { href: '/admin/categories', label: 'Categories', icon: FolderTree,      roles: ['SUPER_ADMIN'] },
+  { href: '/admin/units',      label: 'Units',      icon: Ruler,           roles: ['SUPER_ADMIN'] },
   { href: '/admin/riders',     label: 'Riders',     icon: Bike,            roles: ['SUPER_ADMIN'] },
+  { href: '/pos/licenses',     label: 'Licenses',   icon: KeyRound,        roles: ['SUPER_ADMIN'] },
   { href: '/admin/settings',   label: 'Settings',   icon: Settings,        roles: null },
 ]
 

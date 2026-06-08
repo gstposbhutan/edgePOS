@@ -7,10 +7,11 @@ const PUBLIC_ROUTES = ['/login', '/signup', '/offline', '/shop', '/rider/login']
 // Role → home route mapping
 const ROLE_HOME = {
   SUPER_ADMIN:  '/admin',
-  DISTRIBUTOR:  '/admin',
-  WHOLESALER:   '/admin',
+  DISTRIBUTOR:  '/distributor',  // per-role console (re-term 2026-06-08)
+  WHOLESALER:   '/wholesaler',
   RETAILER:     '/pos',
   RIDER:        '/rider',
+  CUSTOMER:     '/shop',         // public marketplace
 }
 
 export async function proxy(request) {
@@ -62,20 +63,24 @@ export async function proxy(request) {
     return NextResponse.redirect(new URL(ROLE_HOME[role] || '/pos', request.url))
   }
 
-  // Block RETAILER from /admin — except OWNERs who manage multiple stores
-  const subRole = user.user_metadata?.sub_role || user.app_metadata?.sub_role
-  if (pathname.startsWith('/admin') && role === 'RETAILER' && subRole !== 'OWNER') {
-    return NextResponse.redirect(new URL('/pos', request.url))
+  // /admin is SUPER_ADMIN only — every other role goes to its own console (no shared routes)
+  if (pathname.startsWith('/admin') && role !== 'SUPER_ADMIN') {
+    return NextResponse.redirect(new URL(ROLE_HOME[role] || '/pos', request.url))
   }
 
-  // Block WHOLESALER/DISTRIBUTOR from /pos routes
-  if (pathname.startsWith('/pos') && (role === 'WHOLESALER' || role === 'DISTRIBUTOR')) {
-    return NextResponse.redirect(new URL('/admin', request.url))
+  // DISTRIBUTOR + WHOLESALER have their own consoles — keep them out of /pos too
+  if ((role === 'DISTRIBUTOR' || role === 'WHOLESALER') && pathname.startsWith('/pos')) {
+    return NextResponse.redirect(new URL(ROLE_HOME[role], request.url))
   }
 
   // Riders can only access /rider routes
   if (role === 'RIDER' && !pathname.startsWith('/rider')) {
     return NextResponse.redirect(new URL('/rider', request.url))
+  }
+
+  // Customers stay in the marketplace
+  if (role === 'CUSTOMER' && !pathname.startsWith('/shop')) {
+    return NextResponse.redirect(new URL('/shop', request.url))
   }
 
   return response

@@ -8,7 +8,7 @@ export async function GET(request) {
     if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     // SUPER_ADMIN can do everything, DISTRIBUTOR can only manage their categories
-    const canManage = ctx.role === 'SUPER_ADMIN' || ctx.role === 'DISTRIBUTOR'
+    const canManage = ctx.role === 'SUPER_ADMIN' // category governance is SUPER_ADMIN-only (re-term 2026-06-08)
     if (!canManage) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { searchParams } = new URL(request.url)
@@ -67,7 +67,7 @@ export async function POST(request) {
     const ctx = await getAuthContext()
     if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const canManage = ctx.role === 'SUPER_ADMIN' || ctx.role === 'DISTRIBUTOR'
+    const canManage = ctx.role === 'SUPER_ADMIN' // category governance is SUPER_ADMIN-only (re-term 2026-06-08)
     if (!canManage) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const body = await request.json()

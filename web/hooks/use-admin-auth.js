@@ -30,9 +30,10 @@ export function useAdminAuth() {
 
       const { entityId, role, subRole } = getRoleClaims(user)
 
-      // Retailers go to POS — except OWNERs who also have access to /admin for store management
-      if (role === 'RETAILER' && subRole !== 'OWNER') {
-        router.push('/pos')
+      // /admin is SUPER_ADMIN only — every other role goes to its own console (no shared routes).
+      if (role !== 'SUPER_ADMIN') {
+        const home = { DISTRIBUTOR: '/distributor', WHOLESALER: '/wholesaler', RIDER: '/rider', CUSTOMER: '/shop', RETAILER: '/pos' }
+        router.push(home[role] || '/pos')
         return
       }
 
