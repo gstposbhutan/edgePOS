@@ -58,7 +58,17 @@ export default function InventoryPage() {
     products, loading, filter, setFilter,
     lowCount, outCount, movements, batches,
     adjustStock, fetchMovements, fetchBatches, receiveStock, refresh,
+    fetchProducts,
   } = useInventory(entityId)
+
+  // Debounced server-side search refetch. Without this, products past row
+  // 1000 (alphabetical) are unreachable because PostgREST caps the unfiltered
+  // GET, and client-side filter can only see what came back.
+  useEffect(() => {
+    if (!entityId) return
+    const handle = setTimeout(() => { fetchProducts(search) }, 200)
+    return () => clearTimeout(handle)
+  }, [search, entityId])
 
   const {
     predictions, summary: predSummary, calculatedAt,

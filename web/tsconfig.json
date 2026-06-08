@@ -20,7 +20,8 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@nexus-bhutan/sync-core": ["./packages/sync-core/src/index.ts"]
     }
   },
   "include": [

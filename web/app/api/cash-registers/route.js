@@ -20,35 +20,13 @@ export async function GET(request) {
   return NextResponse.json({ registers: registers || [] })
 }
 
-export async function POST(request) {
-  const ctx = await getAuthContext()
-  if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { entityId, subRole, userId, supabase } = ctx
-  if (!['MANAGER', 'OWNER', 'ADMIN'].includes(subRole)) {
-    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-  }
-  const body = await request.json()
-
-  const name = (body.name || '').trim()
-  if (!name) return NextResponse.json({ error: 'Register name is required' }, { status: 400 })
-
-  const default_opening_float = parseFloat(body.default_opening_float) || 0
-  if (default_opening_float < 0) return NextResponse.json({ error: 'Opening float must be >= 0' }, { status: 400 })
-
-  const { data, error } = await supabase
-    .from('cash_registers')
-    .insert({
-      entity_id: entityId,
-      name,
-      default_opening_float,
-      is_active: true,
-      created_by: userId,
-    })
-    .select('id, name, default_opening_float, is_active, created_at')
-    .single()
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  return NextResponse.json({ register: data }, { status: 201 })
+// Registers represent physical POS terminals: they are created by the terminal
+// itself (keyed by machine_id / MAC) and synced up to the cloud. They cannot be
+// created from the web, so this endpoint is intentionally disabled. Renaming /
+// deactivating an existing register is still done via the [id] route.
+export async function POST() {
+  return NextResponse.json(
+    { error: 'Registers are created by POS terminals, not from the web.' },
+    { status: 405 }
+  )
 }

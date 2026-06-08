@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { createHash } from 'node:crypto'
 import { getAuthContext } from '@/lib/supabase/server'
 
 export async function POST(request) {
@@ -7,12 +8,43 @@ export async function POST(request) {
 
   const body = await request.json()
   const {
-    orderNo, items, subtotal, gstTotal, grandTotal,
-    paymentMethod, paymentRef, customerWhatsapp, buyerHash,
-    cartId, digitalSignature,
+    items, subtotal, gstTotal, grandTotal,
+    paymentMethod, paymentChannel, paymentRef, customerWhatsapp, buyerHash,
+    cartId,
   } = body
 
   const supabase = ctx.supabase
+
+  // P1-2: the order number and digital signature are issued server-side and are
+  // never trusted from the client. Prefix + signature inputs come from the seller
+  // entity, and the number is allocated by an atomic per-seller/per-year counter.
+  const { data: entity } = await supabase
+    .from('entities')
+    .select('name, tpn_gstin')
+    .eq('id', ctx.entityId)
+    .single()
+
+  const { data: orderNo, error: orderNoError } = await supabase
+    .rpc('next_pos_order_no', { p_seller_id: ctx.entityId, p_prefix: entity?.name ?? 'POS' })
+  if (orderNoError || !orderNo) {
+    return NextResponse.json({ error: orderNoError?.message || 'Failed to generate order number' }, { status: 500 })
+  }
+
+  const digitalSignature = createHash('sha256')
+    .update(`${orderNo}:${grandTotal}:${entity?.tpn_gstin ?? ''}`)
+    .digest('hex')
+
+  // Which register/terminal rang this sale: the most-recent ACTIVE shift for the
+  // entity. (Proper multi-register web attribution would need the client to pass
+  // the active shift/register id; most-recent is the server-side best-effort.)
+  const { data: shift } = await supabase
+    .from('shifts')
+    .select('id, register_id')
+    .eq('entity_id', ctx.entityId)
+    .eq('status', 'ACTIVE')
+    .order('opened_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
 
   // Insert order at PENDING_PAYMENT
   const { data: order, error: orderError } = await supabase
@@ -22,15 +54,17 @@ export async function POST(request) {
       order_no:       orderNo,
       status:         'PENDING_PAYMENT',
       seller_id:      ctx.entityId,
+      register_id:    shift?.register_id ?? null,
       buyer_whatsapp: customerWhatsapp ?? null,
       buyer_hash:     buyerHash ?? null,
       items,
       subtotal,
       gst_total:      gstTotal,
       grand_total:    grandTotal,
-      payment_method: paymentMethod,
-      payment_ref:    paymentRef ?? null,
-      digital_signature: digitalSignature ?? null,
+      payment_method:  paymentMethod,
+      payment_channel: paymentChannel ?? null,
+      payment_ref:     paymentRef ?? null,
+      digital_signature: digitalSignature,
       cart_id:        cartId ?? null,
       created_by:     ctx.userId,
     })
@@ -68,17 +102,19 @@ export async function POST(request) {
 
   if (confirmError) return NextResponse.json({ error: confirmError.message }, { status: 500 })
 
-  // Track shift transaction (fire-and-forget, non-blocking)
-  fetch(new URL('/api/shifts/track-transaction', request.url).href, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+  // Link the sale to its shift IN-HANDLER. The previous server→server fetch to
+  // /api/shifts/track-transaction dropped the auth cookie and silently failed, so
+  // no sale was ever recorded against a shift. Insert directly with the authed client.
+  if (shift) {
+    const { error: trackError } = await supabase.from('shift_transactions').insert({
+      shift_id: shift.id,
       order_id: order.id,
       transaction_type: 'SALE',
       payment_method: paymentMethod,
       amount: grandTotal,
-    }),
-  }).catch(() => {})
+    })
+    if (trackError) console.error('shift_transactions insert failed:', trackError.message)
+  }
 
   return NextResponse.json({ order })
 }

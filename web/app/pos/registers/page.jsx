@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Plus, Pencil, Trash2, Landmark } from "lucide-react"
+import { ArrowLeft, Pencil, Trash2, Landmark } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { getUser, getRoleClaims } from "@/lib/auth"
@@ -41,13 +41,6 @@ export default function RegistersPage() {
     const json = await res.json()
     setRegisters(json.registers || [])
     setLoading(false)
-  }
-
-  function openCreate() {
-    setEditing(null)
-    setFormName('')
-    setFormFloat('0')
-    setShowModal(true)
   }
 
   function openEdit(reg) {
@@ -107,9 +100,7 @@ export default function RegistersPage() {
           </div>
           <p className="text-[10px] text-muted-foreground">{registers.length} register{registers.length !== 1 ? 's' : ''}</p>
         </div>
-        <Button size="sm" onClick={openCreate} className="gap-1.5">
-          <Plus className="h-4 w-4" /> New Register
-        </Button>
+        <Button variant="outline" size="sm" onClick={() => router.push('/pos/terminals')}>Sync tokens</Button>
       </div>
 
       {/* List */}
@@ -122,7 +113,7 @@ export default function RegistersPage() {
           <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
             <Landmark className="h-10 w-10 opacity-20" />
             <p className="text-sm">No cash registers yet</p>
-            <Button size="sm" onClick={openCreate}><Plus className="h-4 w-4 mr-1" /> Create Register</Button>
+            <p className="text-xs max-w-xs text-center">Registers are created automatically by each POS terminal on first connect — they appear here once a terminal syncs.</p>
           </div>
         ) : (
           <div className="divide-y divide-border">

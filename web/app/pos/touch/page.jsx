@@ -238,21 +238,12 @@ export default function PosPage() {
     setCheckoutError(null)
 
     try {
-      const year      = new Date().getFullYear()
-      const serial    = String(Math.floor(Math.random() * 99999)).padStart(5, '0')
-      const orderNo   = `${entity?.name?.substring(0,4).toUpperCase() ?? 'POS'}-${year}-${serial}`
-
-      const sigPayload = `${orderNo}:${grandTotal}:${entity?.tpn_gstin ?? ''}`
-      const msgBuffer  = new TextEncoder().encode(sigPayload)
-      const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer)
-      const signature  = Array.from(new Uint8Array(hashBuffer))
-        .map(b => b.toString(16).padStart(2, '0')).join('')
-
+      // order_no + digital signature are issued server-side now (parity P1-2) —
+      // the client no longer generates a (collision-prone) random serial.
       const res = await fetch('/api/pos/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          orderNo,
           items: items.map(item => ({
             product_id:   item.product_id,
             package_id:   item.package_id   ?? null,
@@ -277,7 +268,6 @@ export default function PosPage() {
           customerWhatsapp: customer?.whatsapp ?? null,
           buyerHash: customer?.buyerHash ?? null,
           cartId,
-          digitalSignature: signature,
         }),
       })
 

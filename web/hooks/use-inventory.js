@@ -18,10 +18,19 @@ export function useInventory(entityId) {
     fetchProducts()
   }, [entityId])
 
-  async function fetchProducts() {
+  /**
+   * Fetch products, optionally with a server-side search filter. The API
+   * caps results at PostgREST's max-rows default, so for stores with >1000
+   * products we MUST push search to the server — without `q`, products
+   * past row 1000 (alphabetical) never appear in the table.
+   */
+  async function fetchProducts(q) {
     setLoading(true)
     try {
-      const res = await fetch('/api/inventory')
+      const params = new URLSearchParams()
+      if (q?.trim()) params.set('search', q.trim())
+      const url = `/api/inventory${params.toString() ? `?${params}` : ''}`
+      const res = await fetch(url)
       const data = await res.json()
       if (res.ok) setProducts(data.products ?? [])
     } catch {
@@ -136,5 +145,6 @@ export function useInventory(entityId) {
     receiveStock,
     getPackageBottlenecks,
     refresh: fetchProducts,
+    fetchProducts,
   }
 }
