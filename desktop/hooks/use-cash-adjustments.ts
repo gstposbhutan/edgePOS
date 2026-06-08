@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getPB, PB_REQ } from "@/lib/pb-client";
+import { getRegisterId } from "@/lib/register";
 
 export interface CashAdjustment {
   id: string;
@@ -49,6 +50,7 @@ export function useCashAdjustments(shiftId?: string) {
       shift: string;
       created_by: string;
     }) => {
+      const registerId = await getRegisterId();
       return pb.collection("cash_adjustments").create({
         amount: Math.abs(data.amount),
         type: data.type,
@@ -56,6 +58,7 @@ export function useCashAdjustments(shiftId?: string) {
         notes: data.notes || "",
         shift: data.shift,
         created_by: data.created_by,
+        register_id: registerId || "",
       }, PB_REQ) as unknown as CashAdjustment;
     },
     onSuccess: () => {

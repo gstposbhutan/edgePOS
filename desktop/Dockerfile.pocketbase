@@ -8,6 +8,9 @@ RUN chmod +x /app/pocketbase
 # Copy migrations
 COPY pb/pb_migrations /app/pb_migrations
 
+# Copy JS hooks (default hooksDir is pb_hooks next to the executable)
+COPY pb/pb_hooks /app/pb_hooks
+
 # Create data directory
 RUN mkdir -p /app/pb_data
 

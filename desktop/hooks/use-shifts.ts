@@ -4,6 +4,8 @@ import { useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getPB, PB_REQ } from "@/lib/pb-client";
 import { pbNow } from "@/lib/date-utils";
+import { PAYMENT_METHOD } from "@/lib/constants";
+import { getRegisterId } from "@/lib/register";
 
 export interface Shift {
   id: string;
@@ -54,6 +56,56 @@ async function fetchShiftHistory(date?: string): Promise<Shift[]> {
   });
 }
 
+interface ShiftCashAggregates {
+  cashSales: number;
+  digitalSales: number;
+  creditSales: number;
+  refundTotal: number;
+  cashRefunds: number;
+  transactionCount: number;
+}
+
+/**
+ * Compute a shift's sales/refund aggregates from PocketBase. Used by BOTH
+ * closeShift and getReconciliation so their cash math can never disagree
+ * (P0-4). Only CASH refunds reduce the drawer — matching the web app's
+ * reconciliation formula. Refunds are attributed to the shift in which the
+ * order was created; desktop has no order↔shift link yet (see
+ * web/docs/desktop-web-parity-fix-plan.md C-5 / P0-5).
+ */
+async function computeShiftCashAggregates(
+  pb: ReturnType<typeof getPB>,
+  openedAt: string
+): Promise<ShiftCashAggregates> {
+  const confirmed = await pb.collection("orders").getFullList<{ payment_method: string; grand_total: number }>({
+    filter: `created_at >= "${openedAt}" && status = "CONFIRMED"`,
+    requestKey: null,
+  });
+  const refunded = await pb.collection("orders").getFullList<{ payment_method: string; refund_amount?: number }>({
+    filter: `created_at >= "${openedAt}" && status = "REFUNDED"`,
+    requestKey: null,
+  }).catch(() => [] as { payment_method: string; refund_amount?: number }[]);
+
+  let cashSales = 0;
+  let digitalSales = 0;
+  let creditSales = 0;
+  for (const o of confirmed) {
+    if (o.payment_method === PAYMENT_METHOD.CASH) cashSales += o.grand_total;
+    else if (o.payment_method === PAYMENT_METHOD.CREDIT) creditSales += o.grand_total;
+    else digitalSales += o.grand_total;
+  }
+
+  let refundTotal = 0;
+  let cashRefunds = 0;
+  for (const o of refunded) {
+    const amt = o.refund_amount || 0;
+    refundTotal += amt;
+    if (o.payment_method === PAYMENT_METHOD.CASH) cashRefunds += amt;
+  }
+
+  return { cashSales, digitalSales, creditSales, refundTotal, cashRefunds, transactionCount: confirmed.length };
+}
+
 export function useShifts() {
   const pb = getPB();
   const queryClient = useQueryClient();
@@ -76,11 +128,13 @@ export function useShifts() {
       for (const s of stale) {
         await pb.collection("shifts").update(s.id, { status: "closed", closed_at: pbNow() }, PB_REQ);
       }
+      const registerId = await getRegisterId();
       const record = await pb.collection("shifts").create({
         opened_by: userId,
         opening_float: openingFloat,
         status: "active",
         opened_at: pbNow(),
+        register_id: registerId || "",
       }, PB_REQ);
       return record as unknown as Shift;
     },
@@ -104,17 +158,14 @@ export function useShifts() {
   const closeShiftMutation = useMutation({
     mutationFn: async ({ shiftId, userId, closingCount }: { shiftId: string; userId: string; closingCount: number }) => {
       const shift = await pb.collection("shifts").getOne<Shift>(shiftId, PB_REQ);
-      const orders = await pb.collection("orders").getFullList({
-        filter: `created_at >= "${shift.opened_at}" && status = "CONFIRMED"`,
-        requestKey: null,
-      });
 
-      // Fetch cash adjustments for this shift
+      const agg = await computeShiftCashAggregates(pb, shift.opened_at);
+
+      // Cash adjustments for this shift
       const adjustments = await pb.collection("cash_adjustments").getFullList<{ amount: number; type: string }>({
         filter: `shift = "${shiftId}"`,
         requestKey: null,
       }).catch(() => []);
-
       const totalCashIn = adjustments
         .filter((a) => a.type === "CASH_IN")
         .reduce((sum, a) => sum + a.amount, 0);
@@ -122,26 +173,16 @@ export function useShifts() {
         .filter((a) => a.type === "CASH_OUT")
         .reduce((sum, a) => sum + a.amount, 0);
 
-      let cashSales = 0;
-      let digitalSales = 0;
-      let creditSales = 0;
-      let refundTotal = 0;
-      for (const o of orders) {
-        if (o.payment_method === "cash") cashSales += o.grand_total;
-        else if (o.payment_method === "credit") creditSales += o.grand_total;
-        else digitalSales += o.grand_total;
-        if (o.refund_amount) refundTotal += o.refund_amount;
-      }
-
-      // Expected = opening_float + cash_sales - refunds + cash_ins - cash_outs
-      const expectedTotal = shift.opening_float + cashSales - refundTotal + totalCashIn - totalCashOut;
+      // Expected drawer = opening_float + CASH sales − CASH refunds + cash-ins − cash-outs.
+      // Only cash refunds remove cash from the drawer (P0-4); credit/digital refunds don't.
+      const expectedTotal = shift.opening_float + agg.cashSales - agg.cashRefunds + totalCashIn - totalCashOut;
       const discrepancy = closingCount - expectedTotal;
 
       return pb.collection("shifts").update(shiftId, {
         status: "closed", closed_by: userId, closing_count: closingCount,
         expected_total: expectedTotal, discrepancy, closed_at: pbNow(),
-        cash_sales: cashSales, digital_sales: digitalSales, credit_sales: creditSales,
-        refund_total: refundTotal, transaction_count: orders.length,
+        cash_sales: agg.cashSales, digital_sales: agg.digitalSales, credit_sales: agg.creditSales,
+        refund_total: agg.refundTotal, transaction_count: agg.transactionCount,
       }, PB_REQ);
     },
     onSuccess: () => {
@@ -187,9 +228,9 @@ export function useShifts() {
           subtotal: orders.reduce((s, o) => s + o.subtotal, 0),
           gstTotal: orders.reduce((s, o) => s + o.gst_total, 0),
           refundTotal: refunded.reduce((s, o) => s + (o.refund_amount || 0), 0),
-          cashSales: orders.filter((o) => o.payment_method === "cash").reduce((s, o) => s + o.grand_total, 0),
-          digitalSales: orders.filter((o) => ["mbob", "mpay", "rtgs"].includes(o.payment_method)).reduce((s, o) => s + o.grand_total, 0),
-          creditSales: orders.filter((o) => o.payment_method === "credit").reduce((s, o) => s + o.grand_total, 0),
+          cashSales: orders.filter((o) => o.payment_method === PAYMENT_METHOD.CASH).reduce((s, o) => s + o.grand_total, 0),
+          digitalSales: orders.filter((o) => o.payment_method === PAYMENT_METHOD.ONLINE).reduce((s, o) => s + o.grand_total, 0),
+          creditSales: orders.filter((o) => o.payment_method === PAYMENT_METHOD.CREDIT).reduce((s, o) => s + o.grand_total, 0),
         };
       } catch (err) {
         console.error("Z-Report error:", err);
@@ -209,17 +250,7 @@ export function useShifts() {
     } | null> => {
       try {
         const shift = await pb.collection("shifts").getOne<Shift>(shiftId, PB_REQ);
-        const orders = await pb.collection("orders").getFullList({
-          filter: `created_at >= "${shift.opened_at}" && status = "CONFIRMED"`,
-          requestKey: null,
-        });
-
-        let cashSales = 0;
-        let cashRefunds = 0;
-        for (const o of orders) {
-          if (o.payment_method === "cash") cashSales += o.grand_total;
-          if (o.refund_amount && o.payment_method === "cash") cashRefunds += o.refund_amount;
-        }
+        const agg = await computeShiftCashAggregates(pb, shift.opened_at);
 
         const adjustments = await pb.collection("cash_adjustments").getFullList<{ amount: number; type: string }>({
           filter: `shift = "${shiftId}"`,
@@ -231,8 +262,8 @@ export function useShifts() {
 
         return {
           openingFloat: shift.opening_float,
-          cashSales,
-          cashRefunds,
+          cashSales: agg.cashSales,
+          cashRefunds: agg.cashRefunds,
           totalCashIn,
           totalCashOut,
         };

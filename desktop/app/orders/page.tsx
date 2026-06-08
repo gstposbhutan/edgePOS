@@ -226,7 +226,7 @@ export default function OrdersPage() {
                   <TableRow key={order.id}>
                     <TableCell className="font-medium">{order.order_no}</TableCell>
                     <TableCell>{order.customer_name || "—"}</TableCell>
-                    <TableCell className="uppercase text-xs">{order.payment_method}</TableCell>
+                    <TableCell className="uppercase text-xs">{order.payment_channel || order.payment_method}</TableCell>
                     <TableCell className="text-right font-medium">
                       Nu. {order.grand_total.toFixed(2)}
                     </TableCell>
@@ -302,7 +302,7 @@ export default function OrdersPage() {
                 <span>Customer:</span>
                 <span>{selectedOrder.customer_name || "—"}</span>
                 <span>Payment:</span>
-                <span className="uppercase">{selectedOrder.payment_method}</span>
+                <span className="uppercase">{selectedOrder.payment_channel || selectedOrder.payment_method}</span>
                 <span>Reference:</span>
                 <span>{selectedOrder.payment_ref || "—"}</span>
               </div>

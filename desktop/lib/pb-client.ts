@@ -100,4 +100,23 @@ export function logout() {
   }
 }
 
+const TERMINAL_KEY = 'pb_terminal_id';
+
+/**
+ * Stable per-terminal id (6 hex chars), generated once and persisted in
+ * localStorage. Used to namespace offline order numbers so two terminals can
+ * never mint the same order_no (P1-2).
+ */
+export function getTerminalId(): string {
+  if (typeof window === 'undefined') return 'SRV';
+  let id = localStorage.getItem(TERMINAL_KEY);
+  if (!id) {
+    const bytes = new Uint8Array(3);
+    crypto.getRandomValues(bytes);
+    id = Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+    localStorage.setItem(TERMINAL_KEY, id);
+  }
+  return id;
+}
+
 export { PB_REQ };

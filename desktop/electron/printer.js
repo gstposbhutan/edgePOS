@@ -36,7 +36,7 @@ function formatReceipt(order, settings) {
     tpn: settings?.tpn_gstin || "",
     orderNo: order.order_no,
     date,
-    payment: (order.payment_method || "").toUpperCase(),
+    payment: (order.payment_channel || order.payment_method || "").toUpperCase(),
     customer: order.customer_name || "",
     items: items.map((i) => ({
       name: i.name,
@@ -139,7 +139,7 @@ function testPrint() {
     {
       order_no: "TEST-001",
       created: new Date().toISOString(),
-      payment_method: "cash",
+      payment_method: "CASH",
       customer_name: "Test Customer",
       items: [{ name: "Test Product", quantity: 1, unit_price: 100, total: 105 }],
       subtotal: 100,

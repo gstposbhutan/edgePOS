@@ -20,33 +20,40 @@ import {
   Coins,
 } from "lucide-react";
 import type { Customer } from "@/hooks/use-customers";
-
-export type PaymentMethod = "cash" | "mbob" | "mpay" | "credit" | "rtgs";
+import { PAYMENT_METHOD, PAYMENT_CHANNEL, type PaymentMethod, type PaymentChannel } from "@/lib/constants";
 
 interface PaymentModalProps {
   open: boolean;
   onClose: () => void;
   grandTotal: number;
   customer: Customer | null;
-  onConfirm: (method: PaymentMethod, ref: string, tendered?: number) => void;
+  onConfirm: (method: PaymentMethod, channel: PaymentChannel | null, ref: string, tendered?: number) => void;
 }
 
-const METHODS: { id: PaymentMethod; label: string; icon: React.ReactNode }[] = [
-  { id: "cash", label: "Cash", icon: <Banknote className="h-5 w-5" /> },
-  { id: "mbob", label: "mBoB", icon: <Smartphone className="h-5 w-5" /> },
-  { id: "mpay", label: "mPay", icon: <Smartphone className="h-5 w-5" /> },
-  { id: "rtgs", label: "RTGS", icon: <Landmark className="h-5 w-5" /> },
-  { id: "credit", label: "Khata / Credit", icon: <CreditCard className="h-5 w-5" /> },
+// UI options carry their canonical (method, channel). mBoB/mPay/RTGS → ONLINE
+// with a channel; cash/credit have no channel.
+const METHODS: { id: string; label: string; icon: React.ReactNode; method: PaymentMethod; channel: PaymentChannel | null }[] = [
+  { id: "cash",   label: "Cash",           icon: <Banknote className="h-5 w-5" />,   method: PAYMENT_METHOD.CASH,   channel: null },
+  { id: "mbob",   label: "mBoB",           icon: <Smartphone className="h-5 w-5" />, method: PAYMENT_METHOD.ONLINE, channel: PAYMENT_CHANNEL.MBOB },
+  { id: "mpay",   label: "mPay",           icon: <Smartphone className="h-5 w-5" />, method: PAYMENT_METHOD.ONLINE, channel: PAYMENT_CHANNEL.MPAY },
+  { id: "rtgs",   label: "RTGS",           icon: <Landmark className="h-5 w-5" />,   method: PAYMENT_METHOD.ONLINE, channel: PAYMENT_CHANNEL.RTGS },
+  { id: "credit", label: "Khata / Credit", icon: <CreditCard className="h-5 w-5" />, method: PAYMENT_METHOD.CREDIT, channel: null },
 ];
 
 const DENOMINATIONS = [10, 50, 100, 500, 1000];
 
 export function PaymentModal({ open, onClose, grandTotal, customer, onConfirm }: PaymentModalProps) {
-  const [method, setMethod] = useState<PaymentMethod>("cash");
+  const [selectedId, setSelectedId] = useState("cash");
   const [reference, setReference] = useState("");
   const [tendered, setTendered] = useState<number>(grandTotal);
   const [error, setError] = useState("");
   const [receivedParts, setReceivedParts] = useState<number[]>([]);
+
+  const selected = METHODS.find((m) => m.id === selectedId) ?? METHODS[0];
+  const method = selected.method;
+  const channel = selected.channel;
+  const isCash = method === PAYMENT_METHOD.CASH;
+  const isCredit = method === PAYMENT_METHOD.CREDIT;
 
   useEffect(() => {
     if (open) {
@@ -58,8 +65,8 @@ export function PaymentModal({ open, onClose, grandTotal, customer, onConfirm }:
   }, [open, grandTotal]);
 
   const totalReceived = receivedParts.reduce((a, b) => a + b, 0);
-  const effectiveTendered = method === "cash" ? (receivedParts.length > 0 ? totalReceived : tendered) : 0;
-  const change = method === "cash" ? Math.max(0, effectiveTendered - grandTotal) : 0;
+  const effectiveTendered = isCash ? (receivedParts.length > 0 ? totalReceived : tendered) : 0;
+  const change = isCash ? Math.max(0, effectiveTendered - grandTotal) : 0;
 
   const addDenomination = (denom: number) => {
     setReceivedParts((prev) => [...prev, denom]);
@@ -85,12 +92,13 @@ export function PaymentModal({ open, onClose, grandTotal, customer, onConfirm }:
   const handleConfirm = () => {
     setError("");
 
-    if (method === "credit") {
+    if (isCredit) {
       if (!customer) {
         setError("Customer is required for credit payment");
         return;
       }
-      if (customer.outstanding_balance + grandTotal > customer.credit_limit) {
+      // Mirror checkout (P0-1): a credit_limit of <= 0 means "no limit configured".
+      if (customer.credit_limit > 0 && customer.outstanding_balance + grandTotal > customer.credit_limit) {
         setError(
           `Credit limit exceeded. Outstanding: Nu. ${customer.outstanding_balance.toFixed(2)}, Limit: Nu. ${customer.credit_limit.toFixed(2)}`
         );
@@ -98,17 +106,17 @@ export function PaymentModal({ open, onClose, grandTotal, customer, onConfirm }:
       }
     }
 
-    const finalTendered = method === "cash" ? effectiveTendered : 0;
+    const finalTendered = isCash ? effectiveTendered : 0;
 
-    if (method === "cash" && finalTendered < grandTotal) {
+    if (isCash && finalTendered < grandTotal) {
       setError("Tendered amount is less than total");
       return;
     }
 
-    onConfirm(method, reference, method === "cash" ? finalTendered : undefined);
+    onConfirm(method, channel, reference, isCash ? finalTendered : undefined);
   };
 
-  const remaining = method === "cash" ? Math.max(0, grandTotal - effectiveTendered) : 0;
+  const remaining = isCash ? Math.max(0, grandTotal - effectiveTendered) : 0;
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -131,10 +139,10 @@ export function PaymentModal({ open, onClose, grandTotal, customer, onConfirm }:
             {METHODS.map((m) => (
               <Button
                 key={m.id}
-                variant={method === m.id ? "default" : "outline"}
-                onClick={() => { setMethod(m.id); setError(""); }}
+                variant={selectedId === m.id ? "default" : "outline"}
+                onClick={() => { setSelectedId(m.id); setError(""); }}
                 className={`flex flex-col items-center gap-1 p-3 rounded-lg min-h-[4rem] h-auto ${
-                  method === m.id ? "" : "hover:border-primary/50"
+                  selectedId === m.id ? "" : "hover:border-primary/50"
                 }`}
               >
                 {m.icon}
@@ -144,7 +152,7 @@ export function PaymentModal({ open, onClose, grandTotal, customer, onConfirm }:
           </div>
 
           {/* Cash: Denomination Tiles */}
-          {method === "cash" && (
+          {isCash && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <Label className="text-xs uppercase tracking-wider text-muted-foreground">
@@ -230,13 +238,13 @@ export function PaymentModal({ open, onClose, grandTotal, customer, onConfirm }:
             </div>
           )}
 
-          {/* Reference for digital payments */}
-          {method !== "cash" && (
+          {/* Reference for non-cash payments */}
+          {!isCash && (
             <div className="space-y-2">
               <Label>Reference / Journal No</Label>
               <Input
                 placeholder={
-                  method === "credit" ? "Optional note" : "Enter transaction reference"
+                  isCredit ? "Optional note" : "Enter transaction reference"
                 }
                 value={reference}
                 onChange={(e) => setReference(e.target.value)}
@@ -246,7 +254,7 @@ export function PaymentModal({ open, onClose, grandTotal, customer, onConfirm }:
           )}
 
           {/* Credit warning */}
-          {method === "credit" && customer && (
+          {isCredit && customer && (
             <div className="p-3 rounded-md bg-warning/10 border border-warning/20 text-sm">
               <div className="flex items-center gap-2 text-warning mb-1">
                 <CreditCard className="h-4 w-4" />
@@ -254,7 +262,7 @@ export function PaymentModal({ open, onClose, grandTotal, customer, onConfirm }:
               </div>
               <p>Customer: {customer.debtor_name}</p>
               <p>
-                Limit: Nu. {customer.credit_limit.toFixed(2)} | Outstanding: Nu.{" "}
+                Limit: {customer.credit_limit > 0 ? `Nu. ${customer.credit_limit.toFixed(2)}` : "No limit"} | Outstanding: Nu.{" "}
                 {customer.outstanding_balance.toFixed(2)}
               </p>
               <p>

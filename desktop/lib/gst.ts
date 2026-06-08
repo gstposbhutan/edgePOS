@@ -1,5 +1,4 @@
 import { DEFAULT_GST_RATE } from "./constants";
-import { todayCompact } from "./date-utils";
 
 export interface CartItemInput {
   unitPrice: number;
@@ -25,18 +24,26 @@ export function calcCartTotals(
   items: { unitPrice: number; discount: number; quantity: number }[],
   gstRate: number = DEFAULT_GST_RATE
 ) {
-  const rate = gstRate / 100;
   const subtotal = items.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
   const discountTotal = items.reduce((s, i) => s + i.discount * i.quantity, 0);
   const taxableSubtotal = subtotal - discountTotal;
-  const gstTotal = parseFloat((taxableSubtotal * rate).toFixed(2));
-  const grandTotal = parseFloat((taxableSubtotal + gstTotal).toFixed(2));
+  // P2-5: per-line-then-sum (canonical; matches the web cart's useCart). GST and grand
+  // total are the SUM of the per-line rounded amounts (via calcItemTotals), so the
+  // stored gst_total equals Σ items.gst_5 to the cent — not an aggregate re-rounding
+  // that could drift from the line items by a ngultrum.
+  let gstTotal = 0;
+  let grandTotal = 0;
+  for (const i of items) {
+    const t = calcItemTotals(i, gstRate);
+    gstTotal += t.gstAmount;
+    grandTotal += t.total;
+  }
   return {
     subtotal: parseFloat(subtotal.toFixed(2)),
     discountTotal: parseFloat(discountTotal.toFixed(2)),
     taxableSubtotal: parseFloat(taxableSubtotal.toFixed(2)),
-    gstTotal,
-    grandTotal,
+    gstTotal: parseFloat(gstTotal.toFixed(2)),
+    grandTotal: parseFloat(grandTotal.toFixed(2)),
   };
 }
 
@@ -47,14 +54,17 @@ export function formatCurrency(amount: number): string {
 /**
  * Generate digital signature for order integrity.
  * Uses SubtleCrypto SHA-256 in browser.
+ *
+ * Payload is `orderNo:grandTotal:tpnGstin` — identical to the web app (P1-3),
+ * and intentionally has NO timestamp so the signature can be re-verified from
+ * the stored order (orderNo + grand_total + seller TPN) on sync ingest.
  */
 export async function generateOrderSignature(
   orderNo: string,
   grandTotal: number,
-  tpnGstin: string,
-  timestamp: string
+  tpnGstin: string
 ): Promise<string> {
-  const payload = `${orderNo}:${grandTotal}:${tpnGstin}:${timestamp}`;
+  const payload = `${orderNo}:${grandTotal}:${tpnGstin}`;
   const sigBytes = new TextEncoder().encode(payload);
   const hashBuffer = await crypto.subtle.digest("SHA-256", sigBytes);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
@@ -62,9 +72,10 @@ export async function generateOrderSignature(
 }
 
 /**
- * Generate POS order number: POS-YYYYMMDD-NNNN
- * Sequence is obtained from PocketBase count for the day.
+ * Generate POS order number: POS-{TERMINAL}-YYYYMMDD-NNNN (P1-2).
+ * The terminal id namespaces the per-day sequence so two offline terminals
+ * cannot mint colliding order numbers before they sync.
  */
-export function generateOrderNo(date: string, sequence: number): string {
-  return `POS-${date}-${String(sequence).padStart(4, "0")}`;
+export function generateOrderNo(terminalId: string, date: string, sequence: number): string {
+  return `POS-${terminalId}-${date}-${String(sequence).padStart(4, "0")}`;
 }

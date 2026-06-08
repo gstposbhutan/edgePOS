@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/hooks/use-auth";
+import { useRequireRole } from "@/hooks/use-require-role";
 import { useShifts } from "@/hooks/use-shifts";
 import { useCashAdjustments } from "@/hooks/use-cash-adjustments";
 import { Button } from "@/components/ui/button";
@@ -44,6 +45,7 @@ import { toast } from "sonner";
 
 export default function AdjustmentsPage() {
   const { user } = useAuth();
+  useRequireRole(["owner", "manager"] as const);
   const { activeShift } = useShifts();
   const {
     adjustments,

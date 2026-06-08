@@ -13,6 +13,7 @@ export interface Settings {
   receipt_header: string;
   receipt_footer: string;
   gst_rate: number;
+  store_entity_id: string;
 }
 
 async function fetchSettings(): Promise<Settings> {
@@ -28,6 +29,7 @@ async function fetchSettings(): Promise<Settings> {
     receipt_header: "",
     receipt_footer: "Thank you for your business!",
     gst_rate: 5,
+    store_entity_id: "",
   }, PB_REQ);
   return defaultSettings as unknown as Settings;
 }

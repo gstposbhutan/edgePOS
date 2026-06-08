@@ -35,7 +35,7 @@ export default function CustomersPage() {
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [showRepay, setShowRepay] = useState<string | null>(null);
-  const [newCustomer, setNewCustomer] = useState({ debtor_name: "", debtor_phone: "" });
+  const [newCustomer, setNewCustomer] = useState({ debtor_name: "", debtor_phone: "", credit_limit: 0 });
   const [repayAmount, setRepayAmount] = useState(0);
   const [repayMethod, setRepayMethod] = useState("cash");
 
@@ -51,7 +51,7 @@ export default function CustomersPage() {
     if (result.success) {
       toast.success("Customer created");
       setShowCreate(false);
-      setNewCustomer({ debtor_name: "", debtor_phone: "" });
+      setNewCustomer({ debtor_name: "", debtor_phone: "", credit_limit: 0 });
       refresh();
     } else {
       toast.error(result.error);
@@ -176,6 +176,19 @@ export default function CustomersPage() {
                 onChange={(e) => setNewCustomer({ ...newCustomer, debtor_phone: e.target.value })}
                 placeholder="+975-12345678"
               />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Credit Limit (Nu.)</label>
+              <Input
+                type="number"
+                min={0}
+                value={newCustomer.credit_limit || ""}
+                onChange={(e) => setNewCustomer({ ...newCustomer, credit_limit: parseFloat(e.target.value) || 0 })}
+                placeholder="0 = no limit"
+              />
+              <p className="text-xs text-muted-foreground">
+                Credit sales are blocked once the outstanding balance would exceed this. Leave 0 for no limit.
+              </p>
             </div>
             <Button className="w-full" onClick={handleCreate} disabled={!newCustomer.debtor_name.trim()}>
               Create Customer

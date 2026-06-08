@@ -17,21 +17,33 @@ export const ORDER_STATUS = {
 } as const;
 export type OrderStatus = (typeof ORDER_STATUS)[keyof typeof ORDER_STATUS];
 
+// Canonical payment methods (P1-1) — must match the web app's
+// orders.payment_method values (CASH | CREDIT | ONLINE) so desktop orders sync
+// to Supabase without a CHECK violation.
 export const PAYMENT_METHOD = {
-  CASH: "cash",
-  MBOB: "mbob",
-  MPAY: "mpay",
-  CREDIT: "credit",
-  RTGS: "rtgs",
+  CASH: "CASH",
+  CREDIT: "CREDIT",
+  ONLINE: "ONLINE",
 } as const;
 export type PaymentMethod = (typeof PAYMENT_METHOD)[keyof typeof PAYMENT_METHOD];
 
+// Sub-channel for ONLINE payments — preserves the wallet/rail (mBoB/mPay/RTGS)
+// for receipts and reporting without breaking the canonical method enum.
+export const PAYMENT_CHANNEL = {
+  MBOB: "MBOB",
+  MPAY: "MPAY",
+  RTGS: "RTGS",
+} as const;
+export type PaymentChannel = (typeof PAYMENT_CHANNEL)[keyof typeof PAYMENT_CHANNEL];
+
+// UI payment options → canonical (method, channel). mBoB/mPay/RTGS all map to
+// ONLINE with a distinguishing channel; cash/credit have no channel.
 export const PAYMENT_METHODS = [
-  { id: PAYMENT_METHOD.CASH, label: "Cash" },
-  { id: PAYMENT_METHOD.MBOB, label: "mBoB" },
-  { id: PAYMENT_METHOD.MPAY, label: "mPay" },
-  { id: PAYMENT_METHOD.RTGS, label: "RTGS" },
-  { id: PAYMENT_METHOD.CREDIT, label: "Khata / Credit" },
+  { id: "cash",   label: "Cash",           method: PAYMENT_METHOD.CASH,   channel: null },
+  { id: "mbob",   label: "mBoB",           method: PAYMENT_METHOD.ONLINE, channel: PAYMENT_CHANNEL.MBOB },
+  { id: "mpay",   label: "mPay",           method: PAYMENT_METHOD.ONLINE, channel: PAYMENT_CHANNEL.MPAY },
+  { id: "rtgs",   label: "RTGS",           method: PAYMENT_METHOD.ONLINE, channel: PAYMENT_CHANNEL.RTGS },
+  { id: "credit", label: "Khata / Credit", method: PAYMENT_METHOD.CREDIT, channel: null },
 ] as const;
 
 export const DENOMINATIONS = [10, 50, 100, 500, 1000] as const;

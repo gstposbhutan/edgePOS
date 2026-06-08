@@ -141,7 +141,7 @@ export function ReceiptModal({ open, onClose, onNewSale, order, settings }: Rece
               <span className="text-gray-500">Date:</span>
               <span className="font-medium text-right">{date}</span>
               <span className="text-gray-500">Payment:</span>
-              <span className="font-medium text-right uppercase">{order.payment_method}</span>
+              <span className="font-medium text-right uppercase">{order.payment_channel || order.payment_method}</span>
               {order.customer_name && (
                 <>
                   <span className="text-gray-500">Customer:</span>
