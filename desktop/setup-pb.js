@@ -1,10 +1,21 @@
 const PocketBase = require('pocketbase').default;
 
 const PB_URL = process.env.PB_URL || 'http://127.0.0.1:8090';
-const ADMIN_EMAIL = 'admin@pos.local';
-const ADMIN_PASS = 'admin12345';
+// Superuser (PocketBase admin) used to run this setup. Sourced from env; the
+// weak defaults exist only for first-run local dev and MUST be overridden and
+// rotated in any real deployment (PB_ADMIN_EMAIL / PB_ADMIN_PASS).
+const ADMIN_EMAIL = process.env.PB_ADMIN_EMAIL || 'admin@pos.local';
+const ADMIN_PASS = process.env.PB_ADMIN_PASS || 'admin12345';
+// Seed POS application user (role: owner). Override via SEED_USER_EMAIL / SEED_USER_PASS.
+const SEED_USER_EMAIL = process.env.SEED_USER_EMAIL || 'admin@pos.local';
+const SEED_USER_PASS = process.env.SEED_USER_PASS || 'admin12345';
+const USING_DEFAULT_SECRETS = !process.env.PB_ADMIN_PASS || !process.env.SEED_USER_PASS;
 
 const AUTH_RULE = "@request.auth.id != ''";
+// Role-scoped rules. The `users` auth collection has a `role` select
+// (owner | manager | cashier), so rules can reference @request.auth.role.
+const MANAGER_RULE = "@request.auth.id != '' && (@request.auth.role = 'owner' || @request.auth.role = 'manager')";
+const OWNER_RULE = "@request.auth.id != '' && @request.auth.role = 'owner'";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -66,6 +77,16 @@ async function addFields(pb, collectionName, fields) {
   }
 }
 
+async function ensureCollection(pb, name, def) {
+  try {
+    await pb.collections.getOne(name);
+    console.log(`  ⏭ Collection "${name}" already exists`);
+  } catch {
+    await pb.collections.create({ name, type: 'base', ...def });
+    console.log(`  ✓ Created collection "${name}"`);
+  }
+}
+
 // ── Main Setup ───────────────────────────────────────────────────────────────
 
 async function setup() {
@@ -73,6 +94,13 @@ async function setup() {
 
   await pb.collection('_superusers').authWithPassword(ADMIN_EMAIL, ADMIN_PASS);
   console.log('🔑 Superuser authenticated');
+
+  if (USING_DEFAULT_SECRETS) {
+    console.warn(
+      '\n⚠️  Using DEFAULT credentials. Set PB_ADMIN_EMAIL/PB_ADMIN_PASS and ' +
+      'SEED_USER_EMAIL/SEED_USER_PASS, and rotate them, before any real deployment.'
+    );
+  }
 
   // ── users ──────────────────────────────────────────────────────────────────
   await addField(pb, 'users', { name: 'name', type: 'text', required: false });
@@ -115,6 +143,7 @@ async function setup() {
     { name: 'image_url', type: 'text', required: false },
     { name: 'image_embedding', type: 'text', required: false },
     { name: 'is_active', type: 'bool', required: false, options: { default: true } },
+    { name: 'sold_by_weight', type: 'bool', required: false, options: { default: false } },
     { name: 'category', type: 'relation', target: 'categories', required: false },
     { name: 'entity_id', type: 'relation', target: 'entities', required: false },
     { name: 'created_by', type: 'relation', target: 'users', required: false },
@@ -168,6 +197,7 @@ async function setup() {
     { name: 'gst_total', type: 'number', required: false, options: { default: 0 } },
     { name: 'grand_total', type: 'number', required: false, options: { default: 0 } },
     { name: 'payment_method', type: 'text', required: false },
+    { name: 'payment_channel', type: 'text', required: false },
     { name: 'payment_ref', type: 'text', required: false },
     { name: 'seller_id', type: 'relation', target: 'entities', required: false },
     { name: 'buyer_id', type: 'relation', target: 'entities', required: false },
@@ -224,6 +254,7 @@ async function setup() {
     { name: 'receipt_footer', type: 'text', required: false },
     { name: 'gst_rate', type: 'number', required: false, options: { default: 5 } },
     { name: 'entity_id', type: 'relation', target: 'entities', required: false },
+    { name: 'store_entity_id', type: 'text', required: false },
   ]);
 
   // ── shifts ─────────────────────────────────────────────────────────────────
@@ -254,53 +285,173 @@ async function setup() {
     { name: 'created_by', type: 'relation', target: 'users', required: true },
   ]);
 
-  // ── Access rules ───────────────────────────────────────────────────────────
-  const collectionNames = [
-    'entities', 'categories', 'products', 'khata_accounts', 'carts', 'cart_items',
-    'orders', 'inventory_movements', 'khata_transactions', 'settings', 'shifts',
-    'cash_adjustments'
-  ];
+  // ── cash_registers (registers = terminals; one per machine, keyed by MAC) ─────
+  await ensureCollection(pb, 'cash_registers', {
+    listRule: AUTH_RULE,
+    viewRule: AUTH_RULE,
+    createRule: AUTH_RULE,
+    updateRule: MANAGER_RULE,
+    deleteRule: MANAGER_RULE,
+    fields: [
+      { name: 'machine_id', type: 'text', required: true },
+      { name: 'name', type: 'text', required: true },
+      { name: 'default_opening_float', type: 'number', required: false, options: { default: 0 } },
+      { name: 'is_active', type: 'bool', required: false, options: { default: true } },
+    ],
+    indexes: ['CREATE UNIQUE INDEX `idx_cash_registers_machine` ON `cash_registers` (`machine_id`)'],
+  });
+  await addFields(pb, 'cash_registers', [
+    { name: 'created_by', type: 'relation', target: 'users', required: false },
+  ]);
+
+  // register_id (which terminal) on the transactional collections
+  await addFields(pb, 'orders', [{ name: 'register_id', type: 'relation', target: 'cash_registers', required: false }]);
+  await addFields(pb, 'shifts', [{ name: 'register_id', type: 'relation', target: 'cash_registers', required: false }]);
+  await addFields(pb, 'inventory_movements', [{ name: 'register_id', type: 'relation', target: 'cash_registers', required: false }]);
+  await addFields(pb, 'cash_adjustments', [{ name: 'register_id', type: 'relation', target: 'cash_registers', required: false }]);
+
+  // is_synced: marks which rows the terminal has pushed to the cloud ingest.
+  // (orders.is_synced already comes from migration 001.)
+  await addFields(pb, 'inventory_movements', [{ name: 'is_synced', type: 'bool', required: false, options: { default: false } }]);
+  await addFields(pb, 'khata_transactions', [{ name: 'is_synced', type: 'bool', required: false, options: { default: false } }]);
+
+  // ── Audit trail (P2-2): order_status_log + audit_logs, mirroring the web app.
+  //    Append-only over the API (no create/update/delete rules) — only the audit
+  //    hook (pb_hooks/audit.pb.js) writes them, via a rule-bypassing direct save.
+  //    (The 005 migration also creates these; ensureCollection is a no-op if present.)
+  await ensureCollection(pb, 'order_status_log', {
+    listRule: AUTH_RULE,
+    viewRule: AUTH_RULE,
+    createRule: null,
+    updateRule: null,
+    deleteRule: null,
+    fields: [
+      { name: 'from_status', type: 'text', required: false },
+      { name: 'to_status', type: 'text', required: true },
+      { name: 'reason', type: 'text', required: false },
+      { name: 'metadata', type: 'json', required: false },
+      { name: 'actor_role', type: 'text', required: false },
+    ],
+    indexes: ['CREATE INDEX `idx_order_status_log_order` ON `order_status_log` (`order`)'],
+  });
+  await addFields(pb, 'order_status_log', [
+    { name: 'order', type: 'relation', target: 'orders', required: false },
+    { name: 'created_by', type: 'relation', target: 'users', required: false },
+  ]);
+
+  await ensureCollection(pb, 'audit_logs', {
+    listRule: AUTH_RULE,
+    viewRule: AUTH_RULE,
+    createRule: null,
+    updateRule: null,
+    deleteRule: null,
+    fields: [
+      { name: 'table_name', type: 'text', required: true },
+      { name: 'record_id', type: 'text', required: false },
+      { name: 'operation', type: 'select', required: true, values: ['INSERT', 'UPDATE', 'DELETE'] },
+      { name: 'old_values', type: 'json', required: false },
+      { name: 'new_values', type: 'json', required: false },
+      { name: 'actor_id', type: 'text', required: false },
+      { name: 'actor_role', type: 'text', required: false },
+    ],
+  });
+
+  // ── Canonical payment_method values (P1-1) ───────────────────────────────────
+  // The 001 migration defined orders.payment_method as a lowercase select
+  // (cash/mbob/mpay/rtgs/credit). Re-point it to the canonical web enum so synced
+  // orders pass Supabase's CHECK. mBoB/mPay/RTGS now ride ONLINE + payment_channel.
+  try {
+    const orders = await pb.collections.getOne('orders');
+    const pm = orders.fields.find((f) => f.name === 'payment_method');
+    if (pm && pm.type === 'select') {
+      pm.values = ['CASH', 'CREDIT', 'ONLINE'];
+      pm.maxSelect = 1;
+      await pb.collections.update(orders.id, orders);
+      console.log('\n💳 orders.payment_method values canonicalized → CASH/CREDIT/ONLINE');
+    } else {
+      console.log('\n💳 orders.payment_method is not a select — skipped');
+    }
+  } catch (e) {
+    console.error('\n✗ Failed to canonicalize payment_method:', e.message);
+  }
+
+  // ── Access rules (role-scoped) ───────────────────────────────────────────────
+  // Reads stay open to any authenticated user — the POS terminal must read
+  // products/customers/orders/etc. to operate. Writes are scoped by role:
+  //   • Cashiers run sales: create orders/movements/khata + update stock/balance.
+  //   • Ledgers (inventory_movements, khata_transactions, cash_adjustments) are
+  //     append-only for cashiers (create allowed; update/delete = manager+).
+  //   • Deletes, product/category management, and store settings/entities are
+  //     restricted to managers/owners.
+  //   • settings.create stays open so first-run auto-create (use-settings.ts)
+  //     works for any user; settings.update/delete = owner only (this is what
+  //     protects tpn_gstin / store name from cashier edits).
+  // KNOWN GAP: field-level protection (e.g. only a manager may change a khata
+  // account's credit_limit, which cashiers must still update for balances)
+  // needs a PocketBase hook — tracked as a follow-up in the parity-fix plan.
+  const RULES = {
+    entities:            { list: AUTH_RULE, view: AUTH_RULE, create: OWNER_RULE,   update: OWNER_RULE,   delete: OWNER_RULE },
+    settings:            { list: AUTH_RULE, view: AUTH_RULE, create: AUTH_RULE,    update: OWNER_RULE,   delete: OWNER_RULE },
+    categories:          { list: AUTH_RULE, view: AUTH_RULE, create: MANAGER_RULE, update: MANAGER_RULE, delete: MANAGER_RULE },
+    products:            { list: AUTH_RULE, view: AUTH_RULE, create: MANAGER_RULE, update: AUTH_RULE,    delete: MANAGER_RULE },
+    khata_accounts:      { list: AUTH_RULE, view: AUTH_RULE, create: AUTH_RULE,    update: AUTH_RULE,    delete: MANAGER_RULE },
+    khata_transactions:  { list: AUTH_RULE, view: AUTH_RULE, create: AUTH_RULE,    update: MANAGER_RULE, delete: MANAGER_RULE },
+    cash_registers:      { list: AUTH_RULE, view: AUTH_RULE, create: AUTH_RULE,    update: MANAGER_RULE, delete: MANAGER_RULE },
+    carts:               { list: AUTH_RULE, view: AUTH_RULE, create: AUTH_RULE,    update: AUTH_RULE,    delete: AUTH_RULE },
+    cart_items:          { list: AUTH_RULE, view: AUTH_RULE, create: AUTH_RULE,    update: AUTH_RULE,    delete: AUTH_RULE },
+    orders:              { list: AUTH_RULE, view: AUTH_RULE, create: AUTH_RULE,    update: AUTH_RULE,    delete: MANAGER_RULE },
+    inventory_movements: { list: AUTH_RULE, view: AUTH_RULE, create: AUTH_RULE,    update: MANAGER_RULE, delete: MANAGER_RULE },
+    shifts:              { list: AUTH_RULE, view: AUTH_RULE, create: AUTH_RULE,    update: AUTH_RULE,    delete: MANAGER_RULE },
+    cash_adjustments:    { list: AUTH_RULE, view: AUTH_RULE, create: AUTH_RULE,    update: MANAGER_RULE, delete: MANAGER_RULE },
+  };
   console.log('\n🔒 Access rules:');
-  for (const name of collectionNames) {
+  for (const [name, rules] of Object.entries(RULES)) {
     try {
       const col = await pb.collections.getOne(name);
-      if (col.listRule !== AUTH_RULE || col.createRule !== AUTH_RULE) {
-        col.listRule = AUTH_RULE;
-        col.viewRule = AUTH_RULE;
-        col.createRule = AUTH_RULE;
-        col.updateRule = AUTH_RULE;
-        col.deleteRule = AUTH_RULE;
-        await pb.collections.update(col.id, col);
-        console.log(`  ✓ Set rules on ${name}`);
-      } else {
-        console.log(`  ⏭ Rules already set on ${name}`);
-      }
+      col.listRule = rules.list;
+      col.viewRule = rules.view;
+      col.createRule = rules.create;
+      col.updateRule = rules.update;
+      col.deleteRule = rules.delete;
+      await pb.collections.update(col.id, col);
+      console.log(`  ✓ Set role-scoped rules on ${name}`);
     } catch (e) {
       console.error(`  ✗ Failed to set rules on ${name}:`, e.message);
     }
   }
 
-  // ── Seed default user ────────────────────────────────────────────────────
+  // ── Batch API (required for atomic checkout — see hooks/use-checkout.ts P0-5) ──
+  try {
+    await pb.settings.update({ batch: { enabled: true, maxRequests: 100, timeout: 15 } });
+    console.log('\n⚙️  Batch API enabled (atomic multi-record writes)');
+  } catch (e) {
+    console.error('\n⚠️  Could not enable Batch API:', e.message);
+  }
+
+  // ── Seed owner user ──────────────────────────────────────────────────────
   try {
     await pb.collection('users').create({
-      email: 'admin@pos.local',
-      password: 'admin12345',
-      passwordConfirm: 'admin12345',
-      name: 'Admin',
+      email: SEED_USER_EMAIL,
+      password: SEED_USER_PASS,
+      passwordConfirm: SEED_USER_PASS,
+      name: 'Owner',
       role: 'owner',
       verified: true,
     });
-    console.log('\n👤 Created default user admin@pos.local');
+    console.log(`\n👤 Created owner user ${SEED_USER_EMAIL}`);
   } catch (e) {
     if (e.message?.includes('already exists') || e.data?.email?.code === 'validation_not_unique') {
-      console.log('\n👤 Default user already exists');
+      console.log(`\n👤 Owner user already exists (${SEED_USER_EMAIL})`);
     } else {
       console.error('\n❌ Error creating user:', e.message);
     }
   }
 
   console.log('\n✅ Setup complete!');
-  console.log('Login with: admin@pos.local / admin12345');
+  console.log(`Login with: ${SEED_USER_EMAIL}`);
+  if (USING_DEFAULT_SECRETS) {
+    console.warn('⚠️  Default password in use — change it now and set SEED_USER_PASS for future setups.');
+  }
 }
 
 setup().catch((err) => {
