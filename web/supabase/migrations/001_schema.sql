@@ -1,2312 +1,233 @@
--- RLS helper functions (must exist before policies in table definitions)
-CREATE OR REPLACE FUNCTION auth_entity_id() RETURNS UUID AS $$
-  SELECT (auth.jwt() ->> 'entity_id')::UUID;
-$$ LANGUAGE SQL STABLE;
 
-CREATE OR REPLACE FUNCTION auth_role() RETURNS TEXT AS $$
-  SELECT auth.jwt() ->> 'role';
-$$ LANGUAGE SQL STABLE;
 
-CREATE OR REPLACE FUNCTION auth_sub_role() RETURNS TEXT AS $$
-  SELECT auth.jwt() ->> 'sub_role';
-$$ LANGUAGE SQL STABLE;
 
-CREATE OR REPLACE FUNCTION is_super_admin() RETURNS BOOLEAN AS $$
-  SELECT auth_role() = 'SUPER_ADMIN';
-$$ LANGUAGE SQL STABLE;
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
 
--- Migration 001: Categories
--- Product categories managed by Distributors
 
-CREATE TABLE categories (
-  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name           TEXT NOT NULL UNIQUE,
-  distributor_id UUID,  -- FK added after entities table is created (migration 002)
-  created_at     TIMESTAMPTZ DEFAULT NOW()
-);
+CREATE SCHEMA IF NOT EXISTS "public";
 
--- Seed core categories
-INSERT INTO categories (name) VALUES
-  ('Food & Grocery'),
-  ('Electronics'),
-  ('Textiles & Clothing'),
-  ('Health & Pharmacy'),
-  ('Hardware & Construction'),
-  ('Stationery & Office'),
-  ('General Merchandise');
--- Migration 002: Entities (Multi-tenant foundation)
--- Every participant in the supply chain: SUPER_ADMIN, DISTRIBUTOR, WHOLESALER, RETAILER
--- NOTE: parent_entity_id removed — replaced by retailer_wholesalers junction table (migration 005)
 
-CREATE TABLE IF NOT EXISTS entities (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name         TEXT NOT NULL,
-  role         TEXT NOT NULL CHECK (role IN ('SUPER_ADMIN', 'DISTRIBUTOR', 'WHOLESALER', 'RETAILER')),
-  tpn_gstin    TEXT UNIQUE,
-  whatsapp_no  TEXT,
-  credit_limit DECIMAL(12,2) DEFAULT 0,
-  is_active    BOOLEAN DEFAULT TRUE,
-  created_at   TIMESTAMPTZ DEFAULT NOW(),
-  updated_at   TIMESTAMPTZ DEFAULT NOW()
-);
+ALTER SCHEMA "public" OWNER TO "pg_database_owner";
 
--- Add missing columns to pre-existing entities table
-ALTER TABLE entities ADD COLUMN IF NOT EXISTS role         TEXT CHECK (role IN ('SUPER_ADMIN', 'DISTRIBUTOR', 'WHOLESALER', 'RETAILER'));
-ALTER TABLE entities ADD COLUMN IF NOT EXISTS tpn_gstin    TEXT UNIQUE;
-ALTER TABLE entities ADD COLUMN IF NOT EXISTS whatsapp_no  TEXT;
-ALTER TABLE entities ADD COLUMN IF NOT EXISTS credit_limit DECIMAL(12,2) DEFAULT 0;
-ALTER TABLE entities ADD COLUMN IF NOT EXISTS is_active    BOOLEAN DEFAULT TRUE;
-ALTER TABLE entities ADD COLUMN IF NOT EXISTS created_at   TIMESTAMPTZ DEFAULT NOW();
-ALTER TABLE entities ADD COLUMN IF NOT EXISTS updated_at   TIMESTAMPTZ DEFAULT NOW();
 
--- Add FK from categories to entities (safe to re-run)
-DO $$ BEGIN
-  ALTER TABLE categories
-    ADD CONSTRAINT fk_categories_distributor
-    FOREIGN KEY (distributor_id) REFERENCES entities(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
+COMMENT ON SCHEMA "public" IS 'standard public schema';
 
--- Auto-update updated_at
-CREATE OR REPLACE FUNCTION update_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+-- Extensions required by the schema but omitted by `supabase db dump --schema public`:
+-- pgvector (image_embedding / buyer_hash vector columns) and pg_trgm (trigram indexes).
+CREATE EXTENSION IF NOT EXISTS "vector" WITH SCHEMA "public";
+CREATE EXTENSION IF NOT EXISTS "pg_trgm" WITH SCHEMA "public";
 
-DROP TRIGGER IF EXISTS entities_updated_at ON entities;
-CREATE TRIGGER entities_updated_at
-  BEFORE UPDATE ON entities
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
--- Migration 003: Entity Categories (junction)
--- Wholesalers and Retailers can span multiple product categories
 
-CREATE TABLE IF NOT EXISTS entity_categories (
-  entity_id   UUID NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
-  category_id UUID NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
-  PRIMARY KEY (entity_id, category_id)
-);
 
-CREATE INDEX IF NOT EXISTS idx_entity_categories_entity   ON entity_categories(entity_id);
-CREATE INDEX IF NOT EXISTS idx_entity_categories_category ON entity_categories(category_id);
--- Migration 004: Products (Central Brain Vector Library)
--- Shared product knowledge across all entities in Bhutan
-
-CREATE EXTENSION IF NOT EXISTS vector;
-
-CREATE TABLE IF NOT EXISTS products (
-  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name             TEXT NOT NULL,
-  sku              TEXT UNIQUE,
-  hsn_code         TEXT NOT NULL,
-  image_url        TEXT,
-  image_embedding  vector(1536),
-  current_stock    INT DEFAULT 0,
-  wholesale_price  DECIMAL(12,2),
-  mrp              DECIMAL(12,2),
-  unit             TEXT DEFAULT 'pcs',
-  is_active        BOOLEAN DEFAULT TRUE,
-  created_by       UUID REFERENCES entities(id),
-  created_at       TIMESTAMPTZ DEFAULT NOW(),
-  updated_at       TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Add missing columns to pre-existing products table
-ALTER TABLE products ADD COLUMN IF NOT EXISTS sku              TEXT UNIQUE;
-ALTER TABLE products ADD COLUMN IF NOT EXISTS hsn_code         TEXT;
-ALTER TABLE products ADD COLUMN IF NOT EXISTS image_url        TEXT;
-ALTER TABLE products ADD COLUMN IF NOT EXISTS image_embedding  TEXT;
-ALTER TABLE products ADD COLUMN IF NOT EXISTS current_stock    INT DEFAULT 0;
-ALTER TABLE products ADD COLUMN IF NOT EXISTS wholesale_price  DECIMAL(12,2);
-ALTER TABLE products ADD COLUMN IF NOT EXISTS mrp              DECIMAL(12,2);
-ALTER TABLE products ADD COLUMN IF NOT EXISTS unit             TEXT DEFAULT 'pcs';
-ALTER TABLE products ADD COLUMN IF NOT EXISTS is_active        BOOLEAN DEFAULT TRUE;
-ALTER TABLE products ADD COLUMN IF NOT EXISTS created_by       UUID REFERENCES entities(id);
-ALTER TABLE products ADD COLUMN IF NOT EXISTS created_at       TIMESTAMPTZ DEFAULT NOW();
-ALTER TABLE products ADD COLUMN IF NOT EXISTS updated_at       TIMESTAMPTZ DEFAULT NOW();
-
-DROP TRIGGER IF EXISTS products_updated_at ON products;
-CREATE TRIGGER products_updated_at
-  BEFORE UPDATE ON products
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-
-CREATE TABLE IF NOT EXISTS product_categories (
-  product_id  UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-  category_id UUID NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
-  PRIMARY KEY (product_id, category_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_product_categories_product  ON product_categories(product_id);
-CREATE INDEX IF NOT EXISTS idx_product_categories_category ON product_categories(category_id);
-
--- Alter image_embedding to vector type if it exists as a different type
-DO $$ BEGIN
-  ALTER TABLE products ALTER COLUMN image_embedding TYPE vector(1536)
-    USING image_embedding::vector(1536);
-EXCEPTION WHEN others THEN NULL;
-END $$;
-
--- Create ivfflat index only if column is vector type
-DO $$ BEGIN
-  CREATE INDEX idx_products_embedding ON products
-    USING ivfflat (image_embedding vector_cosine_ops)
-    WITH (lists = 100);
-EXCEPTION WHEN duplicate_table THEN NULL;
-       WHEN undefined_object  THEN NULL;
-       WHEN others            THEN NULL;
-END $$;
--- Migration 005: Retailer ↔ Wholesaler relationships
--- Replaces parent_entity_id. A Retailer can source from multiple Wholesalers per category.
-
-CREATE TABLE IF NOT EXISTS retailer_wholesalers (
-  retailer_id   UUID NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
-  wholesaler_id UUID NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
-  category_id   UUID NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
-  is_primary    BOOLEAN DEFAULT FALSE,
-  active        BOOLEAN DEFAULT TRUE,
-  created_at    TIMESTAMPTZ DEFAULT NOW(),
-  PRIMARY KEY (retailer_id, wholesaler_id, category_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_rw_retailer   ON retailer_wholesalers(retailer_id);
-CREATE INDEX IF NOT EXISTS idx_rw_wholesaler ON retailer_wholesalers(wholesaler_id);
-CREATE INDEX IF NOT EXISTS idx_rw_category   ON retailer_wholesalers(category_id);
--- Migration 006: User Profiles
--- Extends Supabase auth.users with business context for RBAC
-
-CREATE TABLE IF NOT EXISTS user_profiles (
-  id          UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  entity_id   UUID NOT NULL REFERENCES entities(id),
-  role        TEXT NOT NULL CHECK (role IN ('SUPER_ADMIN', 'DISTRIBUTOR', 'WHOLESALER', 'RETAILER')),
-  sub_role    TEXT NOT NULL CHECK (sub_role IN ('OWNER', 'MANAGER', 'CASHIER', 'STAFF', 'ADMIN')),
-  permissions TEXT[] DEFAULT '{}',
-  full_name   TEXT,
-  created_at  TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_user_profiles_entity ON user_profiles(entity_id);
-
--- JWT Custom Claims Hook
--- Adds RBAC claims to the JWT's app_metadata for RLS functions
-CREATE OR REPLACE FUNCTION public.custom_access_token_hook(event JSONB)
-RETURNS JSONB AS $$
-DECLARE
-  app_metadata  JSONB;
-  profile RECORD;
-BEGIN
-  SELECT entity_id, role, sub_role, permissions
-  INTO profile
-  FROM user_profiles
-  WHERE id = (event->>'user_id')::UUID;
-
-  IF profile IS NULL THEN
-    RETURN event;
-  END IF;
-
-  app_metadata := event->'app_metadata';
-  app_metadata := jsonb_set(app_metadata, '{entity_id}',  to_jsonb(profile.entity_id::TEXT));
-  app_metadata := jsonb_set(app_metadata, '{role}',        to_jsonb(profile.role));
-  app_metadata := jsonb_set(app_metadata, '{sub_role}',    to_jsonb(profile.sub_role));
-  app_metadata := jsonb_set(app_metadata, '{permissions}', to_jsonb(profile.permissions));
-
-  RETURN jsonb_set(event, '{app_metadata}', app_metadata);
-END;
-$$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
-
-GRANT EXECUTE ON FUNCTION public.custom_access_token_hook TO supabase_auth_admin;
-REVOKE EXECUTE ON FUNCTION public.custom_access_token_hook FROM authenticated, anon, public;
--- Migration 007: Orders + Order Lifecycle Tables
-
-CREATE TABLE IF NOT EXISTS orders (
-  id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  order_type           TEXT NOT NULL CHECK (order_type IN ('POS_SALE', 'WHOLESALE', 'MARKETPLACE')),
-  order_no             TEXT UNIQUE NOT NULL,
-  status               TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN (
-                         'DRAFT', 'PENDING_PAYMENT', 'PAYMENT_VERIFYING', 'CONFIRMED',
-                         'PROCESSING', 'DISPATCHED', 'DELIVERED', 'COMPLETED',
-                         'PAYMENT_FAILED', 'CANCELLATION_REQUESTED', 'CANCELLED',
-                         'REFUND_REQUESTED', 'REFUND_APPROVED', 'REFUND_REJECTED',
-                         'REFUND_PROCESSING', 'REFUNDED',
-                         'REPLACEMENT_REQUESTED', 'REPLACEMENT_DISPATCHED', 'REPLACEMENT_DELIVERED'
-                       )),
-  seller_id            UUID NOT NULL REFERENCES entities(id),
-  buyer_id             UUID REFERENCES entities(id),
-  buyer_whatsapp       TEXT,
-  buyer_hash           TEXT,  -- cast to vector(512) post-insert via trigger once pgvector confirmed
-  items                JSONB NOT NULL,
-  subtotal             DECIMAL(12,2) NOT NULL,
-  gst_total            DECIMAL(12,2) NOT NULL,
-  grand_total          DECIMAL(12,2) NOT NULL,
-  payment_method       TEXT CHECK (payment_method IN ('MBOB', 'MPAY', 'RTGS', 'CASH', 'CREDIT')),
-  payment_ref          TEXT,
-  payment_verified_at  TIMESTAMPTZ,
-  ocr_verify_id        TEXT,
-  retry_count          INT DEFAULT 0,
-  max_retries          INT DEFAULT 3,
-  whatsapp_status      TEXT DEFAULT 'PENDING' CHECK (whatsapp_status IN ('PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED')),
-  digital_signature    TEXT,
-  created_by           UUID REFERENCES user_profiles(id),
-  created_at           TIMESTAMPTZ DEFAULT NOW(),
-  updated_at           TIMESTAMPTZ DEFAULT NOW(),
-  completed_at         TIMESTAMPTZ,
-  cancelled_at         TIMESTAMPTZ,
-  cancellation_reason  TEXT
-);
-
-DROP TRIGGER IF EXISTS orders_updated_at ON orders;
-CREATE TRIGGER orders_updated_at
-  BEFORE UPDATE ON orders
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-
-CREATE INDEX IF NOT EXISTS idx_orders_seller  ON orders(seller_id);
-CREATE INDEX IF NOT EXISTS idx_orders_buyer   ON orders(buyer_id);
-CREATE INDEX IF NOT EXISTS idx_orders_status  ON orders(status);
-CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(created_at DESC);
-
--- Order status log — append-only
-CREATE TABLE IF NOT EXISTS order_status_log (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  order_id    UUID NOT NULL REFERENCES orders(id),
-  from_status TEXT,
-  to_status   TEXT NOT NULL,
-  actor_id    UUID REFERENCES user_profiles(id),
-  actor_role  TEXT,
-  reason      TEXT,
-  metadata    JSONB,
-  created_at  TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_order_status_log_order ON order_status_log(order_id);
-
-CREATE OR REPLACE FUNCTION log_order_status_change()
-RETURNS TRIGGER AS $$
-BEGIN
-  IF OLD.status IS DISTINCT FROM NEW.status THEN
-    INSERT INTO order_status_log (order_id, from_status, to_status, metadata)
-    VALUES (NEW.id, OLD.status, NEW.status, jsonb_build_object('updated_at', NOW()));
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS orders_status_log ON orders;
-CREATE TRIGGER orders_status_log
-  AFTER UPDATE ON orders
-  FOR EACH ROW EXECUTE FUNCTION log_order_status_change();
-
--- Payment attempts
-CREATE TABLE IF NOT EXISTS payment_attempts (
-  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  order_id         UUID NOT NULL REFERENCES orders(id),
-  attempt_number   INT NOT NULL,
-  payment_method   TEXT NOT NULL,
-  gateway          TEXT,
-  amount           DECIMAL(12,2) NOT NULL,
-  status           TEXT NOT NULL CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'TIMEOUT', 'CANCELLED')),
-  gateway_ref      TEXT,
-  gateway_response JSONB,
-  failure_code     TEXT,
-  failure_reason   TEXT,
-  initiated_at     TIMESTAMPTZ DEFAULT NOW(),
-  resolved_at      TIMESTAMPTZ,
-  UNIQUE (order_id, attempt_number)
-);
-
-CREATE INDEX IF NOT EXISTS idx_payment_attempts_order ON payment_attempts(order_id);
-
--- Refunds
-CREATE TABLE IF NOT EXISTS refunds (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  order_id      UUID NOT NULL REFERENCES orders(id),
-  refund_type   TEXT NOT NULL CHECK (refund_type IN ('FULL', 'PARTIAL')),
-  refund_method TEXT NOT NULL,
-  amount        DECIMAL(12,2) NOT NULL,
-  gst_reversal  DECIMAL(12,2) NOT NULL,
-  reason        TEXT NOT NULL,
-  requested_by  UUID NOT NULL REFERENCES user_profiles(id),
-  approved_by   UUID REFERENCES user_profiles(id),
-  status        TEXT NOT NULL DEFAULT 'REQUESTED' CHECK (status IN (
-                  'REQUESTED', 'APPROVED', 'REJECTED', 'PROCESSING', 'COMPLETED', 'FAILED'
-                )),
-  gateway_ref   TEXT,
-  processed_at  TIMESTAMPTZ,
-  created_at    TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_refunds_order ON refunds(order_id);
-
--- Replacements
-CREATE TABLE IF NOT EXISTS replacements (
-  id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  original_order_id    UUID NOT NULL REFERENCES orders(id),
-  replacement_order_id UUID REFERENCES orders(id),
-  reason               TEXT NOT NULL,
-  requested_by         UUID NOT NULL REFERENCES user_profiles(id),
-  approved_by          UUID REFERENCES user_profiles(id),
-  status               TEXT NOT NULL DEFAULT 'REQUESTED' CHECK (status IN (
-                         'REQUESTED', 'APPROVED', 'REJECTED', 'DISPATCHED', 'DELIVERED'
-                       )),
-  created_at           TIMESTAMPTZ DEFAULT NOW()
-);
--- Migration 008: Inventory Movements
-
-CREATE TABLE IF NOT EXISTS inventory_movements (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  product_id    UUID NOT NULL REFERENCES products(id),
-  entity_id     UUID NOT NULL REFERENCES entities(id),
-  movement_type TEXT NOT NULL CHECK (movement_type IN ('SALE', 'RESTOCK', 'TRANSFER', 'LOSS', 'DAMAGED', 'RETURN')),
-  quantity      INT NOT NULL,
-  reference_id  UUID,
-  notes         TEXT,
-  created_by    UUID REFERENCES user_profiles(id),
-  created_at    TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_inventory_movements_product ON inventory_movements(product_id);
-CREATE INDEX IF NOT EXISTS idx_inventory_movements_entity  ON inventory_movements(entity_id);
-CREATE INDEX IF NOT EXISTS idx_inventory_movements_created ON inventory_movements(created_at DESC);
-
-CREATE OR REPLACE FUNCTION apply_inventory_movement()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION "public"."apply_inventory_movement"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
 BEGIN
   UPDATE products
   SET current_stock = current_stock + NEW.quantity
   WHERE id = NEW.product_id;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
-DROP TRIGGER IF EXISTS inventory_movement_apply ON inventory_movements;
-CREATE TRIGGER inventory_movement_apply
-  AFTER INSERT ON inventory_movements
-  FOR EACH ROW EXECUTE FUNCTION apply_inventory_movement();
--- Migration 009: Audit Logs
--- Compliance + fraud detection. Append-only. Never deleted.
 
-CREATE TABLE IF NOT EXISTS audit_logs (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  table_name TEXT NOT NULL,
-  record_id  UUID,
-  operation  TEXT NOT NULL CHECK (operation IN ('INSERT', 'UPDATE', 'DELETE', 'IMPERSONATE', 'AUTH')),
-  old_values JSONB,
-  new_values JSONB,
-  actor_id   UUID,
-  actor_role TEXT,
-  ip_address TEXT,
-  user_agent TEXT,
-  timestamp  TIMESTAMPTZ DEFAULT NOW()
-);
+ALTER FUNCTION "public"."apply_inventory_movement"() OWNER TO "postgres";
 
-CREATE INDEX IF NOT EXISTS idx_audit_logs_table     ON audit_logs(table_name);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_record    ON audit_logs(record_id);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_actor     ON audit_logs(actor_id);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp DESC);
--- Migration 011: Cart Persistence + Normalized Order Items
--- Fixes:
---   1. Cart not persisted — add carts + cart_items tables
---   2. orders.items JSONB has no line-item granularity — add order_items table
---   3. Refunds/replacements/cancellations gain item-level targeting
 
--- ─── CART PERSISTENCE ──────────────────────────────────────────────────────
-
-CREATE TABLE IF NOT EXISTS carts (
-  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  entity_id          UUID NOT NULL REFERENCES entities(id) ON DELETE CASCADE,  -- which store
-  customer_whatsapp  TEXT,                    -- captured at POS if no Face-ID
-  buyer_hash         TEXT,                    -- Face-ID reference (opt-in)
-  status             TEXT NOT NULL DEFAULT 'ACTIVE'
-                       CHECK (status IN ('ACTIVE', 'ABANDONED', 'CONVERTED')),
-  created_by         UUID REFERENCES user_profiles(id),
-  created_at         TIMESTAMPTZ DEFAULT NOW(),
-  updated_at         TIMESTAMPTZ DEFAULT NOW()
-);
-
-DROP TRIGGER IF EXISTS carts_updated_at ON carts;
-CREATE TRIGGER carts_updated_at
-  BEFORE UPDATE ON carts
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-
-CREATE INDEX IF NOT EXISTS idx_carts_entity  ON carts(entity_id);
-CREATE INDEX IF NOT EXISTS idx_carts_status  ON carts(status);
-
-CREATE TABLE IF NOT EXISTS cart_items (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  cart_id     UUID NOT NULL REFERENCES carts(id) ON DELETE CASCADE,
-  product_id  UUID NOT NULL REFERENCES products(id),
-  sku         TEXT,
-  name        TEXT NOT NULL,           -- snapshot at time of add
-  quantity    INT NOT NULL DEFAULT 1,
-  unit_price  DECIMAL(12,2) NOT NULL,
-  discount    DECIMAL(12,2) DEFAULT 0,
-  gst_5       DECIMAL(12,2) NOT NULL,  -- 5% of (unit_price - discount) * quantity
-  total       DECIMAL(12,2) NOT NULL,  -- (unit_price - discount + gst_5) * quantity
-  added_at    TIMESTAMPTZ DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ DEFAULT NOW()
-);
-
-DROP TRIGGER IF EXISTS cart_items_updated_at ON cart_items;
-CREATE TRIGGER cart_items_updated_at
-  BEFORE UPDATE ON cart_items
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-
-CREATE INDEX IF NOT EXISTS idx_cart_items_cart    ON cart_items(cart_id);
-CREATE INDEX IF NOT EXISTS idx_cart_items_product ON cart_items(product_id);
-
--- ─── NORMALIZED ORDER ITEMS ────────────────────────────────────────────────
--- Replaces the JSONB items blob with a queryable, referenceable table.
--- orders.items JSONB is kept as an immutable receipt snapshot set at CONFIRMED.
-
-CREATE TABLE IF NOT EXISTS order_items (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  order_id    UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-  product_id  UUID REFERENCES products(id),   -- NULL if product deleted post-order
-  sku         TEXT,
-  name        TEXT NOT NULL,                  -- snapshot at time of order
-  quantity    INT NOT NULL,
-  unit_price  DECIMAL(12,2) NOT NULL,
-  discount    DECIMAL(12,2) DEFAULT 0,
-  gst_5       DECIMAL(12,2) NOT NULL,
-  total       DECIMAL(12,2) NOT NULL,
-  status      TEXT NOT NULL DEFAULT 'ACTIVE'
-                CHECK (status IN (
-                  'ACTIVE',       -- normal
-                  'CANCELLED',    -- removed via partial cancellation
-                  'REFUNDED',     -- refund processed for this item
-                  'REPLACED'      -- replacement dispatched for this item
-                )),
-  created_at  TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_order_items_order   ON order_items(order_id);
-CREATE INDEX IF NOT EXISTS idx_order_items_product ON order_items(product_id);
-CREATE INDEX IF NOT EXISTS idx_order_items_status  ON order_items(status);
-
--- ─── LINK REFUNDS TO SPECIFIC ITEMS ───────────────────────────────────────
--- Allows partial refunds targeting individual line items.
-
-ALTER TABLE refunds ADD COLUMN IF NOT EXISTS order_item_id UUID REFERENCES order_items(id);
-ALTER TABLE refunds ADD COLUMN IF NOT EXISTS quantity       INT;  -- partial qty refund within item
-
--- ─── LINK REPLACEMENTS TO SPECIFIC ITEMS ──────────────────────────────────
-
-ALTER TABLE replacements ADD COLUMN IF NOT EXISTS order_item_id UUID REFERENCES order_items(id);
-ALTER TABLE replacements ADD COLUMN IF NOT EXISTS quantity       INT;
-
--- ─── PARTIAL CANCELLATION ITEM TARGETS ────────────────────────────────────
--- order_status_log already records the transition. We add a junction table
--- to record exactly which items were cancelled in a partial cancellation event.
-
-CREATE TABLE IF NOT EXISTS order_cancellation_items (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  order_id        UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-  order_item_id   UUID NOT NULL REFERENCES order_items(id) ON DELETE CASCADE,
-  quantity        INT NOT NULL,          -- how many units of this item were cancelled
-  reason          TEXT,
-  cancelled_by    UUID REFERENCES user_profiles(id),
-  cancelled_at    TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_cancel_items_order ON order_cancellation_items(order_id);
-
--- ─── CART → ORDER CONVERSION LINK ─────────────────────────────────────────
--- When a cart is checked out, record which cart spawned the order.
-
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS cart_id UUID REFERENCES carts(id);
-
--- Auto-mark cart as CONVERTED when linked order reaches CONFIRMED
-CREATE OR REPLACE FUNCTION convert_cart_on_confirm()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION "public"."apply_synced_khata_txn"("p_account_id" "uuid", "p_external_id" "text", "p_type" "text", "p_amount" numeric, "p_order_id" "uuid" DEFAULT NULL::"uuid", "p_notes" "text" DEFAULT NULL::"text", "p_created_by" "uuid" DEFAULT NULL::"uuid") RETURNS "text"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+  v_txn_id  UUID;
+  v_balance NUMERIC;
+  v_actor   UUID := p_created_by;
 BEGIN
-  IF NEW.status = 'CONFIRMED' AND NEW.cart_id IS NOT NULL THEN
-    UPDATE carts SET status = 'CONVERTED' WHERE id = NEW.cart_id;
+  IF p_type NOT IN ('DEBIT', 'CREDIT') THEN
+    RAISE EXCEPTION 'apply_synced_khata_txn: unsupported type %', p_type;
   END IF;
-  RETURN NEW;
+
+  -- created_by is NOT NULL (FK → user_profiles). A synced txn carries no cloud user,
+  -- so when the caller supplies none, attribute it to the account's entity actor
+  -- (prefer OWNER → ADMIN → MANAGER) — mirroring how the cloud confirm-trigger
+  -- (khata_debit_on_confirm) attributes a khata txn to a user_profiles id.
+  IF v_actor IS NULL THEN
+    SELECT up.id INTO v_actor
+    FROM user_profiles up
+    JOIN khata_accounts ka ON ka.id = p_account_id
+    WHERE up.entity_id = ka.creditor_entity_id
+    ORDER BY CASE up.sub_role WHEN 'OWNER' THEN 0 WHEN 'ADMIN' THEN 1 WHEN 'MANAGER' THEN 2 ELSE 3 END
+    LIMIT 1;
+    IF v_actor IS NULL THEN
+      RAISE EXCEPTION 'apply_synced_khata_txn: no user_profiles actor for the entity owning account %', p_account_id;
+    END IF;
+  END IF;
+
+  -- Claim the external_id. If it already exists, this txn was already reconciled.
+  INSERT INTO khata_transactions
+    (khata_account_id, order_id, transaction_type, amount, balance_after, notes, created_by, external_id)
+  VALUES
+    (p_account_id, p_order_id, p_type, p_amount, 0, p_notes, v_actor, p_external_id)
+  ON CONFLICT (external_id) DO NOTHING
+  RETURNING id INTO v_txn_id;
+
+  IF v_txn_id IS NULL THEN
+    RETURN 'duplicate';        -- balance already reflects it
+  END IF;
+
+  -- Newly claimed → move the balance with the SAME semantics as the cloud triggers.
+  IF p_type = 'DEBIT' THEN
+    UPDATE khata_accounts
+    SET outstanding_balance = outstanding_balance + p_amount, updated_at = NOW()
+    WHERE id = p_account_id RETURNING outstanding_balance INTO v_balance;
+  ELSE
+    UPDATE khata_accounts
+    SET outstanding_balance = GREATEST(0, outstanding_balance - p_amount), updated_at = NOW()
+    WHERE id = p_account_id RETURNING outstanding_balance INTO v_balance;
+  END IF;
+
+  UPDATE khata_transactions SET balance_after = v_balance WHERE id = v_txn_id;
+  RETURN 'applied';
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
-DROP TRIGGER IF EXISTS orders_convert_cart ON orders;
-CREATE TRIGGER orders_convert_cart
-  AFTER UPDATE ON orders
-  FOR EACH ROW EXECUTE FUNCTION convert_cart_on_confirm();
 
--- ─── RLS FOR NEW TABLES ────────────────────────────────────────────────────
+ALTER FUNCTION "public"."apply_synced_khata_txn"("p_account_id" "uuid", "p_external_id" "text", "p_type" "text", "p_amount" numeric, "p_order_id" "uuid", "p_notes" "text", "p_created_by" "uuid") OWNER TO "postgres";
 
-ALTER TABLE carts                    ENABLE ROW LEVEL SECURITY;
-ALTER TABLE cart_items               ENABLE ROW LEVEL SECURITY;
-ALTER TABLE order_items              ENABLE ROW LEVEL SECURITY;
-ALTER TABLE order_cancellation_items ENABLE ROW LEVEL SECURITY;
 
--- Carts scoped to store entity
-CREATE POLICY "carts_own_entity" ON carts
-  FOR ALL USING (is_super_admin() OR entity_id = auth_entity_id());
-
-CREATE POLICY "cart_items_own_entity" ON cart_items
-  FOR ALL USING (
-    is_super_admin() OR
-    cart_id IN (SELECT id FROM carts WHERE entity_id = auth_entity_id())
-  );
-
--- Order items visible to seller + wholesaler chain
-CREATE POLICY "order_items_own_entity" ON order_items
-  FOR ALL USING (
-    is_super_admin() OR
-    order_id IN (SELECT id FROM orders WHERE seller_id = auth_entity_id())
-  );
-
-CREATE POLICY "order_cancellation_items_own_entity" ON order_cancellation_items
-  FOR ALL USING (
-    is_super_admin() OR
-    order_id IN (SELECT id FROM orders WHERE seller_id = auth_entity_id())
-  );
--- Migration 012: Inventory ↔ Order Quantity Automation
--- Ensures product stock is decremented on order confirmation
--- and restored on item cancellation, refund, or full order cancellation.
--- All movements flow through inventory_movements so audit trail is preserved.
-
--- ─── ORDER CONFIRMED → DEDUCT STOCK ───────────────────────────────────────
--- Fires when an order transitions INTO 'CONFIRMED'.
--- Inserts one inventory_movement (SALE, negative qty) per order_item.
-
-CREATE OR REPLACE FUNCTION deduct_stock_on_confirm()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION "public"."audit_order_item_discount"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
 BEGIN
-  IF NEW.status = 'CONFIRMED' AND OLD.status IS DISTINCT FROM 'CONFIRMED' THEN
-    INSERT INTO inventory_movements (product_id, entity_id, movement_type, quantity, reference_id, notes)
-    SELECT
-      oi.product_id,
-      NEW.seller_id,
-      'SALE',
-      -(oi.quantity),   -- negative = stock out
+  IF OLD.discount IS DISTINCT FROM NEW.discount
+     OR OLD.discount_type IS DISTINCT FROM NEW.discount_type THEN
+    INSERT INTO audit_logs (table_name, record_id, operation, old_values, new_values, actor_id, actor_role)
+    VALUES (
+      'order_items',
       NEW.id,
-      'Auto-deducted on order confirmation: ' || NEW.order_no
-    FROM order_items oi
-    WHERE oi.order_id = NEW.id
-      AND oi.product_id IS NOT NULL
-      AND oi.status = 'ACTIVE';
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS orders_deduct_stock ON orders;
-CREATE TRIGGER orders_deduct_stock
-  AFTER UPDATE ON orders
-  FOR EACH ROW EXECUTE FUNCTION deduct_stock_on_confirm();
-
--- ─── ORDER FULLY CANCELLED → RESTORE STOCK ────────────────────────────────
--- Fires when an order transitions INTO 'CANCELLED'.
--- Only restores stock for items that were ACTIVE (not already refunded/replaced).
--- Only runs if the order had previously reached CONFIRMED (stock was deducted).
-
-CREATE OR REPLACE FUNCTION restore_stock_on_cancel()
-RETURNS TRIGGER AS $$
-BEGIN
-  IF NEW.status = 'CANCELLED' AND OLD.status IS DISTINCT FROM 'CANCELLED' THEN
-    -- Only restore if stock was previously deducted (order reached CONFIRMED or beyond)
-    IF OLD.status IN ('CONFIRMED', 'PROCESSING', 'DISPATCHED', 'DELIVERED',
-                      'CANCELLATION_REQUESTED', 'REFUND_REQUESTED') THEN
-      INSERT INTO inventory_movements (product_id, entity_id, movement_type, quantity, reference_id, notes)
-      SELECT
-        oi.product_id,
-        NEW.seller_id,
-        'RETURN',
-        oi.quantity,    -- positive = stock back
-        NEW.id,
-        'Auto-restored on order cancellation: ' || NEW.order_no
-      FROM order_items oi
-      WHERE oi.order_id = NEW.id
-        AND oi.product_id IS NOT NULL
-        AND oi.status = 'ACTIVE';  -- only items not already individually handled
-
-      -- Mark all active items as CANCELLED
-      UPDATE order_items
-        SET status = 'CANCELLED'
-      WHERE order_id = NEW.id AND status = 'ACTIVE';
-    END IF;
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS orders_restore_stock_cancel ON orders;
-CREATE TRIGGER orders_restore_stock_cancel
-  AFTER UPDATE ON orders
-  FOR EACH ROW EXECUTE FUNCTION restore_stock_on_cancel();
-
--- ─── INDIVIDUAL ITEM CANCELLED → RESTORE THAT ITEM'S STOCK ───────────────
--- Fires when a single order_item status changes to 'CANCELLED'.
--- Used for partial cancellations — only the targeted item's qty is restored.
-
-CREATE OR REPLACE FUNCTION restore_stock_on_item_cancel()
-RETURNS TRIGGER AS $$
-DECLARE
-  v_seller_id UUID;
-  v_order_no  TEXT;
-BEGIN
-  IF NEW.status = 'CANCELLED' AND OLD.status = 'ACTIVE' THEN
-    SELECT seller_id, order_no INTO v_seller_id, v_order_no
-    FROM orders WHERE id = NEW.order_id;
-
-    IF NEW.product_id IS NOT NULL THEN
-      INSERT INTO inventory_movements (product_id, entity_id, movement_type, quantity, reference_id, notes)
-      VALUES (
-        NEW.product_id,
-        v_seller_id,
-        'RETURN',
-        NEW.quantity,
-        NEW.order_id,
-        'Partial cancel — item restored: ' || NEW.name || ' (' || v_order_no || ')'
-      );
-    END IF;
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS order_items_restore_on_cancel ON order_items;
-CREATE TRIGGER order_items_restore_on_cancel
-  AFTER UPDATE ON order_items
-  FOR EACH ROW EXECUTE FUNCTION restore_stock_on_item_cancel();
-
--- ─── ITEM REFUNDED → RESTORE STOCK ────────────────────────────────────────
--- Fires when a single order_item status changes to 'REFUNDED'.
-
-CREATE OR REPLACE FUNCTION restore_stock_on_item_refund()
-RETURNS TRIGGER AS $$
-DECLARE
-  v_seller_id UUID;
-  v_order_no  TEXT;
-BEGIN
-  IF NEW.status = 'REFUNDED' AND OLD.status IS DISTINCT FROM 'REFUNDED' THEN
-    SELECT seller_id, order_no INTO v_seller_id, v_order_no
-    FROM orders WHERE id = NEW.order_id;
-
-    IF NEW.product_id IS NOT NULL THEN
-      INSERT INTO inventory_movements (product_id, entity_id, movement_type, quantity, reference_id, notes)
-      VALUES (
-        NEW.product_id,
-        v_seller_id,
-        'RETURN',
-        NEW.quantity,
-        NEW.order_id,
-        'Refund — item restored: ' || NEW.name || ' (' || v_order_no || ')'
-      );
-    END IF;
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS order_items_restore_on_refund ON order_items;
-CREATE TRIGGER order_items_restore_on_refund
-  AFTER UPDATE ON order_items
-  FOR EACH ROW EXECUTE FUNCTION restore_stock_on_item_refund();
-
--- ─── CART ITEM ADDED/REMOVED → NO STOCK CHANGE ────────────────────────────
--- Cart operations do NOT affect stock — stock is only deducted on CONFIRMED.
--- This prevents ghost deductions if a customer abandons their cart.
--- Stock availability is checked at PENDING_PAYMENT → CONFIRMED transition
--- in application logic (not via DB trigger).
--- Migration 013: Product Batches, Price History, Barcodes, Reorder Points
--- Adds full traceability: batch/lot tracking, barcode/QR, price audit trail,
--- configurable reorder thresholds, and batch-linked inventory movements.
-
--- ─── PRODUCT COLUMN ADDITIONS ─────────────────────────────────────────────
-
-ALTER TABLE products ADD COLUMN IF NOT EXISTS barcode        TEXT;
-ALTER TABLE products ADD COLUMN IF NOT EXISTS qr_code        TEXT;
-ALTER TABLE products ADD COLUMN IF NOT EXISTS reorder_point  INT DEFAULT 10;  -- configurable low-stock threshold
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_products_barcode ON products(barcode) WHERE barcode IS NOT NULL;
-
--- ─── PRODUCT BATCHES ──────────────────────────────────────────────────────
--- Tracks individual stock batches with manufacturing/expiry dates.
--- Each RESTOCK movement can be linked to a batch.
-
-CREATE TABLE IF NOT EXISTS product_batches (
-  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  product_id       UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-  entity_id        UUID NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
-  batch_number     TEXT NOT NULL,
-  barcode          TEXT,
-  qr_code          TEXT,
-  manufactured_at  DATE,
-  expires_at       DATE,
-  quantity         INT NOT NULL DEFAULT 0,      -- remaining qty in this batch
-  unit_cost        DECIMAL(12,2),               -- cost price at time of receipt
-  status           TEXT NOT NULL DEFAULT 'ACTIVE'
-                     CHECK (status IN ('ACTIVE', 'EXPIRED', 'RECALLED', 'DEPLETED')),
-  received_at      TIMESTAMPTZ DEFAULT NOW(),
-  notes            TEXT,
-  UNIQUE (product_id, entity_id, batch_number)
-);
-
-CREATE INDEX IF NOT EXISTS idx_batches_product    ON product_batches(product_id);
-CREATE INDEX IF NOT EXISTS idx_batches_entity     ON product_batches(entity_id);
-CREATE INDEX IF NOT EXISTS idx_batches_expires    ON product_batches(expires_at);
-CREATE INDEX IF NOT EXISTS idx_batches_status     ON product_batches(status);
-
--- Link inventory_movements to a batch (optional — non-batch movements still allowed)
-ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS batch_id UUID REFERENCES product_batches(id);
-
--- When a batch is created, update its quantity from the linked inventory movement
--- Batch quantity decrements on SALE movements that reference it
-CREATE OR REPLACE FUNCTION sync_batch_quantity()
-RETURNS TRIGGER AS $$
-BEGIN
-  IF NEW.batch_id IS NOT NULL THEN
-    UPDATE product_batches
-    SET quantity = quantity + NEW.quantity  -- quantity is signed (neg for sales)
-    WHERE id = NEW.batch_id;
-
-    -- Auto-mark batch as DEPLETED when quantity hits 0
-    UPDATE product_batches
-    SET status = 'DEPLETED'
-    WHERE id = NEW.batch_id AND quantity <= 0 AND status = 'ACTIVE';
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS inventory_sync_batch ON inventory_movements;
-CREATE TRIGGER inventory_sync_batch
-  AFTER INSERT ON inventory_movements
-  FOR EACH ROW EXECUTE FUNCTION sync_batch_quantity();
-
--- Auto-expire batches past their expiry date (run nightly via pg_cron or Supabase Edge Function)
-CREATE OR REPLACE FUNCTION expire_stale_batches()
-RETURNS void AS $$
-BEGIN
-  UPDATE product_batches
-  SET status = 'EXPIRED'
-  WHERE expires_at < CURRENT_DATE
-    AND status = 'ACTIVE'
-    AND quantity > 0;
-END;
-$$ LANGUAGE plpgsql;
-
--- ─── PRODUCT PRICE HISTORY ────────────────────────────────────────────────
--- Immutable audit log — every MRP or wholesale price change is recorded.
-
-CREATE TABLE IF NOT EXISTS product_price_history (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  product_id  UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-  entity_id   UUID,                                -- NULL = global price change
-  price_type  TEXT NOT NULL CHECK (price_type IN ('MRP', 'WHOLESALE')),
-  old_price   DECIMAL(12,2),
-  new_price   DECIMAL(12,2) NOT NULL,
-  changed_by  UUID REFERENCES user_profiles(id),
-  changed_at  TIMESTAMPTZ DEFAULT NOW(),
-  reason      TEXT
-);
-
-CREATE INDEX IF NOT EXISTS idx_price_history_product ON product_price_history(product_id);
-CREATE INDEX IF NOT EXISTS idx_price_history_changed ON product_price_history(changed_at DESC);
-
--- Auto-log price changes when products.mrp or products.wholesale_price is updated
-CREATE OR REPLACE FUNCTION log_product_price_change()
-RETURNS TRIGGER AS $$
-BEGIN
-  IF OLD.mrp IS DISTINCT FROM NEW.mrp THEN
-    INSERT INTO product_price_history (product_id, price_type, old_price, new_price)
-    VALUES (NEW.id, 'MRP', OLD.mrp, NEW.mrp);
-  END IF;
-
-  IF OLD.wholesale_price IS DISTINCT FROM NEW.wholesale_price THEN
-    INSERT INTO product_price_history (product_id, price_type, old_price, new_price)
-    VALUES (NEW.id, 'WHOLESALE', OLD.wholesale_price, NEW.wholesale_price);
-  END IF;
-
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS products_price_history ON products;
-CREATE TRIGGER products_price_history
-  AFTER UPDATE ON products
-  FOR EACH ROW EXECUTE FUNCTION log_product_price_change();
-
--- ─── RLS FOR NEW TABLES ────────────────────────────────────────────────────
-
-ALTER TABLE product_batches       ENABLE ROW LEVEL SECURITY;
-ALTER TABLE product_price_history ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "batches_own_entity" ON product_batches
-  FOR ALL USING (is_super_admin() OR entity_id = auth_entity_id());
-
-CREATE POLICY "price_history_read" ON product_price_history
-  FOR SELECT USING (
-    is_super_admin() OR
-    product_id IN (SELECT id FROM products WHERE created_by = auth_entity_id())
-    OR auth_sub_role() IN ('MANAGER', 'OWNER', 'ADMIN')
-  );
--- Migration 014: Stock Confirmation Guard
--- Prevents an order from transitioning to CONFIRMED if any order_item
--- quantity exceeds the product's current_stock at that moment.
--- This is atomic — no race condition possible.
-
-CREATE OR REPLACE FUNCTION guard_stock_on_confirm()
-RETURNS TRIGGER AS $$
-DECLARE
-  shortage RECORD;
-BEGIN
-  IF NEW.status = 'CONFIRMED' AND OLD.status IS DISTINCT FROM 'CONFIRMED' THEN
-
-    -- Find the first order_item where required qty > available stock
-    SELECT
-      oi.name,
-      oi.quantity            AS needed,
-      p.current_stock        AS available
-    INTO shortage
-    FROM order_items oi
-    JOIN products p ON p.id = oi.product_id
-    WHERE oi.order_id = NEW.id
-      AND oi.status   = 'ACTIVE'
-      AND oi.product_id IS NOT NULL
-      AND p.current_stock < oi.quantity
-    LIMIT 1;
-
-    IF FOUND THEN
-      RAISE EXCEPTION
-        'Insufficient stock: "%" requires %, only % available. Add stock before confirming.',
-        shortage.name, shortage.needed, shortage.available
-        USING ERRCODE = 'P0001';
-    END IF;
-
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- This trigger fires BEFORE the status update commits —
--- if it raises an exception the entire transaction is rolled back.
-DROP TRIGGER IF EXISTS orders_guard_stock ON orders;
-CREATE TRIGGER orders_guard_stock
-  BEFORE UPDATE ON orders
-  FOR EACH ROW EXECUTE FUNCTION guard_stock_on_confirm();
--- Migration 015: Credit Ledger
--- Per Retailer ↔ Wholesaler credit balance, limit, repayments, and alert tracking.
-
--- ─── RETAILER_WHOLESALERS ADDITIONS ───────────────────────────────────────
-
-ALTER TABLE retailer_wholesalers ADD COLUMN IF NOT EXISTS credit_limit     DECIMAL(12,2) DEFAULT 0;
-ALTER TABLE retailer_wholesalers ADD COLUMN IF NOT EXISTS credit_balance   DECIMAL(12,2) DEFAULT 0;
-ALTER TABLE retailer_wholesalers ADD COLUMN IF NOT EXISTS credit_term_days INT DEFAULT 30;
-ALTER TABLE retailer_wholesalers ADD COLUMN IF NOT EXISTS credit_frozen    BOOLEAN DEFAULT FALSE;
-
--- ─── CREDIT TRANSACTIONS ──────────────────────────────────────────────────
--- Immutable ledger — every debit and credit entry. Never deleted.
-
-CREATE TABLE IF NOT EXISTS credit_transactions (
-  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  retailer_id      UUID NOT NULL REFERENCES entities(id),
-  wholesaler_id    UUID NOT NULL REFERENCES entities(id),
-  transaction_type TEXT NOT NULL CHECK (transaction_type IN ('DEBIT', 'CREDIT')),
-  amount           DECIMAL(12,2) NOT NULL,
-  reference_type   TEXT CHECK (reference_type IN ('ORDER', 'REPAYMENT', 'ADJUSTMENT')),
-  reference_id     UUID,
-  balance_after    DECIMAL(12,2),
-  notes            TEXT,
-  created_by       UUID REFERENCES user_profiles(id),
-  created_at       TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_credit_tx_retailer   ON credit_transactions(retailer_id);
-CREATE INDEX IF NOT EXISTS idx_credit_tx_wholesaler ON credit_transactions(wholesaler_id);
-CREATE INDEX IF NOT EXISTS idx_credit_tx_created    ON credit_transactions(created_at DESC);
-
--- ─── CREDIT REPAYMENTS ────────────────────────────────────────────────────
-
-CREATE TABLE IF NOT EXISTS credit_repayments (
-  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  retailer_id    UUID NOT NULL REFERENCES entities(id),
-  wholesaler_id  UUID NOT NULL REFERENCES entities(id),
-  amount         DECIMAL(12,2) NOT NULL,
-  payment_method TEXT NOT NULL CHECK (payment_method IN ('CASH', 'RTGS', 'BANK_TRANSFER', 'MBOB', 'MPAY')),
-  status         TEXT NOT NULL DEFAULT 'CREATED' CHECK (status IN ('CREATED', 'PAYMENT_MADE')),
-  due_date       DATE NOT NULL,
-  reference_no   TEXT,
-  notes          TEXT,
-  created_by     UUID REFERENCES user_profiles(id),
-  confirmed_by   UUID REFERENCES user_profiles(id),
-  created_at     TIMESTAMPTZ DEFAULT NOW(),
-  confirmed_at   TIMESTAMPTZ
-);
-
-CREATE INDEX IF NOT EXISTS idx_repayments_retailer   ON credit_repayments(retailer_id);
-CREATE INDEX IF NOT EXISTS idx_repayments_wholesaler ON credit_repayments(wholesaler_id);
-CREATE INDEX IF NOT EXISTS idx_repayments_due        ON credit_repayments(due_date);
-CREATE INDEX IF NOT EXISTS idx_repayments_status     ON credit_repayments(status);
-
--- ─── CREDIT ALERTS ────────────────────────────────────────────────────────
-
-CREATE TABLE IF NOT EXISTS credit_alerts (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  repayment_id    UUID NOT NULL REFERENCES credit_repayments(id) ON DELETE CASCADE,
-  alert_type      TEXT NOT NULL CHECK (alert_type IN ('PRE_DUE_3D', 'DUE_TODAY', 'OVERDUE_3D')),
-  sent_to         TEXT NOT NULL CHECK (sent_to IN ('RETAILER', 'WHOLESALER', 'BOTH')),
-  whatsapp_status TEXT DEFAULT 'PENDING',
-  sent_at         TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE (repayment_id, alert_type)  -- each alert type fires once per repayment
-);
-
--- ─── TRIGGER: CREDIT ORDER CONFIRMED → DEBIT BALANCE ─────────────────────
-
-CREATE OR REPLACE FUNCTION debit_credit_balance_on_confirm()
-RETURNS TRIGGER AS $$
-DECLARE
-  v_wholesaler_id UUID;
-  v_new_balance   DECIMAL(12,2);
-  v_term_days     INT;
-BEGIN
-  IF NEW.status = 'CONFIRMED'
-     AND OLD.status IS DISTINCT FROM 'CONFIRMED'
-     AND NEW.payment_method = 'CREDIT' THEN
-
-    -- Derive wholesaler from seller (for POS sales, seller IS the retailer)
-    -- For wholesale orders, buyer_id is the retailer, seller_id is the wholesaler
-    IF NEW.order_type = 'POS_SALE' THEN
-      -- Consumer bought on credit from retailer — not a B2B credit transaction
-      RETURN NEW;
-    END IF;
-
-    v_wholesaler_id := NEW.seller_id;
-
-    -- Check credit limit — hard block (guard is in app layer; this is DB safety net)
-    SELECT credit_balance + NEW.grand_total, credit_term_days
-    INTO v_new_balance, v_term_days
-    FROM retailer_wholesalers
-    WHERE retailer_id = NEW.buyer_id AND wholesaler_id = v_wholesaler_id AND active = TRUE
-    LIMIT 1;
-
-    IF NOT FOUND THEN RETURN NEW; END IF;
-
-    -- Update balance
-    UPDATE retailer_wholesalers
-    SET credit_balance = credit_balance + NEW.grand_total
-    WHERE retailer_id = NEW.buyer_id AND wholesaler_id = v_wholesaler_id AND active = TRUE;
-
-    -- Log debit transaction
-    INSERT INTO credit_transactions
-      (retailer_id, wholesaler_id, transaction_type, amount, reference_type, reference_id, balance_after, notes)
-    VALUES
-      (NEW.buyer_id, v_wholesaler_id, 'DEBIT', NEW.grand_total, 'ORDER', NEW.id, v_new_balance,
-       'Order ' || NEW.order_no);
-
-    -- Create repayment record with due date
-    INSERT INTO credit_repayments
-      (retailer_id, wholesaler_id, amount, payment_method, status, due_date, notes)
-    VALUES
-      (NEW.buyer_id, v_wholesaler_id, NEW.grand_total, 'CASH',
-       'CREATED',
-       (NOW() + (v_term_days || ' days')::INTERVAL)::DATE,
-       'Auto-created for order ' || NEW.order_no);
-
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS orders_debit_credit ON orders;
-CREATE TRIGGER orders_debit_credit
-  AFTER UPDATE ON orders
-  FOR EACH ROW EXECUTE FUNCTION debit_credit_balance_on_confirm();
-
--- ─── TRIGGER: CREDIT ORDER CANCELLED → CREDIT BALANCE BACK ───────────────
-
-CREATE OR REPLACE FUNCTION credit_balance_on_cancel()
-RETURNS TRIGGER AS $$
-DECLARE
-  v_new_balance DECIMAL(12,2);
-BEGIN
-  IF NEW.status = 'CANCELLED'
-     AND OLD.status IS DISTINCT FROM 'CANCELLED'
-     AND NEW.payment_method = 'CREDIT'
-     AND NEW.order_type != 'POS_SALE'
-     AND NEW.buyer_id IS NOT NULL THEN
-
-    UPDATE retailer_wholesalers
-    SET credit_balance = GREATEST(0, credit_balance - NEW.grand_total)
-    WHERE retailer_id = NEW.buyer_id AND wholesaler_id = NEW.seller_id AND active = TRUE
-    RETURNING credit_balance INTO v_new_balance;
-
-    INSERT INTO credit_transactions
-      (retailer_id, wholesaler_id, transaction_type, amount, reference_type, reference_id, balance_after, notes)
-    VALUES
-      (NEW.buyer_id, NEW.seller_id, 'CREDIT', NEW.grand_total, 'ORDER', NEW.id, v_new_balance,
-       'Reversal for cancelled order ' || NEW.order_no);
-
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS orders_credit_on_cancel ON orders;
-CREATE TRIGGER orders_credit_on_cancel
-  AFTER UPDATE ON orders
-  FOR EACH ROW EXECUTE FUNCTION credit_balance_on_cancel();
-
--- ─── TRIGGER: REPAYMENT → PAYMENT_MADE → REDUCE BALANCE ──────────────────
-
-CREATE OR REPLACE FUNCTION apply_repayment()
-RETURNS TRIGGER AS $$
-DECLARE
-  v_new_balance DECIMAL(12,2);
-  v_limit       DECIMAL(12,2);
-BEGIN
-  IF NEW.status = 'PAYMENT_MADE' AND OLD.status = 'CREATED' THEN
-
-    UPDATE retailer_wholesalers
-    SET credit_balance = GREATEST(0, credit_balance - NEW.amount)
-    WHERE retailer_id = NEW.retailer_id AND wholesaler_id = NEW.wholesaler_id AND active = TRUE
-    RETURNING credit_balance, credit_limit INTO v_new_balance, v_limit;
-
-    INSERT INTO credit_transactions
-      (retailer_id, wholesaler_id, transaction_type, amount, reference_type, reference_id, balance_after, notes)
-    VALUES
-      (NEW.retailer_id, NEW.wholesaler_id, 'CREDIT', NEW.amount, 'REPAYMENT', NEW.id, v_new_balance,
-       'Repayment via ' || NEW.payment_method || COALESCE(' ref: ' || NEW.reference_no, ''));
-
-    -- Auto-unfreeze if balance now below limit
-    IF v_new_balance < v_limit THEN
-      UPDATE retailer_wholesalers
-      SET credit_frozen = FALSE
-      WHERE retailer_id = NEW.retailer_id AND wholesaler_id = NEW.wholesaler_id AND active = TRUE;
-    END IF;
-
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS repayment_apply ON credit_repayments;
-CREATE TRIGGER repayment_apply
-  AFTER UPDATE ON credit_repayments
-  FOR EACH ROW EXECUTE FUNCTION apply_repayment();
-
--- ─── FUNCTION: CHECK CREDIT AVAILABILITY (used by app layer) ─────────────
--- Returns whether a buyer can place a credit order of a given amount.
-
-CREATE OR REPLACE FUNCTION check_credit_available(
-  p_retailer_id   UUID,
-  p_wholesaler_id UUID,
-  p_amount        DECIMAL
-) RETURNS JSONB AS $$
-DECLARE
-  rec RECORD;
-BEGIN
-  SELECT credit_limit, credit_balance, credit_frozen, credit_term_days
-  INTO rec
-  FROM retailer_wholesalers
-  WHERE retailer_id = p_retailer_id AND wholesaler_id = p_wholesaler_id AND active = TRUE
-  LIMIT 1;
-
-  IF NOT FOUND THEN
-    RETURN jsonb_build_object('allowed', false, 'reason', 'No credit relationship found');
-  END IF;
-
-  IF rec.credit_frozen THEN
-    RETURN jsonb_build_object('allowed', false, 'reason', 'Credit account is frozen',
-      'balance', rec.credit_balance, 'limit', rec.credit_limit);
-  END IF;
-
-  IF rec.credit_balance + p_amount > rec.credit_limit THEN
-    RETURN jsonb_build_object(
-      'allowed', false,
-      'reason', 'Credit limit exceeded',
-      'balance', rec.credit_balance,
-      'limit', rec.credit_limit,
-      'available', rec.credit_limit - rec.credit_balance,
-      'requested', p_amount
+      'UPDATE',
+      jsonb_build_object(
+        'discount', OLD.discount,
+        'discount_type', OLD.discount_type,
+        'discount_value', OLD.discount_value
+      ),
+      jsonb_build_object(
+        'discount', NEW.discount,
+        'discount_type', NEW.discount_type,
+        'discount_value', NEW.discount_value
+      ),
+      auth.uid(),
+      (auth.jwt() ->> 'sub_role')
     );
   END IF;
-
-  RETURN jsonb_build_object(
-    'allowed', true,
-    'balance', rec.credit_balance,
-    'limit', rec.credit_limit,
-    'available', rec.credit_limit - rec.credit_balance
-  );
+  RETURN NEW;
 END;
-$$ LANGUAGE plpgsql STABLE;
+$$;
 
--- ─── RLS ──────────────────────────────────────────────────────────────────
 
-ALTER TABLE credit_transactions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE credit_repayments   ENABLE ROW LEVEL SECURITY;
-ALTER TABLE credit_alerts       ENABLE ROW LEVEL SECURITY;
+ALTER FUNCTION "public"."audit_order_item_discount"() OWNER TO "postgres";
 
--- Wholesaler sees transactions for their retailers
-CREATE POLICY "credit_tx_wholesaler" ON credit_transactions
-  FOR ALL USING (
-    is_super_admin() OR
-    wholesaler_id = auth_entity_id() OR
-    retailer_id   = auth_entity_id()
-  );
 
-CREATE POLICY "credit_repayments_parties" ON credit_repayments
-  FOR ALL USING (
-    is_super_admin() OR
-    wholesaler_id = auth_entity_id() OR
-    retailer_id   = auth_entity_id()
-  );
+CREATE OR REPLACE FUNCTION "public"."auth_entity_id"() RETURNS "uuid"
+    LANGUAGE "sql" STABLE
+    AS $$
+  SELECT (auth.jwt() -> 'app_metadata' ->> 'entity_id')::UUID;
+$$;
 
-CREATE POLICY "credit_alerts_wholesaler" ON credit_alerts
-  FOR SELECT USING (
-    is_super_admin() OR
-    repayment_id IN (
-      SELECT id FROM credit_repayments WHERE wholesaler_id = auth_entity_id()
-    )
-  );
--- Migration 016: Face-ID Profiles
--- Opt-in biometric loyalty. Consent required before any capture.
--- GDPR-compliant: soft-delete preserves audit trail, hard-delete removes embedding.
 
-CREATE EXTENSION IF NOT EXISTS vector;
+ALTER FUNCTION "public"."auth_entity_id"() OWNER TO "postgres";
 
-CREATE TABLE IF NOT EXISTS face_profiles (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  entity_id     UUID NOT NULL REFERENCES entities(id),  -- store that enrolled them
-  whatsapp_no   TEXT NOT NULL,                           -- linked identity
-  name          TEXT,
-  embedding     vector(512),                             -- 512-dim face vector (encrypted at rest)
-  consent_at    TIMESTAMPTZ NOT NULL,                    -- explicit consent timestamp
-  consent_token TEXT UNIQUE NOT NULL,                    -- QR token used for consent
-  deleted_at    TIMESTAMPTZ,                             -- GDPR soft delete
-  created_at    TIMESTAMPTZ DEFAULT NOW(),
-  updated_at    TIMESTAMPTZ DEFAULT NOW()
-);
 
--- Partial index — only active (non-deleted) profiles searchable
-CREATE INDEX IF NOT EXISTS idx_face_profiles_entity
-  ON face_profiles(entity_id) WHERE deleted_at IS NULL;
+CREATE OR REPLACE FUNCTION "public"."auth_role"() RETURNS "text"
+    LANGUAGE "sql" STABLE
+    AS $$
+  SELECT auth.jwt() -> 'app_metadata' ->> 'role';
+$$;
 
-CREATE INDEX IF NOT EXISTS idx_face_profiles_whatsapp
-  ON face_profiles(whatsapp_no) WHERE deleted_at IS NULL;
 
--- Vector similarity index for fast face matching
-CREATE INDEX IF NOT EXISTS idx_face_profiles_embedding
-  ON face_profiles USING ivfflat (embedding vector_cosine_ops)
-  WITH (lists = 50)
-  WHERE deleted_at IS NULL;
+ALTER FUNCTION "public"."auth_role"() OWNER TO "postgres";
 
-DROP TRIGGER IF EXISTS face_profiles_updated_at ON face_profiles;
-CREATE TRIGGER face_profiles_updated_at
-  BEFORE UPDATE ON face_profiles
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
--- ─── GDPR DELETION FUNCTION ───────────────────────────────────────────────
--- Zeroes out the embedding vector and marks deleted.
--- Keeps the record for audit (consent_at, consent_token preserved).
+CREATE OR REPLACE FUNCTION "public"."auth_sub_role"() RETURNS "text"
+    LANGUAGE "sql" STABLE
+    AS $$
+  SELECT auth.jwt() -> 'app_metadata' ->> 'sub_role';
+$$;
 
-CREATE OR REPLACE FUNCTION delete_face_profile(p_profile_id UUID)
-RETURNS void AS $$
+
+ALTER FUNCTION "public"."auth_sub_role"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."auto_deplete_batch"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
 BEGIN
-  UPDATE face_profiles
+  IF NEW.quantity <= 0 AND OLD.status = 'ACTIVE' THEN
+    NEW.status := 'DEPLETED';
+  END IF;
+  -- Reactivate if stock is added back to a depleted batch (e.g. return/correction)
+  IF NEW.quantity > 0 AND OLD.status = 'DEPLETED' THEN
+    NEW.status := 'ACTIVE';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."auto_deplete_batch"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."backfill_product_categories_from_hsn"() RETURNS integer
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  v_count INTEGER := 0;
+BEGIN
+  -- Backfill products table
+  UPDATE products p
   SET
-    embedding  = NULL,
-    name       = '[deleted]',
-    deleted_at = NOW(),
-    updated_at = NOW()
-  WHERE id = p_profile_id;
+    hsn_master_id = (SELECT id FROM hsn_master WHERE code = p.hsn_code LIMIT 1),
+    category = COALESCE(p.category, hsn.category),
+    subcategory = COALESCE(p.subcategory, hsn.short_description),
+    hsn_chapter = hsn.chapter,
+    hsn_heading = hsn.heading,
+    hsn_subheading = hsn.subheading
+  FROM hsn_master hsn
+  WHERE hsn.code = p.hsn_code;
+
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+
+  -- Backfill entity_products table
+  UPDATE entity_products ep
+  SET
+    hsn_master_id = (SELECT id FROM hsn_master WHERE code = ep.hsn_code LIMIT 1),
+    category = COALESCE(ep.category, hsn.category),
+    subcategory = COALESCE(ep.subcategory, hsn.short_description),
+    hsn_chapter = hsn.chapter,
+    hsn_heading = hsn.heading,
+    hsn_subheading = hsn.subheading
+  FROM hsn_master hsn
+  WHERE hsn.code = ep.hsn_code;
+
+  RETURN v_count;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
--- ─── RLS ──────────────────────────────────────────────────────────────────
 
-ALTER TABLE face_profiles ENABLE ROW LEVEL SECURITY;
+ALTER FUNCTION "public"."backfill_product_categories_from_hsn"() OWNER TO "postgres";
 
-CREATE POLICY "face_profiles_entity_scope" ON face_profiles
-  FOR ALL USING (
-    is_super_admin() OR entity_id = auth_entity_id()
-  );
 
--- Consumers can request deletion of their own record via whatsapp_no
-CREATE POLICY "face_profiles_self_delete" ON face_profiles
-  FOR UPDATE USING (whatsapp_no = current_setting('app.requesting_whatsapp', true));
--- Migration 017: Product Packaging Variants (revised)
--- A package can contain one or more different products in different quantities.
--- Types: BULK (single product bulk) | BUNDLE (multi-product combo) | MIXED (multi-product case)
--- Stock is ALWAYS tracked per individual product in base units.
-
--- Package header
-CREATE TABLE IF NOT EXISTS product_packages (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name            TEXT NOT NULL,
-  package_type    TEXT NOT NULL DEFAULT 'BULK'
-                    CHECK (package_type IN ('BULK', 'BUNDLE', 'MIXED')),
-  barcode         TEXT,
-  qr_code         TEXT,
-  wholesale_price DECIMAL(12,2),
-  mrp             DECIMAL(12,2),
-  hsn_code        TEXT,
-  is_active       BOOLEAN DEFAULT TRUE,
-  created_by      UUID REFERENCES entities(id),
-  created_at      TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_packages_barcode
-  ON product_packages(barcode) WHERE barcode IS NOT NULL;
-
--- Package composition — which products and how many
-CREATE TABLE IF NOT EXISTS package_items (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  package_id  UUID NOT NULL REFERENCES product_packages(id) ON DELETE CASCADE,
-  product_id  UUID NOT NULL REFERENCES products(id),
-  quantity    INT NOT NULL DEFAULT 1,
-  UNIQUE (package_id, product_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_package_items_package ON package_items(package_id);
-CREATE INDEX IF NOT EXISTS idx_package_items_product ON package_items(product_id);
-
--- Entity to package association
-CREATE TABLE IF NOT EXISTS entity_packages (
-  entity_id   UUID NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
-  package_id  UUID NOT NULL REFERENCES product_packages(id) ON DELETE CASCADE,
-  is_default  BOOLEAN DEFAULT FALSE,
-  sort_order  INT DEFAULT 0,
-  PRIMARY KEY (entity_id, package_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_entity_packages_entity ON entity_packages(entity_id);
-
--- Add package columns to existing tables
-ALTER TABLE cart_items          ADD COLUMN IF NOT EXISTS package_id   UUID REFERENCES product_packages(id);
-ALTER TABLE order_items         ADD COLUMN IF NOT EXISTS package_id   UUID REFERENCES product_packages(id);
-ALTER TABLE order_items         ADD COLUMN IF NOT EXISTS package_name TEXT;
-ALTER TABLE order_items         ADD COLUMN IF NOT EXISTS package_type TEXT;
-ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS package_id   UUID REFERENCES product_packages(id);
-ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS package_qty  INT;
-
--- Deduct stock on confirm (iterates package components)
-CREATE OR REPLACE FUNCTION deduct_stock_on_confirm()
-RETURNS TRIGGER AS $$
-DECLARE
-  oi RECORD;
-  pi RECORD;
-BEGIN
-  IF NEW.status = 'CONFIRMED' AND OLD.status IS DISTINCT FROM 'CONFIRMED' THEN
-    FOR oi IN SELECT * FROM order_items WHERE order_id = NEW.id AND status = 'ACTIVE' LOOP
-      IF oi.package_id IS NOT NULL THEN
-        FOR pi IN SELECT * FROM package_items WHERE package_id = oi.package_id LOOP
-          INSERT INTO inventory_movements (product_id, entity_id, movement_type, quantity, reference_id, package_id, package_qty, notes)
-          VALUES (pi.product_id, NEW.seller_id, 'SALE', -(pi.quantity * oi.quantity), NEW.id, oi.package_id, oi.quantity,
-            'Package sale: ' || COALESCE(oi.package_name,'') || ' x' || oi.quantity || ' (' || NEW.order_no || ')');
-        END LOOP;
-      ELSIF oi.product_id IS NOT NULL THEN
-        INSERT INTO inventory_movements (product_id, entity_id, movement_type, quantity, reference_id, notes)
-        VALUES (oi.product_id, NEW.seller_id, 'SALE', -oi.quantity, NEW.id,
-          'Sale: ' || oi.name || ' x' || oi.quantity || ' (' || NEW.order_no || ')');
-      END IF;
-    END LOOP;
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Stock guard on confirm (checks all package components)
-CREATE OR REPLACE FUNCTION guard_stock_on_confirm()
-RETURNS TRIGGER AS $$
-DECLARE
-  oi     RECORD;
-  pi     RECORD;
-  p      RECORD;
-  needed INT;
-BEGIN
-  IF NEW.status = 'CONFIRMED' AND OLD.status IS DISTINCT FROM 'CONFIRMED' THEN
-    FOR oi IN SELECT * FROM order_items WHERE order_id = NEW.id AND status = 'ACTIVE' LOOP
-      IF oi.package_id IS NOT NULL THEN
-        FOR pi IN SELECT * FROM package_items WHERE package_id = oi.package_id LOOP
-          SELECT current_stock, name INTO p FROM products WHERE id = pi.product_id;
-          needed := pi.quantity * oi.quantity;
-          IF p.current_stock < needed THEN
-            RAISE EXCEPTION 'Insufficient stock for package "%": "%" requires %, only % available.',
-              oi.package_name, p.name, needed, p.current_stock USING ERRCODE = 'P0001';
-          END IF;
-        END LOOP;
-      ELSIF oi.product_id IS NOT NULL THEN
-        SELECT current_stock, name INTO p FROM products WHERE id = oi.product_id;
-        IF p.current_stock < oi.quantity THEN
-          RAISE EXCEPTION 'Insufficient stock: "%" requires %, only % available.',
-            p.name, oi.quantity, p.current_stock USING ERRCODE = 'P0001';
-        END IF;
-      END IF;
-    END LOOP;
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Restore stock on full order cancel
-CREATE OR REPLACE FUNCTION restore_stock_on_cancel()
-RETURNS TRIGGER AS $$
-DECLARE
-  oi RECORD;
-  pi RECORD;
-BEGIN
-  IF NEW.status = 'CANCELLED' AND OLD.status IS DISTINCT FROM 'CANCELLED' THEN
-    IF OLD.status IN ('CONFIRMED','PROCESSING','DISPATCHED','DELIVERED','CANCELLATION_REQUESTED','REFUND_REQUESTED') THEN
-      FOR oi IN SELECT * FROM order_items WHERE order_id = NEW.id AND status = 'ACTIVE' LOOP
-        IF oi.package_id IS NOT NULL THEN
-          FOR pi IN SELECT * FROM package_items WHERE package_id = oi.package_id LOOP
-            INSERT INTO inventory_movements (product_id, entity_id, movement_type, quantity, reference_id, package_id, package_qty, notes)
-            VALUES (pi.product_id, NEW.seller_id, 'RETURN', pi.quantity * oi.quantity, NEW.id, oi.package_id, oi.quantity,
-              'Cancel: ' || COALESCE(oi.package_name,'') || ' (' || NEW.order_no || ')');
-          END LOOP;
-        ELSIF oi.product_id IS NOT NULL THEN
-          INSERT INTO inventory_movements (product_id, entity_id, movement_type, quantity, reference_id, notes)
-          VALUES (oi.product_id, NEW.seller_id, 'RETURN', oi.quantity, NEW.id,
-            'Cancel: ' || oi.name || ' (' || NEW.order_no || ')');
-        END IF;
-      END LOOP;
-      UPDATE order_items SET status = 'CANCELLED' WHERE order_id = NEW.id AND status = 'ACTIVE';
-    END IF;
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Restore stock on individual item cancel
-CREATE OR REPLACE FUNCTION restore_stock_on_item_cancel()
-RETURNS TRIGGER AS $$
-DECLARE
-  v_seller_id UUID;
-  v_order_no  TEXT;
-  pi          RECORD;
-BEGIN
-  IF NEW.status = 'CANCELLED' AND OLD.status = 'ACTIVE' THEN
-    SELECT seller_id, order_no INTO v_seller_id, v_order_no FROM orders WHERE id = NEW.order_id;
-    IF NEW.package_id IS NOT NULL THEN
-      FOR pi IN SELECT * FROM package_items WHERE package_id = NEW.package_id LOOP
-        INSERT INTO inventory_movements (product_id, entity_id, movement_type, quantity, reference_id, package_id, package_qty, notes)
-        VALUES (pi.product_id, v_seller_id, 'RETURN', pi.quantity * NEW.quantity, NEW.order_id, NEW.package_id, NEW.quantity,
-          'Partial cancel: ' || COALESCE(NEW.package_name,'') || ' (' || v_order_no || ')');
-      END LOOP;
-    ELSIF NEW.product_id IS NOT NULL THEN
-      INSERT INTO inventory_movements (product_id, entity_id, movement_type, quantity, reference_id, notes)
-      VALUES (NEW.product_id, v_seller_id, 'RETURN', NEW.quantity, NEW.order_id,
-        'Partial cancel: ' || NEW.name || ' (' || v_order_no || ')');
-    END IF;
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Restore stock on item refund
-CREATE OR REPLACE FUNCTION restore_stock_on_item_refund()
-RETURNS TRIGGER AS $$
-DECLARE
-  v_seller_id UUID;
-  v_order_no  TEXT;
-  pi          RECORD;
-BEGIN
-  IF NEW.status = 'REFUNDED' AND OLD.status IS DISTINCT FROM 'REFUNDED' THEN
-    SELECT seller_id, order_no INTO v_seller_id, v_order_no FROM orders WHERE id = NEW.order_id;
-    IF NEW.package_id IS NOT NULL THEN
-      FOR pi IN SELECT * FROM package_items WHERE package_id = NEW.package_id LOOP
-        INSERT INTO inventory_movements (product_id, entity_id, movement_type, quantity, reference_id, package_id, package_qty, notes)
-        VALUES (pi.product_id, v_seller_id, 'RETURN', pi.quantity * NEW.quantity, NEW.order_id, NEW.package_id, NEW.quantity,
-          'Refund: ' || COALESCE(NEW.package_name,'') || ' (' || v_order_no || ')');
-      END LOOP;
-    ELSIF NEW.product_id IS NOT NULL THEN
-      INSERT INTO inventory_movements (product_id, entity_id, movement_type, quantity, reference_id, notes)
-      VALUES (NEW.product_id, v_seller_id, 'RETURN', NEW.quantity, NEW.order_id,
-        'Refund: ' || NEW.name || ' (' || v_order_no || ')');
-    END IF;
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- RLS
-ALTER TABLE product_packages ENABLE ROW LEVEL SECURITY;
-ALTER TABLE package_items    ENABLE ROW LEVEL SECURITY;
-ALTER TABLE entity_packages  ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "packages_read_all"   ON product_packages FOR SELECT USING (auth.uid() IS NOT NULL);
-CREATE POLICY "packages_write"      ON product_packages FOR ALL    USING (is_super_admin() OR created_by = auth_entity_id());
-CREATE POLICY "pkg_items_read_all"  ON package_items    FOR SELECT USING (auth.uid() IS NOT NULL);
-CREATE POLICY "pkg_items_write"     ON package_items    FOR ALL    USING (is_super_admin() OR package_id IN (SELECT id FROM product_packages WHERE created_by = auth_entity_id()));
-CREATE POLICY "entity_packages_own" ON entity_packages  FOR ALL    USING (is_super_admin() OR entity_id = auth_entity_id());
--- Migration 018: Packages as First-Class Products
--- Packages are now products (product_type = 'PACKAGE') — listed in marketplace and POS.
--- Component products can be hidden from direct sale with sold_as_package_only = TRUE.
--- Package availability is derived from component stock — no separate stock column.
-
--- ─── PRODUCTS: TYPE AND VISIBILITY FLAGS ──────────────────────────────────
-
-ALTER TABLE products ADD COLUMN IF NOT EXISTS product_type
-  TEXT NOT NULL DEFAULT 'SINGLE' CHECK (product_type IN ('SINGLE', 'PACKAGE'));
-
-ALTER TABLE products ADD COLUMN IF NOT EXISTS sold_as_package_only
-  BOOLEAN NOT NULL DEFAULT FALSE;
--- When TRUE: hidden from POS grid, marketplace listing, direct cart add.
--- Stock still tracked normally. Still visible as component in package detail page.
-
--- ─── PRODUCT_PACKAGES: LINK TO PRODUCT LISTING ────────────────────────────
-
-ALTER TABLE product_packages ADD COLUMN IF NOT EXISTS product_id
-  UUID UNIQUE REFERENCES products(id) ON DELETE SET NULL;
--- product_id = the products row that represents this package in POS/marketplace.
--- A package without product_id is internal only (wholesaler B2B, not consumer-facing).
-
--- ─── COMPUTED FUNCTION: PACKAGE AVAILABILITY ──────────────────────────────
--- Returns how many complete packages can be assembled from current component stock.
--- Used by marketplace and POS to show availability without a separate stock column.
-
-CREATE OR REPLACE FUNCTION package_available_qty(p_package_id UUID)
-RETURNS INT AS $$
-DECLARE
-  min_available INT := 2147483647;  -- start at max int
-  component     RECORD;
-  component_available INT;
-BEGIN
-  FOR component IN
-    SELECT pi.quantity AS needed, p.current_stock
-    FROM package_items pi
-    JOIN products p ON p.id = pi.product_id
-    WHERE pi.package_id = p_package_id
-  LOOP
-    component_available := FLOOR(component.current_stock::FLOAT / component.needed);
-    IF component_available < min_available THEN
-      min_available := component_available;
-    END IF;
-  END LOOP;
-
-  -- No components found → 0 available
-  IF min_available = 2147483647 THEN RETURN 0; END IF;
-  RETURN GREATEST(0, min_available);
-END;
-$$ LANGUAGE plpgsql STABLE;
-
--- ─── VIEW: PRODUCT CATALOGUE (unified products + packages) ────────────────
--- Used by POS grid and marketplace to list all sellable items in one query.
--- Filters out sold_as_package_only single products.
--- Shows computed availability for package products.
-
-CREATE OR REPLACE VIEW sellable_products AS
-  SELECT
-    p.id,
-    p.name,
-    p.sku,
-    p.hsn_code,
-    p.image_url,
-    p.mrp,
-    p.wholesale_price,
-    p.unit,
-    p.is_active,
-    p.product_type,
-    p.sold_as_package_only,
-    p.reorder_point,
-    CASE
-      WHEN p.product_type = 'PACKAGE' THEN
-        package_available_qty(pp.id)
-      ELSE
-        p.current_stock
-    END AS available_stock,
-    pp.id          AS package_def_id,
-    pp.package_type,
-    pp.barcode     AS package_barcode
-  FROM products p
-  LEFT JOIN product_packages pp ON pp.product_id = p.id
-  WHERE p.is_active = TRUE
-    AND p.sold_as_package_only = FALSE;
-
--- ─── PRODUCT DETAIL: PACKAGE CONTENTS VIEW ────────────────────────────────
--- Returns the full component breakdown for a package product.
--- Used by the product detail page and receipt.
-
-CREATE OR REPLACE VIEW package_contents AS
-  SELECT
-    pp.id            AS package_id,
-    pp.product_id    AS package_product_id,
-    pp.package_type,
-    pi.product_id    AS component_product_id,
-    comp.name        AS component_name,
-    comp.image_url   AS component_image,
-    comp.unit        AS component_unit,
-    pi.quantity      AS component_quantity,
-    comp.current_stock AS component_stock,
-    -- How many packages can this component support
-    FLOOR(comp.current_stock::FLOAT / pi.quantity) AS component_supports_qty
-  FROM product_packages pp
-  JOIN package_items pi ON pi.package_id = pp.id
-  JOIN products comp    ON comp.id = pi.product_id;
-
--- ─── MARKETPLACE: HIDE PACKAGE-ONLY PRODUCTS ──────────────────────────────
--- Update RLS on products to enforce sold_as_package_only visibility.
--- Authenticated users see all products for internal use (POS stock management).
--- Public marketplace queries should filter sold_as_package_only = FALSE at app layer.
-
--- No RLS change needed — filtering is handled via the sellable_products view.
--- The view is the contract for all POS and marketplace product queries.
-
--- ─── INDEX: FAST LOOKUP FOR PACKAGE PRODUCTS ──────────────────────────────
-
-CREATE INDEX IF NOT EXISTS idx_products_type
-  ON products(product_type) WHERE is_active = TRUE;
-
-CREATE INDEX IF NOT EXISTS idx_products_package_only
-  ON products(sold_as_package_only) WHERE sold_as_package_only = TRUE;
-
-CREATE INDEX IF NOT EXISTS idx_product_packages_product_id
-  ON product_packages(product_id) WHERE product_id IS NOT NULL;
--- Migration 019: Recursive Package Stock Operations
--- Enables pallets (packages of packages) with full recursive stock deduction.
--- Selling a pallet walks the composition tree to leaf SINGLE products.
--- Circular reference protection: max depth = 5.
-
--- Add PALLET to package_type enum
-ALTER TABLE product_packages
-  DROP CONSTRAINT IF EXISTS product_packages_package_type_check;
-
-ALTER TABLE product_packages
-  ADD CONSTRAINT product_packages_package_type_check
-  CHECK (package_type IN ('BULK', 'BUNDLE', 'MIXED', 'PALLET'));
-
--- ─── RECURSIVE: COLLECT LEAF PRODUCT DEDUCTIONS ───────────────────────────
--- Given a package_id and a multiplier (how many of this package),
--- returns a set of (product_id, total_qty) for all leaf SINGLE products.
--- Handles arbitrary nesting depth up to max_depth.
-
-CREATE OR REPLACE FUNCTION resolve_package_to_leaves(
-  p_package_id UUID,
-  p_multiplier INT DEFAULT 1,
-  p_depth      INT DEFAULT 0
-)
-RETURNS TABLE (product_id UUID, total_qty INT) AS $$
-BEGIN
-  -- Circular reference / depth guard
-  IF p_depth > 5 THEN
-    RAISE EXCEPTION 'Package nesting exceeds maximum depth (5). Check for circular references.';
-  END IF;
-
-  RETURN QUERY
-  WITH components AS (
-    SELECT pi.product_id, pi.quantity * p_multiplier AS qty
-    FROM package_items pi
-    WHERE pi.package_id = p_package_id
-  )
-  SELECT
-    c.product_id,
-    c.qty
-  FROM components c
-  JOIN products p ON p.id = c.product_id
-  WHERE p.product_type = 'SINGLE'   -- leaf product
-
-  UNION ALL
-
-  -- Recurse into nested packages
-  SELECT
-    r.product_id,
-    r.total_qty
-  FROM components c
-  JOIN products p ON p.id = c.product_id
-  JOIN product_packages pp ON pp.product_id = c.product_id
-  JOIN LATERAL resolve_package_to_leaves(pp.id, c.qty, p_depth + 1) r ON TRUE
-  WHERE p.product_type = 'PACKAGE';
-END;
-$$ LANGUAGE plpgsql STABLE;
-
--- ─── RECURSIVE: PACKAGE AVAILABILITY ──────────────────────────────────────
--- Returns how many complete packages can be assembled from current stock.
--- Works for pallets (packages of packages) as well as simple packages.
-
--- Drop the view that depends on the 1-arg function, then drop the function
-DROP VIEW IF EXISTS sellable_products;
-DROP FUNCTION IF EXISTS package_available_qty(UUID);
-
-CREATE OR REPLACE FUNCTION package_available_qty(p_package_id UUID, p_depth INT DEFAULT 0)
-RETURNS INT AS $$
-DECLARE
-  min_available INT := 2147483647;
-  component     RECORD;
-  child_avail   INT;
-BEGIN
-  IF p_depth > 5 THEN RETURN 0; END IF;
-
-  FOR component IN
-    SELECT pi.quantity AS needed, p.product_type, pp.id AS child_pkg_id, p.current_stock
-    FROM package_items pi
-    JOIN products p ON p.id = pi.product_id
-    LEFT JOIN product_packages pp ON pp.product_id = p.id
-    WHERE pi.package_id = p_package_id
-  LOOP
-    IF component.product_type = 'SINGLE' THEN
-      -- Leaf product: floor(stock / qty_needed)
-      child_avail := FLOOR(component.current_stock::FLOAT / component.needed);
-
-    ELSIF component.product_type = 'PACKAGE' AND component.child_pkg_id IS NOT NULL THEN
-      -- Nested package: recursive call, then floor by needed count
-      child_avail := FLOOR(
-        package_available_qty(component.child_pkg_id, p_depth + 1)::FLOAT
-        / component.needed
-      );
-
-    ELSE
-      child_avail := 0;
-    END IF;
-
-    IF child_avail < min_available THEN
-      min_available := child_avail;
-    END IF;
-  END LOOP;
-
-  IF min_available = 2147483647 THEN RETURN 0; END IF;
-  RETURN GREATEST(0, min_available);
-END;
-$$ LANGUAGE plpgsql STABLE;
-
--- ─── UPDATE: DEDUCT STOCK ON CONFIRM (fully recursive) ────────────────────
-
-CREATE OR REPLACE FUNCTION deduct_stock_on_confirm()
-RETURNS TRIGGER AS $$
-DECLARE
-  oi   RECORD;
-  leaf RECORD;
-  pp   RECORD;
-BEGIN
-  IF NEW.status = 'CONFIRMED' AND OLD.status IS DISTINCT FROM 'CONFIRMED' THEN
-    FOR oi IN SELECT * FROM order_items WHERE order_id = NEW.id AND status = 'ACTIVE' LOOP
-
-      IF oi.package_id IS NOT NULL THEN
-        -- Resolve entire package tree to leaf products
-        FOR leaf IN
-          SELECT product_id, SUM(total_qty * oi.quantity) AS qty
-          FROM resolve_package_to_leaves(oi.package_id, 1)
-          GROUP BY product_id
-        LOOP
-          INSERT INTO inventory_movements
-            (product_id, entity_id, movement_type, quantity, reference_id, package_id, package_qty, notes)
-          VALUES (
-            leaf.product_id, NEW.seller_id, 'SALE', -leaf.qty,
-            NEW.id, oi.package_id, oi.quantity,
-            'Package sale: ' || COALESCE(oi.package_name,'') || ' x' || oi.quantity || ' (' || NEW.order_no || ')'
-          );
-        END LOOP;
-
-      ELSIF oi.product_id IS NOT NULL THEN
-        INSERT INTO inventory_movements (product_id, entity_id, movement_type, quantity, reference_id, notes)
-        VALUES (oi.product_id, NEW.seller_id, 'SALE', -oi.quantity, NEW.id,
-          'Sale: ' || oi.name || ' x' || oi.quantity || ' (' || NEW.order_no || ')');
-      END IF;
-
-    END LOOP;
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- ─── UPDATE: STOCK GUARD ON CONFIRM (recursive check) ─────────────────────
-
-CREATE OR REPLACE FUNCTION guard_stock_on_confirm()
-RETURNS TRIGGER AS $$
-DECLARE
-  oi        RECORD;
-  leaf      RECORD;
-  p         RECORD;
-  needed    INT;
-BEGIN
-  IF NEW.status = 'CONFIRMED' AND OLD.status IS DISTINCT FROM 'CONFIRMED' THEN
-    FOR oi IN SELECT * FROM order_items WHERE order_id = NEW.id AND status = 'ACTIVE' LOOP
-
-      IF oi.package_id IS NOT NULL THEN
-        -- Check every leaf product in the resolved tree
-        FOR leaf IN
-          SELECT product_id, SUM(total_qty * oi.quantity) AS qty
-          FROM resolve_package_to_leaves(oi.package_id, 1)
-          GROUP BY product_id
-        LOOP
-          SELECT current_stock, name INTO p FROM products WHERE id = leaf.product_id;
-          IF p.current_stock < leaf.qty THEN
-            RAISE EXCEPTION
-              'Insufficient stock for package "%": "%" requires %, only % available.',
-              COALESCE(oi.package_name, oi.package_id::TEXT), p.name, leaf.qty, p.current_stock
-              USING ERRCODE = 'P0001';
-          END IF;
-        END LOOP;
-
-      ELSIF oi.product_id IS NOT NULL THEN
-        SELECT current_stock, name INTO p FROM products WHERE id = oi.product_id;
-        IF p.current_stock < oi.quantity THEN
-          RAISE EXCEPTION 'Insufficient stock: "%" requires %, only % available.',
-            p.name, oi.quantity, p.current_stock USING ERRCODE = 'P0001';
-        END IF;
-      END IF;
-
-    END LOOP;
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- ─── UPDATE: RESTORE STOCK ON CANCEL (recursive) ──────────────────────────
-
-CREATE OR REPLACE FUNCTION restore_stock_on_cancel()
-RETURNS TRIGGER AS $$
-DECLARE
-  oi   RECORD;
-  leaf RECORD;
-BEGIN
-  IF NEW.status = 'CANCELLED' AND OLD.status IS DISTINCT FROM 'CANCELLED' THEN
-    IF OLD.status IN ('CONFIRMED','PROCESSING','DISPATCHED','DELIVERED',
-                      'CANCELLATION_REQUESTED','REFUND_REQUESTED') THEN
-      FOR oi IN SELECT * FROM order_items WHERE order_id = NEW.id AND status = 'ACTIVE' LOOP
-        IF oi.package_id IS NOT NULL THEN
-          FOR leaf IN
-            SELECT product_id, SUM(total_qty * oi.quantity) AS qty
-            FROM resolve_package_to_leaves(oi.package_id, 1)
-            GROUP BY product_id
-          LOOP
-            INSERT INTO inventory_movements
-              (product_id, entity_id, movement_type, quantity, reference_id, package_id, package_qty, notes)
-            VALUES (leaf.product_id, NEW.seller_id, 'RETURN', leaf.qty, NEW.id, oi.package_id, oi.quantity,
-              'Cancel: ' || COALESCE(oi.package_name,'') || ' (' || NEW.order_no || ')');
-          END LOOP;
-        ELSIF oi.product_id IS NOT NULL THEN
-          INSERT INTO inventory_movements (product_id, entity_id, movement_type, quantity, reference_id, notes)
-          VALUES (oi.product_id, NEW.seller_id, 'RETURN', oi.quantity, NEW.id,
-            'Cancel: ' || oi.name || ' (' || NEW.order_no || ')');
-        END IF;
-      END LOOP;
-      UPDATE order_items SET status = 'CANCELLED' WHERE order_id = NEW.id AND status = 'ACTIVE';
-    END IF;
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- ─── UPDATE: RESTORE ON ITEM CANCEL/REFUND (recursive) ────────────────────
-
-CREATE OR REPLACE FUNCTION restore_stock_on_item_cancel()
-RETURNS TRIGGER AS $$
-DECLARE
-  v_seller_id UUID;
-  v_order_no  TEXT;
-  leaf        RECORD;
-BEGIN
-  IF NEW.status = 'CANCELLED' AND OLD.status = 'ACTIVE' THEN
-    SELECT seller_id, order_no INTO v_seller_id, v_order_no FROM orders WHERE id = NEW.order_id;
-    IF NEW.package_id IS NOT NULL THEN
-      FOR leaf IN
-        SELECT product_id, SUM(total_qty * NEW.quantity) AS qty
-        FROM resolve_package_to_leaves(NEW.package_id, 1) GROUP BY product_id
-      LOOP
-        INSERT INTO inventory_movements
-          (product_id, entity_id, movement_type, quantity, reference_id, package_id, package_qty, notes)
-        VALUES (leaf.product_id, v_seller_id, 'RETURN', leaf.qty, NEW.order_id, NEW.package_id, NEW.quantity,
-          'Partial cancel: ' || COALESCE(NEW.package_name,'') || ' (' || v_order_no || ')');
-      END LOOP;
-    ELSIF NEW.product_id IS NOT NULL THEN
-      INSERT INTO inventory_movements (product_id, entity_id, movement_type, quantity, reference_id, notes)
-      VALUES (NEW.product_id, v_seller_id, 'RETURN', NEW.quantity, NEW.order_id,
-        'Partial cancel: ' || NEW.name || ' (' || v_order_no || ')');
-    END IF;
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION restore_stock_on_item_refund()
-RETURNS TRIGGER AS $$
-DECLARE
-  v_seller_id UUID;
-  v_order_no  TEXT;
-  leaf        RECORD;
-BEGIN
-  IF NEW.status = 'REFUNDED' AND OLD.status IS DISTINCT FROM 'REFUNDED' THEN
-    SELECT seller_id, order_no INTO v_seller_id, v_order_no FROM orders WHERE id = NEW.order_id;
-    IF NEW.package_id IS NOT NULL THEN
-      FOR leaf IN
-        SELECT product_id, SUM(total_qty * NEW.quantity) AS qty
-        FROM resolve_package_to_leaves(NEW.package_id, 1) GROUP BY product_id
-      LOOP
-        INSERT INTO inventory_movements
-          (product_id, entity_id, movement_type, quantity, reference_id, package_id, package_qty, notes)
-        VALUES (leaf.product_id, v_seller_id, 'RETURN', leaf.qty, NEW.order_id, NEW.package_id, NEW.quantity,
-          'Refund: ' || COALESCE(NEW.package_name,'') || ' (' || v_order_no || ')');
-      END LOOP;
-    ELSIF NEW.product_id IS NOT NULL THEN
-      INSERT INTO inventory_movements (product_id, entity_id, movement_type, quantity, reference_id, notes)
-      VALUES (NEW.product_id, v_seller_id, 'RETURN', NEW.quantity, NEW.order_id,
-        'Refund: ' || NEW.name || ' (' || v_order_no || ')');
-    END IF;
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- ─── REFRESH: sellable_products VIEW (uses updated package_available_qty) ─
-
-DROP VIEW IF EXISTS sellable_products;
-CREATE OR REPLACE VIEW sellable_products AS
-  SELECT
-    p.id,
-    p.name,
-    p.sku,
-    p.hsn_code,
-    p.image_url,
-    p.mrp,
-    p.wholesale_price,
-    p.unit,
-    p.is_active,
-    p.product_type,
-    p.sold_as_package_only,
-    p.reorder_point,
-    CASE
-      WHEN p.product_type = 'PACKAGE' THEN package_available_qty(pp.id)
-      ELSE p.current_stock
-    END AS available_stock,
-    pp.id           AS package_def_id,
-    pp.package_type,
-    pp.barcode      AS package_barcode
-  FROM products p
-  LEFT JOIN product_packages pp ON pp.product_id = p.id
-  WHERE p.is_active = TRUE
-    AND p.sold_as_package_only = FALSE;
--- Migration 021: WhatsApp OTP storage table
--- Used by the WhatsApp OTP login flow (F-AUTH-001)
--- No RLS — this table is only accessed server-side via service role key
-
-CREATE TABLE whatsapp_otps (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  phone         TEXT NOT NULL,
-  otp_hash      TEXT NOT NULL,
-  expires_at    TIMESTAMPTZ NOT NULL,
-  used          BOOLEAN DEFAULT FALSE,
-  attempt_count INT DEFAULT 0,
-  created_at    TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX idx_whatsapp_otps_lookup
-  ON whatsapp_otps(phone, used, expires_at DESC);
-
--- Partial index for used/expired OTP cleanup (NOW() is not IMMUTABLE, use a boolean flag instead)
-CREATE INDEX idx_whatsapp_otps_cleanup
-  ON whatsapp_otps(created_at)
-  WHERE used = TRUE;
--- Migration 022: Unified Khata — Credit Ledger for All Parties (F-KHATA-001)
--- Replaces old B2B credit system (migration 015) with unified tables
--- supporting CONSUMER, RETAILER, and WHOLESALER party types.
-
--- ─── DROP OLD TRIGGERS AND FUNCTIONS ───────────────────────────────────────
-
-DROP TRIGGER IF EXISTS orders_debit_credit ON orders;
-DROP TRIGGER IF EXISTS orders_credit_on_cancel ON orders;
-DROP TRIGGER IF EXISTS repayment_apply ON credit_repayments;
-
-DROP FUNCTION IF EXISTS debit_credit_balance_on_confirm() CASCADE;
-DROP FUNCTION IF EXISTS credit_balance_on_cancel() CASCADE;
-DROP FUNCTION IF EXISTS apply_repayment() CASCADE;
-DROP FUNCTION IF EXISTS check_credit_available(UUID, UUID, DECIMAL) CASCADE;
-
--- ─── DROP OLD TABLES ───────────────────────────────────────────────────────
-
-DROP TABLE IF EXISTS credit_alerts;
-DROP TABLE IF EXISTS credit_repayments;
-DROP TABLE IF EXISTS credit_transactions;
-
--- Drop consumer credit tables if they exist (from old F-KHATA-001 draft)
-DROP TABLE IF EXISTS consumer_credit_alerts;
-DROP TABLE IF EXISTS consumer_credit_transactions;
-DROP TABLE IF EXISTS consumer_accounts;
-
--- ─── REMOVE OLD CREDIT COLUMNS FROM retailer_wholesalers ───────────────────
-
-ALTER TABLE retailer_wholesalers DROP COLUMN IF EXISTS credit_limit;
-ALTER TABLE retailer_wholesalers DROP COLUMN IF EXISTS credit_balance;
-ALTER TABLE retailer_wholesalers DROP COLUMN IF EXISTS credit_term_days;
-ALTER TABLE retailer_wholesalers DROP COLUMN IF EXISTS credit_frozen;
-
--- ─── KHATA ACCOUNTS ───────────────────────────────────────────────────────
--- One row per creditor-debtor relationship.
--- Consumer accounts keyed on (creditor_entity_id, debtor_phone).
--- Business accounts keyed on (creditor_entity_id, debtor_entity_id).
-
-CREATE TABLE khata_accounts (
-  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  creditor_entity_id    UUID NOT NULL REFERENCES entities(id),
-  party_type            TEXT NOT NULL CHECK (party_type IN ('CONSUMER', 'RETAILER', 'WHOLESALER')),
-  debtor_entity_id      UUID REFERENCES entities(id),
-  debtor_phone          TEXT,
-  debtor_name           TEXT,
-  debtor_face_id_hash   TEXT,
-  credit_limit          DECIMAL(12,2) NOT NULL DEFAULT 0,
-  outstanding_balance   DECIMAL(12,2) NOT NULL DEFAULT 0,
-  credit_term_days      INT NOT NULL DEFAULT 30,
-  status                TEXT NOT NULL DEFAULT 'ACTIVE'
-                          CHECK (status IN ('ACTIVE', 'FROZEN', 'CLOSED')),
-  last_payment_at       TIMESTAMPTZ,
-  created_by            UUID REFERENCES user_profiles(id),
-  created_at            TIMESTAMPTZ DEFAULT NOW(),
-  updated_at            TIMESTAMPTZ DEFAULT NOW(),
-
-  CONSTRAINT uq_khata_creditor_debtor UNIQUE (creditor_entity_id, debtor_entity_id, debtor_phone)
-);
-
-CREATE INDEX idx_khata_accounts_creditor ON khata_accounts(creditor_entity_id);
-CREATE INDEX idx_khata_accounts_debtor_entity ON khata_accounts(debtor_entity_id) WHERE debtor_entity_id IS NOT NULL;
-CREATE INDEX idx_khata_accounts_debtor_phone ON khata_accounts(debtor_phone) WHERE debtor_phone IS NOT NULL;
-CREATE INDEX idx_khata_accounts_status ON khata_accounts(status) WHERE status = 'ACTIVE';
-
--- ─── KHATA TRANSACTIONS ───────────────────────────────────────────────────
--- Immutable ledger — every debit, credit, and adjustment for any khata account.
-
-CREATE TABLE khata_transactions (
-  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  khata_account_id      UUID NOT NULL REFERENCES khata_accounts(id),
-  order_id              UUID,
-  transaction_type      TEXT NOT NULL CHECK (transaction_type IN ('DEBIT', 'CREDIT', 'ADJUSTMENT')),
-  amount                DECIMAL(12,2) NOT NULL,
-  balance_after         DECIMAL(12,2) NOT NULL,
-  payment_method        TEXT CHECK (payment_method IN ('CASH', 'MBOB', 'MPAY', 'RTGS', 'BANK_TRANSFER')),
-  notes                 TEXT,
-  created_by            UUID NOT NULL REFERENCES user_profiles(id),
-  created_at            TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX idx_khata_txn_account ON khata_transactions(khata_account_id);
-CREATE INDEX idx_khata_txn_date ON khata_transactions(created_at DESC);
-CREATE INDEX idx_khata_txn_order ON khata_transactions(order_id) WHERE order_id IS NOT NULL;
-
--- ─── KHATA REPAYMENTS ─────────────────────────────────────────────────────
-
-CREATE TABLE khata_repayments (
-  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  khata_account_id      UUID NOT NULL REFERENCES khata_accounts(id),
-  amount                DECIMAL(12,2) NOT NULL,
-  payment_method        TEXT NOT NULL CHECK (payment_method IN ('CASH', 'MBOB', 'MPAY', 'RTGS', 'BANK_TRANSFER')),
-  status                TEXT NOT NULL DEFAULT 'CREATED'
-                          CHECK (status IN ('CREATED', 'PAYMENT_MADE')),
-  due_date              DATE,
-  reference_no          TEXT,
-  notes                 TEXT,
-  created_by            UUID REFERENCES user_profiles(id),
-  confirmed_by          UUID REFERENCES user_profiles(id),
-  created_at            TIMESTAMPTZ DEFAULT NOW(),
-  confirmed_at          TIMESTAMPTZ
-);
-
-CREATE INDEX idx_khata_repayments_account ON khata_repayments(khata_account_id);
-CREATE INDEX idx_khata_repayments_due ON khata_repayments(due_date) WHERE due_date IS NOT NULL AND status = 'CREATED';
-
--- ─── KHATA ALERTS ─────────────────────────────────────────────────────────
-
-CREATE TABLE khata_alerts (
-  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  khata_account_id      UUID NOT NULL REFERENCES khata_accounts(id),
-  repayment_id          UUID REFERENCES khata_repayments(id),
-  alert_type            TEXT NOT NULL CHECK (alert_type IN (
-                            'PRE_DUE_3D', 'DUE_TODAY', 'OVERDUE_3D',
-                            'OVERDUE_30D', 'MONTHLY_REMINDER')),
-  sent_to               TEXT NOT NULL CHECK (sent_to IN ('CREDITOR', 'DEBTOR', 'BOTH')),
-  whatsapp_status       TEXT DEFAULT 'PENDING'
-                          CHECK (whatsapp_status IN ('PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED')),
-  sent_at               TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX idx_khata_alerts_account ON khata_alerts(khata_account_id);
-
--- ─── TRIGGER: KHATA ORDER CONFIRMED → DEBIT BALANCE ───────────────────────
--- Fires when a CREDIT order transitions to CONFIRMED.
--- For POS_SALE: uses khata_accounts by (creditor_entity_id=seller, debtor_phone=buyer_whatsapp, party_type='CONSUMER').
--- For B2B: uses khata_accounts by (creditor_entity_id=seller, debtor_entity_id=buyer_id, party_type).
-
-CREATE OR REPLACE FUNCTION khata_debit_on_confirm()
-RETURNS TRIGGER AS $$
-DECLARE
-  v_account_id      UUID;
-  v_new_balance     DECIMAL(12,2);
-  v_term_days       INT;
-  v_debtor_phone    TEXT;
-  v_debtor_entity   UUID;
-  v_party_type      TEXT;
-  v_profile_id      UUID;
-BEGIN
-  IF NEW.status = 'CONFIRMED'
-     AND OLD.status IS DISTINCT FROM 'CONFIRMED'
-     AND NEW.payment_method = 'CREDIT' THEN
-
-    IF NEW.order_type = 'POS_SALE' THEN
-      v_debtor_phone  := NEW.buyer_whatsapp;
-      v_debtor_entity := NULL;
-      v_party_type    := 'CONSUMER';
-    ELSE
-      v_debtor_phone  := NULL;
-      v_debtor_entity := NEW.buyer_id;
-      v_party_type    := 'RETAILER';
-    END IF;
-
-    -- Look up the khata account
-    SELECT id, credit_term_days INTO v_account_id, v_term_days
-    FROM khata_accounts
-    WHERE creditor_entity_id = NEW.seller_id
-      AND (debtor_entity_id = v_debtor_entity OR (v_debtor_entity IS NULL AND debtor_entity_id IS NULL))
-      AND (debtor_phone = v_debtor_phone OR (v_debtor_phone IS NULL AND debtor_phone IS NULL))
-      AND party_type = v_party_type
-      AND status IN ('ACTIVE', 'FROZEN')
-    LIMIT 1;
-
-    IF NOT FOUND THEN
-      RAISE EXCEPTION 'No active khata account found for credit sale';
-    END IF;
-
-    -- Check credit limit
-    IF (SELECT outstanding_balance + NEW.grand_total > credit_limit
-        FROM khata_accounts WHERE id = v_account_id) THEN
-      RAISE EXCEPTION 'Credit limit exceeded for khata account %', v_account_id;
-    END IF;
-
-    -- Update balance
-    UPDATE khata_accounts
-    SET outstanding_balance = outstanding_balance + NEW.grand_total,
-        updated_at = NOW()
-    WHERE id = v_account_id
-    RETURNING outstanding_balance INTO v_new_balance;
-
-    -- Get created_by profile
-    SELECT id INTO v_profile_id FROM user_profiles WHERE id = NEW.created_by LIMIT 1;
-    IF NOT FOUND THEN v_profile_id := NEW.created_by; END IF;
-
-    -- Log DEBIT transaction
-    INSERT INTO khata_transactions
-      (khata_account_id, order_id, transaction_type, amount, balance_after, notes, created_by)
-    VALUES
-      (v_account_id, NEW.id, 'DEBIT', NEW.grand_total, v_new_balance,
-       'Order ' || NEW.order_no, v_profile_id);
-
-    -- Create repayment with due date
-    IF v_term_days > 0 THEN
-      INSERT INTO khata_repayments
-        (khata_account_id, amount, payment_method, status, due_date, notes, created_by)
-      VALUES
-        (v_account_id, NEW.grand_total, 'CASH', 'CREATED',
-         (NOW() + (v_term_days || ' days')::INTERVAL)::DATE,
-         'Auto-created for order ' || NEW.order_no, v_profile_id);
-    END IF;
-
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS orders_khata_debit ON orders;
-CREATE TRIGGER orders_khata_debit
-  AFTER UPDATE ON orders
-  FOR EACH ROW EXECUTE FUNCTION khata_debit_on_confirm();
-
--- ─── TRIGGER: KHATA ORDER CANCELLED → CREDIT BALANCE BACK ─────────────────
-
-CREATE OR REPLACE FUNCTION khata_credit_on_cancel()
-RETURNS TRIGGER AS $$
-DECLARE
-  v_account_id   UUID;
-  v_new_balance  DECIMAL(12,2);
-  v_profile_id   UUID;
-BEGIN
-  IF NEW.status = 'CANCELLED'
-     AND OLD.status IS DISTINCT FROM 'CANCELLED'
-     AND NEW.payment_method = 'CREDIT'
-     AND OLD.status = 'CONFIRMED' THEN
-
-    -- Find the DEBIT transaction for this order
-  SELECT khata_account_id INTO v_account_id
-    FROM khata_transactions
-    WHERE order_id = NEW.id AND transaction_type = 'DEBIT'
-    LIMIT 1;
-
-    IF NOT FOUND THEN RETURN NEW; END IF;
-
-    -- Reduce balance
-    UPDATE khata_accounts
-    SET outstanding_balance = GREATEST(0, outstanding_balance - NEW.grand_total),
-        updated_at = NOW()
-    WHERE id = v_account_id
-    RETURNING outstanding_balance INTO v_new_balance;
-
-    SELECT id INTO v_profile_id FROM user_profiles WHERE id = NEW.created_by LIMIT 1;
-    IF NOT FOUND THEN v_profile_id := NEW.created_by; END IF;
-
-    INSERT INTO khata_transactions
-      (khata_account_id, order_id, transaction_type, amount, balance_after, notes, created_by)
-    VALUES
-      (v_account_id, NEW.id, 'CREDIT', NEW.grand_total, v_new_balance,
-       'Reversal for cancelled order ' || NEW.order_no, v_profile_id);
-
-    -- Mark any CREATED repayments for this order as irrelevant (delete them)
-    DELETE FROM khata_repayments
-    WHERE khata_account_id = v_account_id
-      AND notes LIKE '%order ' || NEW.order_no || '%'
-      AND status = 'CREATED';
-
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS orders_khata_cancel ON orders;
-CREATE TRIGGER orders_khata_cancel
-  AFTER UPDATE ON orders
-  FOR EACH ROW EXECUTE FUNCTION khata_credit_on_cancel();
-
--- ─── TRIGGER: REPAYMENT PAYMENT_MADE → REDUCE BALANCE ─────────────────────
-
-CREATE OR REPLACE FUNCTION khata_apply_repayment()
-RETURNS TRIGGER AS $$
-DECLARE
-  v_new_balance DECIMAL(12,2);
-  v_limit       DECIMAL(12,2);
-  v_profile_id  UUID;
-BEGIN
-  IF NEW.status = 'PAYMENT_MADE' AND OLD.status = 'CREATED' THEN
-
-    UPDATE khata_accounts
-    SET outstanding_balance = GREATEST(0, outstanding_balance - NEW.amount),
-        last_payment_at = NOW(),
-        updated_at = NOW()
-    WHERE id = NEW.khata_account_id
-    RETURNING outstanding_balance, credit_limit INTO v_new_balance, v_limit;
-
-    SELECT id INTO v_profile_id FROM user_profiles WHERE id = NEW.confirmed_by LIMIT 1;
-    IF NOT FOUND THEN v_profile_id := NEW.confirmed_by; END IF;
-
-    INSERT INTO khata_transactions
-      (khata_account_id, transaction_type, amount, balance_after, payment_method, notes, created_by)
-    VALUES
-      (NEW.khata_account_id, 'CREDIT', NEW.amount, v_new_balance, NEW.payment_method,
-       'Repayment via ' || NEW.payment_method || COALESCE(' ref: ' || NEW.reference_no, ''),
-       v_profile_id);
-
-    -- Auto-unfreeze if balance now below limit
-    IF v_new_balance < v_limit THEN
-      UPDATE khata_accounts SET status = 'ACTIVE', updated_at = NOW()
-      WHERE id = NEW.khata_account_id AND status = 'FROZEN';
-    END IF;
-
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS khata_repayment_apply ON khata_repayments;
-CREATE TRIGGER khata_repayment_apply
-  AFTER UPDATE ON khata_repayments
-  FOR EACH ROW EXECUTE FUNCTION khata_apply_repayment();
-
--- ─── RLS ───────────────────────────────────────────────────────────────────
-
-ALTER TABLE khata_accounts    ENABLE ROW LEVEL SECURITY;
-ALTER TABLE khata_transactions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE khata_repayments  ENABLE ROW LEVEL SECURITY;
-ALTER TABLE khata_alerts      ENABLE ROW LEVEL SECURITY;
-
--- Creditor entity sees their own accounts
-CREATE POLICY "tenant_khata_accounts" ON khata_accounts
-  FOR ALL USING (
-    is_super_admin() OR
-    creditor_entity_id = auth_entity_id()
-  );
-
--- Debtor entity can view (not modify) accounts where they owe
-CREATE POLICY "debtor_view_khata" ON khata_accounts
-  FOR SELECT USING (
-    is_super_admin() OR
-    debtor_entity_id = auth_entity_id()
-  );
-
--- Transactions visible to both creditor and debtor
-CREATE POLICY "tenant_khata_transactions" ON khata_transactions
-  FOR ALL USING (
-    is_super_admin() OR
-    EXISTS (
-      SELECT 1 FROM khata_accounts ka
-      WHERE ka.id = khata_transactions.khata_account_id
-      AND (ka.creditor_entity_id = auth_entity_id()
-           OR ka.debtor_entity_id = auth_entity_id())
-    )
-  );
-
--- Repayments visible to both creditor and debtor
-CREATE POLICY "tenant_khata_repayments" ON khata_repayments
-  FOR ALL USING (
-    is_super_admin() OR
-    EXISTS (
-      SELECT 1 FROM khata_accounts ka
-      WHERE ka.id = khata_repayments.khata_account_id
-      AND (ka.creditor_entity_id = auth_entity_id()
-           OR ka.debtor_entity_id = auth_entity_id())
-    )
-  );
-
--- Alerts visible to creditor only
-CREATE POLICY "tenant_khata_alerts" ON khata_alerts
-  FOR ALL USING (
-    is_super_admin() OR
-    EXISTS (
-      SELECT 1 FROM khata_accounts ka
-      WHERE ka.id = khata_alerts.khata_account_id
-      AND ka.creditor_entity_id = auth_entity_id()
-    )
-  );
--- Migration 023: Stock Prediction Engine (F-PREDICT-001)
--- Tables for daily stock-out predictions and supplier lead times.
--- Includes a DB function to calculate predictions from inventory_movements.
-
--- ─── SUPPLIER LEAD TIMES ──────────────────────────────────────────────────
-
-CREATE TABLE supplier_lead_times (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  product_id      UUID REFERENCES products(id),
-  category_id     UUID,
-  supplier_id     UUID REFERENCES entities(id),
-  entity_id       UUID NOT NULL REFERENCES entities(id),
-  lead_time_days  INT NOT NULL DEFAULT 7 CHECK (lead_time_days > 0),
-  updated_by      UUID REFERENCES user_profiles(id),
-  updated_at      TIMESTAMPTZ DEFAULT NOW(),
-  notes           TEXT,
-
-  -- One lead time per (product, supplier) or (category, supplier)
-  CONSTRAINT uq_slt_product_supplier UNIQUE (product_id, supplier_id),
-  CONSTRAINT uq_slt_category_supplier UNIQUE (category_id, supplier_id)
-);
-
-CREATE INDEX idx_slt_product ON supplier_lead_times(product_id) WHERE product_id IS NOT NULL;
-CREATE INDEX idx_slt_category ON supplier_lead_times(category_id) WHERE category_id IS NOT NULL;
-CREATE INDEX idx_slt_entity ON supplier_lead_times(entity_id);
-
--- ─── STOCK PREDICTIONS ────────────────────────────────────────────────────
-
-CREATE TABLE stock_predictions (
-  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  product_id            UUID NOT NULL REFERENCES products(id),
-  entity_id             UUID NOT NULL REFERENCES entities(id),
-  avg_daily_sales       DECIMAL(10,2) NOT NULL DEFAULT 0,
-  weighted_ads          DECIMAL(10,2) NOT NULL DEFAULT 0,
-  days_until_stockout   DECIMAL(10,2),
-  suggested_reorder_qty DECIMAL(10,2),
-  status                TEXT NOT NULL CHECK (status IN (
-                            'HEALTHY', 'AT_RISK', 'CRITICAL',
-                            'INSUFFICIENT_DATA', 'DEAD_STOCK', 'ERROR'
-                          )),
-  calculated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-  UNIQUE(product_id, entity_id, calculated_at)
-);
-
-CREATE INDEX idx_stock_pred_status ON stock_predictions(entity_id, status);
-CREATE INDEX idx_stock_pred_days ON stock_predictions(entity_id, days_until_stockout);
-CREATE INDEX idx_stock_pred_latest ON stock_predictions(entity_id, calculated_at DESC);
-
--- ─── PREDICTION CALCULATION FUNCTION ──────────────────────────────────────
--- Calculates stock-out predictions for all products of a given entity.
--- Uses weighted ADS (last 7 days weighted 3x vs previous 23 days).
--- Excludes products with < 7 days data or 0 sales.
-
-CREATE OR REPLACE FUNCTION calculate_stock_predictions(p_entity_id UUID)
-RETURNS void AS $$
+CREATE OR REPLACE FUNCTION "public"."calculate_stock_predictions"("p_entity_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql"
+    AS $$
 DECLARE
   v_calculated_at TIMESTAMPTZ := NOW();
   v_record RECORD;
@@ -2449,95 +370,173 @@ BEGIN
 
   END LOOP;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
--- ─── RLS ───────────────────────────────────────────────────────────────────
 
-ALTER TABLE stock_predictions    ENABLE ROW LEVEL SECURITY;
-ALTER TABLE supplier_lead_times  ENABLE ROW LEVEL SECURITY;
+ALTER FUNCTION "public"."calculate_stock_predictions"("p_entity_id" "uuid") OWNER TO "postgres";
 
-CREATE POLICY "tenant_stock_predictions" ON stock_predictions
-  FOR ALL USING (
-    is_super_admin() OR
-    entity_id = auth_entity_id()
-  );
 
-CREATE POLICY "tenant_supplier_lead_times" ON supplier_lead_times
-  FOR ALL USING (
-    is_super_admin() OR
-    entity_id = auth_entity_id()
-  );
--- Migration 024: Marketplace Page (F-MARKET-001)
--- Adds marketplace visibility toggle on products and store branding columns on entities.
+CREATE OR REPLACE FUNCTION "public"."convert_cart_on_confirm"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+  IF NEW.status = 'CONFIRMED' AND NEW.cart_id IS NOT NULL THEN
+    UPDATE carts SET status = 'CONVERTED' WHERE id = NEW.cart_id;
+  END IF;
+  RETURN NEW;
+END;
+$$;
 
--- ─── PRODUCTS: visible_on_web ──────────────────────────────────────────────
 
-ALTER TABLE products ADD COLUMN IF NOT EXISTS visible_on_web BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER FUNCTION "public"."convert_cart_on_confirm"() OWNER TO "postgres";
 
-CREATE INDEX IF NOT EXISTS idx_products_marketplace
-ON products (created_by, visible_on_web, current_stock)
-WHERE visible_on_web = TRUE AND current_stock > 0;
 
--- ─── ENTITIES: marketplace columns ─────────────────────────────────────────
+CREATE OR REPLACE FUNCTION "public"."custom_access_token_hook"("event" "jsonb") RETURNS "jsonb"
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    AS $$
+DECLARE
+  app_metadata  JSONB;
+  profile RECORD;
+BEGIN
+  SELECT entity_id, role, sub_role, permissions
+  INTO profile
+  FROM user_profiles
+  WHERE id = (event->>'user_id')::UUID;
 
-ALTER TABLE entities ADD COLUMN IF NOT EXISTS shop_slug TEXT UNIQUE;
-ALTER TABLE entities ADD COLUMN IF NOT EXISTS marketplace_bio TEXT;
-ALTER TABLE entities ADD COLUMN IF NOT EXISTS marketplace_logo_url TEXT;
+  IF profile IS NULL THEN
+    RETURN event;
+  END IF;
 
--- Partial unique index so NULL slugs don't conflict
-CREATE UNIQUE INDEX IF NOT EXISTS idx_entities_shop_slug
-ON entities (shop_slug)
-WHERE shop_slug IS NOT NULL;
--- Migration 025: WhatsApp Ordering (F-WA-ORDER-001)
--- Adds order source tracking, fuzzy-match support, and consumer accounts for WhatsApp-originated orders.
+  app_metadata := event->'app_metadata';
+  app_metadata := jsonb_set(app_metadata, '{entity_id}',  to_jsonb(profile.entity_id::TEXT));
+  app_metadata := jsonb_set(app_metadata, '{role}',        to_jsonb(profile.role));
+  app_metadata := jsonb_set(app_metadata, '{sub_role}',    to_jsonb(profile.sub_role));
+  app_metadata := jsonb_set(app_metadata, '{permissions}', to_jsonb(profile.permissions));
 
--- ─── PG_TRGM EXTENSION ─────────────────────────────────────────────────────
--- Required for fuzzy product name matching (similarity >= 0.7).
+  RETURN jsonb_set(event, '{app_metadata}', app_metadata);
+END;
+$$;
 
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
-CREATE INDEX IF NOT EXISTS idx_products_name_trgm ON products USING gin (name gin_trgm_ops);
+ALTER FUNCTION "public"."custom_access_token_hook"("event" "jsonb") OWNER TO "postgres";
 
--- ─── ORDERS TABLE ADDITIONS ────────────────────────────────────────────────
 
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_source TEXT NOT NULL DEFAULT 'POS'
-  CHECK (order_source IN ('POS', 'WHATSAPP', 'MARKETPLACE_WEB'));
+CREATE OR REPLACE FUNCTION "public"."deduct_stock_on_confirm"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+  v_old_status TEXT;
+BEGIN
+  v_old_status := CASE WHEN TG_OP = 'INSERT' THEN NULL ELSE OLD.status END;
 
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS whatsapp_message_id TEXT;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS buyer_phone TEXT;
+  IF NEW.status = 'CONFIRMED'
+     AND v_old_status IS DISTINCT FROM 'CONFIRMED'
+     AND NEW.order_type IN ('POS_SALE', 'WHOLESALE', 'MARKETPLACE') THEN
 
--- Fast rate-limit lookups: count orders per phone per day
-CREATE INDEX IF NOT EXISTS idx_orders_buyer_phone_date ON orders (buyer_phone, created_at)
-  WHERE order_source = 'WHATSAPP';
+    INSERT INTO inventory_movements
+      (product_id, entity_id, movement_type, quantity, reference_id, batch_id, notes)
+    SELECT
+      oi.product_id,
+      NEW.seller_id,
+      'SALE',
+      -(oi.quantity),
+      NEW.id,
+      oi.batch_id,
+      'Auto-deducted on order confirmation: ' || NEW.order_no
+    FROM order_items oi
+    WHERE oi.order_id   = NEW.id
+      AND oi.product_id IS NOT NULL
+      AND oi.status     = 'ACTIVE';
 
--- ─── ORDER ITEMS TABLE ADDITIONS ───────────────────────────────────────────
+  END IF;
+  RETURN NEW;
+END;
+$$;
 
-ALTER TABLE order_items ADD COLUMN IF NOT EXISTS matched BOOLEAN NOT NULL DEFAULT true;
-ALTER TABLE order_items ADD COLUMN IF NOT EXISTS raw_request_text TEXT;
-ALTER TABLE order_items ADD COLUMN IF NOT EXISTS match_confidence DECIMAL(3,2);
 
--- ─── CONSUMER ACCOUNTS ────────────────────────────────────────────────────
--- Minimal customer profile keyed by WhatsApp phone number.
+ALTER FUNCTION "public"."deduct_stock_on_confirm"() OWNER TO "postgres";
 
-CREATE TABLE IF NOT EXISTS consumer_accounts (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  phone         TEXT NOT NULL UNIQUE,
-  display_name  TEXT,
-  created_at    TIMESTAMPTZ DEFAULT NOW(),
-  last_order_at TIMESTAMPTZ
-);
 
-CREATE INDEX IF NOT EXISTS idx_consumer_accounts_phone ON consumer_accounts(phone);
+CREATE OR REPLACE FUNCTION "public"."deduct_stock_on_sales_invoice"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+  v_item RECORD;
+  v_old_status TEXT;
+BEGIN
+  -- On INSERT, treat OLD.status as NULL (always distinct from CONFIRMED)
+  v_old_status := CASE WHEN TG_OP = 'INSERT' THEN NULL ELSE OLD.status END;
 
--- ─── FUZZY MATCH RPC ──────────────────────────────────────────────────────
--- Used by the gateway to match customer text against product names.
+  IF NEW.order_type = 'SALES_INVOICE'
+     AND NEW.status = 'CONFIRMED'
+     AND v_old_status IS DISTINCT FROM 'CONFIRMED' THEN
 
-CREATE OR REPLACE FUNCTION fuzzy_match_product(
-  p_name TEXT,
-  p_entity_id UUID,
-  p_threshold DECIMAL DEFAULT 0.7
-)
-RETURNS TABLE (id UUID, name TEXT, mrp DECIMAL, score DECIMAL) AS $$
+    FOR v_item IN
+      SELECT oi.*
+      FROM order_items oi
+      WHERE oi.order_id   = NEW.id
+        AND oi.product_id IS NOT NULL
+        AND oi.status     = 'ACTIVE'
+    LOOP
+      INSERT INTO inventory_movements
+        (product_id, entity_id, movement_type, quantity, reference_id, batch_id, notes)
+      VALUES (
+        v_item.product_id,
+        NEW.seller_id,
+        'SALE',
+        -(v_item.quantity),
+        NEW.id,
+        v_item.batch_id,
+        'Auto-deducted from Sales Invoice: ' || NEW.order_no
+      );
+    END LOOP;
+
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."deduct_stock_on_sales_invoice"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."delete_face_profile"("p_profile_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+BEGIN
+  UPDATE face_profiles
+  SET
+    embedding  = NULL,
+    name       = '[deleted]',
+    deleted_at = NOW(),
+    updated_at = NOW()
+  WHERE id = p_profile_id;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."delete_face_profile"("p_profile_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."expire_stale_batches"() RETURNS "void"
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+  UPDATE product_batches
+  SET status = 'EXPIRED'
+  WHERE expires_at < CURRENT_DATE
+    AND status = 'ACTIVE'
+    AND quantity > 0;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."expire_stale_batches"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."fuzzy_match_product"("p_name" "text", "p_entity_id" "uuid", "p_threshold" numeric DEFAULT 0.7) RETURNS TABLE("id" "uuid", "name" "text", "mrp" numeric, "score" numeric)
+    LANGUAGE "plpgsql" STABLE
+    AS $$
 BEGIN
   RETURN QUERY
   SELECT
@@ -2552,430 +551,15 @@ BEGIN
   ORDER BY score DESC
   LIMIT 1;
 END;
-$$ LANGUAGE plpgsql STABLE;
--- Migration 026: Draft Purchases (Photo-to-Stock, F-PHOTO-001)
--- Tables for storing OCR-parsed wholesale bills and their line items.
--- Also creates the `bill-photos` storage bucket for bill photo uploads.
+$$;
 
--- ─── DRAFT PURCHASES ────────────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS draft_purchases (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  entity_id       UUID NOT NULL REFERENCES entities(id),
-  status          TEXT NOT NULL DEFAULT 'DRAFT'
-                  CHECK (status IN ('DRAFT', 'REVIEWED', 'CONFIRMED', 'CANCELLED')),
-  supplier_name   TEXT,
-  bill_date       DATE,
-  bill_photo_url  TEXT,
-  bill_photo_hash TEXT,
-  total_amount    DECIMAL(12,2) DEFAULT 0,
-  ocr_raw         JSONB,
-  notes           TEXT,
-  created_by      UUID REFERENCES user_profiles(id),
-  confirmed_at    TIMESTAMPTZ,
-  created_at      TIMESTAMPTZ DEFAULT NOW(),
-  updated_at      TIMESTAMPTZ DEFAULT NOW()
-);
+ALTER FUNCTION "public"."fuzzy_match_product"("p_name" "text", "p_entity_id" "uuid", "p_threshold" numeric) OWNER TO "postgres";
 
-CREATE INDEX idx_draft_purchases_entity ON draft_purchases(entity_id, status);
-CREATE INDEX idx_draft_purchases_hash   ON draft_purchases(bill_photo_hash) WHERE bill_photo_hash IS NOT NULL;
 
--- ─── DRAFT PURCHASE ITEMS ───────────────────────────────────────────────────
-
-CREATE TABLE IF NOT EXISTS draft_purchase_items (
-  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  draft_purchase_id UUID NOT NULL REFERENCES draft_purchases(id) ON DELETE CASCADE,
-  product_id        UUID REFERENCES products(id),
-  raw_name          TEXT NOT NULL,
-  quantity          INT NOT NULL,
-  unit              TEXT NOT NULL DEFAULT 'pcs',
-  unit_price        DECIMAL(10,2) NOT NULL DEFAULT 0,
-  total_price       DECIMAL(12,2) NOT NULL DEFAULT 0,
-  match_confidence  DECIMAL(3,2),
-  match_status      TEXT NOT NULL DEFAULT 'UNMATCHED'
-                    CHECK (match_status IN ('MATCHED', 'PARTIAL', 'UNMATCHED')),
-  sort_order        INT NOT NULL DEFAULT 0,
-  created_at        TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX idx_draft_purchase_items_draft ON draft_purchase_items(draft_purchase_id);
-
--- ─── ROW-LEVEL SECURITY ─────────────────────────────────────────────────────
-
-ALTER TABLE draft_purchases ENABLE ROW LEVEL SECURITY;
-ALTER TABLE draft_purchase_items ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY draft_purchases_entity ON draft_purchases
-  FOR ALL USING (entity_id IN (
-    SELECT e.id FROM entities e
-    JOIN user_profiles up ON up.id = auth.uid()
-    WHERE up.entity_id = draft_purchases.entity_id
-  ));
-
-CREATE POLICY draft_purchase_items_entity ON draft_purchase_items
-  FOR ALL USING (draft_purchase_id IN (
-    SELECT id FROM draft_purchases WHERE entity_id IN (
-      SELECT e.id FROM entities e
-      JOIN user_profiles up ON up.id = auth.uid()
-      WHERE up.entity_id = draft_purchases.entity_id
-    )
-  ));
-
--- ─── STORAGE BUCKET ─────────────────────────────────────────────────────────
--- The `bill-photos` bucket must be created via the Supabase dashboard
--- or via: INSERT INTO storage.buckets (id, name, public) VALUES ('bill-photos', 'bill-photos', false);
-
-CREATE POLICY bill_photos_upload ON storage.objects
-  FOR INSERT WITH CHECK (bucket_id = 'bill-photos');
-
-CREATE POLICY bill_photos_read ON storage.objects
-  FOR SELECT USING (bucket_id = 'bill-photos');
--- Migration 032: Product Specifications Feature
--- Adds support for category-specific product properties and vendor-specific product values
-
--- ============================================================================
--- Table: units
--- Admin-configurable units of measurement
--- ============================================================================
-CREATE TABLE IF NOT EXISTS units (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
-  abbreviation TEXT NOT NULL,
-  category TEXT,
-  is_active BOOLEAN DEFAULT true,
-  sort_order INTEGER DEFAULT 0,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(name),
-  UNIQUE(abbreviation)
-);
-
--- Seed with common units
-INSERT INTO units (name, abbreviation, category, sort_order) VALUES
-  ('Piece', 'pcs', 'quantity', 1),
-  ('Kilogram', 'kg', 'weight', 2),
-  ('Gram', 'g', 'weight', 3),
-  ('Litre', 'L', 'volume', 4),
-  ('Millilitre', 'ml', 'volume', 5),
-  ('Box', 'box', 'packaging', 6),
-  ('Pack', 'pack', 'packaging', 7),
-  ('Dozen', 'doz', 'quantity', 8),
-  ('Pair', 'pair', 'quantity', 9),
-  ('Set', 'set', 'quantity', 10),
-  ('Meter', 'm', 'length', 11),
-  ('Centimetre', 'cm', 'length', 12),
-  ('Square Metre', 'sqm', 'area', 13),
-  ('Cubic Metre', 'cum', 'volume', 14)
-ON CONFLICT (name) DO NOTHING;
-
--- ============================================================================
--- Table: category_properties
--- Defines custom properties for each product category
--- ============================================================================
-CREATE TABLE IF NOT EXISTS category_properties (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  category_id UUID NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
-  name TEXT NOT NULL,
-  slug TEXT NOT NULL,
-  data_type TEXT NOT NULL CHECK (data_type IN ('text_single', 'text_multi', 'number', 'unit', 'datetime')),
-  is_required BOOLEAN DEFAULT false,
-  sort_order INTEGER DEFAULT 0,
-  validation_rules JSONB DEFAULT '{}',
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(category_id, slug)
-);
-
--- ============================================================================
--- Table: entity_products
--- Vendor-specific product catalog (vendor's view of products they sell)
--- ============================================================================
-CREATE TABLE IF NOT EXISTS entity_products (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
-  master_product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-
-  -- Vendor's product identifiers
-  sku TEXT NOT NULL,
-  display_name TEXT,
-  barcode TEXT,
-  qr_code TEXT,
-
-  -- Pricing
-  wholesale_price DECIMAL(12,2),
-  mrp DECIMAL(12,2),
-  gst_percent DECIMAL(5,2) DEFAULT 5.00,
-
-  -- Inventory
-  current_stock INT DEFAULT 0,
-  reorder_point INT DEFAULT 10,
-  is_active BOOLEAN DEFAULT true,
-
-  -- Manufacturer Details (Standard Fields)
-  manufacturer_name TEXT,
-  manufacturer_brand TEXT,
-  country_of_origin TEXT,
-
-  -- Batch & Expiry (Standard Fields - critical for pharma, food)
-  batch_number TEXT,
-  manufactured_on DATE,
-  expiry_date DATE,
-  best_before DATE,
-
-  -- Additional vendor notes
-  vendor_notes TEXT,
-
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(entity_id, sku)
-);
-
--- Indexes for entity_products
-CREATE INDEX IF NOT EXISTS idx_entity_products_entity ON entity_products(entity_id);
-CREATE INDEX IF NOT EXISTS idx_entity_products_master ON entity_products(master_product_id);
-CREATE INDEX IF NOT EXISTS idx_entity_products_expiry ON entity_products(expiry_date) WHERE expiry_date IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_entity_products_sku ON entity_products(sku);
-CREATE INDEX IF NOT EXISTS idx_entity_products_active ON entity_products(entity_id, is_active) WHERE is_active = true;
-
--- ============================================================================
--- Table: entity_product_specifications
--- Stores vendor-specific specification values for their products
--- ============================================================================
-CREATE TABLE IF NOT EXISTS entity_product_specifications (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  entity_product_id UUID NOT NULL REFERENCES entity_products(id) ON DELETE CASCADE,
-  property_id UUID NOT NULL REFERENCES category_properties(id) ON DELETE CASCADE,
-  value_text TEXT,
-  value_number NUMERIC(12,2),
-  value_unit TEXT,
-  value_datetime TIMESTAMPTZ,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(entity_product_id, property_id)
-);
-
--- Index for entity_product_specifications
-CREATE INDEX IF NOT EXISTS idx_entity_product_specs_entity_product ON entity_product_specifications(entity_product_id);
-CREATE INDEX IF NOT EXISTS idx_entity_product_specs_property ON entity_product_specifications(property_id);
-
--- ============================================================================
--- RLS Policies
--- ============================================================================
-
--- Enable RLS
-ALTER TABLE units ENABLE ROW LEVEL SECURITY;
-ALTER TABLE category_properties ENABLE ROW LEVEL SECURITY;
-ALTER TABLE entity_products ENABLE ROW LEVEL SECURITY;
-ALTER TABLE entity_product_specifications ENABLE ROW LEVEL SECURITY;
-
--- Units: Super admins manage, everyone reads
-CREATE POLICY "super_admins_manage_units"
-  ON units FOR ALL USING (
-    EXISTS (SELECT 1 FROM user_profiles WHERE id = auth.uid() AND role = 'SUPER_ADMIN')
-  );
-
-CREATE POLICY "all_read_units"
-  ON units FOR SELECT USING (true);
-
--- Category Properties: Distributors manage for their categories
-CREATE POLICY "distributors_manage_category_properties"
-  ON category_properties FOR ALL USING (
-    EXISTS (
-      SELECT 1 FROM user_profiles up
-      WHERE up.id = auth.uid() AND up.role = 'DISTRIBUTOR'
-      AND category_id IN (
-        SELECT id FROM categories WHERE distributor_id = up.entity_id OR distributor_id IS NULL
-      )
-    )
-  );
-
-CREATE POLICY "all_read_category_properties"
-  ON category_properties FOR SELECT USING (true);
-
--- Entity Products: Vendors manage their own
-CREATE POLICY "vendors_manage_entity_products"
-  ON entity_products FOR ALL USING (entity_id = auth_entity_id());
-
-CREATE POLICY "all_read_entity_products"
-  ON entity_products FOR SELECT USING (true);
-
--- Entity Product Specifications: Vendors manage their own
-CREATE POLICY "vendors_manage_entity_product_specifications"
-  ON entity_product_specifications FOR ALL USING (
-    entity_product_id IN (
-      SELECT id FROM entity_products WHERE entity_id = auth_entity_id()
-    )
-  );
-
-CREATE POLICY "all_read_entity_product_specifications"
-  ON entity_product_specifications FOR SELECT USING (true);
--- HSN Master table (needed before migration 034 references it)
-CREATE TABLE IF NOT EXISTS hsn_master (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  code TEXT NOT NULL,
-  code_8digit TEXT,
-  chapter TEXT NOT NULL,
-  heading TEXT NOT NULL,
-  subheading TEXT,
-  tariff_item TEXT,
-  description TEXT NOT NULL,
-  short_description TEXT,
-  category TEXT,
-  customs_duty DECIMAL(5,2) DEFAULT 0,
-  sales_tax DECIMAL(5,2) DEFAULT 0,
-  green_tax DECIMAL(5,2) DEFAULT 0,
-  tax_type TEXT,
-  is_active BOOLEAN DEFAULT true,
-  sort_order INTEGER DEFAULT 0,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(code),
-  UNIQUE(code_8digit)
-);
-CREATE INDEX IF NOT EXISTS idx_hsn_master_code ON hsn_master(code);
-CREATE INDEX IF NOT EXISTS idx_hsn_master_chapter ON hsn_master(chapter);
-CREATE INDEX IF NOT EXISTS idx_hsn_master_category ON hsn_master(category);
-CREATE INDEX IF NOT EXISTS idx_hsn_master_active ON hsn_master(is_active) WHERE is_active = true;
-ALTER TABLE hsn_master ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "all_read_hsn_master" ON hsn_master FOR SELECT USING (true);
-DO $$ BEGIN
-  CREATE POLICY "super_admins_manage_hsn_master" ON hsn_master FOR ALL USING (
-    EXISTS (SELECT 1 FROM user_profiles WHERE id = auth.uid() AND role = 'SUPER_ADMIN')
-  );
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
--- Migration 034: Update Products to Inherit Category from HSN
--- Product categories and subcategories are automatically derived from HSN codes
-
--- ============================================================================
--- Update products table to link with hsn_master
--- ============================================================================
-
--- Add foreign key reference to hsn_master
-ALTER TABLE products ADD COLUMN IF NOT EXISTS hsn_master_id UUID REFERENCES hsn_master(id);
-
--- Add category and subcategory columns (can be manually overridden)
-ALTER TABLE products ADD COLUMN IF NOT EXISTS category TEXT;
-ALTER TABLE products ADD COLUMN IF NOT EXISTS subcategory TEXT;
-
--- Add chapter, heading, subheading columns for HSN hierarchy
-ALTER TABLE products ADD COLUMN IF NOT EXISTS hsn_chapter TEXT;
-ALTER TABLE products ADD COLUMN IF NOT EXISTS hsn_heading TEXT;
-ALTER TABLE products ADD COLUMN IF NOT EXISTS hsn_subheading TEXT;
-
--- Create index for HSN lookups
-CREATE INDEX IF NOT EXISTS idx_products_hsn_master ON products(hsn_master_id);
-CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
-CREATE INDEX IF NOT EXISTS idx_products_subcategory ON products(subcategory);
-
--- ============================================================================
--- Update entity_products table to link with hsn_master
--- ============================================================================
-
--- Add hsn_code column (text version that can be directly set)
-ALTER TABLE entity_products ADD COLUMN IF NOT EXISTS hsn_code TEXT;
-
--- Add foreign key reference to hsn_master for vendor products
-ALTER TABLE entity_products ADD COLUMN IF NOT EXISTS hsn_master_id UUID REFERENCES hsn_master(id);
-
--- Add category and subcategory columns
-ALTER TABLE entity_products ADD COLUMN IF NOT EXISTS category TEXT;
-ALTER TABLE entity_products ADD COLUMN IF NOT EXISTS subcategory TEXT;
-
--- Add HSN hierarchy columns
-ALTER TABLE entity_products ADD COLUMN IF NOT EXISTS hsn_chapter TEXT;
-ALTER TABLE entity_products ADD COLUMN IF NOT EXISTS hsn_heading TEXT;
-ALTER TABLE entity_products ADD COLUMN IF NOT EXISTS hsn_subheading TEXT;
-
--- Create indexes
-CREATE INDEX IF NOT EXISTS idx_entity_products_hsn_master ON entity_products(hsn_master_id);
-CREATE INDEX IF NOT EXISTS idx_entity_products_category ON entity_products(category);
-CREATE INDEX IF NOT EXISTS idx_entity_products_subcategory ON entity_products(subcategory);
-
--- ============================================================================
--- Function: Sync product category from HSN master
--- Automatically populates category/subcategory from HSN code
--- ============================================================================
-
-CREATE OR REPLACE FUNCTION sync_product_category_from_hsn()
-RETURNS TRIGGER AS $$
-BEGIN
-  -- Only update if hsn_master_id is set and category/subcategory are not manually set
-  IF NEW.hsn_master_id IS NOT NULL THEN
-    -- Update category and subcategory from HSN master
-    UPDATE products
-    SET
-      category = COALESCE(NEW.category, hsn.category),
-      subcategory = COALESCE(NEW.subcategory, hsn.short_description),
-      hsn_chapter = hsn.chapter,
-      hsn_heading = hsn.heading,
-      hsn_subheading = hsn.subheading,
-      hsn_code = hsn.code
-    FROM hsn_master hsn
-    WHERE hsn.id = NEW.hsn_master_id AND products.id = NEW.id;
-  END IF;
-
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Create trigger for products
-DROP TRIGGER IF EXISTS trigger_sync_product_category_from_hsn ON products;
-CREATE TRIGGER trigger_sync_product_category_from_hsn
-  BEFORE INSERT OR UPDATE ON products
-  FOR EACH ROW
-  WHEN (NEW.hsn_master_id IS NOT NULL)
-  EXECUTE FUNCTION sync_product_category_from_hsn();
-
--- ============================================================================
--- Function: Sync entity_product category from HSN master
--- ============================================================================
-
-CREATE OR REPLACE FUNCTION sync_entity_product_category_from_hsn()
-RETURNS TRIGGER AS $$
-BEGIN
-  -- Only update if hsn_master_id is set
-  IF NEW.hsn_master_id IS NOT NULL THEN
-    UPDATE entity_products
-    SET
-      category = COALESCE(NEW.category, hsn.category),
-      subcategory = COALESCE(NEW.subcategory, hsn.short_description),
-      hsn_chapter = hsn.chapter,
-      hsn_heading = hsn.heading,
-      hsn_subheading = hsn.subheading,
-      hsn_code = hsn.code
-    FROM hsn_master hsn
-    WHERE hsn.id = NEW.hsn_master_id AND entity_products.id = NEW.id;
-  END IF;
-
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Create trigger for entity_products
-DROP TRIGGER IF EXISTS trigger_sync_entity_product_category_from_hsn ON entity_products;
-CREATE TRIGGER trigger_sync_entity_product_category_from_hsn
-  BEFORE INSERT OR UPDATE ON entity_products
-  FOR EACH ROW
-  WHEN (NEW.hsn_master_id IS NOT NULL)
-  EXECUTE FUNCTION sync_entity_product_category_from_hsn();
-
--- ============================================================================
--- Function: Get HSN-based category tree
--- Returns the full category hierarchy for a given HSN code
--- ============================================================================
-
-CREATE OR REPLACE FUNCTION get_hsn_category_tree(p_hsn_code TEXT)
-RETURNS TABLE(
-  hsn_code TEXT,
-  chapter TEXT,
-  heading TEXT,
-  subheading TEXT,
-  category TEXT,
-  short_description TEXT,
-  customs_duty DECIMAL(5,2),
-  sales_tax DECIMAL(5,2),
-  green_tax DECIMAL(5,2)
-) AS $$
+CREATE OR REPLACE FUNCTION "public"."get_hsn_category_tree"("p_hsn_code" "text") RETURNS TABLE("hsn_code" "text", "chapter" "text", "heading" "text", "subheading" "text", "category" "text", "short_description" "text", "customs_duty" numeric, "sales_tax" numeric, "green_tax" numeric)
+    LANGUAGE "plpgsql"
+    AS $$
 BEGIN
   RETURN QUERY
   SELECT
@@ -2991,440 +575,308 @@ BEGIN
   FROM hsn_master hsn
   WHERE hsn.code = p_hsn_code;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
--- ============================================================================
--- View: Products with HSN categories
--- Convenient view joining products with HSN master data
--- ============================================================================
 
-CREATE OR REPLACE VIEW products_with_hsn AS
-SELECT
-  p.id,
-  p.name,
-  p.sku,
-  p.hsn_code,
-  p.hsn_master_id,
-  p.hsn_chapter,
-  p.hsn_heading,
-  p.hsn_subheading,
-  p.category,
-  p.subcategory,
-  p.image_url,
-  p.current_stock,
-  p.wholesale_price,
-  p.mrp,
-  p.unit,
-  p.is_active,
-  p.created_by,
-  p.created_at,
-  p.updated_at,
-  -- HSN tax info
-  hsn.customs_duty,
-  hsn.sales_tax,
-  hsn.green_tax,
-  hsn.tax_type,
-  -- Combined category path
-  CASE
-    WHEN p.category IS NOT NULL THEN p.category
-    ELSE hsn.category
-  END as display_category,
-  CASE
-    WHEN p.subcategory IS NOT NULL THEN p.subcategory
-    ELSE hsn.short_description
-  END as display_subcategory
-FROM products p
-LEFT JOIN hsn_master hsn ON p.hsn_master_id = hsn.id;
+ALTER FUNCTION "public"."get_hsn_category_tree"("p_hsn_code" "text") OWNER TO "postgres";
 
--- ============================================================================
--- View: Entity Products with HSN categories
--- ============================================================================
 
-CREATE OR REPLACE VIEW entity_products_with_hsn AS
-SELECT
-  ep.id,
-  ep.entity_id,
-  ep.master_product_id,
-  ep.hsn_code,
-  ep.hsn_master_id,
-  ep.hsn_chapter,
-  ep.hsn_heading,
-  ep.hsn_subheading,
-  ep.category,
-  ep.subcategory,
-  ep.sku,
-  ep.display_name,
-  ep.barcode,
-  ep.qr_code,
-  ep.wholesale_price,
-  ep.mrp,
-  ep.gst_percent,
-  ep.current_stock,
-  ep.reorder_point,
-  ep.is_active,
-  ep.manufacturer_name,
-  ep.manufacturer_brand,
-  ep.country_of_origin,
-  ep.batch_number,
-  ep.manufactured_on,
-  ep.expiry_date,
-  ep.best_before,
-  ep.vendor_notes,
-  ep.created_at,
-  ep.updated_at,
-  -- HSN tax info
-  hsn.customs_duty,
-  hsn.sales_tax,
-  hsn.green_tax,
-  hsn.tax_type,
-  -- Combined category path
-  CASE
-    WHEN ep.category IS NOT NULL THEN ep.category
-    ELSE hsn.category
-  END as display_category,
-  CASE
-    WHEN ep.subcategory IS NOT NULL THEN ep.subcategory
-    ELSE hsn.short_description
-  END as display_subcategory,
-  -- Entity info
-  e.name as entity_name,
-  e.role as entity_role
-FROM entity_products ep
-LEFT JOIN hsn_master hsn ON ep.hsn_master_id = hsn.id
-LEFT JOIN entities e ON ep.entity_id = e.id;
+CREATE OR REPLACE FUNCTION "public"."get_hsn_properties"("p_hsn_code" "text") RETURNS TABLE("property_id" "uuid", "property_name" "text", "slug" "text", "data_type" "text", "is_required" boolean, "validation_rules" "jsonb", "sort_order" integer, "applies_to_hsn_pattern" "text")
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    cp.id,
+    cp.name as property_name,
+    cp.slug,
+    cp.data_type,
+    cp.is_required,
+    cp.validation_rules,
+    cp.sort_order,
+    cp.applies_to_hsn_pattern
+  FROM category_properties cp
+  WHERE
+    -- Match by exact HSN code
+    (cp.hsn_code = p_hsn_code)
+    OR
+    -- Match by heading (e.g., all 3004.*)
+    (cp.hsn_heading = SUBSTRING(p_hsn_code FROM 1 FOR 4) AND cp.hsn_heading IS NOT NULL)
+    OR
+    -- Match by chapter (e.g., all 30.*.*)
+    (cp.hsn_chapter = SUBSTRING(p_hsn_code FROM 1 FOR 2) AND cp.hsn_chapter IS NOT NULL AND cp.hsn_heading IS NULL)
+    OR
+    -- Match by pattern (regex)
+    (cp.applies_to_hsn_pattern IS NOT NULL AND p_hsn_code ~ cp.applies_to_hsn_pattern)
+  ORDER BY cp.sort_order;
+END;
+$$;
 
--- ============================================================================
--- Note: RLS Policies
--- ============================================================================
--- Views do not support RLS policies. Access to views is controlled by:
--- 1. The underlying table's RLS policies (products, entity_products)
--- 2. CREATE VIEW with SECURITY INVOKER (default) respects caller's permissions
--- No additional policies needed for these views.
 
--- ============================================================================
--- Helper function: Update existing products with HSN category
--- Use this to backfill existing products
--- ============================================================================
+ALTER FUNCTION "public"."get_hsn_properties"("p_hsn_code" "text") OWNER TO "postgres";
 
-CREATE OR REPLACE FUNCTION backfill_product_categories_from_hsn()
-RETURNS INTEGER AS $$
+
+CREATE OR REPLACE FUNCTION "public"."guard_stock_on_confirm"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
 DECLARE
-  v_count INTEGER := 0;
+  shortage  RECORD;
+  v_old_status TEXT;
 BEGIN
-  -- Backfill products table
-  UPDATE products p
-  SET
-    hsn_master_id = (SELECT id FROM hsn_master WHERE code = p.hsn_code LIMIT 1),
-    category = COALESCE(p.category, hsn.category),
-    subcategory = COALESCE(p.subcategory, hsn.short_description),
-    hsn_chapter = hsn.chapter,
-    hsn_heading = hsn.heading,
-    hsn_subheading = hsn.subheading
-  FROM hsn_master hsn
-  WHERE hsn.code = p.hsn_code;
+  v_old_status := CASE WHEN TG_OP = 'INSERT' THEN NULL ELSE OLD.status END;
 
-  GET DIAGNOSTICS v_count = ROW_COUNT;
+  IF NEW.status = 'CONFIRMED'
+     AND v_old_status IS DISTINCT FROM 'CONFIRMED'
+     AND NEW.order_type IN ('POS_SALE', 'WHOLESALE', 'MARKETPLACE', 'SALES_INVOICE') THEN
 
-  -- Backfill entity_products table
-  UPDATE entity_products ep
-  SET
-    hsn_master_id = (SELECT id FROM hsn_master WHERE code = ep.hsn_code LIMIT 1),
-    category = COALESCE(ep.category, hsn.category),
-    subcategory = COALESCE(ep.subcategory, hsn.short_description),
-    hsn_chapter = hsn.chapter,
-    hsn_heading = hsn.heading,
-    hsn_subheading = hsn.subheading
-  FROM hsn_master hsn
-  WHERE hsn.code = ep.hsn_code;
-
-  RETURN v_count;
-END;
-$$ LANGUAGE plpgsql;
--- Migration 036: Fix HSN Triggers to Fire on hsn_code Changes
--- Bug fix: Category inheritance triggers weren't firing because forms set hsn_code (TEXT)
--- instead of hsn_master_id (UUID). This adds triggers to sync hsn_master_id from hsn_code.
-
--- ============================================================================
--- Function: Sync hsn_master_id from hsn_code for products table
--- ============================================================================
-
-CREATE OR REPLACE FUNCTION sync_hsn_master_id_from_code_products()
-RETURNS TRIGGER AS $$
-BEGIN
-  -- Only sync if hsn_code is provided and hsn_master_id is not already set
-  IF NEW.hsn_code IS NOT NULL AND NEW.hsn_master_id IS NULL THEN
-    SELECT id INTO NEW.hsn_master_id
-    FROM hsn_master
-    WHERE code = NEW.hsn_code AND is_active = true
+    -- Non-batch items: check product.current_stock
+    SELECT oi.name, oi.quantity, p.current_stock
+    INTO shortage
+    FROM order_items oi
+    JOIN products p ON p.id = oi.product_id
+    WHERE oi.order_id   = NEW.id
+      AND oi.status     = 'ACTIVE'
+      AND oi.product_id IS NOT NULL
+      AND oi.batch_id   IS NULL
+      AND p.current_stock < oi.quantity
     LIMIT 1;
-  END IF;
 
-  -- If hsn_code was cleared, also clear hsn_master_id
-  IF NEW.hsn_code IS NULL THEN
-    NEW.hsn_master_id := NULL;
-  END IF;
+    IF FOUND THEN
+      RAISE EXCEPTION 'Insufficient stock: "%" requires %, only % available',
+        shortage.name, shortage.quantity, shortage.current_stock;
+    END IF;
 
+    -- Batch items: check product_batches.quantity
+    SELECT oi.name, oi.quantity, pb.quantity AS batch_qty, pb.batch_number
+    INTO shortage
+    FROM order_items oi
+    JOIN product_batches pb ON pb.id = oi.batch_id
+    WHERE oi.order_id  = NEW.id
+      AND oi.status    = 'ACTIVE'
+      AND oi.batch_id  IS NOT NULL
+      AND pb.quantity  < oi.quantity
+    LIMIT 1;
+
+    IF FOUND THEN
+      RAISE EXCEPTION 'Insufficient batch stock: "%" batch "%" requires %, only % available',
+        shortage.name, shortage.batch_number, shortage.quantity, shortage.batch_qty;
+    END IF;
+
+  END IF;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
--- Create trigger for products (fires before main HSN trigger)
-DROP TRIGGER IF EXISTS trigger_sync_hsn_master_id_from_code_products ON products;
-CREATE TRIGGER trigger_sync_hsn_master_id_from_code_products
-  BEFORE INSERT OR UPDATE OF hsn_code ON products
-  FOR EACH ROW
-  EXECUTE FUNCTION sync_hsn_master_id_from_code_products();
 
--- ============================================================================
--- Function: Sync hsn_master_id from hsn_code for entity_products table
--- ============================================================================
+ALTER FUNCTION "public"."guard_stock_on_confirm"() OWNER TO "postgres";
 
-CREATE OR REPLACE FUNCTION sync_hsn_master_id_from_code_entity_products()
-RETURNS TRIGGER AS $$
+
+CREATE OR REPLACE FUNCTION "public"."is_super_admin"() RETURNS boolean
+    LANGUAGE "sql" STABLE
+    AS $$
+  SELECT auth_role() = 'SUPER_ADMIN';
+$$;
+
+
+ALTER FUNCTION "public"."is_super_admin"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."khata_apply_repayment"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  v_new_balance DECIMAL(12,2);
+  v_limit       DECIMAL(12,2);
+  v_profile_id  UUID;
 BEGIN
-  -- Only sync if hsn_code is provided and hsn_master_id is not already set
-  IF NEW.hsn_code IS NOT NULL AND NEW.hsn_master_id IS NULL THEN
-    SELECT id INTO NEW.hsn_master_id
-    FROM hsn_master
-    WHERE code = NEW.hsn_code AND is_active = true
-    LIMIT 1;
-  END IF;
+  IF NEW.status = 'PAYMENT_MADE' AND OLD.status = 'CREATED' THEN
 
-  -- If hsn_code was cleared, also clear hsn_master_id
-  IF NEW.hsn_code IS NULL THEN
-    NEW.hsn_master_id := NULL;
-  END IF;
+    UPDATE khata_accounts
+    SET outstanding_balance = GREATEST(0, outstanding_balance - NEW.amount),
+        last_payment_at = NOW(),
+        updated_at = NOW()
+    WHERE id = NEW.khata_account_id
+    RETURNING outstanding_balance, credit_limit INTO v_new_balance, v_limit;
 
+    SELECT id INTO v_profile_id FROM user_profiles WHERE id = NEW.confirmed_by LIMIT 1;
+    IF NOT FOUND THEN v_profile_id := NEW.confirmed_by; END IF;
+
+    INSERT INTO khata_transactions
+      (khata_account_id, transaction_type, amount, balance_after, payment_method, notes, created_by)
+    VALUES
+      (NEW.khata_account_id, 'CREDIT', NEW.amount, v_new_balance, NEW.payment_method,
+       'Repayment via ' || NEW.payment_method || COALESCE(' ref: ' || NEW.reference_no, ''),
+       v_profile_id);
+
+    -- Auto-unfreeze if balance now below limit
+    IF v_new_balance < v_limit THEN
+      UPDATE khata_accounts SET status = 'ACTIVE', updated_at = NOW()
+      WHERE id = NEW.khata_account_id AND status = 'FROZEN';
+    END IF;
+
+  END IF;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
--- Create trigger for entity_products (fires before main HSN trigger)
-DROP TRIGGER IF EXISTS trigger_sync_hsn_master_id_from_code_entity_products ON entity_products;
-CREATE TRIGGER trigger_sync_hsn_master_id_from_code_entity_products
-  BEFORE INSERT OR UPDATE OF hsn_code ON entity_products
-  FOR EACH ROW
-  EXECUTE FUNCTION sync_hsn_master_id_from_code_entity_products();
 
--- ============================================================================
--- Backfill: Update existing records with hsn_code but no hsn_master_id
--- ============================================================================
+ALTER FUNCTION "public"."khata_apply_repayment"() OWNER TO "postgres";
 
--- Update products table
-UPDATE products
-SET hsn_master_id = (
-  SELECT id FROM hsn_master
-  WHERE hsn_master.code = products.hsn_code AND hsn_master.is_active = true
-  LIMIT 1
-)
-WHERE hsn_code IS NOT NULL AND hsn_master_id IS NULL;
 
--- Update entity_products table
-UPDATE entity_products
-SET hsn_master_id = (
-  SELECT id FROM hsn_master
-  WHERE hsn_master.code = entity_products.hsn_code AND hsn_master.is_active = true
-  LIMIT 1
-)
-WHERE hsn_code IS NOT NULL AND hsn_master_id IS NULL;
+CREATE OR REPLACE FUNCTION "public"."khata_credit_on_cancel"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  v_account_id   UUID;
+  v_new_balance  DECIMAL(12,2);
+  v_profile_id   UUID;
+BEGIN
+  IF NEW.status = 'CANCELLED'
+     AND OLD.status IS DISTINCT FROM 'CANCELLED'
+     AND NEW.payment_method = 'CREDIT'
+     AND OLD.status = 'CONFIRMED' THEN
 
--- ============================================================================
--- Trigger Order Explanation
--- ============================================================================
+    -- Find the DEBIT transaction for this order
+  SELECT khata_account_id INTO v_account_id
+    FROM khata_transactions
+    WHERE order_id = NEW.id AND transaction_type = 'DEBIT'
+    LIMIT 1;
 
--- The trigger execution order is now:
--- 1. trigger_sync_hsn_master_id_from_code_* (BEFORE INSERT/UPDATE OF hsn_code)
---    - Sets hsn_master_id based on hsn_code
--- 2. trigger_sync_*_category_from_hsn (BEFORE INSERT/UPDATE)
---    - Fires because hsn_master_id is now set
---    - Populates category, subcategory, and HSN hierarchy columns
+    IF NOT FOUND THEN RETURN NEW; END IF;
 
--- ============================================================================
--- Verification Query
--- ============================================================================
+    -- Reduce balance
+    UPDATE khata_accounts
+    SET outstanding_balance = GREATEST(0, outstanding_balance - NEW.grand_total),
+        updated_at = NOW()
+    WHERE id = v_account_id
+    RETURNING outstanding_balance INTO v_new_balance;
 
--- Run this to verify the fix is working:
--- SELECT id, hsn_code, hsn_master_id, category, subcategory
--- FROM entity_products
--- WHERE hsn_code IS NOT NULL
--- ORDER BY created_at DESC
--- LIMIT 10;
--- Migration 041: Add CUSTOMER role for marketplace customers
--- Allows customers to login via WhatsApp and place orders
+    SELECT id INTO v_profile_id FROM user_profiles WHERE id = NEW.created_by LIMIT 1;
+    IF NOT FOUND THEN v_profile_id := NEW.created_by; END IF;
 
--- Add CUSTOMER to the role check constraint
--- First, we need to drop and recreate the constraint
-ALTER TABLE entities DROP CONSTRAINT IF EXISTS entities_role_check;
+    INSERT INTO khata_transactions
+      (khata_account_id, order_id, transaction_type, amount, balance_after, notes, created_by)
+    VALUES
+      (v_account_id, NEW.id, 'CREDIT', NEW.grand_total, v_new_balance,
+       'Reversal for cancelled order ' || NEW.order_no, v_profile_id);
 
-ALTER TABLE entities ADD CONSTRAINT entities_role_check 
-  CHECK (role IN ('SUPER_ADMIN', 'DISTRIBUTOR', 'WHOLESALER', 'RETAILER', 'CUSTOMER'));
+    -- Mark any CREATED repayments for this order as irrelevant (delete them)
+    DELETE FROM khata_repayments
+    WHERE khata_account_id = v_account_id
+      AND notes LIKE '%order ' || NEW.order_no || '%'
+      AND status = 'CREATED';
 
--- Also update user_profiles role constraint if needed
-ALTER TABLE user_profiles DROP CONSTRAINT IF EXISTS user_profiles_role_check;
+  END IF;
+  RETURN NEW;
+END;
+$$;
 
-ALTER TABLE user_profiles ADD CONSTRAINT user_profiles_role_check 
-  CHECK (role IN ('SUPER_ADMIN', 'DISTRIBUTOR', 'WHOLESALER', 'RETAILER', 'CUSTOMER'));
 
--- Add sub_role for customers (they only have one role)
-ALTER TABLE user_profiles DROP CONSTRAINT IF EXISTS user_profiles_sub_role_check;
+ALTER FUNCTION "public"."khata_credit_on_cancel"() OWNER TO "postgres";
 
-ALTER TABLE user_profiles ADD CONSTRAINT user_profiles_sub_role_check 
-  CHECK (sub_role IN ('OWNER', 'MANAGER', 'CASHIER', 'STAFF', 'ADMIN', 'CUSTOMER'));
--- Migration 046: Marketplace Checkout — payment token + delivery columns
--- Adds fields needed for post-delivery payment link flow and customer delivery address
 
-ALTER TABLE orders
-  ADD COLUMN IF NOT EXISTS payment_token               TEXT,
-  ADD COLUMN IF NOT EXISTS payment_token_expires_at    TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS delivery_address            TEXT,
-  ADD COLUMN IF NOT EXISTS delivery_lat                DECIMAL(10,7),
-  ADD COLUMN IF NOT EXISTS delivery_lng                DECIMAL(10,7);
+CREATE OR REPLACE FUNCTION "public"."khata_debit_on_confirm"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  v_account_id      UUID;
+  v_new_balance     DECIMAL(12,2);
+  v_term_days       INT;
+  v_debtor_phone    TEXT;
+  v_debtor_entity   UUID;
+  v_party_type      TEXT;
+  v_profile_id      UUID;
+BEGIN
+  IF NEW.status = 'CONFIRMED'
+     AND OLD.status IS DISTINCT FROM 'CONFIRMED'
+     AND NEW.payment_method = 'CREDIT' THEN
 
--- Sparse index — only rows with a token need to be looked up by token
-CREATE INDEX IF NOT EXISTS idx_orders_payment_token
-  ON orders(payment_token)
-  WHERE payment_token IS NOT NULL;
--- Migration 047: Rider System
--- Creates riders table and adds OTP + rider assignment columns to orders
+    IF NEW.order_type = 'POS_SALE' THEN
+      v_debtor_phone  := NEW.buyer_whatsapp;
+      v_debtor_entity := NULL;
+      v_party_type    := 'CONSUMER';
+    ELSE
+      v_debtor_phone  := NULL;
+      v_debtor_entity := NEW.buyer_id;
+      v_party_type    := 'RETAILER';
+    END IF;
 
--- ── riders table ──────────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS riders (
-  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name             TEXT NOT NULL,
-  whatsapp_no      TEXT NOT NULL UNIQUE,
-  pin_hash         TEXT NOT NULL,
-  is_active        BOOLEAN NOT NULL DEFAULT true,
-  is_available     BOOLEAN NOT NULL DEFAULT true,
-  current_order_id UUID REFERENCES orders(id) ON DELETE SET NULL,
-  auth_user_id     UUID REFERENCES auth.users(id) ON DELETE SET NULL,
-  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
-);
+    -- Look up the khata account
+    SELECT id, credit_term_days INTO v_account_id, v_term_days
+    FROM khata_accounts
+    WHERE creditor_entity_id = NEW.seller_id
+      AND (debtor_entity_id = v_debtor_entity OR (v_debtor_entity IS NULL AND debtor_entity_id IS NULL))
+      AND (debtor_phone = v_debtor_phone OR (v_debtor_phone IS NULL AND debtor_phone IS NULL))
+      AND party_type = v_party_type
+      AND status IN ('ACTIVE', 'FROZEN')
+    LIMIT 1;
 
-CREATE INDEX IF NOT EXISTS idx_riders_whatsapp ON riders(whatsapp_no);
-CREATE INDEX IF NOT EXISTS idx_riders_available ON riders(is_active, is_available) WHERE is_active = true;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'No active khata account found for credit sale';
+    END IF;
 
--- ── OTP + rider assignment columns on orders ──────────────────────────────────
-ALTER TABLE orders
-  ADD COLUMN IF NOT EXISTS pickup_otp               TEXT,
-  ADD COLUMN IF NOT EXISTS pickup_otp_expires_at    TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS delivery_otp             TEXT,
-  ADD COLUMN IF NOT EXISTS delivery_otp_expires_at  TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS rider_id                 UUID REFERENCES riders(id) ON DELETE SET NULL,
-  ADD COLUMN IF NOT EXISTS rider_accepted_at        TIMESTAMPTZ;
+    -- Check credit limit
+    IF (SELECT outstanding_balance + NEW.grand_total > credit_limit
+        FROM khata_accounts WHERE id = v_account_id) THEN
+      RAISE EXCEPTION 'Credit limit exceeded for khata account %', v_account_id;
+    END IF;
 
-CREATE INDEX IF NOT EXISTS idx_orders_rider_id ON orders(rider_id) WHERE rider_id IS NOT NULL;
+    -- Update balance
+    UPDATE khata_accounts
+    SET outstanding_balance = outstanding_balance + NEW.grand_total,
+        updated_at = NOW()
+    WHERE id = v_account_id
+    RETURNING outstanding_balance INTO v_new_balance;
 
--- ── RLS: riders table ─────────────────────────────────────────────────────────
-ALTER TABLE riders ENABLE ROW LEVEL SECURITY;
+    -- Get created_by profile
+    SELECT id INTO v_profile_id FROM user_profiles WHERE id = NEW.created_by LIMIT 1;
+    IF NOT FOUND THEN v_profile_id := NEW.created_by; END IF;
 
--- Service role can do everything (used by all API routes)
-CREATE POLICY "service_role_all_riders" ON riders
-  FOR ALL USING (auth.jwt()->>'role' = 'service_role');
+    -- Log DEBIT transaction
+    INSERT INTO khata_transactions
+      (khata_account_id, order_id, transaction_type, amount, balance_after, notes, created_by)
+    VALUES
+      (v_account_id, NEW.id, 'DEBIT', NEW.grand_total, v_new_balance,
+       'Order ' || NEW.order_no, v_profile_id);
 
--- Riders can read their own record
-CREATE POLICY "rider_read_own" ON riders
-  FOR SELECT USING (auth_user_id = auth.uid());
--- Migration 050: Owner → Multiple Stores
--- Allows a single OWNER user to manage multiple retailer entities.
--- An owner can switch between their stores in the POS header.
+    -- Create repayment with due date
+    IF v_term_days > 0 THEN
+      INSERT INTO khata_repayments
+        (khata_account_id, amount, payment_method, status, due_date, notes, created_by)
+      VALUES
+        (v_account_id, NEW.grand_total, 'CASH', 'CREATED',
+         (NOW() + (v_term_days || ' days')::INTERVAL)::DATE,
+         'Auto-created for order ' || NEW.order_no, v_profile_id);
+    END IF;
 
--- ── Junction table ─────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS owner_stores (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  owner_id   UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  entity_id  UUID NOT NULL REFERENCES entities(id)   ON DELETE CASCADE,
-  is_primary BOOLEAN NOT NULL DEFAULT false,  -- the default store on login
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (owner_id, entity_id)
-);
+  END IF;
+  RETURN NEW;
+END;
+$$;
 
-CREATE INDEX IF NOT EXISTS idx_owner_stores_owner   ON owner_stores(owner_id);
-CREATE INDEX IF NOT EXISTS idx_owner_stores_entity  ON owner_stores(entity_id);
 
--- RLS
-ALTER TABLE owner_stores ENABLE ROW LEVEL SECURITY;
+ALTER FUNCTION "public"."khata_debit_on_confirm"() OWNER TO "postgres";
 
-CREATE POLICY "service_role_all_owner_stores" ON owner_stores
-  FOR ALL USING (auth.jwt()->>'role' = 'service_role');
 
-CREATE POLICY "owner_read_own_stores" ON owner_stores
-  FOR SELECT USING (owner_id = auth.uid());
+CREATE OR REPLACE FUNCTION "public"."log_order_status_change"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+  IF OLD.status IS DISTINCT FROM NEW.status THEN
+    INSERT INTO order_status_log (order_id, from_status, to_status, metadata)
+    VALUES (NEW.id, OLD.status, NEW.status, jsonb_build_object('updated_at', NOW()));
+  END IF;
+  RETURN NEW;
+END;
+$$;
 
--- ── Back-fill: existing OWNER user_profiles → primary owner_stores entry ──
--- Links each existing OWNER sub_role user to their current entity as primary.
-INSERT INTO owner_stores (owner_id, entity_id, is_primary)
-SELECT p.id, p.entity_id, true
-FROM   user_profiles p
-WHERE  p.sub_role = 'OWNER'
-  AND  p.entity_id IS NOT NULL
-ON CONFLICT (owner_id, entity_id) DO NOTHING;
--- Migration 052: Batch-Level Stock Receiving & Batch-Aware POS Pricing
--- Adds selling_price + mrp to product_batches, selling_price to products,
--- batch_id to cart_items and order_items, batch fields to draft_purchase_items.
--- Replaces sellable_products view to return one row per active batch.
--- Updates deduct/restore stock triggers to propagate batch_id.
 
--- ─── 1. PRICES ON PRODUCT_BATCHES ────────────────────────────────────────────
--- unit_cost  = wholesale/purchase price paid by vendor (already exists)
--- mrp        = manufacturer's max retail price (regulatory ceiling, on packaging)
--- selling_price = price vendor charges customers (≤ mrp, set per batch)
+ALTER FUNCTION "public"."log_order_status_change"() OWNER TO "postgres";
 
-ALTER TABLE product_batches
-  ADD COLUMN IF NOT EXISTS mrp           DECIMAL(12,2),
-  ADD COLUMN IF NOT EXISTS selling_price DECIMAL(12,2);
 
--- ─── 2. SELLING_PRICE ON PRODUCTS ────────────────────────────────────────────
--- Active selling price at product level — updated when a new batch is received.
-
-ALTER TABLE products
-  ADD COLUMN IF NOT EXISTS selling_price DECIMAL(12,2);
-
--- ─── 3. BATCH_ID ON CART_ITEMS ───────────────────────────────────────────────
--- Nullable: non-batch products (packages, pre-batch items) have no batch.
-
-ALTER TABLE cart_items
-  ADD COLUMN IF NOT EXISTS batch_id UUID REFERENCES product_batches(id) ON DELETE SET NULL;
-
--- ─── 4. BATCH_ID ON ORDER_ITEMS ──────────────────────────────────────────────
-
-ALTER TABLE order_items
-  ADD COLUMN IF NOT EXISTS batch_id UUID REFERENCES product_batches(id) ON DELETE SET NULL;
-
--- ─── 5. BATCH FIELDS ON DRAFT_PURCHASE_ITEMS ─────────────────────────────────
--- Allows bill-scan draft purchase items to carry batch details
--- that are used when the draft is confirmed to create product_batches rows.
-
-ALTER TABLE draft_purchase_items
-  ADD COLUMN IF NOT EXISTS mrp              DECIMAL(12,2),
-  ADD COLUMN IF NOT EXISTS selling_price    DECIMAL(12,2),
-  ADD COLUMN IF NOT EXISTS batch_number     TEXT,
-  ADD COLUMN IF NOT EXISTS batch_barcode    TEXT,
-  ADD COLUMN IF NOT EXISTS expires_at       DATE,
-  ADD COLUMN IF NOT EXISTS manufactured_at  DATE;
-
--- ─── 6. UNIQUE INDEX: BATCH BARCODE PER ENTITY ───────────────────────────────
--- Batch barcodes are unique within an entity (not globally) — two different
--- entities can receive the same branded product with the same barcode.
-
-DROP INDEX IF EXISTS idx_batches_barcode;
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_batches_barcode_entity
-  ON product_batches(entity_id, barcode)
-  WHERE barcode IS NOT NULL;
-
--- ─── 7. EXTEND PRICE HISTORY TO TRACK SELLING_PRICE ─────────────────────────
-
-ALTER TABLE product_price_history
-  DROP CONSTRAINT IF EXISTS product_price_history_price_type_check;
-
-ALTER TABLE product_price_history
-  ADD CONSTRAINT product_price_history_price_type_check
-    CHECK (price_type IN ('MRP', 'WHOLESALE', 'SELLING'));
-
--- Replace the price change log trigger to also capture selling_price changes.
-CREATE OR REPLACE FUNCTION log_product_price_change()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION "public"."log_product_price_change"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
 BEGIN
   IF OLD.mrp IS DISTINCT FROM NEW.mrp THEN
     INSERT INTO product_price_history
@@ -3443,182 +895,154 @@ BEGIN
   END IF;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
--- ─── 8. REPLACE SELLABLE_PRODUCTS VIEW ───────────────────────────────────────
--- DROP first because CREATE OR REPLACE cannot change column names/order.
--- Downstream views (package_contents) do not depend on sellable_products.
 
-DROP VIEW IF EXISTS sellable_products;
+ALTER FUNCTION "public"."log_product_price_change"() OWNER TO "postgres";
 
-CREATE VIEW sellable_products AS
-  SELECT
-    p.id,
-    p.name,
-    p.sku,
-    p.hsn_code,
-    p.image_url,
-    p.mrp,
-    COALESCE(pb.selling_price, p.selling_price, p.mrp) AS selling_price,
-    p.wholesale_price,
-    p.unit,
-    p.is_active,
-    p.product_type,
-    p.sold_as_package_only,
-    p.reorder_point,
-    CASE
-      WHEN p.product_type = 'PACKAGE' THEN package_available_qty(pp.id)
-      ELSE COALESCE(pb.quantity, p.current_stock)
-    END AS available_stock,
-    pp.id          AS package_def_id,
-    pp.package_type,
-    pp.barcode     AS package_barcode,
-    pb.id          AS batch_id,
-    pb.batch_number,
-    pb.expires_at,
-    pb.barcode     AS batch_barcode
-  FROM products p
-  LEFT JOIN product_packages pp
-         ON pp.product_id = p.id
-  LEFT JOIN product_batches pb
-         ON pb.product_id = p.id
-        AND pb.entity_id  = p.created_by
-        AND pb.status     = 'ACTIVE'
-        AND pb.quantity   > 0
-  WHERE p.is_active            = TRUE
-    AND p.sold_as_package_only = FALSE;
 
--- ─── 9. UPDATE DEDUCT_STOCK_ON_CONFIRM ───────────────────────────────────────
--- Propagates batch_id from order_items to inventory_movements.
--- The sync_batch_quantity() trigger (migration 013) then decrements
--- product_batches.quantity automatically.
-
-CREATE OR REPLACE FUNCTION deduct_stock_on_confirm()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION "public"."next_pos_order_no"("p_seller_id" "uuid", "p_prefix" "text") RETURNS "text"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+  v_year   INT  := EXTRACT(YEAR FROM NOW())::INT;
+  v_prefix TEXT := COALESCE(NULLIF(regexp_replace(UPPER(COALESCE(p_prefix, '')), '[^A-Z0-9]', '', 'g'), ''), 'POS');
+  v_serial INT;
 BEGIN
-  IF NEW.status = 'CONFIRMED' AND OLD.status IS DISTINCT FROM 'CONFIRMED' THEN
-    INSERT INTO inventory_movements
-      (product_id, entity_id, movement_type, quantity, reference_id, batch_id, notes)
-    SELECT
-      oi.product_id,
-      NEW.seller_id,
-      'SALE',
-      -(oi.quantity),
-      NEW.id,
-      oi.batch_id,
-      'Auto-deducted on order confirmation: ' || NEW.order_no
-    FROM order_items oi
-    WHERE oi.order_id    = NEW.id
-      AND oi.product_id  IS NOT NULL
-      AND oi.status      = 'ACTIVE';
-  END IF;
-  RETURN NEW;
+  INSERT INTO pos_order_counters (seller_id, year, last_serial)
+  VALUES (p_seller_id, v_year, 1)
+  ON CONFLICT (seller_id, year)
+  DO UPDATE SET last_serial = pos_order_counters.last_serial + 1
+  RETURNING last_serial INTO v_serial;
+
+  RETURN LEFT(v_prefix, 4) || '-' || v_year::TEXT || '-' || LPAD(v_serial::TEXT, 5, '0');
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
--- ─── 10. UPDATE RESTORE_STOCK_ON_CANCEL ──────────────────────────────────────
--- Propagates batch_id so the correct batch quantity is restored on cancellation.
 
-CREATE OR REPLACE FUNCTION restore_stock_on_cancel()
-RETURNS TRIGGER AS $$
+ALTER FUNCTION "public"."next_pos_order_no"("p_seller_id" "uuid", "p_prefix" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."package_available_qty"("p_package_id" "uuid", "p_depth" integer DEFAULT 0) RETURNS integer
+    LANGUAGE "plpgsql" STABLE
+    AS $$
+DECLARE
+  min_available INT := 2147483647;
+  component     RECORD;
+  child_avail   INT;
 BEGIN
-  IF NEW.status = 'CANCELLED' AND OLD.status IS DISTINCT FROM 'CANCELLED' THEN
-    IF OLD.status IN (
-      'CONFIRMED', 'PROCESSING', 'DISPATCHED', 'DELIVERED',
-      'CANCELLATION_REQUESTED', 'REFUND_REQUESTED'
-    ) THEN
-      INSERT INTO inventory_movements
-        (product_id, entity_id, movement_type, quantity, reference_id, batch_id, notes)
-      SELECT
-        oi.product_id,
-        NEW.seller_id,
-        'RETURN',
-        oi.quantity,
-        NEW.id,
-        oi.batch_id,
-        'Auto-restored on order cancellation: ' || NEW.order_no
-      FROM order_items oi
-      WHERE oi.order_id   = NEW.id
-        AND oi.product_id IS NOT NULL
-        AND oi.status     = 'ACTIVE';
+  IF p_depth > 5 THEN RETURN 0; END IF;
 
-      UPDATE order_items
-        SET status = 'CANCELLED'
-      WHERE order_id = NEW.id
-        AND status   = 'ACTIVE';
+  FOR component IN
+    SELECT pi.quantity AS needed, p.product_type, pp.id AS child_pkg_id, p.current_stock
+    FROM package_items pi
+    JOIN products p ON p.id = pi.product_id
+    LEFT JOIN product_packages pp ON pp.product_id = p.id
+    WHERE pi.package_id = p_package_id
+  LOOP
+    IF component.product_type = 'SINGLE' THEN
+      -- Leaf product: floor(stock / qty_needed)
+      child_avail := FLOOR(component.current_stock::FLOAT / component.needed);
+
+    ELSIF component.product_type = 'PACKAGE' AND component.child_pkg_id IS NOT NULL THEN
+      -- Nested package: recursive call, then floor by needed count
+      child_avail := FLOOR(
+        package_available_qty(component.child_pkg_id, p_depth + 1)::FLOAT
+        / component.needed
+      );
+
+    ELSE
+      child_avail := 0;
     END IF;
+
+    IF child_avail < min_available THEN
+      min_available := child_avail;
+    END IF;
+  END LOOP;
+
+  IF min_available = 2147483647 THEN RETURN 0; END IF;
+  RETURN GREATEST(0, min_available);
+END;
+$$;
+
+
+ALTER FUNCTION "public"."package_available_qty"("p_package_id" "uuid", "p_depth" integer) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."resolve_package_to_leaves"("p_package_id" "uuid", "p_multiplier" integer DEFAULT 1, "p_depth" integer DEFAULT 0) RETURNS TABLE("product_id" "uuid", "total_qty" integer)
+    LANGUAGE "plpgsql" STABLE
+    AS $$
+BEGIN
+  -- Circular reference / depth guard
+  IF p_depth > 5 THEN
+    RAISE EXCEPTION 'Package nesting exceeds maximum depth (5). Check for circular references.';
+  END IF;
+
+  RETURN QUERY
+  WITH components AS (
+    SELECT pi.product_id, pi.quantity * p_multiplier AS qty
+    FROM package_items pi
+    WHERE pi.package_id = p_package_id
+  )
+  SELECT
+    c.product_id,
+    c.qty
+  FROM components c
+  JOIN products p ON p.id = c.product_id
+  WHERE p.product_type = 'SINGLE'   -- leaf product
+
+  UNION ALL
+
+  -- Recurse into nested packages
+  SELECT
+    r.product_id,
+    r.total_qty
+  FROM components c
+  JOIN products p ON p.id = c.product_id
+  JOIN product_packages pp ON pp.product_id = c.product_id
+  JOIN LATERAL resolve_package_to_leaves(pp.id, c.qty, p_depth + 1) r ON TRUE
+  WHERE p.product_type = 'PACKAGE';
+END;
+$$;
+
+
+ALTER FUNCTION "public"."resolve_package_to_leaves"("p_package_id" "uuid", "p_multiplier" integer, "p_depth" integer) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."restock_buyer_on_delivery"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+BEGIN
+  IF NEW.status IN ('DELIVERED', 'COMPLETED')
+     AND (OLD.status IS DISTINCT FROM NEW.status)
+     AND NEW.order_type = 'WHOLESALE'
+     AND NEW.buyer_id IS NOT NULL THEN
+
+    INSERT INTO inventory_movements (id, product_id, entity_id, movement_type, quantity, reference_id, timestamp)
+    SELECT
+      gen_random_uuid(),
+      oi.product_id,
+      NEW.buyer_id,
+      'RESTOCK',
+      oi.quantity,
+      NEW.id,
+      NOW()
+    FROM order_items oi
+    WHERE oi.order_id = NEW.id
+      AND oi.product_id IS NOT NULL
+      AND oi.status = 'ACTIVE';
   END IF;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
--- Migration 054: Purchase Orders & Purchase Invoices
--- Extends the orders table to support vendor procurement workflow:
--- PURCHASE_ORDER (commitment, no stock change) →
--- PURCHASE_INVOICE (confirmed receipt, triggers batch creation + restock)
+$$;
 
--- ─── 1. EXTEND ORDER_TYPE ────────────────────────────────────────────────────
-ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_order_type_check;
-ALTER TABLE orders ADD CONSTRAINT orders_order_type_check
-  CHECK (order_type IN (
-    'POS_SALE', 'WHOLESALE', 'MARKETPLACE',
-    'PURCHASE_ORDER', 'PURCHASE_INVOICE'
-  ));
 
--- ─── 2. EXTEND STATUS ────────────────────────────────────────────────────────
-ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_status_check;
-ALTER TABLE orders ADD CONSTRAINT orders_status_check
-  CHECK (status IN (
-    -- existing statuses
-    'DRAFT', 'PENDING_PAYMENT', 'PAYMENT_VERIFYING', 'CONFIRMED',
-    'PROCESSING', 'DISPATCHED', 'DELIVERED', 'COMPLETED',
-    'PAYMENT_FAILED', 'CANCELLATION_REQUESTED', 'CANCELLED',
-    'REFUND_REQUESTED', 'REFUND_APPROVED', 'REFUND_REJECTED',
-    'REFUND_PROCESSING', 'REFUNDED',
-    'REPLACEMENT_REQUESTED', 'REPLACEMENT_DISPATCHED', 'REPLACEMENT_DELIVERED',
-    -- purchase-specific statuses
-    'SENT',                -- PO sent to supplier
-    'PARTIALLY_RECEIVED',  -- some items received
-    'PAID'                 -- invoice paid
-  ));
+ALTER FUNCTION "public"."restock_buyer_on_delivery"() OWNER TO "postgres";
 
--- ─── 3. NEW COLUMNS ON ORDERS ────────────────────────────────────────────────
-ALTER TABLE orders
-  ADD COLUMN IF NOT EXISTS purchase_order_id  UUID REFERENCES orders(id) ON DELETE SET NULL,
-  ADD COLUMN IF NOT EXISTS supplier_name      TEXT,        -- free-text supplier name
-  ADD COLUMN IF NOT EXISTS supplier_ref       TEXT,        -- supplier's own PO/invoice ref
-  ADD COLUMN IF NOT EXISTS expected_delivery  DATE,        -- expected goods arrival date
-  ADD COLUMN IF NOT EXISTS received_at        TIMESTAMPTZ; -- when invoice was confirmed/received
 
-CREATE INDEX IF NOT EXISTS idx_orders_purchase_order_id
-  ON orders(purchase_order_id) WHERE purchase_order_id IS NOT NULL;
-
-CREATE INDEX IF NOT EXISTS idx_orders_purchase_type
-  ON orders(order_type, buyer_id)
-  WHERE order_type IN ('PURCHASE_ORDER', 'PURCHASE_INVOICE');
-
--- ─── 4. NEW COLUMNS ON ORDER_ITEMS ───────────────────────────────────────────
--- These capture batch details entered when converting a PO to an Invoice
-ALTER TABLE order_items
-  ADD COLUMN IF NOT EXISTS unit_cost        DECIMAL(12,2), -- purchase price paid
-  ADD COLUMN IF NOT EXISTS batch_number     TEXT,
-  ADD COLUMN IF NOT EXISTS batch_barcode    TEXT,
-  ADD COLUMN IF NOT EXISTS expires_at       DATE,
-  ADD COLUMN IF NOT EXISTS manufactured_at  DATE;
-
--- ─── 5. EXTEND KHATA PARTY_TYPE FOR SUPPLIERS ────────────────────────────────
-ALTER TABLE khata_accounts
-  DROP CONSTRAINT IF EXISTS khata_accounts_party_type_check;
-ALTER TABLE khata_accounts
-  ADD CONSTRAINT khata_accounts_party_type_check
-    CHECK (party_type IN ('CONSUMER', 'RETAILER', 'WHOLESALER', 'SUPPLIER'));
-
--- ─── 6. RESTOCK TRIGGER ON INVOICE CONFIRMATION ──────────────────────────────
--- Fires when a PURCHASE_INVOICE transitions to CONFIRMED.
--- For each active order_item: creates a product_batch + RESTOCK movement.
--- buyer_id = the retailer/vendor who is receiving the goods.
-
-CREATE OR REPLACE FUNCTION restock_on_invoice_confirm()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION "public"."restock_on_invoice_confirm"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
 DECLARE
   v_item       RECORD;
   v_batch_id   UUID;
@@ -3701,139 +1125,15 @@ BEGIN
   END IF;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
-DROP TRIGGER IF EXISTS orders_restock_on_invoice_confirm ON orders;
-CREATE TRIGGER orders_restock_on_invoice_confirm
-  AFTER UPDATE OF status ON orders
-  FOR EACH ROW EXECUTE FUNCTION restock_on_invoice_confirm();
--- Migration 058: Sales Orders & Sales Invoices
--- Introduces SALES_ORDER (customer request, no stock) and
--- SALES_INVOICE (vendor creates, stock deducted per batch).
 
--- ─── 1. EXTEND ORDER_TYPE ────────────────────────────────────────────────────
-ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_order_type_check;
-ALTER TABLE orders ADD CONSTRAINT orders_order_type_check
-  CHECK (order_type IN (
-    'POS_SALE', 'WHOLESALE', 'MARKETPLACE',
-    'PURCHASE_ORDER', 'PURCHASE_INVOICE',
-    'SALES_ORDER', 'SALES_INVOICE'
-  ));
+ALTER FUNCTION "public"."restock_on_invoice_confirm"() OWNER TO "postgres";
 
--- ─── 2. EXTEND STATUS ────────────────────────────────────────────────────────
-ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_status_check;
-ALTER TABLE orders ADD CONSTRAINT orders_status_check
-  CHECK (status IN (
-    'DRAFT', 'PENDING_PAYMENT', 'PAYMENT_VERIFYING', 'CONFIRMED',
-    'PROCESSING', 'DISPATCHED', 'DELIVERED', 'COMPLETED',
-    'PAYMENT_FAILED', 'CANCELLATION_REQUESTED', 'CANCELLED',
-    'REFUND_REQUESTED', 'REFUND_APPROVED', 'REFUND_REJECTED',
-    'REFUND_PROCESSING', 'REFUNDED',
-    'REPLACEMENT_REQUESTED', 'REPLACEMENT_DISPATCHED', 'REPLACEMENT_DELIVERED',
-    'SENT', 'PARTIALLY_RECEIVED', 'PAID',
-    'PARTIALLY_FULFILLED'
-  ));
 
--- ─── 3. NEW COLUMNS ON ORDERS ────────────────────────────────────────────────
-ALTER TABLE orders
-  ADD COLUMN IF NOT EXISTS sales_order_id  UUID REFERENCES orders(id) ON DELETE SET NULL,
-  ADD COLUMN IF NOT EXISTS invoice_ref     TEXT;
-
-CREATE INDEX IF NOT EXISTS idx_orders_sales_order_id
-  ON orders(sales_order_id) WHERE sales_order_id IS NOT NULL;
-
-CREATE INDEX IF NOT EXISTS idx_orders_sales_type
-  ON orders(order_type, seller_id)
-  WHERE order_type IN ('SALES_ORDER', 'SALES_INVOICE');
-
--- ─── 4. DEDUCT STOCK TRIGGER FOR SALES_INVOICE ───────────────────────────────
--- Fires when a SALES_INVOICE is confirmed (status → CONFIRMED).
--- Creates SALE inventory_movements per batch-linked order_item.
--- The sync_batch_quantity() trigger (migration 013) then decrements batch.quantity.
-
-CREATE OR REPLACE FUNCTION deduct_stock_on_sales_invoice()
-RETURNS TRIGGER AS $$
-DECLARE
-  v_item RECORD;
-BEGIN
-  IF NEW.order_type = 'SALES_INVOICE'
-     AND NEW.status = 'CONFIRMED'
-     AND OLD.status IS DISTINCT FROM 'CONFIRMED' THEN
-
-    FOR v_item IN
-      SELECT oi.*
-      FROM order_items oi
-      WHERE oi.order_id   = NEW.id
-        AND oi.product_id IS NOT NULL
-        AND oi.status     = 'ACTIVE'
-    LOOP
-      INSERT INTO inventory_movements
-        (product_id, entity_id, movement_type, quantity, reference_id, batch_id, notes)
-      VALUES (
-        v_item.product_id,
-        NEW.seller_id,
-        'SALE',
-        -(v_item.quantity),
-        NEW.id,
-        v_item.batch_id,
-        'Auto-deducted from Sales Invoice: ' || NEW.order_no
-      );
-    END LOOP;
-
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS orders_deduct_on_sales_invoice ON orders;
-CREATE TRIGGER orders_deduct_on_sales_invoice
-  AFTER UPDATE OF status ON orders
-  FOR EACH ROW EXECUTE FUNCTION deduct_stock_on_sales_invoice();
-
--- ─── 5. EXTEND GUARD TRIGGER FOR SALES_INVOICE ───────────────────────────────
--- Reuse the existing guard_stock_on_confirm pattern but also
--- catch SALES_INVOICE over-fulfilment at the DB level.
--- The existing guard (migration 055) already fires on CONFIRMED transitions
--- and checks both batch and product-level quantities — it will fire for
--- SALES_INVOICE too since we set status = CONFIRMED on creation.
--- No additional guard trigger needed.
--- Migration 059: Scope deduct_stock_on_confirm to POS/WHOLESALE/MARKETPLACE only
--- SALES_ORDER: stock deducted by deduct_stock_on_sales_invoice trigger (migration 058)
--- SALES_INVOICE: stock deducted by deduct_stock_on_sales_invoice trigger
--- PURCHASE_ORDER/INVOICE: stock handled by restock_on_invoice_confirm (migration 057)
--- POS_SALE, WHOLESALE, MARKETPLACE: handled here
-
-CREATE OR REPLACE FUNCTION deduct_stock_on_confirm()
-RETURNS TRIGGER AS $$
-BEGIN
-  IF NEW.status = 'CONFIRMED'
-     AND OLD.status IS DISTINCT FROM 'CONFIRMED'
-     AND NEW.order_type IN ('POS_SALE', 'WHOLESALE', 'MARKETPLACE') THEN
-
-    INSERT INTO inventory_movements
-      (product_id, entity_id, movement_type, quantity, reference_id, batch_id, notes)
-    SELECT
-      oi.product_id,
-      NEW.seller_id,
-      'SALE',
-      -(oi.quantity),
-      NEW.id,
-      oi.batch_id,
-      'Auto-deducted on order confirmation: ' || NEW.order_no
-    FROM order_items oi
-    WHERE oi.order_id   = NEW.id
-      AND oi.product_id IS NOT NULL
-      AND oi.status     = 'ACTIVE';
-
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Also scope restore_stock_on_cancel to the same types
--- (SALES_ORDER cancellation doesn't need stock restore since none was deducted)
-CREATE OR REPLACE FUNCTION restore_stock_on_cancel()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION "public"."restore_stock_on_cancel"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
 BEGIN
   IF NEW.status = 'CANCELLED'
      AND OLD.status IS DISTINCT FROM 'CANCELLED'
@@ -3867,96 +1167,131 @@ BEGIN
   END IF;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
--- Also scope guard_stock_on_confirm to the same order types
--- (SALES_INVOICE has its own check via deduct_stock_on_sales_invoice + existing guard logic)
-CREATE OR REPLACE FUNCTION guard_stock_on_confirm()
-RETURNS TRIGGER AS $$
+
+ALTER FUNCTION "public"."restore_stock_on_cancel"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."restore_stock_on_item_cancel"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
 DECLARE
-  shortage RECORD;
+  v_seller_id UUID;
+  v_order_no  TEXT;
+  leaf        RECORD;
 BEGIN
-  IF NEW.status = 'CONFIRMED'
-     AND OLD.status IS DISTINCT FROM 'CONFIRMED'
-     AND NEW.order_type IN ('POS_SALE', 'WHOLESALE', 'MARKETPLACE', 'SALES_INVOICE') THEN
-
-    -- Non-batch: check product.current_stock
-    SELECT oi.name, oi.quantity, p.current_stock
-    INTO shortage
-    FROM order_items oi
-    JOIN products p ON p.id = oi.product_id
-    WHERE oi.order_id   = NEW.id
-      AND oi.status     = 'ACTIVE'
-      AND oi.product_id IS NOT NULL
-      AND oi.batch_id   IS NULL
-      AND p.current_stock < oi.quantity
-    LIMIT 1;
-
-    IF FOUND THEN
-      RAISE EXCEPTION 'Insufficient stock: "%" requires %, only % available',
-        shortage.name, shortage.quantity, shortage.current_stock;
+  IF NEW.status = 'CANCELLED' AND OLD.status = 'ACTIVE' THEN
+    SELECT seller_id, order_no INTO v_seller_id, v_order_no FROM orders WHERE id = NEW.order_id;
+    IF NEW.package_id IS NOT NULL THEN
+      FOR leaf IN
+        SELECT product_id, SUM(total_qty * NEW.quantity) AS qty
+        FROM resolve_package_to_leaves(NEW.package_id, 1) GROUP BY product_id
+      LOOP
+        INSERT INTO inventory_movements
+          (product_id, entity_id, movement_type, quantity, reference_id, package_id, package_qty, notes)
+        VALUES (leaf.product_id, v_seller_id, 'RETURN', leaf.qty, NEW.order_id, NEW.package_id, NEW.quantity,
+          'Partial cancel: ' || COALESCE(NEW.package_name,'') || ' (' || v_order_no || ')');
+      END LOOP;
+    ELSIF NEW.product_id IS NOT NULL THEN
+      INSERT INTO inventory_movements (product_id, entity_id, movement_type, quantity, reference_id, notes)
+      VALUES (NEW.product_id, v_seller_id, 'RETURN', NEW.quantity, NEW.order_id,
+        'Partial cancel: ' || NEW.name || ' (' || v_order_no || ')');
     END IF;
-
-    -- Batch-specific: check product_batches.quantity
-    SELECT oi.name, oi.quantity, pb.quantity AS batch_qty, pb.batch_number
-    INTO shortage
-    FROM order_items oi
-    JOIN product_batches pb ON pb.id = oi.batch_id
-    WHERE oi.order_id  = NEW.id
-      AND oi.status    = 'ACTIVE'
-      AND oi.batch_id  IS NOT NULL
-      AND pb.quantity  < oi.quantity
-    LIMIT 1;
-
-    IF FOUND THEN
-      RAISE EXCEPTION 'Insufficient batch stock: "%" batch "%" requires %, only % available',
-        shortage.name, shortage.batch_number, shortage.quantity, shortage.batch_qty;
-    END IF;
-
   END IF;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
--- Migration 060: Robust batch auto-depletion
--- Problem: sync_batch_quantity (migration 013) updates batch.quantity via an
--- AFTER INSERT trigger on inventory_movements, then runs a second UPDATE to mark
--- status = 'DEPLETED'. That second UPDATE can be silently blocked by RLS when
--- the trigger fires in a context without a valid JWT (e.g. service-role inserts).
---
--- Fix: add a BEFORE UPDATE trigger on product_batches itself. Any UPDATE that
--- brings quantity to <= 0 will atomically set status = 'DEPLETED' in the same
--- statement, bypassing any RLS gap since BEFORE ROW triggers modify NEW directly.
---
--- Also make sync_batch_quantity SECURITY DEFINER so the inventory_movements
--- trigger can always update product_batches regardless of RLS context.
+$$;
 
--- ── 1. BEFORE UPDATE trigger on product_batches ───────────────────────────────
-CREATE OR REPLACE FUNCTION auto_deplete_batch()
-RETURNS TRIGGER AS $$
+
+ALTER FUNCTION "public"."restore_stock_on_item_cancel"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."restore_stock_on_item_refund"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  v_seller_id UUID;
+  v_order_no  TEXT;
+  leaf        RECORD;
 BEGIN
-  IF NEW.quantity <= 0 AND OLD.status = 'ACTIVE' THEN
-    NEW.status := 'DEPLETED';
-  END IF;
-  -- Reactivate if stock is added back to a depleted batch (e.g. return/correction)
-  IF NEW.quantity > 0 AND OLD.status = 'DEPLETED' THEN
-    NEW.status := 'ACTIVE';
+  IF NEW.status = 'REFUNDED' AND OLD.status IS DISTINCT FROM 'REFUNDED' THEN
+    SELECT seller_id, order_no INTO v_seller_id, v_order_no FROM orders WHERE id = NEW.order_id;
+    IF NEW.package_id IS NOT NULL THEN
+      FOR leaf IN
+        SELECT product_id, SUM(total_qty * NEW.quantity) AS qty
+        FROM resolve_package_to_leaves(NEW.package_id, 1) GROUP BY product_id
+      LOOP
+        INSERT INTO inventory_movements
+          (product_id, entity_id, movement_type, quantity, reference_id, package_id, package_qty, notes)
+        VALUES (leaf.product_id, v_seller_id, 'RETURN', leaf.qty, NEW.order_id, NEW.package_id, NEW.quantity,
+          'Refund: ' || COALESCE(NEW.package_name,'') || ' (' || v_order_no || ')');
+      END LOOP;
+    ELSIF NEW.product_id IS NOT NULL THEN
+      INSERT INTO inventory_movements (product_id, entity_id, movement_type, quantity, reference_id, notes)
+      VALUES (NEW.product_id, v_seller_id, 'RETURN', NEW.quantity, NEW.order_id,
+        'Refund: ' || NEW.name || ' (' || v_order_no || ')');
+    END IF;
   END IF;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
-DROP TRIGGER IF EXISTS batch_auto_deplete ON product_batches;
-CREATE TRIGGER batch_auto_deplete
-  BEFORE UPDATE OF quantity ON product_batches
-  FOR EACH ROW EXECUTE FUNCTION auto_deplete_batch();
 
--- ── 2. Make sync_batch_quantity SECURITY DEFINER ──────────────────────────────
--- Ensures the function can UPDATE product_batches even when called from a
--- trigger context that has no JWT-authenticated user (service-role inserts).
--- The DEPLETED check in this function is now a safety net; the BEFORE UPDATE
--- trigger above is the primary enforcement path.
-CREATE OR REPLACE FUNCTION sync_batch_quantity()
-RETURNS TRIGGER AS $$
+ALTER FUNCTION "public"."restore_stock_on_item_refund"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."reverse_khata_on_refund"("p_order_id" "uuid", "p_amount" numeric, "p_created_by" "uuid" DEFAULT NULL::"uuid", "p_notes" "text" DEFAULT NULL::"text") RETURNS numeric
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+  v_account UUID;
+  v_actor   UUID := p_created_by;
+  v_balance NUMERIC;
+BEGIN
+  IF p_amount IS NULL OR p_amount <= 0 THEN RETURN NULL; END IF;
+
+  -- The credit-sale confirm logged a DEBIT keyed to the order; that ties us to the account.
+  SELECT khata_account_id INTO v_account
+  FROM khata_transactions
+  WHERE order_id = p_order_id AND transaction_type = 'DEBIT'
+  LIMIT 1;
+  IF v_account IS NULL THEN RETURN NULL; END IF;   -- not a credit sale / no khata debt
+
+  -- created_by is NOT NULL — fall back to the account's entity actor when none passed.
+  IF v_actor IS NULL THEN
+    SELECT up.id INTO v_actor
+    FROM user_profiles up
+    JOIN khata_accounts ka ON ka.id = v_account
+    WHERE up.entity_id = ka.creditor_entity_id
+    ORDER BY CASE up.sub_role WHEN 'OWNER' THEN 0 WHEN 'ADMIN' THEN 1 WHEN 'MANAGER' THEN 2 ELSE 3 END
+    LIMIT 1;
+    IF v_actor IS NULL THEN
+      RAISE EXCEPTION 'reverse_khata_on_refund: no user_profiles actor for the account''s entity';
+    END IF;
+  END IF;
+
+  UPDATE khata_accounts
+  SET outstanding_balance = GREATEST(0, outstanding_balance - p_amount), updated_at = NOW()
+  WHERE id = v_account
+  RETURNING outstanding_balance INTO v_balance;
+
+  INSERT INTO khata_transactions
+    (khata_account_id, order_id, transaction_type, amount, balance_after, notes, created_by)
+  VALUES
+    (v_account, p_order_id, 'CREDIT', p_amount, v_balance, COALESCE(p_notes, 'Refund reversal'), v_actor);
+
+  RETURN v_balance;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."reverse_khata_on_refund"("p_order_id" "uuid", "p_amount" numeric, "p_created_by" "uuid", "p_notes" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."sync_batch_quantity"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
 BEGIN
   IF NEW.batch_id IS NOT NULL THEN
     UPDATE product_batches
@@ -3965,421 +1300,3536 @@ BEGIN
   END IF;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
--- Re-create the trigger (function replaced above)
-DROP TRIGGER IF EXISTS inventory_sync_batch ON inventory_movements;
-CREATE TRIGGER inventory_sync_batch
-  AFTER INSERT ON inventory_movements
-  FOR EACH ROW EXECUTE FUNCTION sync_batch_quantity();
--- Migration 061: Scope sellable_products view to the authenticated entity
--- Problem: the view joined product_batches with pb.entity_id = p.created_by,
--- meaning a retailer who received products created by a wholesaler would get
--- NULL batch columns (no stock shown). It also meant any entity could see all
--- products regardless of whether they have stock.
--- Fix: join batches using auth_entity_id() so each entity only sees their own
--- batches. Products with no batches for the current entity are excluded (INNER JOIN).
 
-DROP VIEW IF EXISTS sellable_products;
+ALTER FUNCTION "public"."sync_batch_quantity"() OWNER TO "postgres";
 
-CREATE VIEW sellable_products AS
-  SELECT
-    p.id,
-    p.name,
-    p.sku,
-    p.hsn_code,
-    p.image_url,
-    p.mrp,
-    COALESCE(pb.selling_price, p.selling_price, p.mrp) AS selling_price,
-    p.wholesale_price,
-    p.unit,
-    p.is_active,
-    p.product_type,
-    p.sold_as_package_only,
-    p.reorder_point,
-    CASE
-      WHEN p.product_type = 'PACKAGE' THEN package_available_qty(pp.id)
-      ELSE pb.quantity
-    END AS available_stock,
-    pp.id          AS package_def_id,
-    pp.package_type,
-    pp.barcode     AS package_barcode,
-    pb.id          AS batch_id,
-    pb.batch_number,
-    pb.expires_at,
-    pb.barcode     AS batch_barcode,
-    pb.entity_id
-  FROM products p
-  JOIN product_batches pb        -- INNER JOIN: only products the entity has stock of
-         ON pb.product_id = p.id
-        AND pb.entity_id  = auth_entity_id()
-        AND pb.status     = 'ACTIVE'
-        AND pb.quantity   > 0
-  LEFT JOIN product_packages pp
-         ON pp.product_id = p.id
-  WHERE p.is_active            = TRUE
-    AND p.sold_as_package_only = FALSE;
--- Migration 062: Fix stock deduction triggers
---
--- Problem 1: SALES_INVOICE is INSERT'd directly at status='CONFIRMED'.
---   The deduct_stock_on_sales_invoice trigger fires on UPDATE only, so the
---   INSERT never triggers stock deduction.
---   Fix: rewrite as AFTER INSERT OR UPDATE, handling both paths.
---
--- Problem 2: POS_SALE is INSERT'd at PENDING_PAYMENT then UPDATE'd to CONFIRMED.
---   The UPDATE fires guard_stock_on_confirm (BEFORE) which raises an exception
---   if product_batches.quantity < order_item.quantity. This rolls back the UPDATE
---   silently because the client doesn't check the error return.
---   Root cause: guard checks batch quantity BEFORE the deduct trigger runs, which
---   is correct, but the batch quantity was never being decremented by prior sales
---   (because previous SALE movements had batch_id=null). Now that we fixed the
---   search modals to always populate batch_id, the guard will work correctly.
---   However we still need the UPDATE error to surface to the client.
---   Fix: also make deduct_stock_on_confirm handle INSERT at CONFIRMED (defensive).
 
--- ── 1. Fix deduct_stock_on_sales_invoice: fire on INSERT OR UPDATE ────────────
-CREATE OR REPLACE FUNCTION deduct_stock_on_sales_invoice()
-RETURNS TRIGGER AS $$
-DECLARE
-  v_item RECORD;
-  v_old_status TEXT;
+CREATE OR REPLACE FUNCTION "public"."sync_entity_product_category_from_hsn"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
 BEGIN
-  -- On INSERT, treat OLD.status as NULL (always distinct from CONFIRMED)
-  v_old_status := CASE WHEN TG_OP = 'INSERT' THEN NULL ELSE OLD.status END;
-
-  IF NEW.order_type = 'SALES_INVOICE'
-     AND NEW.status = 'CONFIRMED'
-     AND v_old_status IS DISTINCT FROM 'CONFIRMED' THEN
-
-    FOR v_item IN
-      SELECT oi.*
-      FROM order_items oi
-      WHERE oi.order_id   = NEW.id
-        AND oi.product_id IS NOT NULL
-        AND oi.status     = 'ACTIVE'
-    LOOP
-      INSERT INTO inventory_movements
-        (product_id, entity_id, movement_type, quantity, reference_id, batch_id, notes)
-      VALUES (
-        v_item.product_id,
-        NEW.seller_id,
-        'SALE',
-        -(v_item.quantity),
-        NEW.id,
-        v_item.batch_id,
-        'Auto-deducted from Sales Invoice: ' || NEW.order_no
-      );
-    END LOOP;
-
+  -- Only update if hsn_master_id is set
+  IF NEW.hsn_master_id IS NOT NULL THEN
+    UPDATE entity_products
+    SET
+      category = COALESCE(NEW.category, hsn.category),
+      subcategory = COALESCE(NEW.subcategory, hsn.short_description),
+      hsn_chapter = hsn.chapter,
+      hsn_heading = hsn.heading,
+      hsn_subheading = hsn.subheading,
+      hsn_code = hsn.code
+    FROM hsn_master hsn
+    WHERE hsn.id = NEW.hsn_master_id AND entity_products.id = NEW.id;
   END IF;
+
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
--- Re-create trigger to fire on INSERT OR UPDATE
-DROP TRIGGER IF EXISTS orders_deduct_on_sales_invoice ON orders;
-CREATE TRIGGER orders_deduct_on_sales_invoice
-  AFTER INSERT OR UPDATE OF status ON orders
-  FOR EACH ROW EXECUTE FUNCTION deduct_stock_on_sales_invoice();
 
--- ── 2. Fix guard_stock_on_confirm: also handle INSERT ────────────────────────
--- The guard already fires BEFORE UPDATE OR INSERT (tgtype=19). However the
--- guard function itself only checks when NEW.status = 'CONFIRMED' AND
--- OLD.status IS DISTINCT FROM 'CONFIRMED'. On INSERT, OLD is NULL so the
--- IS DISTINCT FROM check evaluates to TRUE — guard fires correctly.
--- The guard was preventing the UPDATE because batch quantities were stale
--- (previous sales hadn't decremented them). Now that search always sends
--- batch_id, this should self-correct. No change needed to guard logic.
+ALTER FUNCTION "public"."sync_entity_product_category_from_hsn"() OWNER TO "postgres";
 
--- ── 3. Also fix deduct_stock_on_confirm to handle INSERT defensively ─────────
-CREATE OR REPLACE FUNCTION deduct_stock_on_confirm()
-RETURNS TRIGGER AS $$
-DECLARE
-  v_old_status TEXT;
+
+CREATE OR REPLACE FUNCTION "public"."sync_hsn_master_id_from_code_entity_products"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
 BEGIN
-  v_old_status := CASE WHEN TG_OP = 'INSERT' THEN NULL ELSE OLD.status END;
-
-  IF NEW.status = 'CONFIRMED'
-     AND v_old_status IS DISTINCT FROM 'CONFIRMED'
-     AND NEW.order_type IN ('POS_SALE', 'WHOLESALE', 'MARKETPLACE') THEN
-
-    INSERT INTO inventory_movements
-      (product_id, entity_id, movement_type, quantity, reference_id, batch_id, notes)
-    SELECT
-      oi.product_id,
-      NEW.seller_id,
-      'SALE',
-      -(oi.quantity),
-      NEW.id,
-      oi.batch_id,
-      'Auto-deducted on order confirmation: ' || NEW.order_no
-    FROM order_items oi
-    WHERE oi.order_id   = NEW.id
-      AND oi.product_id IS NOT NULL
-      AND oi.status     = 'ACTIVE';
-
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-DROP TRIGGER IF EXISTS orders_deduct_stock ON orders;
-CREATE TRIGGER orders_deduct_stock
-  AFTER INSERT OR UPDATE OF status ON orders
-  FOR EACH ROW EXECUTE FUNCTION deduct_stock_on_confirm();
-
--- ── 4. Fix guard_stock_on_confirm to also handle INSERT ──────────────────────
-CREATE OR REPLACE FUNCTION guard_stock_on_confirm()
-RETURNS TRIGGER AS $$
-DECLARE
-  shortage  RECORD;
-  v_old_status TEXT;
-BEGIN
-  v_old_status := CASE WHEN TG_OP = 'INSERT' THEN NULL ELSE OLD.status END;
-
-  IF NEW.status = 'CONFIRMED'
-     AND v_old_status IS DISTINCT FROM 'CONFIRMED'
-     AND NEW.order_type IN ('POS_SALE', 'WHOLESALE', 'MARKETPLACE', 'SALES_INVOICE') THEN
-
-    -- Non-batch items: check product.current_stock
-    SELECT oi.name, oi.quantity, p.current_stock
-    INTO shortage
-    FROM order_items oi
-    JOIN products p ON p.id = oi.product_id
-    WHERE oi.order_id   = NEW.id
-      AND oi.status     = 'ACTIVE'
-      AND oi.product_id IS NOT NULL
-      AND oi.batch_id   IS NULL
-      AND p.current_stock < oi.quantity
+  -- Only sync if hsn_code is provided and hsn_master_id is not already set
+  IF NEW.hsn_code IS NOT NULL AND NEW.hsn_master_id IS NULL THEN
+    SELECT id INTO NEW.hsn_master_id
+    FROM hsn_master
+    WHERE code = NEW.hsn_code AND is_active = true
     LIMIT 1;
-
-    IF FOUND THEN
-      RAISE EXCEPTION 'Insufficient stock: "%" requires %, only % available',
-        shortage.name, shortage.quantity, shortage.current_stock;
-    END IF;
-
-    -- Batch items: check product_batches.quantity
-    SELECT oi.name, oi.quantity, pb.quantity AS batch_qty, pb.batch_number
-    INTO shortage
-    FROM order_items oi
-    JOIN product_batches pb ON pb.id = oi.batch_id
-    WHERE oi.order_id  = NEW.id
-      AND oi.status    = 'ACTIVE'
-      AND oi.batch_id  IS NOT NULL
-      AND pb.quantity  < oi.quantity
-    LIMIT 1;
-
-    IF FOUND THEN
-      RAISE EXCEPTION 'Insufficient batch stock: "%" batch "%" requires %, only % available',
-        shortage.name, shortage.batch_number, shortage.quantity, shortage.batch_qty;
-    END IF;
-
   END IF;
+
+  -- If hsn_code was cleared, also clear hsn_master_id
+  IF NEW.hsn_code IS NULL THEN
+    NEW.hsn_master_id := NULL;
+  END IF;
+
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
-DROP TRIGGER IF EXISTS orders_guard_stock ON orders;
-CREATE TRIGGER orders_guard_stock
-  BEFORE INSERT OR UPDATE OF status ON orders
-  FOR EACH ROW EXECUTE FUNCTION guard_stock_on_confirm();
--- Migration 063: Add ONLINE as a valid payment method
--- ONLINE covers mBoB, mPay, RTGS and other digital transfers
--- presented as a single option in the UI
 
-ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_payment_method_check;
-ALTER TABLE orders ADD CONSTRAINT orders_payment_method_check
-  CHECK (payment_method IN ('MBOB', 'MPAY', 'RTGS', 'CASH', 'CREDIT', 'ONLINE'));
+ALTER FUNCTION "public"."sync_hsn_master_id_from_code_entity_products"() OWNER TO "postgres";
 
--- Also update cart_items if it has the same constraint
-ALTER TABLE cart_items DROP CONSTRAINT IF EXISTS cart_items_payment_method_check;
--- Migration 064: Backfill existing MBOB/MPAY/RTGS orders to ONLINE
-UPDATE orders
-SET payment_method = 'ONLINE'
-WHERE payment_method IN ('MBOB', 'MPAY', 'RTGS');
 
--- Remove the old values from the constraint now that no rows use them
-ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_payment_method_check;
-ALTER TABLE orders ADD CONSTRAINT orders_payment_method_check
-  CHECK (payment_method IN ('CASH', 'CREDIT', 'ONLINE'));
--- Migration 066: Add auth_email to riders table
--- Avoids needing auth.admin.getUserById in the login route —
--- we can call generateLink directly with the stored email.
-
-ALTER TABLE riders ADD COLUMN IF NOT EXISTS auth_email TEXT;
-
--- Back-fill demo rider
-UPDATE riders SET auth_email = 'rider@demo.bt'
-WHERE id = 'e1000000-0000-4000-8000-000000000002';
--- Migration 067: Store auth password on riders for session creation
--- generateLink/getUserById GoTrue admin calls fail for SQL-seeded users.
--- Storing the password allows signInWithPassword after PIN verification.
-
-ALTER TABLE riders ADD COLUMN IF NOT EXISTS auth_password TEXT;
-
--- Demo rider password matches the auth.users encrypted_password seed
-UPDATE riders SET auth_password = 'Rider@2026'
-WHERE id = 'e1000000-0000-4000-8000-000000000002';
--- Migration 068: Delivery fee tracking
--- Rider submits cost after delivery; customer pays separately;
--- vendor confirms by uploading payment receipt screenshot.
-
-ALTER TABLE orders
-  ADD COLUMN IF NOT EXISTS delivery_fee              DECIMAL(10,2),
-  ADD COLUMN IF NOT EXISTS delivery_fee_paid         BOOLEAN NOT NULL DEFAULT false,
-  ADD COLUMN IF NOT EXISTS delivery_fee_receipt_url  TEXT,
-  ADD COLUMN IF NOT EXISTS delivery_fee_confirmed_at TIMESTAMPTZ;
-
--- Also store vendor entity address for rider display
-ALTER TABLE entities
-  ADD COLUMN IF NOT EXISTS address TEXT;
--- Shift management + cash registers for blind cash close reconciliation
--- Migration: 069
-
--- ── Cash registers (named registers managed by MANAGER/OWNER) ──────────
-CREATE TABLE cash_registers (
-  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  entity_id             UUID NOT NULL REFERENCES entities(id),
-  name                  TEXT NOT NULL,
-  default_opening_float DECIMAL(12,2) NOT NULL DEFAULT 0 CHECK (default_opening_float >= 0),
-  is_active             BOOLEAN NOT NULL DEFAULT true,
-  created_by            UUID REFERENCES user_profiles(id),
-  created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX idx_cash_registers_entity ON cash_registers (entity_id, is_active);
-
-ALTER TABLE cash_registers ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "cash_registers_tenant" ON cash_registers
-  FOR ALL USING (
-    entity_id = (auth.jwt() ->> 'entity_id')::UUID
-  );
-
--- ── Shifts (tied to a register, opened by cashier) ────────────────────
-CREATE TABLE shifts (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  entity_id       UUID NOT NULL REFERENCES entities(id),
-  register_id     UUID NOT NULL REFERENCES cash_registers(id),
-  opened_by       UUID NOT NULL REFERENCES user_profiles(id),
-  closed_by       UUID REFERENCES user_profiles(id),
-  opening_float   DECIMAL(12,2) NOT NULL CHECK (opening_float >= 0),
-  closing_count   DECIMAL(12,2),
-  expected_total  DECIMAL(12,2),
-  discrepancy     DECIMAL(12,2),
-  status          TEXT NOT NULL DEFAULT 'ACTIVE'
-                  CHECK (status IN ('ACTIVE', 'CLOSING', 'CLOSED')),
-  opened_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  closed_at       TIMESTAMPTZ,
-  created_at      TIMESTAMPTZ DEFAULT NOW()
-);
-
--- One active shift per register at a time
-CREATE UNIQUE INDEX idx_shifts_one_active_per_register
-  ON shifts (register_id)
-  WHERE status IN ('ACTIVE', 'CLOSING');
-
-CREATE INDEX idx_shifts_entity ON shifts (entity_id, opened_at DESC);
-
-ALTER TABLE shifts ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "shifts_tenant" ON shifts
-  FOR ALL USING (
-    entity_id = (auth.jwt() ->> 'entity_id')::UUID
-  );
-
--- ── Shift transactions (sales, refunds, voids tracked per shift) ──────
-CREATE TABLE shift_transactions (
-  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  shift_id         UUID NOT NULL REFERENCES shifts(id) ON DELETE CASCADE,
-  order_id         UUID,
-  transaction_type TEXT NOT NULL CHECK (transaction_type IN ('SALE', 'REFUND', 'VOID')),
-  payment_method   TEXT NOT NULL CHECK (payment_method IN ('MBOB', 'MPAY', 'RTGS', 'CASH', 'CREDIT', 'UPI', 'ONLINE')),
-  amount           DECIMAL(12,2) NOT NULL,
-  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX idx_shift_transactions_shift ON shift_transactions (shift_id, created_at);
-
-ALTER TABLE shift_transactions ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "shift_transactions_tenant" ON shift_transactions
-  FOR ALL USING (
-    EXISTS (
-      SELECT 1 FROM shifts s
-      WHERE s.id = shift_id
-      AND s.entity_id = (auth.jwt() ->> 'entity_id')::UUID
-    )
-  );
-
--- ── Shift reconciliations (blind close results) ───────────────────────
-CREATE TABLE shift_reconciliations (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  shift_id        UUID NOT NULL UNIQUE REFERENCES shifts(id),
-  expected_total  DECIMAL(12,2) NOT NULL,
-  actual_count    DECIMAL(12,2) NOT NULL,
-  discrepancy     DECIMAL(12,2) NOT NULL,
-  classification  TEXT NOT NULL CHECK (classification IN ('OVERAGE', 'SHORTAGE', 'BALANCED')),
-  reviewed_by     UUID REFERENCES user_profiles(id),
-  reviewed_at     TIMESTAMPTZ,
-  notes           TEXT,
-  created_at      TIMESTAMPTZ DEFAULT NOW()
-);
-
-ALTER TABLE shift_reconciliations ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "shift_reconciliations_tenant" ON shift_reconciliations
-  FOR ALL USING (
-    EXISTS (
-      SELECT 1 FROM shifts s
-      WHERE s.id = shift_id
-      AND s.entity_id = (auth.jwt() ->> 'entity_id')::UUID
-    )
-  );
--- Migration 070: Discount type (flat/percentage) + audit trail
--- Adds discount_type and discount_value to cart_items and order_items.
--- discount stores the computed flat amount; discount_value stores the original input.
-
--- ── cart_items ──────────────────────────────────────────────────────────
-ALTER TABLE cart_items ADD COLUMN IF NOT EXISTS discount_type TEXT NOT NULL DEFAULT 'FLAT'
-  CHECK (discount_type IN ('FLAT', 'PERCENTAGE'));
-ALTER TABLE cart_items ADD COLUMN IF NOT EXISTS discount_value DECIMAL(12,2) NOT NULL DEFAULT 0;
-
--- ── order_items ─────────────────────────────────────────────────────────
-ALTER TABLE order_items ADD COLUMN IF NOT EXISTS discount_type TEXT NOT NULL DEFAULT 'FLAT'
-  CHECK (discount_type IN ('FLAT', 'PERCENTAGE'));
-ALTER TABLE order_items ADD COLUMN IF NOT EXISTS discount_value DECIMAL(12,2) NOT NULL DEFAULT 0;
-
--- ── Audit trigger for discount changes on order_items ───────────────────
-CREATE OR REPLACE FUNCTION public.audit_order_item_discount()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION "public"."sync_hsn_master_id_from_code_products"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
 BEGIN
-  IF OLD.discount IS DISTINCT FROM NEW.discount
-     OR OLD.discount_type IS DISTINCT FROM NEW.discount_type THEN
-    INSERT INTO audit_logs (table_name, record_id, operation, old_values, new_values, actor_id, actor_role)
-    VALUES (
-      'order_items',
-      NEW.id,
-      'UPDATE',
-      jsonb_build_object(
-        'discount', OLD.discount,
-        'discount_type', OLD.discount_type,
-        'discount_value', OLD.discount_value
-      ),
-      jsonb_build_object(
-        'discount', NEW.discount,
-        'discount_type', NEW.discount_type,
-        'discount_value', NEW.discount_value
-      ),
-      auth.uid(),
-      (auth.jwt() ->> 'sub_role')
-    );
+  -- Only sync if hsn_code is provided and hsn_master_id is not already set
+  IF NEW.hsn_code IS NOT NULL AND NEW.hsn_master_id IS NULL THEN
+    SELECT id INTO NEW.hsn_master_id
+    FROM hsn_master
+    WHERE code = NEW.hsn_code AND is_active = true
+    LIMIT 1;
+  END IF;
+
+  -- If hsn_code was cleared, also clear hsn_master_id
+  IF NEW.hsn_code IS NULL THEN
+    NEW.hsn_master_id := NULL;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."sync_hsn_master_id_from_code_products"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."sync_product_category_from_hsn"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  h hsn_master%ROWTYPE;
+BEGIN
+  IF NEW.hsn_master_id IS NOT NULL THEN
+    SELECT * INTO h FROM hsn_master WHERE id = NEW.hsn_master_id;
+    IF FOUND THEN
+      NEW.category       := COALESCE(NEW.category, h.category);
+      NEW.subcategory    := COALESCE(NEW.subcategory, h.short_description);
+      NEW.hsn_chapter    := h.chapter;
+      NEW.hsn_heading    := h.heading;
+      NEW.hsn_subheading := h.subheading;
+      NEW.hsn_code       := h.code;
+    END IF;
   END IF;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
-DROP TRIGGER IF EXISTS trg_order_item_discount_audit ON order_items;
-CREATE TRIGGER trg_order_item_discount_audit
-  AFTER UPDATE ON order_items
-  FOR EACH ROW EXECUTE FUNCTION public.audit_order_item_discount();
+
+ALTER FUNCTION "public"."sync_product_category_from_hsn"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."update_updated_at"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."update_updated_at"() OWNER TO "postgres";
+
+SET default_tablespace = '';
+
+SET default_table_access_method = "heap";
+
+
+CREATE TABLE IF NOT EXISTS "public"."audit_logs" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "table_name" "text" NOT NULL,
+    "record_id" "uuid",
+    "operation" "text" NOT NULL,
+    "old_values" "jsonb",
+    "new_values" "jsonb",
+    "actor_id" "uuid",
+    "actor_role" "text",
+    "ip_address" "text",
+    "user_agent" "text",
+    "timestamp" timestamp with time zone DEFAULT "now"(),
+    CONSTRAINT "audit_logs_operation_check" CHECK (("operation" = ANY (ARRAY['INSERT'::"text", 'UPDATE'::"text", 'DELETE'::"text", 'IMPERSONATE'::"text", 'AUTH'::"text"])))
+);
+
+
+ALTER TABLE "public"."audit_logs" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."cart_items" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "cart_id" "uuid" NOT NULL,
+    "product_id" "uuid" NOT NULL,
+    "sku" "text",
+    "name" "text" NOT NULL,
+    "quantity" integer DEFAULT 1 NOT NULL,
+    "unit_price" numeric(12,2) NOT NULL,
+    "discount" numeric(12,2) DEFAULT 0,
+    "gst_5" numeric(12,2) NOT NULL,
+    "total" numeric(12,2) NOT NULL,
+    "added_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    "package_id" "uuid",
+    "batch_id" "uuid",
+    "discount_type" "text" DEFAULT 'FLAT'::"text" NOT NULL,
+    "discount_value" numeric(12,2) DEFAULT 0 NOT NULL,
+    CONSTRAINT "cart_items_discount_type_check" CHECK (("discount_type" = ANY (ARRAY['FLAT'::"text", 'PERCENTAGE'::"text"])))
+);
+
+
+ALTER TABLE "public"."cart_items" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."carts" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "entity_id" "uuid" NOT NULL,
+    "customer_whatsapp" "text",
+    "buyer_hash" "text",
+    "status" "text" DEFAULT 'ACTIVE'::"text" NOT NULL,
+    "created_by" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    CONSTRAINT "carts_status_check" CHECK (("status" = ANY (ARRAY['ACTIVE'::"text", 'ABANDONED'::"text", 'CONVERTED'::"text"])))
+);
+
+
+ALTER TABLE "public"."carts" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."cash_registers" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "entity_id" "uuid" NOT NULL,
+    "name" "text" NOT NULL,
+    "default_opening_float" numeric(12,2) DEFAULT 0 NOT NULL,
+    "is_active" boolean DEFAULT true NOT NULL,
+    "created_by" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "machine_id" "text",
+    CONSTRAINT "cash_registers_default_opening_float_check" CHECK (("default_opening_float" >= (0)::numeric))
+);
+
+
+ALTER TABLE "public"."cash_registers" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."categories" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "name" "text" NOT NULL,
+    "distributor_id" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."categories" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."category_properties" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "category_id" "uuid",
+    "name" "text" NOT NULL,
+    "slug" "text" NOT NULL,
+    "data_type" "text" NOT NULL,
+    "is_required" boolean DEFAULT false,
+    "sort_order" integer DEFAULT 0,
+    "validation_rules" "jsonb" DEFAULT '{}'::"jsonb",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "hsn_chapter" "text",
+    "hsn_heading" "text",
+    "hsn_code" "text",
+    "applies_to_hsn_pattern" "text",
+    CONSTRAINT "category_properties_data_type_check" CHECK (("data_type" = ANY (ARRAY['text_single'::"text", 'text_multi'::"text", 'number'::"text", 'unit'::"text", 'datetime'::"text"])))
+);
+
+
+ALTER TABLE "public"."category_properties" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."consumer_accounts" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "phone" "text" NOT NULL,
+    "display_name" "text",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "last_order_at" timestamp with time zone
+);
+
+
+ALTER TABLE "public"."consumer_accounts" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."draft_purchase_items" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "draft_purchase_id" "uuid" NOT NULL,
+    "product_id" "uuid",
+    "raw_name" "text" NOT NULL,
+    "quantity" integer NOT NULL,
+    "unit" "text" DEFAULT 'pcs'::"text" NOT NULL,
+    "unit_price" numeric(10,2) DEFAULT 0 NOT NULL,
+    "total_price" numeric(12,2) DEFAULT 0 NOT NULL,
+    "match_confidence" numeric(3,2),
+    "match_status" "text" DEFAULT 'UNMATCHED'::"text" NOT NULL,
+    "sort_order" integer DEFAULT 0 NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "mrp" numeric(12,2),
+    "selling_price" numeric(12,2),
+    "batch_number" "text",
+    "batch_barcode" "text",
+    "expires_at" "date",
+    "manufactured_at" "date",
+    CONSTRAINT "draft_purchase_items_match_status_check" CHECK (("match_status" = ANY (ARRAY['MATCHED'::"text", 'PARTIAL'::"text", 'UNMATCHED'::"text"])))
+);
+
+
+ALTER TABLE "public"."draft_purchase_items" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."draft_purchases" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "entity_id" "uuid" NOT NULL,
+    "status" "text" DEFAULT 'DRAFT'::"text" NOT NULL,
+    "supplier_name" "text",
+    "bill_date" "date",
+    "bill_photo_url" "text",
+    "bill_photo_hash" "text",
+    "total_amount" numeric(12,2) DEFAULT 0,
+    "ocr_raw" "jsonb",
+    "notes" "text",
+    "created_by" "uuid",
+    "confirmed_at" timestamp with time zone,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    CONSTRAINT "draft_purchases_status_check" CHECK (("status" = ANY (ARRAY['DRAFT'::"text", 'REVIEWED'::"text", 'CONFIRMED'::"text", 'CANCELLED'::"text"])))
+);
+
+
+ALTER TABLE "public"."draft_purchases" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."entities" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "name" "text" NOT NULL,
+    "role" "text" NOT NULL,
+    "tpn_gstin" "text",
+    "whatsapp_no" "text",
+    "credit_limit" numeric(12,2) DEFAULT 0,
+    "is_active" boolean DEFAULT true,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    "shop_slug" "text",
+    "marketplace_bio" "text",
+    "marketplace_logo_url" "text",
+    "address" "text",
+    CONSTRAINT "entities_role_check" CHECK (("role" = ANY (ARRAY['SUPER_ADMIN'::"text", 'DISTRIBUTOR'::"text", 'WHOLESALER'::"text", 'RETAILER'::"text", 'CUSTOMER'::"text"])))
+);
+
+
+ALTER TABLE "public"."entities" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."entity_categories" (
+    "entity_id" "uuid" NOT NULL,
+    "category_id" "uuid" NOT NULL
+);
+
+
+ALTER TABLE "public"."entity_categories" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."entity_packages" (
+    "entity_id" "uuid" NOT NULL,
+    "package_id" "uuid" NOT NULL,
+    "is_default" boolean DEFAULT false,
+    "sort_order" integer DEFAULT 0
+);
+
+
+ALTER TABLE "public"."entity_packages" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."entity_product_specifications" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "entity_product_id" "uuid" NOT NULL,
+    "property_id" "uuid" NOT NULL,
+    "value_text" "text",
+    "value_number" numeric(12,2),
+    "value_unit" "text",
+    "value_datetime" timestamp with time zone,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."entity_product_specifications" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."entity_products" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "entity_id" "uuid" NOT NULL,
+    "master_product_id" "uuid" NOT NULL,
+    "sku" "text" NOT NULL,
+    "display_name" "text",
+    "barcode" "text",
+    "qr_code" "text",
+    "wholesale_price" numeric(12,2),
+    "mrp" numeric(12,2),
+    "gst_percent" numeric(5,2) DEFAULT 5.00,
+    "current_stock" integer DEFAULT 0,
+    "reorder_point" integer DEFAULT 10,
+    "is_active" boolean DEFAULT true,
+    "manufacturer_name" "text",
+    "manufacturer_brand" "text",
+    "country_of_origin" "text",
+    "batch_number" "text",
+    "manufactured_on" "date",
+    "expiry_date" "date",
+    "best_before" "date",
+    "vendor_notes" "text",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    "hsn_code" "text",
+    "hsn_master_id" "uuid",
+    "category" "text",
+    "subcategory" "text",
+    "hsn_chapter" "text",
+    "hsn_heading" "text",
+    "hsn_subheading" "text"
+);
+
+
+ALTER TABLE "public"."entity_products" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."hsn_master" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "code" "text" NOT NULL,
+    "code_8digit" "text",
+    "chapter" "text" NOT NULL,
+    "heading" "text" NOT NULL,
+    "subheading" "text",
+    "tariff_item" "text",
+    "description" "text" NOT NULL,
+    "short_description" "text",
+    "category" "text",
+    "customs_duty" numeric(5,2) DEFAULT 0,
+    "sales_tax" numeric(5,2) DEFAULT 0,
+    "green_tax" numeric(5,2) DEFAULT 0,
+    "tax_type" "text",
+    "is_active" boolean DEFAULT true,
+    "sort_order" integer DEFAULT 0,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."hsn_master" OWNER TO "postgres";
+
+
+CREATE OR REPLACE VIEW "public"."entity_products_with_hsn" AS
+ SELECT "ep"."id",
+    "ep"."entity_id",
+    "ep"."master_product_id",
+    "ep"."hsn_code",
+    "ep"."hsn_master_id",
+    "ep"."hsn_chapter",
+    "ep"."hsn_heading",
+    "ep"."hsn_subheading",
+    "ep"."category",
+    "ep"."subcategory",
+    "ep"."sku",
+    "ep"."display_name",
+    "ep"."barcode",
+    "ep"."qr_code",
+    "ep"."wholesale_price",
+    "ep"."mrp",
+    "ep"."gst_percent",
+    "ep"."current_stock",
+    "ep"."reorder_point",
+    "ep"."is_active",
+    "ep"."manufacturer_name",
+    "ep"."manufacturer_brand",
+    "ep"."country_of_origin",
+    "ep"."batch_number",
+    "ep"."manufactured_on",
+    "ep"."expiry_date",
+    "ep"."best_before",
+    "ep"."vendor_notes",
+    "ep"."created_at",
+    "ep"."updated_at",
+    "hsn"."customs_duty",
+    "hsn"."sales_tax",
+    "hsn"."green_tax",
+    "hsn"."tax_type",
+        CASE
+            WHEN ("ep"."category" IS NOT NULL) THEN "ep"."category"
+            ELSE "hsn"."category"
+        END AS "display_category",
+        CASE
+            WHEN ("ep"."subcategory" IS NOT NULL) THEN "ep"."subcategory"
+            ELSE "hsn"."short_description"
+        END AS "display_subcategory",
+    "e"."name" AS "entity_name",
+    "e"."role" AS "entity_role"
+   FROM (("public"."entity_products" "ep"
+     LEFT JOIN "public"."hsn_master" "hsn" ON (("ep"."hsn_master_id" = "hsn"."id")))
+     LEFT JOIN "public"."entities" "e" ON (("ep"."entity_id" = "e"."id")));
+
+
+ALTER VIEW "public"."entity_products_with_hsn" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."face_profiles" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "entity_id" "uuid" NOT NULL,
+    "whatsapp_no" "text" NOT NULL,
+    "name" "text",
+    "embedding" "public"."vector"(512),
+    "consent_at" timestamp with time zone NOT NULL,
+    "consent_token" "text" NOT NULL,
+    "deleted_at" timestamp with time zone,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."face_profiles" OWNER TO "postgres";
+
+
+CREATE OR REPLACE VIEW "public"."hsn_code_properties" AS
+ SELECT "hsn"."code",
+    "hsn"."chapter",
+    "hsn"."heading",
+    "hsn"."subheading",
+    "hsn"."category",
+    "cp"."property_id",
+    "cp"."property_name",
+    "cp"."slug",
+    "cp"."data_type",
+    "cp"."is_required",
+    "cp"."validation_rules",
+    "cp"."sort_order",
+    "cp"."applies_to_hsn_pattern"
+   FROM ("public"."hsn_master" "hsn"
+     LEFT JOIN LATERAL "public"."get_hsn_properties"("hsn"."code") "cp"("property_id", "property_name", "slug", "data_type", "is_required", "validation_rules", "sort_order", "applies_to_hsn_pattern") ON (true))
+  WHERE ("hsn"."is_active" = true);
+
+
+ALTER VIEW "public"."hsn_code_properties" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."inventory_movements" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "product_id" "uuid" NOT NULL,
+    "entity_id" "uuid" NOT NULL,
+    "movement_type" "text" NOT NULL,
+    "quantity" integer NOT NULL,
+    "reference_id" "uuid",
+    "notes" "text",
+    "created_by" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "batch_id" "uuid",
+    "package_id" "uuid",
+    "package_qty" integer,
+    "external_id" "text",
+    CONSTRAINT "inventory_movements_movement_type_check" CHECK (("movement_type" = ANY (ARRAY['SALE'::"text", 'RESTOCK'::"text", 'TRANSFER'::"text", 'LOSS'::"text", 'DAMAGED'::"text", 'RETURN'::"text"])))
+);
+
+
+ALTER TABLE "public"."inventory_movements" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."khata_accounts" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "creditor_entity_id" "uuid" NOT NULL,
+    "party_type" "text" NOT NULL,
+    "debtor_entity_id" "uuid",
+    "debtor_phone" "text",
+    "debtor_name" "text",
+    "debtor_face_id_hash" "text",
+    "credit_limit" numeric(12,2) DEFAULT 0 NOT NULL,
+    "outstanding_balance" numeric(12,2) DEFAULT 0 NOT NULL,
+    "credit_term_days" integer DEFAULT 30 NOT NULL,
+    "status" "text" DEFAULT 'ACTIVE'::"text" NOT NULL,
+    "last_payment_at" timestamp with time zone,
+    "created_by" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    CONSTRAINT "khata_accounts_party_type_check" CHECK (("party_type" = ANY (ARRAY['CONSUMER'::"text", 'RETAILER'::"text", 'WHOLESALER'::"text", 'SUPPLIER'::"text"]))),
+    CONSTRAINT "khata_accounts_status_check" CHECK (("status" = ANY (ARRAY['ACTIVE'::"text", 'FROZEN'::"text", 'CLOSED'::"text"])))
+);
+
+
+ALTER TABLE "public"."khata_accounts" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."khata_alerts" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "khata_account_id" "uuid" NOT NULL,
+    "repayment_id" "uuid",
+    "alert_type" "text" NOT NULL,
+    "sent_to" "text" NOT NULL,
+    "whatsapp_status" "text" DEFAULT 'PENDING'::"text",
+    "sent_at" timestamp with time zone DEFAULT "now"(),
+    CONSTRAINT "khata_alerts_alert_type_check" CHECK (("alert_type" = ANY (ARRAY['PRE_DUE_3D'::"text", 'DUE_TODAY'::"text", 'OVERDUE_3D'::"text", 'OVERDUE_30D'::"text", 'MONTHLY_REMINDER'::"text"]))),
+    CONSTRAINT "khata_alerts_sent_to_check" CHECK (("sent_to" = ANY (ARRAY['CREDITOR'::"text", 'DEBTOR'::"text", 'BOTH'::"text"]))),
+    CONSTRAINT "khata_alerts_whatsapp_status_check" CHECK (("whatsapp_status" = ANY (ARRAY['PENDING'::"text", 'SENT'::"text", 'DELIVERED'::"text", 'READ'::"text", 'FAILED'::"text"])))
+);
+
+
+ALTER TABLE "public"."khata_alerts" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."khata_repayments" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "khata_account_id" "uuid" NOT NULL,
+    "amount" numeric(12,2) NOT NULL,
+    "payment_method" "text" NOT NULL,
+    "status" "text" DEFAULT 'CREATED'::"text" NOT NULL,
+    "due_date" "date",
+    "reference_no" "text",
+    "notes" "text",
+    "created_by" "uuid",
+    "confirmed_by" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "confirmed_at" timestamp with time zone,
+    CONSTRAINT "khata_repayments_payment_method_check" CHECK (("payment_method" = ANY (ARRAY['CASH'::"text", 'MBOB'::"text", 'MPAY'::"text", 'RTGS'::"text", 'BANK_TRANSFER'::"text"]))),
+    CONSTRAINT "khata_repayments_status_check" CHECK (("status" = ANY (ARRAY['CREATED'::"text", 'PAYMENT_MADE'::"text"])))
+);
+
+
+ALTER TABLE "public"."khata_repayments" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."khata_transactions" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "khata_account_id" "uuid" NOT NULL,
+    "order_id" "uuid",
+    "transaction_type" "text" NOT NULL,
+    "amount" numeric(12,2) NOT NULL,
+    "balance_after" numeric(12,2) NOT NULL,
+    "payment_method" "text",
+    "notes" "text",
+    "created_by" "uuid" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "external_id" "text",
+    CONSTRAINT "khata_transactions_payment_method_check" CHECK (("payment_method" = ANY (ARRAY['CASH'::"text", 'MBOB'::"text", 'MPAY'::"text", 'RTGS'::"text", 'BANK_TRANSFER'::"text"]))),
+    CONSTRAINT "khata_transactions_transaction_type_check" CHECK (("transaction_type" = ANY (ARRAY['DEBIT'::"text", 'CREDIT'::"text", 'ADJUSTMENT'::"text"])))
+);
+
+
+ALTER TABLE "public"."khata_transactions" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."order_cancellation_items" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "order_id" "uuid" NOT NULL,
+    "order_item_id" "uuid" NOT NULL,
+    "quantity" integer NOT NULL,
+    "reason" "text",
+    "cancelled_by" "uuid",
+    "cancelled_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."order_cancellation_items" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."order_items" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "order_id" "uuid" NOT NULL,
+    "product_id" "uuid",
+    "sku" "text",
+    "name" "text" NOT NULL,
+    "quantity" integer NOT NULL,
+    "unit_price" numeric(12,2) NOT NULL,
+    "discount" numeric(12,2) DEFAULT 0,
+    "gst_5" numeric(12,2) NOT NULL,
+    "total" numeric(12,2) NOT NULL,
+    "status" "text" DEFAULT 'ACTIVE'::"text" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "package_id" "uuid",
+    "package_name" "text",
+    "package_type" "text",
+    "matched" boolean DEFAULT true NOT NULL,
+    "raw_request_text" "text",
+    "match_confidence" numeric(3,2),
+    "batch_id" "uuid",
+    "unit_cost" numeric(12,2),
+    "batch_number" "text",
+    "batch_barcode" "text",
+    "expires_at" "date",
+    "manufactured_at" "date",
+    "discount_type" "text" DEFAULT 'FLAT'::"text" NOT NULL,
+    "discount_value" numeric(12,2) DEFAULT 0 NOT NULL,
+    "external_id" "text",
+    CONSTRAINT "order_items_discount_type_check" CHECK (("discount_type" = ANY (ARRAY['FLAT'::"text", 'PERCENTAGE'::"text"]))),
+    CONSTRAINT "order_items_status_check" CHECK (("status" = ANY (ARRAY['ACTIVE'::"text", 'CANCELLED'::"text", 'REFUNDED'::"text", 'REPLACED'::"text"])))
+);
+
+
+ALTER TABLE "public"."order_items" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."order_status_log" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "order_id" "uuid" NOT NULL,
+    "from_status" "text",
+    "to_status" "text" NOT NULL,
+    "actor_id" "uuid",
+    "actor_role" "text",
+    "reason" "text",
+    "metadata" "jsonb",
+    "created_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."order_status_log" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."orders" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "order_type" "text" NOT NULL,
+    "order_no" "text" NOT NULL,
+    "status" "text" DEFAULT 'DRAFT'::"text" NOT NULL,
+    "seller_id" "uuid" NOT NULL,
+    "buyer_id" "uuid",
+    "buyer_whatsapp" "text",
+    "buyer_hash" "text",
+    "items" "jsonb" NOT NULL,
+    "subtotal" numeric(12,2) NOT NULL,
+    "gst_total" numeric(12,2) NOT NULL,
+    "grand_total" numeric(12,2) NOT NULL,
+    "payment_method" "text",
+    "payment_ref" "text",
+    "payment_verified_at" timestamp with time zone,
+    "ocr_verify_id" "text",
+    "retry_count" integer DEFAULT 0,
+    "max_retries" integer DEFAULT 3,
+    "whatsapp_status" "text" DEFAULT 'PENDING'::"text",
+    "digital_signature" "text",
+    "created_by" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    "completed_at" timestamp with time zone,
+    "cancelled_at" timestamp with time zone,
+    "cancellation_reason" "text",
+    "cart_id" "uuid",
+    "order_source" "text" DEFAULT 'POS'::"text" NOT NULL,
+    "whatsapp_message_id" "text",
+    "buyer_phone" "text",
+    "payment_token" "text",
+    "payment_token_expires_at" timestamp with time zone,
+    "delivery_address" "text",
+    "delivery_lat" numeric(10,7),
+    "delivery_lng" numeric(10,7),
+    "pickup_otp" "text",
+    "pickup_otp_expires_at" timestamp with time zone,
+    "delivery_otp" "text",
+    "delivery_otp_expires_at" timestamp with time zone,
+    "rider_id" "uuid",
+    "rider_accepted_at" timestamp with time zone,
+    "purchase_order_id" "uuid",
+    "supplier_name" "text",
+    "supplier_ref" "text",
+    "expected_delivery" "date",
+    "received_at" timestamp with time zone,
+    "sales_order_id" "uuid",
+    "invoice_ref" "text",
+    "delivery_fee" numeric(10,2),
+    "delivery_fee_paid" boolean DEFAULT false NOT NULL,
+    "delivery_fee_receipt_url" "text",
+    "delivery_fee_confirmed_at" timestamp with time zone,
+    "payment_channel" "text",
+    "register_id" "uuid",
+    "origin" "text" DEFAULT 'CLOUD'::"text" NOT NULL,
+    CONSTRAINT "orders_order_source_check" CHECK (("order_source" = ANY (ARRAY['POS'::"text", 'WHATSAPP'::"text", 'MARKETPLACE_WEB'::"text"]))),
+    CONSTRAINT "orders_order_type_check" CHECK (("order_type" = ANY (ARRAY['POS_SALE'::"text", 'WHOLESALE'::"text", 'MARKETPLACE'::"text", 'PURCHASE_ORDER'::"text", 'PURCHASE_INVOICE'::"text", 'SALES_ORDER'::"text", 'SALES_INVOICE'::"text"]))),
+    CONSTRAINT "orders_origin_check" CHECK (("origin" = ANY (ARRAY['CLOUD'::"text", 'TERMINAL_SYNC'::"text"]))),
+    CONSTRAINT "orders_payment_method_check" CHECK (("payment_method" = ANY (ARRAY['CASH'::"text", 'CREDIT'::"text", 'ONLINE'::"text"]))),
+    CONSTRAINT "orders_status_check" CHECK (("status" = ANY (ARRAY['DRAFT'::"text", 'PENDING_PAYMENT'::"text", 'PAYMENT_VERIFYING'::"text", 'CONFIRMED'::"text", 'PROCESSING'::"text", 'DISPATCHED'::"text", 'DELIVERED'::"text", 'COMPLETED'::"text", 'PAYMENT_FAILED'::"text", 'CANCELLATION_REQUESTED'::"text", 'CANCELLED'::"text", 'REFUND_REQUESTED'::"text", 'REFUND_APPROVED'::"text", 'REFUND_REJECTED'::"text", 'REFUND_PROCESSING'::"text", 'REFUNDED'::"text", 'REPLACEMENT_REQUESTED'::"text", 'REPLACEMENT_DISPATCHED'::"text", 'REPLACEMENT_DELIVERED'::"text", 'SENT'::"text", 'PARTIALLY_RECEIVED'::"text", 'PAID'::"text", 'PARTIALLY_FULFILLED'::"text"]))),
+    CONSTRAINT "orders_whatsapp_status_check" CHECK (("whatsapp_status" = ANY (ARRAY['PENDING'::"text", 'SENT'::"text", 'DELIVERED'::"text", 'READ'::"text", 'FAILED'::"text"])))
+);
+
+
+ALTER TABLE "public"."orders" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."owner_stores" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "owner_id" "uuid" NOT NULL,
+    "entity_id" "uuid" NOT NULL,
+    "is_primary" boolean DEFAULT false NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+ALTER TABLE "public"."owner_stores" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."package_items" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "package_id" "uuid" NOT NULL,
+    "product_id" "uuid" NOT NULL,
+    "quantity" integer DEFAULT 1 NOT NULL
+);
+
+
+ALTER TABLE "public"."package_items" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."product_packages" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "name" "text" NOT NULL,
+    "package_type" "text" DEFAULT 'BULK'::"text" NOT NULL,
+    "barcode" "text",
+    "qr_code" "text",
+    "wholesale_price" numeric(12,2),
+    "mrp" numeric(12,2),
+    "hsn_code" "text",
+    "is_active" boolean DEFAULT true,
+    "created_by" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "product_id" "uuid",
+    CONSTRAINT "product_packages_package_type_check" CHECK (("package_type" = ANY (ARRAY['BULK'::"text", 'BUNDLE'::"text", 'MIXED'::"text", 'PALLET'::"text"])))
+);
+
+
+ALTER TABLE "public"."product_packages" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."products" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "name" "text" NOT NULL,
+    "sku" "text",
+    "hsn_code" "text" NOT NULL,
+    "image_url" "text",
+    "image_embedding" "public"."vector"(1536),
+    "current_stock" integer DEFAULT 0,
+    "wholesale_price" numeric(12,2),
+    "mrp" numeric(12,2),
+    "unit" "text" DEFAULT 'pcs'::"text",
+    "is_active" boolean DEFAULT true,
+    "created_by" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    "barcode" "text",
+    "qr_code" "text",
+    "reorder_point" integer DEFAULT 10,
+    "product_type" "text" DEFAULT 'SINGLE'::"text" NOT NULL,
+    "sold_as_package_only" boolean DEFAULT false NOT NULL,
+    "visible_on_web" boolean DEFAULT false NOT NULL,
+    "hsn_master_id" "uuid",
+    "category" "text",
+    "subcategory" "text",
+    "hsn_chapter" "text",
+    "hsn_heading" "text",
+    "hsn_subheading" "text",
+    "selling_price" numeric(12,2),
+    CONSTRAINT "products_product_type_check" CHECK (("product_type" = ANY (ARRAY['SINGLE'::"text", 'PACKAGE'::"text"])))
+);
+
+
+ALTER TABLE "public"."products" OWNER TO "postgres";
+
+
+CREATE OR REPLACE VIEW "public"."package_contents" AS
+ SELECT "pp"."id" AS "package_id",
+    "pp"."product_id" AS "package_product_id",
+    "pp"."package_type",
+    "pi"."product_id" AS "component_product_id",
+    "comp"."name" AS "component_name",
+    "comp"."image_url" AS "component_image",
+    "comp"."unit" AS "component_unit",
+    "pi"."quantity" AS "component_quantity",
+    "comp"."current_stock" AS "component_stock",
+    "floor"((("comp"."current_stock")::double precision / ("pi"."quantity")::double precision)) AS "component_supports_qty"
+   FROM (("public"."product_packages" "pp"
+     JOIN "public"."package_items" "pi" ON (("pi"."package_id" = "pp"."id")))
+     JOIN "public"."products" "comp" ON (("comp"."id" = "pi"."product_id")));
+
+
+ALTER VIEW "public"."package_contents" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."payment_attempts" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "order_id" "uuid" NOT NULL,
+    "attempt_number" integer NOT NULL,
+    "payment_method" "text" NOT NULL,
+    "gateway" "text",
+    "amount" numeric(12,2) NOT NULL,
+    "status" "text" NOT NULL,
+    "gateway_ref" "text",
+    "gateway_response" "jsonb",
+    "failure_code" "text",
+    "failure_reason" "text",
+    "initiated_at" timestamp with time zone DEFAULT "now"(),
+    "resolved_at" timestamp with time zone,
+    CONSTRAINT "payment_attempts_status_check" CHECK (("status" = ANY (ARRAY['PENDING'::"text", 'SUCCESS'::"text", 'FAILED'::"text", 'TIMEOUT'::"text", 'CANCELLED'::"text"])))
+);
+
+
+ALTER TABLE "public"."payment_attempts" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."pos_order_counters" (
+    "seller_id" "uuid" NOT NULL,
+    "year" integer NOT NULL,
+    "last_serial" integer DEFAULT 0 NOT NULL
+);
+
+
+ALTER TABLE "public"."pos_order_counters" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."product_batches" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "product_id" "uuid" NOT NULL,
+    "entity_id" "uuid" NOT NULL,
+    "batch_number" "text" NOT NULL,
+    "barcode" "text",
+    "qr_code" "text",
+    "manufactured_at" "date",
+    "expires_at" "date",
+    "quantity" integer DEFAULT 0 NOT NULL,
+    "unit_cost" numeric(12,2),
+    "status" "text" DEFAULT 'ACTIVE'::"text" NOT NULL,
+    "received_at" timestamp with time zone DEFAULT "now"(),
+    "notes" "text",
+    "mrp" numeric(12,2),
+    "selling_price" numeric(12,2),
+    CONSTRAINT "product_batches_status_check" CHECK (("status" = ANY (ARRAY['ACTIVE'::"text", 'EXPIRED'::"text", 'RECALLED'::"text", 'DEPLETED'::"text"])))
+);
+
+
+ALTER TABLE "public"."product_batches" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."product_categories" (
+    "product_id" "uuid" NOT NULL,
+    "category_id" "uuid" NOT NULL
+);
+
+
+ALTER TABLE "public"."product_categories" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."product_price_history" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "product_id" "uuid" NOT NULL,
+    "entity_id" "uuid",
+    "price_type" "text" NOT NULL,
+    "old_price" numeric(12,2),
+    "new_price" numeric(12,2) NOT NULL,
+    "changed_by" "uuid",
+    "changed_at" timestamp with time zone DEFAULT "now"(),
+    "reason" "text",
+    CONSTRAINT "product_price_history_price_type_check" CHECK (("price_type" = ANY (ARRAY['MRP'::"text", 'WHOLESALE'::"text", 'SELLING'::"text"])))
+);
+
+
+ALTER TABLE "public"."product_price_history" OWNER TO "postgres";
+
+
+CREATE OR REPLACE VIEW "public"."products_with_hsn" AS
+ SELECT "p"."id",
+    "p"."name",
+    "p"."sku",
+    "p"."hsn_code",
+    "p"."hsn_master_id",
+    "p"."hsn_chapter",
+    "p"."hsn_heading",
+    "p"."hsn_subheading",
+    "p"."category",
+    "p"."subcategory",
+    "p"."image_url",
+    "p"."current_stock",
+    "p"."wholesale_price",
+    "p"."mrp",
+    "p"."unit",
+    "p"."is_active",
+    "p"."created_by",
+    "p"."created_at",
+    "p"."updated_at",
+    "hsn"."customs_duty",
+    "hsn"."sales_tax",
+    "hsn"."green_tax",
+    "hsn"."tax_type",
+        CASE
+            WHEN ("p"."category" IS NOT NULL) THEN "p"."category"
+            ELSE "hsn"."category"
+        END AS "display_category",
+        CASE
+            WHEN ("p"."subcategory" IS NOT NULL) THEN "p"."subcategory"
+            ELSE "hsn"."short_description"
+        END AS "display_subcategory"
+   FROM ("public"."products" "p"
+     LEFT JOIN "public"."hsn_master" "hsn" ON (("p"."hsn_master_id" = "hsn"."id")));
+
+
+ALTER VIEW "public"."products_with_hsn" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."refunds" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "order_id" "uuid" NOT NULL,
+    "refund_type" "text" NOT NULL,
+    "refund_method" "text" NOT NULL,
+    "amount" numeric(12,2) NOT NULL,
+    "gst_reversal" numeric(12,2) NOT NULL,
+    "reason" "text" NOT NULL,
+    "requested_by" "uuid" NOT NULL,
+    "approved_by" "uuid",
+    "status" "text" DEFAULT 'REQUESTED'::"text" NOT NULL,
+    "gateway_ref" "text",
+    "processed_at" timestamp with time zone,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "order_item_id" "uuid",
+    "quantity" integer,
+    CONSTRAINT "refunds_refund_type_check" CHECK (("refund_type" = ANY (ARRAY['FULL'::"text", 'PARTIAL'::"text"]))),
+    CONSTRAINT "refunds_status_check" CHECK (("status" = ANY (ARRAY['REQUESTED'::"text", 'APPROVED'::"text", 'REJECTED'::"text", 'PROCESSING'::"text", 'COMPLETED'::"text", 'FAILED'::"text"])))
+);
+
+
+ALTER TABLE "public"."refunds" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."replacements" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "original_order_id" "uuid" NOT NULL,
+    "replacement_order_id" "uuid",
+    "reason" "text" NOT NULL,
+    "requested_by" "uuid" NOT NULL,
+    "approved_by" "uuid",
+    "status" "text" DEFAULT 'REQUESTED'::"text" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "order_item_id" "uuid",
+    "quantity" integer,
+    CONSTRAINT "replacements_status_check" CHECK (("status" = ANY (ARRAY['REQUESTED'::"text", 'APPROVED'::"text", 'REJECTED'::"text", 'DISPATCHED'::"text", 'DELIVERED'::"text"])))
+);
+
+
+ALTER TABLE "public"."replacements" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."retailer_wholesalers" (
+    "retailer_id" "uuid" NOT NULL,
+    "wholesaler_id" "uuid" NOT NULL,
+    "category_id" "uuid" NOT NULL,
+    "is_primary" boolean DEFAULT false,
+    "active" boolean DEFAULT true,
+    "created_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."retailer_wholesalers" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."riders" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "name" "text" NOT NULL,
+    "whatsapp_no" "text" NOT NULL,
+    "pin_hash" "text" NOT NULL,
+    "is_active" boolean DEFAULT true NOT NULL,
+    "is_available" boolean DEFAULT true NOT NULL,
+    "current_order_id" "uuid",
+    "auth_user_id" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "auth_email" "text",
+    "auth_password" "text"
+);
+
+
+ALTER TABLE "public"."riders" OWNER TO "postgres";
+
+
+CREATE OR REPLACE VIEW "public"."sellable_products" AS
+ SELECT "p"."id",
+    "p"."name",
+    "p"."sku",
+    "p"."hsn_code",
+    "p"."image_url",
+    "p"."mrp",
+    COALESCE("pb"."selling_price", "p"."selling_price", "p"."mrp") AS "selling_price",
+    "p"."wholesale_price",
+    "p"."unit",
+    "p"."is_active",
+    "p"."product_type",
+    "p"."sold_as_package_only",
+    "p"."reorder_point",
+        CASE
+            WHEN ("p"."product_type" = 'PACKAGE'::"text") THEN "public"."package_available_qty"("pp"."id")
+            ELSE "pb"."quantity"
+        END AS "available_stock",
+    "pp"."id" AS "package_def_id",
+    "pp"."package_type",
+    "pp"."barcode" AS "package_barcode",
+    "pb"."id" AS "batch_id",
+    "pb"."batch_number",
+    "pb"."expires_at",
+    "pb"."barcode" AS "batch_barcode",
+    "pb"."entity_id"
+   FROM (("public"."products" "p"
+     JOIN "public"."product_batches" "pb" ON ((("pb"."product_id" = "p"."id") AND ("pb"."entity_id" = "public"."auth_entity_id"()) AND ("pb"."status" = 'ACTIVE'::"text") AND ("pb"."quantity" > 0))))
+     LEFT JOIN "public"."product_packages" "pp" ON (("pp"."product_id" = "p"."id")))
+  WHERE (("p"."is_active" = true) AND ("p"."sold_as_package_only" = false));
+
+
+ALTER VIEW "public"."sellable_products" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."shift_reconciliations" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "shift_id" "uuid" NOT NULL,
+    "expected_total" numeric(12,2) NOT NULL,
+    "actual_count" numeric(12,2) NOT NULL,
+    "discrepancy" numeric(12,2) NOT NULL,
+    "classification" "text" NOT NULL,
+    "reviewed_by" "uuid",
+    "reviewed_at" timestamp with time zone,
+    "notes" "text",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    CONSTRAINT "shift_reconciliations_classification_check" CHECK (("classification" = ANY (ARRAY['OVERAGE'::"text", 'SHORTAGE'::"text", 'BALANCED'::"text"])))
+);
+
+
+ALTER TABLE "public"."shift_reconciliations" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."shift_transactions" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "shift_id" "uuid" NOT NULL,
+    "order_id" "uuid",
+    "transaction_type" "text" NOT NULL,
+    "payment_method" "text" NOT NULL,
+    "amount" numeric(12,2) NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "shift_transactions_payment_method_check" CHECK (("payment_method" = ANY (ARRAY['MBOB'::"text", 'MPAY'::"text", 'RTGS'::"text", 'CASH'::"text", 'CREDIT'::"text", 'UPI'::"text", 'ONLINE'::"text"]))),
+    CONSTRAINT "shift_transactions_transaction_type_check" CHECK (("transaction_type" = ANY (ARRAY['SALE'::"text", 'REFUND'::"text", 'VOID'::"text"])))
+);
+
+
+ALTER TABLE "public"."shift_transactions" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."shifts" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "entity_id" "uuid" NOT NULL,
+    "register_id" "uuid" NOT NULL,
+    "opened_by" "uuid" NOT NULL,
+    "closed_by" "uuid",
+    "opening_float" numeric(12,2) NOT NULL,
+    "closing_count" numeric(12,2),
+    "expected_total" numeric(12,2),
+    "discrepancy" numeric(12,2),
+    "status" "text" DEFAULT 'ACTIVE'::"text" NOT NULL,
+    "opened_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "closed_at" timestamp with time zone,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    CONSTRAINT "shifts_opening_float_check" CHECK (("opening_float" >= (0)::numeric)),
+    CONSTRAINT "shifts_status_check" CHECK (("status" = ANY (ARRAY['ACTIVE'::"text", 'CLOSING'::"text", 'CLOSED'::"text"])))
+);
+
+
+ALTER TABLE "public"."shifts" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."stock_predictions" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "product_id" "uuid" NOT NULL,
+    "entity_id" "uuid" NOT NULL,
+    "avg_daily_sales" numeric(10,2) DEFAULT 0 NOT NULL,
+    "weighted_ads" numeric(10,2) DEFAULT 0 NOT NULL,
+    "days_until_stockout" numeric(10,2),
+    "suggested_reorder_qty" numeric(10,2),
+    "status" "text" NOT NULL,
+    "calculated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "stock_predictions_status_check" CHECK (("status" = ANY (ARRAY['HEALTHY'::"text", 'AT_RISK'::"text", 'CRITICAL'::"text", 'INSUFFICIENT_DATA'::"text", 'DEAD_STOCK'::"text", 'ERROR'::"text"])))
+);
+
+
+ALTER TABLE "public"."stock_predictions" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."supplier_lead_times" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "product_id" "uuid",
+    "category_id" "uuid",
+    "supplier_id" "uuid",
+    "entity_id" "uuid" NOT NULL,
+    "lead_time_days" integer DEFAULT 7 NOT NULL,
+    "updated_by" "uuid",
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    "notes" "text",
+    CONSTRAINT "supplier_lead_times_lead_time_days_check" CHECK (("lead_time_days" > 0))
+);
+
+
+ALTER TABLE "public"."supplier_lead_times" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."terminal_tokens" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "entity_id" "uuid" NOT NULL,
+    "register_id" "uuid",
+    "token_hash" "text" NOT NULL,
+    "label" "text",
+    "is_active" boolean DEFAULT true NOT NULL,
+    "last_seen_at" timestamp with time zone,
+    "created_by" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+ALTER TABLE "public"."terminal_tokens" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."units" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "name" "text" NOT NULL,
+    "abbreviation" "text" NOT NULL,
+    "category" "text",
+    "is_active" boolean DEFAULT true,
+    "sort_order" integer DEFAULT 0,
+    "created_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."units" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."user_profiles" (
+    "id" "uuid" NOT NULL,
+    "entity_id" "uuid" NOT NULL,
+    "role" "text" NOT NULL,
+    "sub_role" "text" NOT NULL,
+    "permissions" "text"[] DEFAULT '{}'::"text"[],
+    "full_name" "text",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    CONSTRAINT "user_profiles_role_check" CHECK (("role" = ANY (ARRAY['SUPER_ADMIN'::"text", 'DISTRIBUTOR'::"text", 'WHOLESALER'::"text", 'RETAILER'::"text", 'CUSTOMER'::"text"]))),
+    CONSTRAINT "user_profiles_sub_role_check" CHECK (("sub_role" = ANY (ARRAY['OWNER'::"text", 'MANAGER'::"text", 'CASHIER'::"text", 'STAFF'::"text", 'ADMIN'::"text", 'CUSTOMER'::"text"])))
+);
+
+
+ALTER TABLE "public"."user_profiles" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."whatsapp_otps" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "phone" "text" NOT NULL,
+    "otp_hash" "text" NOT NULL,
+    "expires_at" timestamp with time zone NOT NULL,
+    "used" boolean DEFAULT false,
+    "attempt_count" integer DEFAULT 0,
+    "created_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."whatsapp_otps" OWNER TO "postgres";
+
+
+ALTER TABLE ONLY "public"."audit_logs"
+    ADD CONSTRAINT "audit_logs_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."cart_items"
+    ADD CONSTRAINT "cart_items_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."carts"
+    ADD CONSTRAINT "carts_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."cash_registers"
+    ADD CONSTRAINT "cash_registers_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."categories"
+    ADD CONSTRAINT "categories_name_key" UNIQUE ("name");
+
+
+
+ALTER TABLE ONLY "public"."categories"
+    ADD CONSTRAINT "categories_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."category_properties"
+    ADD CONSTRAINT "category_properties_hsn_heading_slug_key" UNIQUE ("hsn_chapter", "hsn_heading", "slug");
+
+
+
+ALTER TABLE ONLY "public"."category_properties"
+    ADD CONSTRAINT "category_properties_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."consumer_accounts"
+    ADD CONSTRAINT "consumer_accounts_phone_key" UNIQUE ("phone");
+
+
+
+ALTER TABLE ONLY "public"."consumer_accounts"
+    ADD CONSTRAINT "consumer_accounts_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."draft_purchase_items"
+    ADD CONSTRAINT "draft_purchase_items_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."draft_purchases"
+    ADD CONSTRAINT "draft_purchases_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."entities"
+    ADD CONSTRAINT "entities_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."entities"
+    ADD CONSTRAINT "entities_shop_slug_key" UNIQUE ("shop_slug");
+
+
+
+ALTER TABLE ONLY "public"."entities"
+    ADD CONSTRAINT "entities_tpn_gstin_key" UNIQUE ("tpn_gstin");
+
+
+
+ALTER TABLE ONLY "public"."entity_categories"
+    ADD CONSTRAINT "entity_categories_pkey" PRIMARY KEY ("entity_id", "category_id");
+
+
+
+ALTER TABLE ONLY "public"."entity_packages"
+    ADD CONSTRAINT "entity_packages_pkey" PRIMARY KEY ("entity_id", "package_id");
+
+
+
+ALTER TABLE ONLY "public"."entity_product_specifications"
+    ADD CONSTRAINT "entity_product_specifications_entity_product_id_property_id_key" UNIQUE ("entity_product_id", "property_id");
+
+
+
+ALTER TABLE ONLY "public"."entity_product_specifications"
+    ADD CONSTRAINT "entity_product_specifications_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."entity_products"
+    ADD CONSTRAINT "entity_products_entity_id_sku_key" UNIQUE ("entity_id", "sku");
+
+
+
+ALTER TABLE ONLY "public"."entity_products"
+    ADD CONSTRAINT "entity_products_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."face_profiles"
+    ADD CONSTRAINT "face_profiles_consent_token_key" UNIQUE ("consent_token");
+
+
+
+ALTER TABLE ONLY "public"."face_profiles"
+    ADD CONSTRAINT "face_profiles_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."hsn_master"
+    ADD CONSTRAINT "hsn_master_code_8digit_key" UNIQUE ("code_8digit");
+
+
+
+ALTER TABLE ONLY "public"."hsn_master"
+    ADD CONSTRAINT "hsn_master_code_key" UNIQUE ("code");
+
+
+
+ALTER TABLE ONLY "public"."hsn_master"
+    ADD CONSTRAINT "hsn_master_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."inventory_movements"
+    ADD CONSTRAINT "inventory_movements_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."khata_accounts"
+    ADD CONSTRAINT "khata_accounts_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."khata_alerts"
+    ADD CONSTRAINT "khata_alerts_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."khata_repayments"
+    ADD CONSTRAINT "khata_repayments_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."khata_transactions"
+    ADD CONSTRAINT "khata_transactions_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."order_cancellation_items"
+    ADD CONSTRAINT "order_cancellation_items_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."order_items"
+    ADD CONSTRAINT "order_items_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."order_status_log"
+    ADD CONSTRAINT "order_status_log_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."orders"
+    ADD CONSTRAINT "orders_order_no_key" UNIQUE ("order_no");
+
+
+
+ALTER TABLE ONLY "public"."orders"
+    ADD CONSTRAINT "orders_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."owner_stores"
+    ADD CONSTRAINT "owner_stores_owner_id_entity_id_key" UNIQUE ("owner_id", "entity_id");
+
+
+
+ALTER TABLE ONLY "public"."owner_stores"
+    ADD CONSTRAINT "owner_stores_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."package_items"
+    ADD CONSTRAINT "package_items_package_id_product_id_key" UNIQUE ("package_id", "product_id");
+
+
+
+ALTER TABLE ONLY "public"."package_items"
+    ADD CONSTRAINT "package_items_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."payment_attempts"
+    ADD CONSTRAINT "payment_attempts_order_id_attempt_number_key" UNIQUE ("order_id", "attempt_number");
+
+
+
+ALTER TABLE ONLY "public"."payment_attempts"
+    ADD CONSTRAINT "payment_attempts_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."pos_order_counters"
+    ADD CONSTRAINT "pos_order_counters_pkey" PRIMARY KEY ("seller_id", "year");
+
+
+
+ALTER TABLE ONLY "public"."product_batches"
+    ADD CONSTRAINT "product_batches_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."product_batches"
+    ADD CONSTRAINT "product_batches_product_id_entity_id_batch_number_key" UNIQUE ("product_id", "entity_id", "batch_number");
+
+
+
+ALTER TABLE ONLY "public"."product_categories"
+    ADD CONSTRAINT "product_categories_pkey" PRIMARY KEY ("product_id", "category_id");
+
+
+
+ALTER TABLE ONLY "public"."product_packages"
+    ADD CONSTRAINT "product_packages_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."product_packages"
+    ADD CONSTRAINT "product_packages_product_id_key" UNIQUE ("product_id");
+
+
+
+ALTER TABLE ONLY "public"."product_price_history"
+    ADD CONSTRAINT "product_price_history_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."products"
+    ADD CONSTRAINT "products_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."products"
+    ADD CONSTRAINT "products_sku_key" UNIQUE ("sku");
+
+
+
+ALTER TABLE ONLY "public"."refunds"
+    ADD CONSTRAINT "refunds_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."replacements"
+    ADD CONSTRAINT "replacements_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."retailer_wholesalers"
+    ADD CONSTRAINT "retailer_wholesalers_pkey" PRIMARY KEY ("retailer_id", "wholesaler_id", "category_id");
+
+
+
+ALTER TABLE ONLY "public"."riders"
+    ADD CONSTRAINT "riders_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."riders"
+    ADD CONSTRAINT "riders_whatsapp_no_key" UNIQUE ("whatsapp_no");
+
+
+
+ALTER TABLE ONLY "public"."shift_reconciliations"
+    ADD CONSTRAINT "shift_reconciliations_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."shift_reconciliations"
+    ADD CONSTRAINT "shift_reconciliations_shift_id_key" UNIQUE ("shift_id");
+
+
+
+ALTER TABLE ONLY "public"."shift_transactions"
+    ADD CONSTRAINT "shift_transactions_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."shifts"
+    ADD CONSTRAINT "shifts_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."stock_predictions"
+    ADD CONSTRAINT "stock_predictions_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."stock_predictions"
+    ADD CONSTRAINT "stock_predictions_product_id_entity_id_calculated_at_key" UNIQUE ("product_id", "entity_id", "calculated_at");
+
+
+
+ALTER TABLE ONLY "public"."supplier_lead_times"
+    ADD CONSTRAINT "supplier_lead_times_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."terminal_tokens"
+    ADD CONSTRAINT "terminal_tokens_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."terminal_tokens"
+    ADD CONSTRAINT "terminal_tokens_token_hash_key" UNIQUE ("token_hash");
+
+
+
+ALTER TABLE ONLY "public"."units"
+    ADD CONSTRAINT "units_abbreviation_key" UNIQUE ("abbreviation");
+
+
+
+ALTER TABLE ONLY "public"."units"
+    ADD CONSTRAINT "units_name_key" UNIQUE ("name");
+
+
+
+ALTER TABLE ONLY "public"."units"
+    ADD CONSTRAINT "units_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."khata_accounts"
+    ADD CONSTRAINT "uq_khata_creditor_debtor" UNIQUE ("creditor_entity_id", "debtor_entity_id", "debtor_phone");
+
+
+
+ALTER TABLE ONLY "public"."supplier_lead_times"
+    ADD CONSTRAINT "uq_slt_category_supplier" UNIQUE ("category_id", "supplier_id");
+
+
+
+ALTER TABLE ONLY "public"."supplier_lead_times"
+    ADD CONSTRAINT "uq_slt_product_supplier" UNIQUE ("product_id", "supplier_id");
+
+
+
+ALTER TABLE ONLY "public"."user_profiles"
+    ADD CONSTRAINT "user_profiles_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."whatsapp_otps"
+    ADD CONSTRAINT "whatsapp_otps_pkey" PRIMARY KEY ("id");
+
+
+
+CREATE INDEX "idx_audit_logs_actor" ON "public"."audit_logs" USING "btree" ("actor_id");
+
+
+
+CREATE INDEX "idx_audit_logs_record" ON "public"."audit_logs" USING "btree" ("record_id");
+
+
+
+CREATE INDEX "idx_audit_logs_table" ON "public"."audit_logs" USING "btree" ("table_name");
+
+
+
+CREATE INDEX "idx_audit_logs_timestamp" ON "public"."audit_logs" USING "btree" ("timestamp" DESC);
+
+
+
+CREATE UNIQUE INDEX "idx_batches_barcode_entity" ON "public"."product_batches" USING "btree" ("entity_id", "barcode") WHERE ("barcode" IS NOT NULL);
+
+
+
+CREATE INDEX "idx_batches_entity" ON "public"."product_batches" USING "btree" ("entity_id");
+
+
+
+CREATE INDEX "idx_batches_expires" ON "public"."product_batches" USING "btree" ("expires_at");
+
+
+
+CREATE INDEX "idx_batches_product" ON "public"."product_batches" USING "btree" ("product_id");
+
+
+
+CREATE INDEX "idx_batches_status" ON "public"."product_batches" USING "btree" ("status");
+
+
+
+CREATE INDEX "idx_cancel_items_order" ON "public"."order_cancellation_items" USING "btree" ("order_id");
+
+
+
+CREATE INDEX "idx_cart_items_cart" ON "public"."cart_items" USING "btree" ("cart_id");
+
+
+
+CREATE INDEX "idx_cart_items_product" ON "public"."cart_items" USING "btree" ("product_id");
+
+
+
+CREATE INDEX "idx_carts_entity" ON "public"."carts" USING "btree" ("entity_id");
+
+
+
+CREATE INDEX "idx_carts_status" ON "public"."carts" USING "btree" ("status");
+
+
+
+CREATE INDEX "idx_cash_registers_entity" ON "public"."cash_registers" USING "btree" ("entity_id", "is_active");
+
+
+
+CREATE UNIQUE INDEX "idx_cash_registers_entity_machine" ON "public"."cash_registers" USING "btree" ("entity_id", "machine_id");
+
+
+
+CREATE INDEX "idx_category_properties_hsn_chapter" ON "public"."category_properties" USING "btree" ("hsn_chapter");
+
+
+
+CREATE INDEX "idx_category_properties_hsn_code" ON "public"."category_properties" USING "btree" ("hsn_code");
+
+
+
+CREATE INDEX "idx_category_properties_hsn_heading" ON "public"."category_properties" USING "btree" ("hsn_heading");
+
+
+
+CREATE INDEX "idx_consumer_accounts_phone" ON "public"."consumer_accounts" USING "btree" ("phone");
+
+
+
+CREATE INDEX "idx_draft_purchase_items_draft" ON "public"."draft_purchase_items" USING "btree" ("draft_purchase_id");
+
+
+
+CREATE INDEX "idx_draft_purchases_entity" ON "public"."draft_purchases" USING "btree" ("entity_id", "status");
+
+
+
+CREATE INDEX "idx_draft_purchases_hash" ON "public"."draft_purchases" USING "btree" ("bill_photo_hash") WHERE ("bill_photo_hash" IS NOT NULL);
+
+
+
+CREATE UNIQUE INDEX "idx_entities_shop_slug" ON "public"."entities" USING "btree" ("shop_slug") WHERE ("shop_slug" IS NOT NULL);
+
+
+
+CREATE INDEX "idx_entity_categories_category" ON "public"."entity_categories" USING "btree" ("category_id");
+
+
+
+CREATE INDEX "idx_entity_categories_entity" ON "public"."entity_categories" USING "btree" ("entity_id");
+
+
+
+CREATE INDEX "idx_entity_packages_entity" ON "public"."entity_packages" USING "btree" ("entity_id");
+
+
+
+CREATE INDEX "idx_entity_product_specs_entity_product" ON "public"."entity_product_specifications" USING "btree" ("entity_product_id");
+
+
+
+CREATE INDEX "idx_entity_product_specs_property" ON "public"."entity_product_specifications" USING "btree" ("property_id");
+
+
+
+CREATE INDEX "idx_entity_products_active" ON "public"."entity_products" USING "btree" ("entity_id", "is_active") WHERE ("is_active" = true);
+
+
+
+CREATE INDEX "idx_entity_products_category" ON "public"."entity_products" USING "btree" ("category");
+
+
+
+CREATE INDEX "idx_entity_products_entity" ON "public"."entity_products" USING "btree" ("entity_id");
+
+
+
+CREATE INDEX "idx_entity_products_expiry" ON "public"."entity_products" USING "btree" ("expiry_date") WHERE ("expiry_date" IS NOT NULL);
+
+
+
+CREATE INDEX "idx_entity_products_hsn_master" ON "public"."entity_products" USING "btree" ("hsn_master_id");
+
+
+
+CREATE INDEX "idx_entity_products_master" ON "public"."entity_products" USING "btree" ("master_product_id");
+
+
+
+CREATE INDEX "idx_entity_products_sku" ON "public"."entity_products" USING "btree" ("sku");
+
+
+
+CREATE INDEX "idx_entity_products_subcategory" ON "public"."entity_products" USING "btree" ("subcategory");
+
+
+
+CREATE INDEX "idx_face_profiles_embedding" ON "public"."face_profiles" USING "ivfflat" ("embedding" "public"."vector_cosine_ops") WITH ("lists"='50') WHERE ("deleted_at" IS NULL);
+
+
+
+CREATE INDEX "idx_face_profiles_entity" ON "public"."face_profiles" USING "btree" ("entity_id") WHERE ("deleted_at" IS NULL);
+
+
+
+CREATE INDEX "idx_face_profiles_whatsapp" ON "public"."face_profiles" USING "btree" ("whatsapp_no") WHERE ("deleted_at" IS NULL);
+
+
+
+CREATE INDEX "idx_hsn_master_active" ON "public"."hsn_master" USING "btree" ("is_active") WHERE ("is_active" = true);
+
+
+
+CREATE INDEX "idx_hsn_master_category" ON "public"."hsn_master" USING "btree" ("category");
+
+
+
+CREATE INDEX "idx_hsn_master_chapter" ON "public"."hsn_master" USING "btree" ("chapter");
+
+
+
+CREATE INDEX "idx_hsn_master_code" ON "public"."hsn_master" USING "btree" ("code");
+
+
+
+CREATE INDEX "idx_inventory_movements_created" ON "public"."inventory_movements" USING "btree" ("created_at" DESC);
+
+
+
+CREATE INDEX "idx_inventory_movements_entity" ON "public"."inventory_movements" USING "btree" ("entity_id");
+
+
+
+CREATE UNIQUE INDEX "idx_inventory_movements_external" ON "public"."inventory_movements" USING "btree" ("external_id");
+
+
+
+CREATE INDEX "idx_inventory_movements_product" ON "public"."inventory_movements" USING "btree" ("product_id");
+
+
+
+CREATE INDEX "idx_khata_accounts_creditor" ON "public"."khata_accounts" USING "btree" ("creditor_entity_id");
+
+
+
+CREATE INDEX "idx_khata_accounts_debtor_entity" ON "public"."khata_accounts" USING "btree" ("debtor_entity_id") WHERE ("debtor_entity_id" IS NOT NULL);
+
+
+
+CREATE INDEX "idx_khata_accounts_debtor_phone" ON "public"."khata_accounts" USING "btree" ("debtor_phone") WHERE ("debtor_phone" IS NOT NULL);
+
+
+
+CREATE INDEX "idx_khata_accounts_status" ON "public"."khata_accounts" USING "btree" ("status") WHERE ("status" = 'ACTIVE'::"text");
+
+
+
+CREATE INDEX "idx_khata_alerts_account" ON "public"."khata_alerts" USING "btree" ("khata_account_id");
+
+
+
+CREATE INDEX "idx_khata_repayments_account" ON "public"."khata_repayments" USING "btree" ("khata_account_id");
+
+
+
+CREATE INDEX "idx_khata_repayments_due" ON "public"."khata_repayments" USING "btree" ("due_date") WHERE (("due_date" IS NOT NULL) AND ("status" = 'CREATED'::"text"));
+
+
+
+CREATE INDEX "idx_khata_txn_account" ON "public"."khata_transactions" USING "btree" ("khata_account_id");
+
+
+
+CREATE INDEX "idx_khata_txn_date" ON "public"."khata_transactions" USING "btree" ("created_at" DESC);
+
+
+
+CREATE UNIQUE INDEX "idx_khata_txn_external" ON "public"."khata_transactions" USING "btree" ("external_id");
+
+
+
+CREATE INDEX "idx_khata_txn_order" ON "public"."khata_transactions" USING "btree" ("order_id") WHERE ("order_id" IS NOT NULL);
+
+
+
+CREATE UNIQUE INDEX "idx_order_items_external" ON "public"."order_items" USING "btree" ("external_id");
+
+
+
+CREATE INDEX "idx_order_items_order" ON "public"."order_items" USING "btree" ("order_id");
+
+
+
+CREATE INDEX "idx_order_items_product" ON "public"."order_items" USING "btree" ("product_id");
+
+
+
+CREATE INDEX "idx_order_items_status" ON "public"."order_items" USING "btree" ("status");
+
+
+
+CREATE INDEX "idx_order_status_log_order" ON "public"."order_status_log" USING "btree" ("order_id");
+
+
+
+CREATE INDEX "idx_orders_buyer" ON "public"."orders" USING "btree" ("buyer_id");
+
+
+
+CREATE INDEX "idx_orders_buyer_phone_date" ON "public"."orders" USING "btree" ("buyer_phone", "created_at") WHERE ("order_source" = 'WHATSAPP'::"text");
+
+
+
+CREATE INDEX "idx_orders_buyer_type" ON "public"."orders" USING "btree" ("buyer_id", "order_type");
+
+
+
+CREATE INDEX "idx_orders_created" ON "public"."orders" USING "btree" ("created_at" DESC);
+
+
+
+CREATE INDEX "idx_orders_payment_token" ON "public"."orders" USING "btree" ("payment_token") WHERE ("payment_token" IS NOT NULL);
+
+
+
+CREATE INDEX "idx_orders_purchase_order_id" ON "public"."orders" USING "btree" ("purchase_order_id") WHERE ("purchase_order_id" IS NOT NULL);
+
+
+
+CREATE INDEX "idx_orders_purchase_type" ON "public"."orders" USING "btree" ("order_type", "buyer_id") WHERE ("order_type" = ANY (ARRAY['PURCHASE_ORDER'::"text", 'PURCHASE_INVOICE'::"text"]));
+
+
+
+CREATE INDEX "idx_orders_register" ON "public"."orders" USING "btree" ("register_id");
+
+
+
+CREATE INDEX "idx_orders_rider_id" ON "public"."orders" USING "btree" ("rider_id") WHERE ("rider_id" IS NOT NULL);
+
+
+
+CREATE INDEX "idx_orders_sales_order_id" ON "public"."orders" USING "btree" ("sales_order_id") WHERE ("sales_order_id" IS NOT NULL);
+
+
+
+CREATE INDEX "idx_orders_sales_type" ON "public"."orders" USING "btree" ("order_type", "seller_id") WHERE ("order_type" = ANY (ARRAY['SALES_ORDER'::"text", 'SALES_INVOICE'::"text"]));
+
+
+
+CREATE INDEX "idx_orders_seller" ON "public"."orders" USING "btree" ("seller_id");
+
+
+
+CREATE INDEX "idx_orders_status" ON "public"."orders" USING "btree" ("status");
+
+
+
+CREATE INDEX "idx_owner_stores_entity" ON "public"."owner_stores" USING "btree" ("entity_id");
+
+
+
+CREATE INDEX "idx_owner_stores_owner" ON "public"."owner_stores" USING "btree" ("owner_id");
+
+
+
+CREATE INDEX "idx_package_items_package" ON "public"."package_items" USING "btree" ("package_id");
+
+
+
+CREATE INDEX "idx_package_items_product" ON "public"."package_items" USING "btree" ("product_id");
+
+
+
+CREATE UNIQUE INDEX "idx_packages_barcode" ON "public"."product_packages" USING "btree" ("barcode") WHERE ("barcode" IS NOT NULL);
+
+
+
+CREATE INDEX "idx_payment_attempts_order" ON "public"."payment_attempts" USING "btree" ("order_id");
+
+
+
+CREATE INDEX "idx_price_history_changed" ON "public"."product_price_history" USING "btree" ("changed_at" DESC);
+
+
+
+CREATE INDEX "idx_price_history_product" ON "public"."product_price_history" USING "btree" ("product_id");
+
+
+
+CREATE INDEX "idx_product_categories_category" ON "public"."product_categories" USING "btree" ("category_id");
+
+
+
+CREATE INDEX "idx_product_categories_product" ON "public"."product_categories" USING "btree" ("product_id");
+
+
+
+CREATE INDEX "idx_product_packages_product_id" ON "public"."product_packages" USING "btree" ("product_id") WHERE ("product_id" IS NOT NULL);
+
+
+
+CREATE UNIQUE INDEX "idx_products_barcode" ON "public"."products" USING "btree" ("barcode") WHERE ("barcode" IS NOT NULL);
+
+
+
+CREATE INDEX "idx_products_category" ON "public"."products" USING "btree" ("category");
+
+
+
+CREATE INDEX "idx_products_embedding" ON "public"."products" USING "ivfflat" ("image_embedding" "public"."vector_cosine_ops") WITH ("lists"='100');
+
+
+
+CREATE INDEX "idx_products_hsn_master" ON "public"."products" USING "btree" ("hsn_master_id");
+
+
+
+CREATE INDEX "idx_products_marketplace" ON "public"."products" USING "btree" ("created_by", "visible_on_web", "current_stock") WHERE (("visible_on_web" = true) AND ("current_stock" > 0));
+
+
+
+CREATE INDEX "idx_products_name_trgm" ON "public"."products" USING "gin" ("name" "public"."gin_trgm_ops");
+
+
+
+CREATE INDEX "idx_products_package_only" ON "public"."products" USING "btree" ("sold_as_package_only") WHERE ("sold_as_package_only" = true);
+
+
+
+CREATE INDEX "idx_products_subcategory" ON "public"."products" USING "btree" ("subcategory");
+
+
+
+CREATE INDEX "idx_products_type" ON "public"."products" USING "btree" ("product_type") WHERE ("is_active" = true);
+
+
+
+CREATE INDEX "idx_refunds_order" ON "public"."refunds" USING "btree" ("order_id");
+
+
+
+CREATE INDEX "idx_riders_available" ON "public"."riders" USING "btree" ("is_active", "is_available") WHERE ("is_active" = true);
+
+
+
+CREATE INDEX "idx_riders_whatsapp" ON "public"."riders" USING "btree" ("whatsapp_no");
+
+
+
+CREATE INDEX "idx_rw_category" ON "public"."retailer_wholesalers" USING "btree" ("category_id");
+
+
+
+CREATE INDEX "idx_rw_retailer" ON "public"."retailer_wholesalers" USING "btree" ("retailer_id");
+
+
+
+CREATE INDEX "idx_rw_wholesaler" ON "public"."retailer_wholesalers" USING "btree" ("wholesaler_id");
+
+
+
+CREATE INDEX "idx_shift_transactions_shift" ON "public"."shift_transactions" USING "btree" ("shift_id", "created_at");
+
+
+
+CREATE INDEX "idx_shifts_entity" ON "public"."shifts" USING "btree" ("entity_id", "opened_at" DESC);
+
+
+
+CREATE UNIQUE INDEX "idx_shifts_one_active_per_register" ON "public"."shifts" USING "btree" ("register_id") WHERE ("status" = ANY (ARRAY['ACTIVE'::"text", 'CLOSING'::"text"]));
+
+
+
+CREATE INDEX "idx_slt_category" ON "public"."supplier_lead_times" USING "btree" ("category_id") WHERE ("category_id" IS NOT NULL);
+
+
+
+CREATE INDEX "idx_slt_entity" ON "public"."supplier_lead_times" USING "btree" ("entity_id");
+
+
+
+CREATE INDEX "idx_slt_product" ON "public"."supplier_lead_times" USING "btree" ("product_id") WHERE ("product_id" IS NOT NULL);
+
+
+
+CREATE INDEX "idx_stock_pred_days" ON "public"."stock_predictions" USING "btree" ("entity_id", "days_until_stockout");
+
+
+
+CREATE INDEX "idx_stock_pred_latest" ON "public"."stock_predictions" USING "btree" ("entity_id", "calculated_at" DESC);
+
+
+
+CREATE INDEX "idx_stock_pred_status" ON "public"."stock_predictions" USING "btree" ("entity_id", "status");
+
+
+
+CREATE INDEX "idx_terminal_tokens_entity" ON "public"."terminal_tokens" USING "btree" ("entity_id", "is_active");
+
+
+
+CREATE INDEX "idx_user_profiles_entity" ON "public"."user_profiles" USING "btree" ("entity_id");
+
+
+
+CREATE INDEX "idx_whatsapp_otps_cleanup" ON "public"."whatsapp_otps" USING "btree" ("created_at") WHERE ("used" = true);
+
+
+
+CREATE INDEX "idx_whatsapp_otps_lookup" ON "public"."whatsapp_otps" USING "btree" ("phone", "used", "expires_at" DESC);
+
+
+
+CREATE OR REPLACE TRIGGER "batch_auto_deplete" BEFORE UPDATE OF "quantity" ON "public"."product_batches" FOR EACH ROW EXECUTE FUNCTION "public"."auto_deplete_batch"();
+
+
+
+CREATE OR REPLACE TRIGGER "cart_items_updated_at" BEFORE UPDATE ON "public"."cart_items" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
+
+
+
+CREATE OR REPLACE TRIGGER "carts_updated_at" BEFORE UPDATE ON "public"."carts" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
+
+
+
+CREATE OR REPLACE TRIGGER "entities_updated_at" BEFORE UPDATE ON "public"."entities" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
+
+
+
+CREATE OR REPLACE TRIGGER "face_profiles_updated_at" BEFORE UPDATE ON "public"."face_profiles" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
+
+
+
+CREATE OR REPLACE TRIGGER "inventory_movement_apply" AFTER INSERT ON "public"."inventory_movements" FOR EACH ROW EXECUTE FUNCTION "public"."apply_inventory_movement"();
+
+
+
+CREATE OR REPLACE TRIGGER "inventory_sync_batch" AFTER INSERT ON "public"."inventory_movements" FOR EACH ROW EXECUTE FUNCTION "public"."sync_batch_quantity"();
+
+
+
+CREATE OR REPLACE TRIGGER "khata_repayment_apply" AFTER UPDATE ON "public"."khata_repayments" FOR EACH ROW EXECUTE FUNCTION "public"."khata_apply_repayment"();
+
+
+
+CREATE OR REPLACE TRIGGER "order_items_restore_on_cancel" AFTER UPDATE ON "public"."order_items" FOR EACH ROW EXECUTE FUNCTION "public"."restore_stock_on_item_cancel"();
+
+
+
+CREATE OR REPLACE TRIGGER "order_items_restore_on_refund" AFTER UPDATE ON "public"."order_items" FOR EACH ROW EXECUTE FUNCTION "public"."restore_stock_on_item_refund"();
+
+
+
+CREATE OR REPLACE TRIGGER "orders_convert_cart" AFTER UPDATE ON "public"."orders" FOR EACH ROW EXECUTE FUNCTION "public"."convert_cart_on_confirm"();
+
+
+
+CREATE OR REPLACE TRIGGER "orders_deduct_on_sales_invoice" AFTER INSERT OR UPDATE OF "status" ON "public"."orders" FOR EACH ROW EXECUTE FUNCTION "public"."deduct_stock_on_sales_invoice"();
+
+
+
+CREATE OR REPLACE TRIGGER "orders_deduct_stock" AFTER INSERT OR UPDATE OF "status" ON "public"."orders" FOR EACH ROW WHEN (("new"."origin" IS DISTINCT FROM 'TERMINAL_SYNC'::"text")) EXECUTE FUNCTION "public"."deduct_stock_on_confirm"();
+
+
+
+CREATE OR REPLACE TRIGGER "orders_guard_stock" BEFORE INSERT OR UPDATE OF "status" ON "public"."orders" FOR EACH ROW WHEN (("new"."origin" IS DISTINCT FROM 'TERMINAL_SYNC'::"text")) EXECUTE FUNCTION "public"."guard_stock_on_confirm"();
+
+
+
+CREATE OR REPLACE TRIGGER "orders_khata_cancel" AFTER UPDATE ON "public"."orders" FOR EACH ROW WHEN (("new"."origin" IS DISTINCT FROM 'TERMINAL_SYNC'::"text")) EXECUTE FUNCTION "public"."khata_credit_on_cancel"();
+
+
+
+CREATE OR REPLACE TRIGGER "orders_khata_debit" AFTER UPDATE ON "public"."orders" FOR EACH ROW WHEN (("new"."origin" IS DISTINCT FROM 'TERMINAL_SYNC'::"text")) EXECUTE FUNCTION "public"."khata_debit_on_confirm"();
+
+
+
+CREATE OR REPLACE TRIGGER "orders_restock_buyer" AFTER UPDATE ON "public"."orders" FOR EACH ROW EXECUTE FUNCTION "public"."restock_buyer_on_delivery"();
+
+
+
+CREATE OR REPLACE TRIGGER "orders_restock_on_invoice_confirm" AFTER UPDATE OF "status" ON "public"."orders" FOR EACH ROW EXECUTE FUNCTION "public"."restock_on_invoice_confirm"();
+
+
+
+CREATE OR REPLACE TRIGGER "orders_restore_stock_cancel" AFTER UPDATE ON "public"."orders" FOR EACH ROW WHEN (("new"."origin" IS DISTINCT FROM 'TERMINAL_SYNC'::"text")) EXECUTE FUNCTION "public"."restore_stock_on_cancel"();
+
+
+
+CREATE OR REPLACE TRIGGER "orders_status_log" AFTER UPDATE ON "public"."orders" FOR EACH ROW EXECUTE FUNCTION "public"."log_order_status_change"();
+
+
+
+CREATE OR REPLACE TRIGGER "orders_updated_at" BEFORE UPDATE ON "public"."orders" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
+
+
+
+CREATE OR REPLACE TRIGGER "products_price_history" AFTER UPDATE ON "public"."products" FOR EACH ROW EXECUTE FUNCTION "public"."log_product_price_change"();
+
+
+
+CREATE OR REPLACE TRIGGER "products_updated_at" BEFORE UPDATE ON "public"."products" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at"();
+
+
+
+CREATE OR REPLACE TRIGGER "trg_order_item_discount_audit" AFTER UPDATE ON "public"."order_items" FOR EACH ROW EXECUTE FUNCTION "public"."audit_order_item_discount"();
+
+
+
+CREATE OR REPLACE TRIGGER "trigger_sync_entity_product_category_from_hsn" BEFORE INSERT OR UPDATE ON "public"."entity_products" FOR EACH ROW WHEN (("new"."hsn_master_id" IS NOT NULL)) EXECUTE FUNCTION "public"."sync_entity_product_category_from_hsn"();
+
+
+
+CREATE OR REPLACE TRIGGER "trigger_sync_hsn_master_id_from_code_entity_products" BEFORE INSERT OR UPDATE OF "hsn_code" ON "public"."entity_products" FOR EACH ROW EXECUTE FUNCTION "public"."sync_hsn_master_id_from_code_entity_products"();
+
+
+
+CREATE OR REPLACE TRIGGER "trigger_sync_hsn_master_id_from_code_products" BEFORE INSERT OR UPDATE OF "hsn_code" ON "public"."products" FOR EACH ROW EXECUTE FUNCTION "public"."sync_hsn_master_id_from_code_products"();
+
+
+
+CREATE OR REPLACE TRIGGER "trigger_sync_product_category_from_hsn" BEFORE INSERT OR UPDATE ON "public"."products" FOR EACH ROW WHEN (("new"."hsn_master_id" IS NOT NULL)) EXECUTE FUNCTION "public"."sync_product_category_from_hsn"();
+
+
+
+ALTER TABLE ONLY "public"."cart_items"
+    ADD CONSTRAINT "cart_items_batch_id_fkey" FOREIGN KEY ("batch_id") REFERENCES "public"."product_batches"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."cart_items"
+    ADD CONSTRAINT "cart_items_cart_id_fkey" FOREIGN KEY ("cart_id") REFERENCES "public"."carts"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."cart_items"
+    ADD CONSTRAINT "cart_items_package_id_fkey" FOREIGN KEY ("package_id") REFERENCES "public"."product_packages"("id");
+
+
+
+ALTER TABLE ONLY "public"."cart_items"
+    ADD CONSTRAINT "cart_items_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id");
+
+
+
+ALTER TABLE ONLY "public"."carts"
+    ADD CONSTRAINT "carts_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."user_profiles"("id");
+
+
+
+ALTER TABLE ONLY "public"."carts"
+    ADD CONSTRAINT "carts_entity_id_fkey" FOREIGN KEY ("entity_id") REFERENCES "public"."entities"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."cash_registers"
+    ADD CONSTRAINT "cash_registers_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."user_profiles"("id");
+
+
+
+ALTER TABLE ONLY "public"."cash_registers"
+    ADD CONSTRAINT "cash_registers_entity_id_fkey" FOREIGN KEY ("entity_id") REFERENCES "public"."entities"("id");
+
+
+
+ALTER TABLE ONLY "public"."category_properties"
+    ADD CONSTRAINT "category_properties_category_id_fkey" FOREIGN KEY ("category_id") REFERENCES "public"."categories"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."draft_purchase_items"
+    ADD CONSTRAINT "draft_purchase_items_draft_purchase_id_fkey" FOREIGN KEY ("draft_purchase_id") REFERENCES "public"."draft_purchases"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."draft_purchase_items"
+    ADD CONSTRAINT "draft_purchase_items_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id");
+
+
+
+ALTER TABLE ONLY "public"."draft_purchases"
+    ADD CONSTRAINT "draft_purchases_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."user_profiles"("id");
+
+
+
+ALTER TABLE ONLY "public"."draft_purchases"
+    ADD CONSTRAINT "draft_purchases_entity_id_fkey" FOREIGN KEY ("entity_id") REFERENCES "public"."entities"("id");
+
+
+
+ALTER TABLE ONLY "public"."entity_categories"
+    ADD CONSTRAINT "entity_categories_category_id_fkey" FOREIGN KEY ("category_id") REFERENCES "public"."categories"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."entity_categories"
+    ADD CONSTRAINT "entity_categories_entity_id_fkey" FOREIGN KEY ("entity_id") REFERENCES "public"."entities"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."entity_packages"
+    ADD CONSTRAINT "entity_packages_entity_id_fkey" FOREIGN KEY ("entity_id") REFERENCES "public"."entities"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."entity_packages"
+    ADD CONSTRAINT "entity_packages_package_id_fkey" FOREIGN KEY ("package_id") REFERENCES "public"."product_packages"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."entity_product_specifications"
+    ADD CONSTRAINT "entity_product_specifications_entity_product_id_fkey" FOREIGN KEY ("entity_product_id") REFERENCES "public"."entity_products"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."entity_product_specifications"
+    ADD CONSTRAINT "entity_product_specifications_property_id_fkey" FOREIGN KEY ("property_id") REFERENCES "public"."category_properties"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."entity_products"
+    ADD CONSTRAINT "entity_products_entity_id_fkey" FOREIGN KEY ("entity_id") REFERENCES "public"."entities"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."entity_products"
+    ADD CONSTRAINT "entity_products_hsn_master_id_fkey" FOREIGN KEY ("hsn_master_id") REFERENCES "public"."hsn_master"("id");
+
+
+
+ALTER TABLE ONLY "public"."entity_products"
+    ADD CONSTRAINT "entity_products_master_product_id_fkey" FOREIGN KEY ("master_product_id") REFERENCES "public"."products"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."face_profiles"
+    ADD CONSTRAINT "face_profiles_entity_id_fkey" FOREIGN KEY ("entity_id") REFERENCES "public"."entities"("id");
+
+
+
+ALTER TABLE ONLY "public"."categories"
+    ADD CONSTRAINT "fk_categories_distributor" FOREIGN KEY ("distributor_id") REFERENCES "public"."entities"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."inventory_movements"
+    ADD CONSTRAINT "inventory_movements_batch_id_fkey" FOREIGN KEY ("batch_id") REFERENCES "public"."product_batches"("id");
+
+
+
+ALTER TABLE ONLY "public"."inventory_movements"
+    ADD CONSTRAINT "inventory_movements_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."user_profiles"("id");
+
+
+
+ALTER TABLE ONLY "public"."inventory_movements"
+    ADD CONSTRAINT "inventory_movements_entity_id_fkey" FOREIGN KEY ("entity_id") REFERENCES "public"."entities"("id");
+
+
+
+ALTER TABLE ONLY "public"."inventory_movements"
+    ADD CONSTRAINT "inventory_movements_package_id_fkey" FOREIGN KEY ("package_id") REFERENCES "public"."product_packages"("id");
+
+
+
+ALTER TABLE ONLY "public"."inventory_movements"
+    ADD CONSTRAINT "inventory_movements_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id");
+
+
+
+ALTER TABLE ONLY "public"."khata_accounts"
+    ADD CONSTRAINT "khata_accounts_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."user_profiles"("id");
+
+
+
+ALTER TABLE ONLY "public"."khata_accounts"
+    ADD CONSTRAINT "khata_accounts_creditor_entity_id_fkey" FOREIGN KEY ("creditor_entity_id") REFERENCES "public"."entities"("id");
+
+
+
+ALTER TABLE ONLY "public"."khata_accounts"
+    ADD CONSTRAINT "khata_accounts_debtor_entity_id_fkey" FOREIGN KEY ("debtor_entity_id") REFERENCES "public"."entities"("id");
+
+
+
+ALTER TABLE ONLY "public"."khata_alerts"
+    ADD CONSTRAINT "khata_alerts_khata_account_id_fkey" FOREIGN KEY ("khata_account_id") REFERENCES "public"."khata_accounts"("id");
+
+
+
+ALTER TABLE ONLY "public"."khata_alerts"
+    ADD CONSTRAINT "khata_alerts_repayment_id_fkey" FOREIGN KEY ("repayment_id") REFERENCES "public"."khata_repayments"("id");
+
+
+
+ALTER TABLE ONLY "public"."khata_repayments"
+    ADD CONSTRAINT "khata_repayments_confirmed_by_fkey" FOREIGN KEY ("confirmed_by") REFERENCES "public"."user_profiles"("id");
+
+
+
+ALTER TABLE ONLY "public"."khata_repayments"
+    ADD CONSTRAINT "khata_repayments_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."user_profiles"("id");
+
+
+
+ALTER TABLE ONLY "public"."khata_repayments"
+    ADD CONSTRAINT "khata_repayments_khata_account_id_fkey" FOREIGN KEY ("khata_account_id") REFERENCES "public"."khata_accounts"("id");
+
+
+
+ALTER TABLE ONLY "public"."khata_transactions"
+    ADD CONSTRAINT "khata_transactions_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."user_profiles"("id");
+
+
+
+ALTER TABLE ONLY "public"."khata_transactions"
+    ADD CONSTRAINT "khata_transactions_khata_account_id_fkey" FOREIGN KEY ("khata_account_id") REFERENCES "public"."khata_accounts"("id");
+
+
+
+ALTER TABLE ONLY "public"."order_cancellation_items"
+    ADD CONSTRAINT "order_cancellation_items_cancelled_by_fkey" FOREIGN KEY ("cancelled_by") REFERENCES "public"."user_profiles"("id");
+
+
+
+ALTER TABLE ONLY "public"."order_cancellation_items"
+    ADD CONSTRAINT "order_cancellation_items_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."order_cancellation_items"
+    ADD CONSTRAINT "order_cancellation_items_order_item_id_fkey" FOREIGN KEY ("order_item_id") REFERENCES "public"."order_items"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."order_items"
+    ADD CONSTRAINT "order_items_batch_id_fkey" FOREIGN KEY ("batch_id") REFERENCES "public"."product_batches"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."order_items"
+    ADD CONSTRAINT "order_items_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."order_items"
+    ADD CONSTRAINT "order_items_package_id_fkey" FOREIGN KEY ("package_id") REFERENCES "public"."product_packages"("id");
+
+
+
+ALTER TABLE ONLY "public"."order_items"
+    ADD CONSTRAINT "order_items_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id");
+
+
+
+ALTER TABLE ONLY "public"."order_status_log"
+    ADD CONSTRAINT "order_status_log_actor_id_fkey" FOREIGN KEY ("actor_id") REFERENCES "public"."user_profiles"("id");
+
+
+
+ALTER TABLE ONLY "public"."order_status_log"
+    ADD CONSTRAINT "order_status_log_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id");
+
+
+
+ALTER TABLE ONLY "public"."orders"
+    ADD CONSTRAINT "orders_buyer_id_fkey" FOREIGN KEY ("buyer_id") REFERENCES "public"."entities"("id");
+
+
+
+ALTER TABLE ONLY "public"."orders"
+    ADD CONSTRAINT "orders_cart_id_fkey" FOREIGN KEY ("cart_id") REFERENCES "public"."carts"("id");
+
+
+
+ALTER TABLE ONLY "public"."orders"
+    ADD CONSTRAINT "orders_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."user_profiles"("id");
+
+
+
+ALTER TABLE ONLY "public"."orders"
+    ADD CONSTRAINT "orders_purchase_order_id_fkey" FOREIGN KEY ("purchase_order_id") REFERENCES "public"."orders"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."orders"
+    ADD CONSTRAINT "orders_register_id_fkey" FOREIGN KEY ("register_id") REFERENCES "public"."cash_registers"("id");
+
+
+
+ALTER TABLE ONLY "public"."orders"
+    ADD CONSTRAINT "orders_rider_id_fkey" FOREIGN KEY ("rider_id") REFERENCES "public"."riders"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."orders"
+    ADD CONSTRAINT "orders_sales_order_id_fkey" FOREIGN KEY ("sales_order_id") REFERENCES "public"."orders"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."orders"
+    ADD CONSTRAINT "orders_seller_id_fkey" FOREIGN KEY ("seller_id") REFERENCES "public"."entities"("id");
+
+
+
+ALTER TABLE ONLY "public"."owner_stores"
+    ADD CONSTRAINT "owner_stores_entity_id_fkey" FOREIGN KEY ("entity_id") REFERENCES "public"."entities"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."owner_stores"
+    ADD CONSTRAINT "owner_stores_owner_id_fkey" FOREIGN KEY ("owner_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."package_items"
+    ADD CONSTRAINT "package_items_package_id_fkey" FOREIGN KEY ("package_id") REFERENCES "public"."product_packages"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."package_items"
+    ADD CONSTRAINT "package_items_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id");
+
+
+
+ALTER TABLE ONLY "public"."payment_attempts"
+    ADD CONSTRAINT "payment_attempts_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id");
+
+
+
+ALTER TABLE ONLY "public"."pos_order_counters"
+    ADD CONSTRAINT "pos_order_counters_seller_id_fkey" FOREIGN KEY ("seller_id") REFERENCES "public"."entities"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."product_batches"
+    ADD CONSTRAINT "product_batches_entity_id_fkey" FOREIGN KEY ("entity_id") REFERENCES "public"."entities"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."product_batches"
+    ADD CONSTRAINT "product_batches_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."product_categories"
+    ADD CONSTRAINT "product_categories_category_id_fkey" FOREIGN KEY ("category_id") REFERENCES "public"."categories"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."product_categories"
+    ADD CONSTRAINT "product_categories_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."product_packages"
+    ADD CONSTRAINT "product_packages_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."entities"("id");
+
+
+
+ALTER TABLE ONLY "public"."product_packages"
+    ADD CONSTRAINT "product_packages_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."product_price_history"
+    ADD CONSTRAINT "product_price_history_changed_by_fkey" FOREIGN KEY ("changed_by") REFERENCES "public"."user_profiles"("id");
+
+
+
+ALTER TABLE ONLY "public"."product_price_history"
+    ADD CONSTRAINT "product_price_history_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."products"
+    ADD CONSTRAINT "products_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."entities"("id");
+
+
+
+ALTER TABLE ONLY "public"."products"
+    ADD CONSTRAINT "products_hsn_master_id_fkey" FOREIGN KEY ("hsn_master_id") REFERENCES "public"."hsn_master"("id");
+
+
+
+ALTER TABLE ONLY "public"."refunds"
+    ADD CONSTRAINT "refunds_approved_by_fkey" FOREIGN KEY ("approved_by") REFERENCES "public"."user_profiles"("id");
+
+
+
+ALTER TABLE ONLY "public"."refunds"
+    ADD CONSTRAINT "refunds_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id");
+
+
+
+ALTER TABLE ONLY "public"."refunds"
+    ADD CONSTRAINT "refunds_order_item_id_fkey" FOREIGN KEY ("order_item_id") REFERENCES "public"."order_items"("id");
+
+
+
+ALTER TABLE ONLY "public"."refunds"
+    ADD CONSTRAINT "refunds_requested_by_fkey" FOREIGN KEY ("requested_by") REFERENCES "public"."user_profiles"("id");
+
+
+
+ALTER TABLE ONLY "public"."replacements"
+    ADD CONSTRAINT "replacements_approved_by_fkey" FOREIGN KEY ("approved_by") REFERENCES "public"."user_profiles"("id");
+
+
+
+ALTER TABLE ONLY "public"."replacements"
+    ADD CONSTRAINT "replacements_order_item_id_fkey" FOREIGN KEY ("order_item_id") REFERENCES "public"."order_items"("id");
+
+
+
+ALTER TABLE ONLY "public"."replacements"
+    ADD CONSTRAINT "replacements_original_order_id_fkey" FOREIGN KEY ("original_order_id") REFERENCES "public"."orders"("id");
+
+
+
+ALTER TABLE ONLY "public"."replacements"
+    ADD CONSTRAINT "replacements_replacement_order_id_fkey" FOREIGN KEY ("replacement_order_id") REFERENCES "public"."orders"("id");
+
+
+
+ALTER TABLE ONLY "public"."replacements"
+    ADD CONSTRAINT "replacements_requested_by_fkey" FOREIGN KEY ("requested_by") REFERENCES "public"."user_profiles"("id");
+
+
+
+ALTER TABLE ONLY "public"."retailer_wholesalers"
+    ADD CONSTRAINT "retailer_wholesalers_category_id_fkey" FOREIGN KEY ("category_id") REFERENCES "public"."categories"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."retailer_wholesalers"
+    ADD CONSTRAINT "retailer_wholesalers_retailer_id_fkey" FOREIGN KEY ("retailer_id") REFERENCES "public"."entities"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."retailer_wholesalers"
+    ADD CONSTRAINT "retailer_wholesalers_wholesaler_id_fkey" FOREIGN KEY ("wholesaler_id") REFERENCES "public"."entities"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."riders"
+    ADD CONSTRAINT "riders_auth_user_id_fkey" FOREIGN KEY ("auth_user_id") REFERENCES "auth"."users"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."riders"
+    ADD CONSTRAINT "riders_current_order_id_fkey" FOREIGN KEY ("current_order_id") REFERENCES "public"."orders"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."shift_reconciliations"
+    ADD CONSTRAINT "shift_reconciliations_reviewed_by_fkey" FOREIGN KEY ("reviewed_by") REFERENCES "public"."user_profiles"("id");
+
+
+
+ALTER TABLE ONLY "public"."shift_reconciliations"
+    ADD CONSTRAINT "shift_reconciliations_shift_id_fkey" FOREIGN KEY ("shift_id") REFERENCES "public"."shifts"("id");
+
+
+
+ALTER TABLE ONLY "public"."shift_transactions"
+    ADD CONSTRAINT "shift_transactions_shift_id_fkey" FOREIGN KEY ("shift_id") REFERENCES "public"."shifts"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."shifts"
+    ADD CONSTRAINT "shifts_closed_by_fkey" FOREIGN KEY ("closed_by") REFERENCES "public"."user_profiles"("id");
+
+
+
+ALTER TABLE ONLY "public"."shifts"
+    ADD CONSTRAINT "shifts_entity_id_fkey" FOREIGN KEY ("entity_id") REFERENCES "public"."entities"("id");
+
+
+
+ALTER TABLE ONLY "public"."shifts"
+    ADD CONSTRAINT "shifts_opened_by_fkey" FOREIGN KEY ("opened_by") REFERENCES "public"."user_profiles"("id");
+
+
+
+ALTER TABLE ONLY "public"."shifts"
+    ADD CONSTRAINT "shifts_register_id_fkey" FOREIGN KEY ("register_id") REFERENCES "public"."cash_registers"("id");
+
+
+
+ALTER TABLE ONLY "public"."stock_predictions"
+    ADD CONSTRAINT "stock_predictions_entity_id_fkey" FOREIGN KEY ("entity_id") REFERENCES "public"."entities"("id");
+
+
+
+ALTER TABLE ONLY "public"."stock_predictions"
+    ADD CONSTRAINT "stock_predictions_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id");
+
+
+
+ALTER TABLE ONLY "public"."supplier_lead_times"
+    ADD CONSTRAINT "supplier_lead_times_entity_id_fkey" FOREIGN KEY ("entity_id") REFERENCES "public"."entities"("id");
+
+
+
+ALTER TABLE ONLY "public"."supplier_lead_times"
+    ADD CONSTRAINT "supplier_lead_times_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id");
+
+
+
+ALTER TABLE ONLY "public"."supplier_lead_times"
+    ADD CONSTRAINT "supplier_lead_times_supplier_id_fkey" FOREIGN KEY ("supplier_id") REFERENCES "public"."entities"("id");
+
+
+
+ALTER TABLE ONLY "public"."supplier_lead_times"
+    ADD CONSTRAINT "supplier_lead_times_updated_by_fkey" FOREIGN KEY ("updated_by") REFERENCES "public"."user_profiles"("id");
+
+
+
+ALTER TABLE ONLY "public"."terminal_tokens"
+    ADD CONSTRAINT "terminal_tokens_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."user_profiles"("id");
+
+
+
+ALTER TABLE ONLY "public"."terminal_tokens"
+    ADD CONSTRAINT "terminal_tokens_entity_id_fkey" FOREIGN KEY ("entity_id") REFERENCES "public"."entities"("id");
+
+
+
+ALTER TABLE ONLY "public"."terminal_tokens"
+    ADD CONSTRAINT "terminal_tokens_register_id_fkey" FOREIGN KEY ("register_id") REFERENCES "public"."cash_registers"("id");
+
+
+
+ALTER TABLE ONLY "public"."user_profiles"
+    ADD CONSTRAINT "user_profiles_entity_id_fkey" FOREIGN KEY ("entity_id") REFERENCES "public"."entities"("id");
+
+
+
+ALTER TABLE ONLY "public"."user_profiles"
+    ADD CONSTRAINT "user_profiles_id_fkey" FOREIGN KEY ("id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
+CREATE POLICY "admins_manage_category_properties_hsn" ON "public"."category_properties" USING ((EXISTS ( SELECT 1
+   FROM "public"."user_profiles" "up"
+  WHERE (("up"."id" = "auth"."uid"()) AND ("up"."role" = ANY (ARRAY['SUPER_ADMIN'::"text", 'DISTRIBUTOR'::"text"]))))));
+
+
+
+CREATE POLICY "all_read_hsn_master" ON "public"."hsn_master" FOR SELECT USING (true);
+
+
+
+CREATE POLICY "audit_logs_admin_read" ON "public"."audit_logs" FOR SELECT USING (("public"."is_super_admin"() OR ("public"."auth_sub_role"() = ANY (ARRAY['OWNER'::"text", 'ADMIN'::"text"]))));
+
+
+
+CREATE POLICY "buyer_own_order_status_logs" ON "public"."order_status_log" USING (("public"."is_super_admin"() OR ("order_id" IN ( SELECT "orders"."id"
+   FROM "public"."orders"
+  WHERE ("orders"."buyer_id" = "public"."auth_entity_id"()))))) WITH CHECK (("public"."is_super_admin"() OR ("order_id" IN ( SELECT "orders"."id"
+   FROM "public"."orders"
+  WHERE ("orders"."buyer_id" = "public"."auth_entity_id"())))));
+
+
+
+CREATE POLICY "buyer_own_wholesale_orders" ON "public"."orders" FOR SELECT USING (("buyer_id" = "public"."auth_entity_id"()));
+
+
+
+CREATE POLICY "buyer_update_wholesale_orders" ON "public"."orders" FOR UPDATE USING ((("buyer_id" = "public"."auth_entity_id"()) AND ("order_type" = 'WHOLESALE'::"text")));
+
+
+
+CREATE POLICY "cart_items_own_entity" ON "public"."cart_items" USING (("public"."is_super_admin"() OR ("cart_id" IN ( SELECT "carts"."id"
+   FROM "public"."carts"
+  WHERE ("carts"."entity_id" = "public"."auth_entity_id"()))))) WITH CHECK (("public"."is_super_admin"() OR ("cart_id" IN ( SELECT "carts"."id"
+   FROM "public"."carts"
+  WHERE ("carts"."entity_id" = "public"."auth_entity_id"())))));
+
+
+
+CREATE POLICY "carts_own_entity" ON "public"."carts" USING (("public"."is_super_admin"() OR ("entity_id" = "public"."auth_entity_id"()))) WITH CHECK (("public"."is_super_admin"() OR ("entity_id" = "public"."auth_entity_id"())));
+
+
+
+CREATE POLICY "categories_distributor_manage" ON "public"."categories" USING (("public"."is_super_admin"() OR (("public"."auth_role"() = 'DISTRIBUTOR'::"text") AND ("distributor_id" = "public"."auth_entity_id"()))));
+
+
+
+CREATE POLICY "categories_read_all" ON "public"."categories" FOR SELECT USING (("auth"."uid"() IS NOT NULL));
+
+
+
+CREATE POLICY "distributor_category_entities" ON "public"."entities" FOR SELECT USING ((("public"."auth_role"() = 'DISTRIBUTOR'::"text") AND (("id" = "public"."auth_entity_id"()) OR ("id" IN ( SELECT "ec"."entity_id"
+   FROM ("public"."entity_categories" "ec"
+     JOIN "public"."categories" "c" ON (("c"."id" = "ec"."category_id")))
+  WHERE ("c"."distributor_id" = "public"."auth_entity_id"()))))));
+
+
+
+CREATE POLICY "distributor_category_orders" ON "public"."orders" FOR SELECT USING ((("public"."auth_role"() = 'DISTRIBUTOR'::"text") AND ("seller_id" IN ( SELECT "ec"."entity_id"
+   FROM ("public"."entity_categories" "ec"
+     JOIN "public"."categories" "c" ON (("c"."id" = "ec"."category_id")))
+  WHERE ("c"."distributor_id" = "public"."auth_entity_id"())))));
+
+
+
+CREATE POLICY "entity_owners_delete_team" ON "public"."user_profiles" FOR DELETE USING ((("entity_id" = "public"."auth_entity_id"()) AND ("public"."auth_sub_role"() = 'OWNER'::"text")));
+
+
+
+CREATE POLICY "entity_owners_manage_team" ON "public"."user_profiles" FOR INSERT WITH CHECK ((("entity_id" = "public"."auth_entity_id"()) AND ("public"."auth_sub_role"() = 'OWNER'::"text")));
+
+
+
+CREATE POLICY "entity_owners_read_team" ON "public"."user_profiles" FOR SELECT USING ((("entity_id" = "public"."auth_entity_id"()) AND ("public"."auth_sub_role"() = ANY (ARRAY['OWNER'::"text", 'MANAGER'::"text"]))));
+
+
+
+CREATE POLICY "entity_owners_update_team" ON "public"."user_profiles" FOR UPDATE USING ((("entity_id" = "public"."auth_entity_id"()) AND ("public"."auth_sub_role"() = 'OWNER'::"text")));
+
+
+
+ALTER TABLE "public"."hsn_master" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "inventory_own_entity" ON "public"."inventory_movements" USING (("public"."is_super_admin"() OR ("entity_id" = "public"."auth_entity_id"())));
+
+
+
+CREATE POLICY "order_items_buyer_insert" ON "public"."order_items" FOR INSERT WITH CHECK (("order_id" IN ( SELECT "orders"."id"
+   FROM "public"."orders"
+  WHERE ("orders"."buyer_id" = "public"."auth_entity_id"()))));
+
+
+
+CREATE POLICY "order_items_buyer_read" ON "public"."order_items" FOR SELECT USING (("order_id" IN ( SELECT "orders"."id"
+   FROM "public"."orders"
+  WHERE ("orders"."buyer_id" = "public"."auth_entity_id"()))));
+
+
+
+CREATE POLICY "payment_attempts_manager_plus" ON "public"."payment_attempts" FOR SELECT USING (("public"."is_super_admin"() OR (("public"."auth_sub_role"() = ANY (ARRAY['MANAGER'::"text", 'OWNER'::"text", 'ADMIN'::"text"])) AND ("order_id" IN ( SELECT "orders"."id"
+   FROM "public"."orders"
+  WHERE ("orders"."seller_id" = "public"."auth_entity_id"()))))));
+
+
+
+ALTER TABLE "public"."pos_order_counters" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "products_entity_update" ON "public"."products" FOR UPDATE USING ((("created_by" = "public"."auth_entity_id"()) OR "public"."is_super_admin"()));
+
+
+
+CREATE POLICY "products_entity_write" ON "public"."products" FOR INSERT WITH CHECK (("created_by" = "public"."auth_entity_id"()));
+
+
+
+CREATE POLICY "products_public_read" ON "public"."products" FOR SELECT USING (true);
+
+
+
+CREATE POLICY "refunds_own_entity" ON "public"."refunds" USING (("public"."is_super_admin"() OR ("order_id" IN ( SELECT "orders"."id"
+   FROM "public"."orders"
+  WHERE ("orders"."seller_id" = "public"."auth_entity_id"())))));
+
+
+
+CREATE POLICY "retailer_create_wholesale_order" ON "public"."orders" FOR INSERT WITH CHECK ((("buyer_id" = "public"."auth_entity_id"()) AND ("order_type" = 'WHOLESALE'::"text")));
+
+
+
+CREATE POLICY "retailer_own_connections" ON "public"."retailer_wholesalers" FOR SELECT USING (("retailer_id" = "public"."auth_entity_id"()));
+
+
+
+CREATE POLICY "retailer_own_entity" ON "public"."entities" FOR SELECT USING ((("public"."auth_role"() = 'RETAILER'::"text") AND ("id" = "public"."auth_entity_id"())));
+
+
+
+CREATE POLICY "retailer_read_connected_wholesalers" ON "public"."entities" FOR SELECT USING ((("public"."auth_role"() = 'RETAILER'::"text") AND ("id" IN ( SELECT "retailer_wholesalers"."wholesaler_id"
+   FROM "public"."retailer_wholesalers"
+  WHERE (("retailer_wholesalers"."retailer_id" = "public"."auth_entity_id"()) AND ("retailer_wholesalers"."active" = true))))));
+
+
+
+CREATE POLICY "seller_own_order_status_logs" ON "public"."order_status_log" USING (("public"."is_super_admin"() OR ("order_id" IN ( SELECT "orders"."id"
+   FROM "public"."orders"
+  WHERE ("orders"."seller_id" = "public"."auth_entity_id"()))))) WITH CHECK (("public"."is_super_admin"() OR ("order_id" IN ( SELECT "orders"."id"
+   FROM "public"."orders"
+  WHERE ("orders"."seller_id" = "public"."auth_entity_id"())))));
+
+
+
+CREATE POLICY "seller_own_orders" ON "public"."orders" USING (("seller_id" = "public"."auth_entity_id"())) WITH CHECK (("seller_id" = "public"."auth_entity_id"()));
+
+
+
+CREATE POLICY "service_role_all_entities" ON "public"."entities" USING ((("auth"."jwt"() ->> 'role'::"text") = 'service_role'::"text"));
+
+
+
+CREATE POLICY "service_role_all_user_profiles" ON "public"."user_profiles" USING ((("auth"."jwt"() ->> 'role'::"text") = 'service_role'::"text"));
+
+
+
+CREATE POLICY "service_role_insert_entities" ON "public"."entities" FOR INSERT WITH CHECK ((("auth"."jwt"() ->> 'role'::"text") = 'service_role'::"text"));
+
+
+
+CREATE POLICY "service_role_insert_user_profiles" ON "public"."user_profiles" FOR INSERT WITH CHECK ((("auth"."jwt"() ->> 'role'::"text") = 'service_role'::"text"));
+
+
+
+CREATE POLICY "super_admin_all_entities" ON "public"."entities" USING ("public"."is_super_admin"());
+
+
+
+CREATE POLICY "super_admin_all_orders" ON "public"."orders" USING ("public"."is_super_admin"());
+
+
+
+CREATE POLICY "super_admins_manage_hsn_master" ON "public"."hsn_master" USING ((EXISTS ( SELECT 1
+   FROM "public"."user_profiles"
+  WHERE (("user_profiles"."id" = "auth"."uid"()) AND ("user_profiles"."role" = 'SUPER_ADMIN'::"text")))));
+
+
+
+CREATE POLICY "system_order_status_logs" ON "public"."order_status_log" USING (("public"."is_super_admin"() OR ("order_id" IN ( SELECT "orders"."id"
+   FROM "public"."orders"
+  WHERE ("orders"."seller_id" = "public"."auth_entity_id"()))) OR ("order_id" IN ( SELECT "orders"."id"
+   FROM "public"."orders"
+  WHERE ("orders"."buyer_id" = "public"."auth_entity_id"()))))) WITH CHECK (("public"."is_super_admin"() OR ("order_id" IN ( SELECT "orders"."id"
+   FROM "public"."orders"
+  WHERE (("orders"."seller_id" = "public"."auth_entity_id"()) OR ("orders"."buyer_id" = "public"."auth_entity_id"()))))));
+
+
+
+ALTER TABLE "public"."terminal_tokens" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "users_read_own_profile" ON "public"."user_profiles" FOR SELECT USING ((("auth"."uid"() = "id") OR (("auth"."jwt"() ->> 'role'::"text") = 'service_role'::"text")));
+
+
+
+CREATE POLICY "users_update_own_profile" ON "public"."user_profiles" FOR UPDATE USING (("auth"."uid"() = "id"));
+
+
+
+CREATE POLICY "wholesaler_own_connections" ON "public"."retailer_wholesalers" FOR SELECT USING (("wholesaler_id" = "public"."auth_entity_id"()));
+
+
+
+CREATE POLICY "wholesaler_retailer_orders" ON "public"."orders" FOR SELECT USING ((("public"."auth_role"() = 'WHOLESALER'::"text") AND ("seller_id" IN ( SELECT "retailer_wholesalers"."retailer_id"
+   FROM "public"."retailer_wholesalers"
+  WHERE (("retailer_wholesalers"."wholesaler_id" = "public"."auth_entity_id"()) AND ("retailer_wholesalers"."active" = true))))));
+
+
+
+CREATE POLICY "wholesaler_sees_retailers" ON "public"."entities" FOR SELECT USING ((("public"."auth_role"() = 'WHOLESALER'::"text") AND (("id" = "public"."auth_entity_id"()) OR ("id" IN ( SELECT "retailer_wholesalers"."retailer_id"
+   FROM "public"."retailer_wholesalers"
+  WHERE (("retailer_wholesalers"."wholesaler_id" = "public"."auth_entity_id"()) AND ("retailer_wholesalers"."active" = true)))))));
+
+
+
+CREATE POLICY "wholesaler_update_own_entity" ON "public"."entities" FOR UPDATE USING ((("id" = "public"."auth_entity_id"()) AND ("public"."auth_role"() = ANY (ARRAY['WHOLESALER'::"text", 'DISTRIBUTOR'::"text"]))));
+
+
+
+GRANT USAGE ON SCHEMA "public" TO "postgres";
+GRANT USAGE ON SCHEMA "public" TO "anon";
+GRANT USAGE ON SCHEMA "public" TO "authenticated";
+GRANT USAGE ON SCHEMA "public" TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."apply_inventory_movement"() TO "anon";
+GRANT ALL ON FUNCTION "public"."apply_inventory_movement"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."apply_inventory_movement"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."apply_synced_khata_txn"("p_account_id" "uuid", "p_external_id" "text", "p_type" "text", "p_amount" numeric, "p_order_id" "uuid", "p_notes" "text", "p_created_by" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."apply_synced_khata_txn"("p_account_id" "uuid", "p_external_id" "text", "p_type" "text", "p_amount" numeric, "p_order_id" "uuid", "p_notes" "text", "p_created_by" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."apply_synced_khata_txn"("p_account_id" "uuid", "p_external_id" "text", "p_type" "text", "p_amount" numeric, "p_order_id" "uuid", "p_notes" "text", "p_created_by" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."audit_order_item_discount"() TO "anon";
+GRANT ALL ON FUNCTION "public"."audit_order_item_discount"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."audit_order_item_discount"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."auth_entity_id"() TO "anon";
+GRANT ALL ON FUNCTION "public"."auth_entity_id"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."auth_entity_id"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."auth_role"() TO "anon";
+GRANT ALL ON FUNCTION "public"."auth_role"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."auth_role"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."auth_sub_role"() TO "anon";
+GRANT ALL ON FUNCTION "public"."auth_sub_role"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."auth_sub_role"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."auto_deplete_batch"() TO "anon";
+GRANT ALL ON FUNCTION "public"."auto_deplete_batch"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."auto_deplete_batch"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."backfill_product_categories_from_hsn"() TO "anon";
+GRANT ALL ON FUNCTION "public"."backfill_product_categories_from_hsn"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."backfill_product_categories_from_hsn"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."calculate_stock_predictions"("p_entity_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."calculate_stock_predictions"("p_entity_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."calculate_stock_predictions"("p_entity_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."convert_cart_on_confirm"() TO "anon";
+GRANT ALL ON FUNCTION "public"."convert_cart_on_confirm"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."convert_cart_on_confirm"() TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."custom_access_token_hook"("event" "jsonb") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."custom_access_token_hook"("event" "jsonb") TO "service_role";
+GRANT ALL ON FUNCTION "public"."custom_access_token_hook"("event" "jsonb") TO "supabase_auth_admin";
+
+
+
+GRANT ALL ON FUNCTION "public"."deduct_stock_on_confirm"() TO "anon";
+GRANT ALL ON FUNCTION "public"."deduct_stock_on_confirm"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."deduct_stock_on_confirm"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."deduct_stock_on_sales_invoice"() TO "anon";
+GRANT ALL ON FUNCTION "public"."deduct_stock_on_sales_invoice"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."deduct_stock_on_sales_invoice"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."delete_face_profile"("p_profile_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."delete_face_profile"("p_profile_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."delete_face_profile"("p_profile_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."expire_stale_batches"() TO "anon";
+GRANT ALL ON FUNCTION "public"."expire_stale_batches"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."expire_stale_batches"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."fuzzy_match_product"("p_name" "text", "p_entity_id" "uuid", "p_threshold" numeric) TO "anon";
+GRANT ALL ON FUNCTION "public"."fuzzy_match_product"("p_name" "text", "p_entity_id" "uuid", "p_threshold" numeric) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."fuzzy_match_product"("p_name" "text", "p_entity_id" "uuid", "p_threshold" numeric) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_hsn_category_tree"("p_hsn_code" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."get_hsn_category_tree"("p_hsn_code" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_hsn_category_tree"("p_hsn_code" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_hsn_properties"("p_hsn_code" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."get_hsn_properties"("p_hsn_code" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_hsn_properties"("p_hsn_code" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."guard_stock_on_confirm"() TO "anon";
+GRANT ALL ON FUNCTION "public"."guard_stock_on_confirm"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."guard_stock_on_confirm"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."is_super_admin"() TO "anon";
+GRANT ALL ON FUNCTION "public"."is_super_admin"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."is_super_admin"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."khata_apply_repayment"() TO "anon";
+GRANT ALL ON FUNCTION "public"."khata_apply_repayment"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."khata_apply_repayment"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."khata_credit_on_cancel"() TO "anon";
+GRANT ALL ON FUNCTION "public"."khata_credit_on_cancel"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."khata_credit_on_cancel"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."khata_debit_on_confirm"() TO "anon";
+GRANT ALL ON FUNCTION "public"."khata_debit_on_confirm"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."khata_debit_on_confirm"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."log_order_status_change"() TO "anon";
+GRANT ALL ON FUNCTION "public"."log_order_status_change"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."log_order_status_change"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."log_product_price_change"() TO "anon";
+GRANT ALL ON FUNCTION "public"."log_product_price_change"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."log_product_price_change"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."next_pos_order_no"("p_seller_id" "uuid", "p_prefix" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."next_pos_order_no"("p_seller_id" "uuid", "p_prefix" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."next_pos_order_no"("p_seller_id" "uuid", "p_prefix" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."package_available_qty"("p_package_id" "uuid", "p_depth" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."package_available_qty"("p_package_id" "uuid", "p_depth" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."package_available_qty"("p_package_id" "uuid", "p_depth" integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."resolve_package_to_leaves"("p_package_id" "uuid", "p_multiplier" integer, "p_depth" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."resolve_package_to_leaves"("p_package_id" "uuid", "p_multiplier" integer, "p_depth" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."resolve_package_to_leaves"("p_package_id" "uuid", "p_multiplier" integer, "p_depth" integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."restock_buyer_on_delivery"() TO "anon";
+GRANT ALL ON FUNCTION "public"."restock_buyer_on_delivery"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."restock_buyer_on_delivery"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."restock_on_invoice_confirm"() TO "anon";
+GRANT ALL ON FUNCTION "public"."restock_on_invoice_confirm"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."restock_on_invoice_confirm"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."restore_stock_on_cancel"() TO "anon";
+GRANT ALL ON FUNCTION "public"."restore_stock_on_cancel"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."restore_stock_on_cancel"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."restore_stock_on_item_cancel"() TO "anon";
+GRANT ALL ON FUNCTION "public"."restore_stock_on_item_cancel"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."restore_stock_on_item_cancel"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."restore_stock_on_item_refund"() TO "anon";
+GRANT ALL ON FUNCTION "public"."restore_stock_on_item_refund"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."restore_stock_on_item_refund"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."reverse_khata_on_refund"("p_order_id" "uuid", "p_amount" numeric, "p_created_by" "uuid", "p_notes" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."reverse_khata_on_refund"("p_order_id" "uuid", "p_amount" numeric, "p_created_by" "uuid", "p_notes" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."reverse_khata_on_refund"("p_order_id" "uuid", "p_amount" numeric, "p_created_by" "uuid", "p_notes" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sync_batch_quantity"() TO "anon";
+GRANT ALL ON FUNCTION "public"."sync_batch_quantity"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sync_batch_quantity"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sync_entity_product_category_from_hsn"() TO "anon";
+GRANT ALL ON FUNCTION "public"."sync_entity_product_category_from_hsn"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sync_entity_product_category_from_hsn"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sync_hsn_master_id_from_code_entity_products"() TO "anon";
+GRANT ALL ON FUNCTION "public"."sync_hsn_master_id_from_code_entity_products"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sync_hsn_master_id_from_code_entity_products"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sync_hsn_master_id_from_code_products"() TO "anon";
+GRANT ALL ON FUNCTION "public"."sync_hsn_master_id_from_code_products"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sync_hsn_master_id_from_code_products"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sync_product_category_from_hsn"() TO "anon";
+GRANT ALL ON FUNCTION "public"."sync_product_category_from_hsn"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sync_product_category_from_hsn"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."update_updated_at"() TO "anon";
+GRANT ALL ON FUNCTION "public"."update_updated_at"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."update_updated_at"() TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."audit_logs" TO "anon";
+GRANT ALL ON TABLE "public"."audit_logs" TO "authenticated";
+GRANT ALL ON TABLE "public"."audit_logs" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."cart_items" TO "anon";
+GRANT ALL ON TABLE "public"."cart_items" TO "authenticated";
+GRANT ALL ON TABLE "public"."cart_items" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."carts" TO "anon";
+GRANT ALL ON TABLE "public"."carts" TO "authenticated";
+GRANT ALL ON TABLE "public"."carts" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."cash_registers" TO "anon";
+GRANT ALL ON TABLE "public"."cash_registers" TO "authenticated";
+GRANT ALL ON TABLE "public"."cash_registers" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."categories" TO "anon";
+GRANT ALL ON TABLE "public"."categories" TO "authenticated";
+GRANT ALL ON TABLE "public"."categories" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."category_properties" TO "anon";
+GRANT ALL ON TABLE "public"."category_properties" TO "authenticated";
+GRANT ALL ON TABLE "public"."category_properties" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."consumer_accounts" TO "anon";
+GRANT ALL ON TABLE "public"."consumer_accounts" TO "authenticated";
+GRANT ALL ON TABLE "public"."consumer_accounts" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."draft_purchase_items" TO "anon";
+GRANT ALL ON TABLE "public"."draft_purchase_items" TO "authenticated";
+GRANT ALL ON TABLE "public"."draft_purchase_items" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."draft_purchases" TO "anon";
+GRANT ALL ON TABLE "public"."draft_purchases" TO "authenticated";
+GRANT ALL ON TABLE "public"."draft_purchases" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."entities" TO "anon";
+GRANT ALL ON TABLE "public"."entities" TO "authenticated";
+GRANT ALL ON TABLE "public"."entities" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."entity_categories" TO "anon";
+GRANT ALL ON TABLE "public"."entity_categories" TO "authenticated";
+GRANT ALL ON TABLE "public"."entity_categories" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."entity_packages" TO "anon";
+GRANT ALL ON TABLE "public"."entity_packages" TO "authenticated";
+GRANT ALL ON TABLE "public"."entity_packages" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."entity_product_specifications" TO "anon";
+GRANT ALL ON TABLE "public"."entity_product_specifications" TO "authenticated";
+GRANT ALL ON TABLE "public"."entity_product_specifications" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."entity_products" TO "anon";
+GRANT ALL ON TABLE "public"."entity_products" TO "authenticated";
+GRANT ALL ON TABLE "public"."entity_products" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."hsn_master" TO "anon";
+GRANT ALL ON TABLE "public"."hsn_master" TO "authenticated";
+GRANT ALL ON TABLE "public"."hsn_master" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."entity_products_with_hsn" TO "anon";
+GRANT ALL ON TABLE "public"."entity_products_with_hsn" TO "authenticated";
+GRANT ALL ON TABLE "public"."entity_products_with_hsn" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."face_profiles" TO "anon";
+GRANT ALL ON TABLE "public"."face_profiles" TO "authenticated";
+GRANT ALL ON TABLE "public"."face_profiles" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."hsn_code_properties" TO "anon";
+GRANT ALL ON TABLE "public"."hsn_code_properties" TO "authenticated";
+GRANT ALL ON TABLE "public"."hsn_code_properties" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."inventory_movements" TO "anon";
+GRANT ALL ON TABLE "public"."inventory_movements" TO "authenticated";
+GRANT ALL ON TABLE "public"."inventory_movements" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."khata_accounts" TO "anon";
+GRANT ALL ON TABLE "public"."khata_accounts" TO "authenticated";
+GRANT ALL ON TABLE "public"."khata_accounts" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."khata_alerts" TO "anon";
+GRANT ALL ON TABLE "public"."khata_alerts" TO "authenticated";
+GRANT ALL ON TABLE "public"."khata_alerts" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."khata_repayments" TO "anon";
+GRANT ALL ON TABLE "public"."khata_repayments" TO "authenticated";
+GRANT ALL ON TABLE "public"."khata_repayments" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."khata_transactions" TO "anon";
+GRANT ALL ON TABLE "public"."khata_transactions" TO "authenticated";
+GRANT ALL ON TABLE "public"."khata_transactions" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."order_cancellation_items" TO "anon";
+GRANT ALL ON TABLE "public"."order_cancellation_items" TO "authenticated";
+GRANT ALL ON TABLE "public"."order_cancellation_items" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."order_items" TO "anon";
+GRANT ALL ON TABLE "public"."order_items" TO "authenticated";
+GRANT ALL ON TABLE "public"."order_items" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."order_status_log" TO "anon";
+GRANT ALL ON TABLE "public"."order_status_log" TO "authenticated";
+GRANT ALL ON TABLE "public"."order_status_log" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."orders" TO "anon";
+GRANT ALL ON TABLE "public"."orders" TO "authenticated";
+GRANT ALL ON TABLE "public"."orders" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."owner_stores" TO "anon";
+GRANT ALL ON TABLE "public"."owner_stores" TO "authenticated";
+GRANT ALL ON TABLE "public"."owner_stores" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."package_items" TO "anon";
+GRANT ALL ON TABLE "public"."package_items" TO "authenticated";
+GRANT ALL ON TABLE "public"."package_items" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."product_packages" TO "anon";
+GRANT ALL ON TABLE "public"."product_packages" TO "authenticated";
+GRANT ALL ON TABLE "public"."product_packages" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."products" TO "anon";
+GRANT ALL ON TABLE "public"."products" TO "authenticated";
+GRANT ALL ON TABLE "public"."products" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."package_contents" TO "anon";
+GRANT ALL ON TABLE "public"."package_contents" TO "authenticated";
+GRANT ALL ON TABLE "public"."package_contents" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."payment_attempts" TO "anon";
+GRANT ALL ON TABLE "public"."payment_attempts" TO "authenticated";
+GRANT ALL ON TABLE "public"."payment_attempts" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."pos_order_counters" TO "anon";
+GRANT ALL ON TABLE "public"."pos_order_counters" TO "authenticated";
+GRANT ALL ON TABLE "public"."pos_order_counters" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."product_batches" TO "anon";
+GRANT ALL ON TABLE "public"."product_batches" TO "authenticated";
+GRANT ALL ON TABLE "public"."product_batches" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."product_categories" TO "anon";
+GRANT ALL ON TABLE "public"."product_categories" TO "authenticated";
+GRANT ALL ON TABLE "public"."product_categories" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."product_price_history" TO "anon";
+GRANT ALL ON TABLE "public"."product_price_history" TO "authenticated";
+GRANT ALL ON TABLE "public"."product_price_history" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."products_with_hsn" TO "anon";
+GRANT ALL ON TABLE "public"."products_with_hsn" TO "authenticated";
+GRANT ALL ON TABLE "public"."products_with_hsn" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."refunds" TO "anon";
+GRANT ALL ON TABLE "public"."refunds" TO "authenticated";
+GRANT ALL ON TABLE "public"."refunds" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."replacements" TO "anon";
+GRANT ALL ON TABLE "public"."replacements" TO "authenticated";
+GRANT ALL ON TABLE "public"."replacements" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."retailer_wholesalers" TO "anon";
+GRANT ALL ON TABLE "public"."retailer_wholesalers" TO "authenticated";
+GRANT ALL ON TABLE "public"."retailer_wholesalers" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."riders" TO "anon";
+GRANT ALL ON TABLE "public"."riders" TO "authenticated";
+GRANT ALL ON TABLE "public"."riders" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."sellable_products" TO "anon";
+GRANT ALL ON TABLE "public"."sellable_products" TO "authenticated";
+GRANT ALL ON TABLE "public"."sellable_products" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."shift_reconciliations" TO "anon";
+GRANT ALL ON TABLE "public"."shift_reconciliations" TO "authenticated";
+GRANT ALL ON TABLE "public"."shift_reconciliations" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."shift_transactions" TO "anon";
+GRANT ALL ON TABLE "public"."shift_transactions" TO "authenticated";
+GRANT ALL ON TABLE "public"."shift_transactions" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."shifts" TO "anon";
+GRANT ALL ON TABLE "public"."shifts" TO "authenticated";
+GRANT ALL ON TABLE "public"."shifts" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."stock_predictions" TO "anon";
+GRANT ALL ON TABLE "public"."stock_predictions" TO "authenticated";
+GRANT ALL ON TABLE "public"."stock_predictions" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."supplier_lead_times" TO "anon";
+GRANT ALL ON TABLE "public"."supplier_lead_times" TO "authenticated";
+GRANT ALL ON TABLE "public"."supplier_lead_times" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."terminal_tokens" TO "anon";
+GRANT ALL ON TABLE "public"."terminal_tokens" TO "authenticated";
+GRANT ALL ON TABLE "public"."terminal_tokens" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."units" TO "anon";
+GRANT ALL ON TABLE "public"."units" TO "authenticated";
+GRANT ALL ON TABLE "public"."units" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."user_profiles" TO "anon";
+GRANT ALL ON TABLE "public"."user_profiles" TO "authenticated";
+GRANT ALL ON TABLE "public"."user_profiles" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."whatsapp_otps" TO "anon";
+GRANT ALL ON TABLE "public"."whatsapp_otps" TO "authenticated";
+GRANT ALL ON TABLE "public"."whatsapp_otps" TO "service_role";
+
+
+
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "postgres";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "anon";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "authenticated";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "service_role";
+
+
+
+
+
+
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "postgres";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "anon";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "authenticated";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "service_role";
+
+
+
+
+
+
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "postgres";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "anon";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "authenticated";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "service_role";
+
+
+-- ── Licenses — desktop .lic issuance / revocation (super-admin issued) ──────────
+-- A signed .lic activates + provisions a terminal (it carries entity + sync token +
+-- ingest URL). This row records each issued license for revocation + audit; the
+-- plaintext sync token lives only inside the .lic and as sha256 in terminal_tokens.
+-- Service-role only (RLS on, no policy — the issuer route gates super-admin in code
+-- and uses the service client), mirroring terminal_tokens / pos_order_counters.
+CREATE TABLE IF NOT EXISTS "public"."licenses" (
+  "id"          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  "lic_id"      uuid NOT NULL UNIQUE,
+  "entity_id"   uuid NOT NULL REFERENCES "public"."entities"("id") ON DELETE CASCADE,
+  "machine_id"  text NOT NULL,
+  "token_id"    uuid REFERENCES "public"."terminal_tokens"("id") ON DELETE SET NULL,
+  "tier"        text NOT NULL DEFAULT 'STANDARD',
+  "label"       text,
+  "issued_at"   timestamptz NOT NULL DEFAULT now(),
+  "expires_at"  timestamptz NOT NULL,
+  "is_active"   boolean NOT NULL DEFAULT true,
+  "created_by"  uuid REFERENCES "public"."user_profiles"("id"),
+  "created_at"  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS "idx_licenses_entity" ON "public"."licenses" ("entity_id");
+CREATE INDEX IF NOT EXISTS "idx_licenses_lic_id" ON "public"."licenses" ("lic_id");
+ALTER TABLE "public"."licenses" ENABLE ROW LEVEL SECURITY;
+
+-- ── License requests — a new POS terminal self-registers its machine_id on first start
+-- (before it has a .lic), so the super-admin issues the license with the machine_id
+-- PRE-FILLED (no manual typing → no typos). One row per machine (unique). Service-role
+-- only (the public terminal endpoint + the issuer route use the service client).
+CREATE TABLE IF NOT EXISTS "public"."license_requests" (
+  "id"           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  "machine_id"   text NOT NULL UNIQUE,
+  "hostname"     text,
+  "app_version"  text,
+  "status"       text NOT NULL DEFAULT 'PENDING' CHECK ("status" IN ('PENDING', 'ISSUED', 'REJECTED')),
+  "license_id"   uuid REFERENCES "public"."licenses"("id") ON DELETE SET NULL,
+  "requested_at" timestamptz NOT NULL DEFAULT now(),
+  "updated_at"   timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE "public"."license_requests" ENABLE ROW LEVEL SECURITY;
+
+
+
+
+
+
+
