@@ -23,6 +23,9 @@ export interface Product {
   reorder_point: number;
   image_url: string;
   is_active: boolean;
+  // Weighed-at-counter goods: cashier enters a measure (in `unit`) at checkout and
+  // `sale_price` is the per-unit rate. See docs/label-maker-plan.md §1A.
+  sold_by_weight?: boolean;
   category: string;
   expand?: { category?: Category };
 }

@@ -20,6 +20,7 @@ export async function PATCH(request, { params }) {
         unit:            formData.unit || 'pcs',
         image_url:       formData.image_url?.trim() || null,
         reorder_point:   parseInt(formData.reorder_point) || 10,
+        sold_by_weight:  !!formData.sold_by_weight,
       })
       .eq('id', id)
 

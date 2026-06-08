@@ -91,32 +91,41 @@ export function useCart() {
   };
 
   const addItemMutation = useMutation({
-    mutationFn: async (product: Product): Promise<CartItem> => {
+    mutationFn: async ({ product, weight }: { product: Product; weight?: number }): Promise<CartItem> => {
       if (!cart) throw new Error("No active cart");
-      // Check cache for existing item (reflects latest server state via refetch)
-      const current = queryClient.getQueryData<CartItem[]>(["cart-items", cartId]) ?? [];
-      const existing = current.find((i) => i.product === product.id);
-      if (existing) {
-        const newQty = existing.quantity + 1;
-        const { gstAmount, total } = calcItemTotals({
-          unitPrice: existing.unit_price, discount: existing.discount, quantity: newQty,
-        });
-        await pb.collection("cart_items").update(existing.id, { quantity: newQty, gst_5: gstAmount, total }, PB_REQ);
-        return existing; // onSuccess will refetch, so return value isn't critical
-      }
       const unitPrice = product.sale_price || product.mrp || 0;
-      const { gstAmount, total } = calcItemTotals({ unitPrice, discount: 0, quantity: 1 });
+      // Weighed goods: `weight` is the measured quantity (in product.unit) and unitPrice is
+      // the per-unit rate → total = weight × rate. Each weighing is a distinct line, so we
+      // don't merge with an existing row (unlike discrete items, which increment qty).
+      const isWeighed = !!product.sold_by_weight && weight != null && weight > 0;
+      if (!isWeighed) {
+        // Check cache for existing item (reflects latest server state via refetch)
+        const current = queryClient.getQueryData<CartItem[]>(["cart-items", cartId]) ?? [];
+        const existing = current.find((i) => i.product === product.id);
+        if (existing) {
+          const newQty = existing.quantity + 1;
+          const { gstAmount, total } = calcItemTotals({
+            unitPrice: existing.unit_price, discount: existing.discount, quantity: newQty,
+          });
+          await pb.collection("cart_items").update(existing.id, { quantity: newQty, gst_5: gstAmount, total }, PB_REQ);
+          return existing; // onSuccess will refetch, so return value isn't critical
+        }
+      }
+      const quantity = isWeighed ? weight! : 1;
+      const { gstAmount, total } = calcItemTotals({ unitPrice, discount: 0, quantity });
       return pb.collection("cart_items").create({
         cart: cart.id, product: product.id, name: product.name, sku: product.sku,
-        quantity: 1, unit_price: unitPrice, discount: 0, gst_5: gstAmount, total,
+        quantity, unit_price: unitPrice, discount: 0, gst_5: gstAmount, total,
       }, PB_REQ) as unknown as CartItem;
     },
     onSuccess: () => refetchItems(),
   });
 
-  const addItem = async (product: Product): Promise<OpResult> => {
+  // `weight` is only used for sold_by_weight products (the measured amount in product.unit);
+  // omit it for normal items, which add/increment by 1.
+  const addItem = async (product: Product, weight?: number): Promise<OpResult> => {
     try {
-      await addItemMutation.mutateAsync(product);
+      await addItemMutation.mutateAsync({ product, weight });
       return { success: true };
     } catch (err) {
       return { success: false, error: errMsg(err) };

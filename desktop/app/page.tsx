@@ -7,7 +7,7 @@ import { useHeldCarts } from "@/hooks/use-held-carts";
 import { useUndo } from "@/hooks/use-undo";
 import { usePosShortcuts } from "@/hooks/use-pos-shortcuts";
 import { useCheckout } from "@/hooks/use-checkout";
-import { useProducts } from "@/hooks/use-products";
+import { useProducts, type Product } from "@/hooks/use-products";
 import { useCart } from "@/hooks/use-cart";
 import { useFavorites } from "@/hooks/use-favorites";
 import { useLayoutPreset } from "@/hooks/use-layout-preset";
@@ -18,7 +18,7 @@ import { LAYOUT_PRESETS, SCREEN_LG, CART_WIDTH } from "@/lib/constants";
 import { ProductGrid } from "@/components/pos/product-grid";
 import { CartPanel } from "@/components/pos/cart-panel";
 import { BarcodeScanner } from "@/components/pos/barcode-scanner";
-import { PaymentModal, type PaymentMethod } from "@/components/pos/payment-modal";
+import { PaymentModal } from "@/components/pos/payment-modal";
 import { CustomerModal } from "@/components/pos/customer-modal";
 import { ReceiptModal } from "@/components/pos/receipt-modal";
 import { ZReportModal } from "@/components/pos/z-report-modal";
@@ -26,6 +26,9 @@ import { ShiftModal } from "@/components/pos/shift-modal";
 import type { ShiftReconciliation } from "@/components/pos/shift-modal";
 import { HeldCartsModal } from "@/components/pos/held-carts-modal";
 import { HelpOverlay } from "@/components/pos/help-overlay";
+import { WeightEntryModal } from "@/components/pos/weight-entry-modal";
+import { printLabel } from "@/lib/print-label";
+import { loadLabelConfig } from "@/lib/label-config";
 import { useShifts } from "@/hooks/use-shifts";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -56,7 +59,7 @@ import dynamic from "next/dynamic";
 const LoginFallback = dynamic(() => import("@/app/login/page"), { ssr: false });
 
 export default function PosPage() {
-  const { user, isAuthenticated, signOut, isManager, loading: authLoading } = useAuth();
+  const { user, isAuthenticated, signOut, isManager, isOwner, loading: authLoading } = useAuth();
 
   if (authLoading) {
     return <div className="min-h-screen flex items-center justify-center"><p className="text-muted-foreground">Loading...</p></div>;
@@ -64,10 +67,10 @@ export default function PosPage() {
 
   if (!isAuthenticated) return <LoginFallback />;
 
-  return <PosTerminal user={user} isManager={isManager} signOut={signOut} />;
+  return <PosTerminal user={user} isManager={isManager} isOwner={isOwner} signOut={signOut} />;
 }
 
-function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boolean; signOut: () => void }) {
+function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManager: boolean; isOwner: boolean; signOut: () => void }) {
   const {
     products,
     loading: productsLoading,
@@ -112,6 +115,7 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
   const [showHelp, setShowHelp] = useState(false);
   const [showTabletCart, setShowTabletCart] = useState(false);
   const [lastOrder, setLastOrder] = useState<any>(null);
+  const [weighProduct, setWeighProduct] = useState<Product | null>(null);
   const [reconData, setReconData] = useState<ShiftReconciliation | null>(null);
   const [online, setOnline] = useState(true);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -229,6 +233,10 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
           toast.error(`${product.name} is out of stock`);
           return;
         }
+        if (product.sold_by_weight) {
+          setWeighProduct(product);
+          return;
+        }
         const result = await addItem(product);
         if (result.success) toast.success(`Added ${product.name}`);
         else toast.error(result.error || "Failed to add item");
@@ -245,12 +253,45 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
         toast.error("Product is out of stock");
         return;
       }
+      if (product.sold_by_weight) {
+        setWeighProduct(product);
+        return;
+      }
       const result = await addItem(product);
       if (result.success) {
         undoStack.push(() => { removeItem(product.id); });
       }
     },
     [addItem, removeItem, undoStack]
+  );
+
+  // Confirm a weighed item: add it at quantity = weight, unit_price = per-unit rate, and
+  // optionally print its barcode label (name + weight + computed price).
+  const handleWeighConfirm = useCallback(
+    async (weight: number, print: boolean) => {
+      const product = weighProduct;
+      if (!product) return;
+      setWeighProduct(null);
+      const result = await addItem(product, weight);
+      if (!result.success) {
+        toast.error(result.error || "Failed to add item");
+        return;
+      }
+      const unit = product.unit || "kg";
+      toast.success(`Added ${weight} ${unit} — ${product.name}`);
+      if (print) {
+        const rate = product.sale_price || product.mrp || 0;
+        printLabel({
+          name: product.name,
+          sku: product.sku,
+          barcode: product.barcode,
+          unit,
+          weight,
+          price: weight * rate,
+        }, loadLabelConfig(), 1);
+      }
+    },
+    [weighProduct, addItem]
   );
 
   const handleVoidLast = useCallback(async () => {
@@ -283,8 +324,8 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
   }, [validateStock, activeShift]);
 
   const handlePaymentConfirm = useCallback(
-    async (method: string, ref: string, tendered?: number) => {
-      await confirmPayment(method, ref, tendered, (orderPayload, _orderId) => {
+    async (method: string, channel: string | null, ref: string, tendered?: number) => {
+      await confirmPayment(method, channel, ref, tendered, (orderPayload, _orderId) => {
         setShowPayment(false);
         setLastOrder(orderPayload);
         setShowReceipt(true);
@@ -532,12 +573,14 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
 
         <div className="flex items-center gap-0.5">
           <div className="hidden md:flex items-center gap-0.5">
+            {isManager && (
             <Link href="/inventory">
               <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
                 <Package className="h-4 w-4 mr-1.5" />
                 Inventory
               </Button>
             </Link>
+            )}
             <Link href="/orders">
               <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
                 <ClipboardList className="h-4 w-4 mr-1.5" />
@@ -550,12 +593,14 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
                 Customers
               </Button>
             </Link>
+            {isManager && (
             <Link href="/adjustments">
               <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
                 <Wallet className="h-4 w-4 mr-1.5" />
                 Cash
               </Button>
             </Link>
+            )}
           </div>
           <div className="hidden md:block w-px h-6 bg-border mx-1" />
           <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground" onClick={handleNewTransaction} title="New Sale (F2)">
@@ -583,11 +628,13 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
           >
             {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
+          {isOwner && (
           <Link href="/settings">
             <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
               <Settings className="h-4 w-4" />
             </Button>
           </Link>
+          )}
           <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={signOut}>
             <LogOut className="h-4 w-4" />
           </Button>
@@ -677,6 +724,14 @@ function PosTerminal({ user, isManager, signOut }: { user: any; isManager: boole
         open={showScanner}
         onClose={() => setShowScanner(false)}
         onScan={handleScan}
+      />
+
+      <WeightEntryModal
+        key={weighProduct?.id ?? "weigh"}
+        open={weighProduct !== null}
+        product={weighProduct}
+        onConfirm={handleWeighConfirm}
+        onClose={() => setWeighProduct(null)}
       />
 
       <PaymentModal

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useSettings } from "@/hooks/use-settings";
 import { useAuth } from "@/hooks/use-auth";
+import { useRequireRole } from "@/hooks/use-require-role";
 import { usePlatform } from "@/hooks/use-platform";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,9 +12,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { ArrowLeft, Settings, Store, Save, Printer, Wifi, Server } from "lucide-react";
+import { loadLabelConfig, saveLabelConfig } from "@/lib/label-config";
+import { printLabel } from "@/lib/print-label";
+import type { LabelConfig } from "@/lib/labels";
 
 export default function SettingsPage() {
   const { user, signOut } = useAuth();
+  useRequireRole(["owner"] as const);
   const { settings, loading, updateSettings } = useSettings();
   const { isElectron, api } = usePlatform();
   const [form, setForm] = useState({
@@ -24,6 +29,7 @@ export default function SettingsPage() {
     receipt_header: "",
     receipt_footer: "",
     gst_rate: 5,
+    store_entity_id: "",
   });
   const [pbUrl, setPbUrl] = useState("http://127.0.0.1:8090");
   const [syncConfig, setSyncConfig] = useState({
@@ -33,6 +39,8 @@ export default function SettingsPage() {
     enabled: false,
   });
   const [printerStatus, setPrinterStatus] = useState<any>(null);
+  // Per-terminal label settings (localStorage) — lazy init so it reads once, client-side.
+  const [labelCfg, setLabelCfg] = useState<LabelConfig>(() => loadLabelConfig());
 
   useEffect(() => {
     if (settings) {
@@ -44,6 +52,7 @@ export default function SettingsPage() {
         receipt_header: settings.receipt_header || "",
         receipt_footer: settings.receipt_footer || "",
         gst_rate: settings.gst_rate || 5,
+        store_entity_id: settings.store_entity_id || "",
       });
     }
   }, [settings]);
@@ -74,6 +83,19 @@ export default function SettingsPage() {
     else toast.error(result.error);
   };
 
+  const setLbl = (patch: Partial<LabelConfig>) =>
+    setLabelCfg((c) => ({ ...c, ...patch }));
+
+  const handleSaveLabels = () => {
+    saveLabelConfig(labelCfg);
+    toast.success("Label settings saved");
+  };
+
+  const handleTestLabel = () => {
+    saveLabelConfig(labelCfg);
+    printLabel({ name: "Sample Product", sku: "SAMPLE-001", barcode: "", mrp: 99 }, labelCfg, 1);
+  };
+
   const handleSavePbUrl = async () => {
     if (!api) return;
     await api.pb.setUrl(pbUrl);
@@ -90,6 +112,19 @@ export default function SettingsPage() {
       await api.sync.start(syncConfig);
       setSyncConfig((c) => ({ ...c, enabled: true }));
       toast.success("Sync started");
+    }
+  };
+
+  const [bootstrapping, setBootstrapping] = useState(false);
+  const handleBootstrap = async () => {
+    if (!api) return;
+    setBootstrapping(true);
+    try {
+      const r = await api.sync.bootstrap();
+      if (r?.ok) toast.success(`Pulled ${r.products} products, ${r.categories} categories, ${r.khata} accounts`);
+      else toast.error(r?.error || "Bootstrap failed");
+    } finally {
+      setBootstrapping(false);
     }
   };
 
@@ -159,6 +194,17 @@ export default function SettingsPage() {
                   value={form.gst_rate}
                   onChange={(e) => setForm({ ...form, gst_rate: parseFloat(e.target.value) || 0 })}
                 />
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <label className="text-sm font-medium">Cloud Store ID</label>
+                <Input
+                  value={form.store_entity_id}
+                  onChange={(e) => setForm({ ...form, store_entity_id: e.target.value })}
+                  placeholder="Supabase entity UUID"
+                />
+                <p className="text-xs text-muted-foreground">
+                  The cloud store (entity) this terminal belongs to. Sync stamps every synced order, movement, and ledger entry with it. Leave blank until provisioned.
+                </p>
               </div>
             </div>
           </CardContent>
@@ -246,6 +292,85 @@ export default function SettingsPage() {
           </Card>
         )}
 
+        {/* Barcode Labels */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Printer className="h-5 w-5" />
+              Barcode Labels
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              For the label printer at this terminal — shelf labels and weighed-goods labels at checkout.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Label width (mm)</label>
+                <Input type="number" min={10}
+                  value={labelCfg.width_mm}
+                  onChange={(e) => setLbl({ width_mm: parseFloat(e.target.value) || 0 })} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Label height (mm)</label>
+                <Input type="number" min={10}
+                  value={labelCfg.height_mm}
+                  onChange={(e) => setLbl({ height_mm: parseFloat(e.target.value) || 0 })} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Barcode type</label>
+                <select
+                  value={labelCfg.symbology}
+                  onChange={(e) => setLbl({ symbology: e.target.value as LabelConfig["symbology"] })}
+                  className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring"
+                >
+                  <option value="auto">Auto (EAN-13 if valid, else Code128)</option>
+                  <option value="code128">Code128</option>
+                  <option value="ean13">EAN-13</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Font size (pt)</label>
+                <Input type="number" min={6} max={20}
+                  value={labelCfg.font_pt}
+                  onChange={(e) => setLbl({ font_pt: parseInt(e.target.value) || 9 })} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Default copies</label>
+                <Input type="number" min={1}
+                  value={labelCfg.copies}
+                  onChange={(e) => setLbl({ copies: parseInt(e.target.value) || 1 })} />
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-4">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="checkbox" className="h-4 w-4 accent-primary"
+                  checked={labelCfg.show_name}
+                  onChange={(e) => setLbl({ show_name: e.target.checked })} /> Name
+              </label>
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="checkbox" className="h-4 w-4 accent-primary"
+                  checked={labelCfg.show_mrp}
+                  onChange={(e) => setLbl({ show_mrp: e.target.checked })} /> Price / MRP
+              </label>
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="checkbox" className="h-4 w-4 accent-primary"
+                  checked={labelCfg.show_sku}
+                  onChange={(e) => setLbl({ show_sku: e.target.checked })} /> SKU line
+              </label>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={handleTestLabel}>Test label</Button>
+              <Button size="sm" onClick={handleSaveLabels}>
+                <Save className="h-4 w-4 mr-1" /> Save labels
+              </Button>
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              SKU also prints as the human-readable text under the barcode. Single-label printing (one label per page).
+            </p>
+          </CardContent>
+        </Card>
+
         {/* Central Sync */}
         {isElectron && (
           <Card>
@@ -293,7 +418,17 @@ export default function SettingsPage() {
                 >
                   {syncConfig.enabled ? "Stop Sync" : "Start Sync"}
                 </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleBootstrap}
+                  disabled={!syncConfig.remoteUrl || !syncConfig.apiKey || bootstrapping}
+                >
+                  {bootstrapping ? "Pulling…" : "Pull catalog from cloud"}
+                </Button>
               </div>
+              <p className="text-[10px] text-muted-foreground">
+                First-run provisioning — pulls this store&apos;s products, categories, and credit accounts from the cloud into this terminal.
+              </p>
             </CardContent>
           </Card>
         )}

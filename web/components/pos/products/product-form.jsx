@@ -12,6 +12,7 @@ const EMPTY_FORM = {
   name: '', sku: '', hsn_code: '', unit: 'pcs',
   wholesale_price: '', mrp: '', selling_price: '',
   current_stock: '0', image_url: '', reorder_point: '10',
+  sold_by_weight: false,
 }
 
 /**
@@ -47,6 +48,7 @@ export function ProductForm({ open, product, categories, saving, onSave, onClose
         current_stock:   String(product.current_stock ?? '0'),
         image_url:       product.image_url ?? '',
         reorder_point:   String(product.reorder_point ?? '10'),
+        sold_by_weight:  product.sold_by_weight ?? false,
       })
       setSelectedCats(
         (product.product_categories ?? []).map(pc => pc.category_id)
@@ -181,6 +183,23 @@ export function ProductForm({ open, product, categories, saving, onSave, onClose
                 <p className="text-[10px] text-muted-foreground">Initial qty on hand (receive stock to add more later)</p>
               </div>
             )}
+          </div>
+
+          {/* Sold by weight / measure */}
+          <div className="flex items-start gap-2 p-3 rounded-lg border border-border bg-muted/20">
+            <input
+              id="sold_by_weight"
+              type="checkbox"
+              checked={!!form.sold_by_weight}
+              onChange={e => set('sold_by_weight', e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-input accent-primary"
+            />
+            <label htmlFor="sold_by_weight" className="text-sm cursor-pointer">
+              <span className="font-medium text-foreground">Sold by weight / measure</span>
+              <span className="block text-[10px] text-muted-foreground">
+                Cashier enters the amount in <strong>{form.unit}</strong> at checkout (e.g. 1.5 {form.unit}); the price is the rate per {form.unit}. Use for loose goods — rice, sugar, vegetables, fruit, oil.
+              </span>
+            </label>
           </div>
 
           {/* Reorder point */}

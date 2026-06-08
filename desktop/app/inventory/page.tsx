@@ -2,9 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useProducts } from "@/hooks/use-products";
+import { useProducts, type Product } from "@/hooks/use-products";
 import { useAuth } from "@/hooks/use-auth";
+import { useRequireRole } from "@/hooks/use-require-role";
 import { getPB, PB_REQ } from "@/lib/pb-client";
+import { getRegisterId } from "@/lib/register";
+import { printLabel } from "@/lib/print-label";
+import { loadLabelConfig } from "@/lib/label-config";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +28,7 @@ import {
   Plus,
   Minus,
   AlertTriangle,
+  Printer,
 } from "lucide-react";
 
 
@@ -36,6 +41,7 @@ const ADJUSTMENT_TYPES: { value: string; label: string }[] = [
 
 export default function InventoryPage() {
   const { user } = useAuth();
+  useRequireRole(["owner", "manager"] as const);
   const pb = getPB();
   const {
     allProducts,
@@ -65,11 +71,13 @@ export default function InventoryPage() {
       if (!product) return;
 
       const newStock = Math.max(0, product.current_stock + adjustQty);
+      const registerId = await getRegisterId();
       await pb.collection("products").update(productId, { current_stock: newStock }, PB_REQ);
       await pb.collection("inventory_movements").create({
         product: productId,
         movement_type: adjustReason,
         quantity: adjustQty,
+        register_id: registerId || "",
         notes: `Manual adjustment by ${user?.name || "staff"}`,
       }, PB_REQ);
 
@@ -80,6 +88,20 @@ export default function InventoryPage() {
     } catch (err: any) {
       toast.error(err.message || "Adjustment failed");
     }
+  };
+
+  // Print a shelf label for this product using the per-terminal label config + default copies.
+  const handlePrintLabel = (product: Product) => {
+    const ok = printLabel(
+      {
+        name: product.name,
+        sku: product.sku,
+        barcode: product.barcode,
+        mrp: product.mrp || product.sale_price || 0,
+      },
+      loadLabelConfig(),
+    );
+    if (!ok) toast.error("Could not open the print window");
   };
 
   return (
@@ -175,17 +197,28 @@ export default function InventoryPage() {
                           </Button>
                         </div>
                       ) : (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setShowAdjust(product.id);
-                            setAdjustQty(0);
-                          }}
-                        >
-                          <Plus className="h-4 w-4 mr-1" />
-                          Adjust
-                        </Button>
+                        <div className="flex items-center gap-1 justify-end">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handlePrintLabel(product)}
+                            title="Print barcode label"
+                          >
+                            <Printer className="h-4 w-4 mr-1" />
+                            Label
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setShowAdjust(product.id);
+                              setAdjustQty(0);
+                            }}
+                          >
+                            <Plus className="h-4 w-4 mr-1" />
+                            Adjust
+                          </Button>
+                        </div>
                       )}
                     </TableCell>
                   </TableRow>

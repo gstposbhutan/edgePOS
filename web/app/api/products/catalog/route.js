@@ -14,7 +14,7 @@ export async function GET() {
         .from('products')
         .select(`
           id, name, sku, hsn_code, unit, mrp, wholesale_price, selling_price,
-          current_stock, image_url, is_active, created_at,
+          current_stock, image_url, is_active, sold_by_weight, created_at,
           product_categories(category_id, categories(id, name))
         `)
         .order('name'),
@@ -56,6 +56,7 @@ export async function POST(request) {
         current_stock:   parseInt(formData.current_stock) || 0,
         image_url:       formData.image_url?.trim() || null,
         reorder_point:   parseInt(formData.reorder_point) || 10,
+        sold_by_weight:  !!formData.sold_by_weight,
         is_active:       true,
         created_by:      entityId,
       })
