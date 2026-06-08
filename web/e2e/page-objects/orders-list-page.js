@@ -33,12 +33,14 @@ class OrdersListPage {
   // ── Navigation ──────────────────────────────────────────────────────
 
   async goto() {
-    await this.page.goto('/pos/orders')
-    // Manager defaults to SALES section — switch to POS Orders if the tab exists.
-    const posTab = this.posTabButton
-    if (await posTab.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await posTab.click()
-    }
+    // Hint the page to render the POS section directly via the query string
+    // (manager/owner default to SALES otherwise). The page reads ?section=
+    // on mount, which avoids a fragile click-then-wait dance on the tab.
+    await this.page.goto('/pos/orders?section=POS')
+    // The page fetches orders async after reading entity_id from the session
+    // route. Wait for either a row or the empty state before downstream
+    // assertions race the fetch.
+    await expect(this.orderRows.first().or(this.emptyState)).toBeVisible()
   }
 
   // ── Actions ─────────────────────────────────────────────────────────

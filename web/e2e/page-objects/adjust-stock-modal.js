@@ -27,13 +27,21 @@ class AdjustStockModal {
 
     // Form fields
     this.quantityInput = this.dialog.locator('input[type="number"][placeholder="0"]')
-    this.notesInput = this.dialog.locator('input[placeholder="e.g. Delivery from Wholesaler A"]')
+    // Notes input placeholder differs by type: RESTOCK shows "Delivery from
+    // Wholesaler A"; LOSS/DAMAGED shows "Found damaged in storage".
+    this.notesInput = this.dialog.locator(
+      'input[placeholder^="e.g. Delivery"], input[placeholder^="e.g. Found"]'
+    )
 
     // New stock level preview
     this.newStockPreview = this.dialog.locator('text=New stock level:')
 
-    // Action buttons
-    this.confirmButton = this.dialog.locator('button:has-text("Confirm Adjustment")')
+    // Action buttons — label depends on selected type (see adjust-stock-modal.jsx):
+    //   RESTOCK            → "Receive Stock"
+    //   LOSS / DAMAGED ... → "Confirm Adjustment"
+    this.confirmButton = this.dialog.locator(
+      'button:has-text("Confirm Adjustment"), button:has-text("Receive Stock")'
+    )
     this.cancelButton = this.dialog.locator('button:has-text("Cancel")')
 
     // Error message
@@ -71,6 +79,17 @@ class AdjustStockModal {
    */
   async enterNotes(notes) {
     await this.notesInput.fill(notes)
+  }
+
+  /**
+   * Fill MRP and Selling Price (both required when RESTOCK is selected).
+   * Setting MRP auto-fills Selling Price unless it's already set.
+   */
+  async fillRestockPrices({ mrp, sellingPrice }) {
+    const mrpInput = this.dialog.locator('label:has-text("MRP")').locator('..').locator('input[type="number"]')
+    const sellInput = this.dialog.locator('label:has-text("Selling Price")').locator('..').locator('input[type="number"]')
+    await mrpInput.fill(String(mrp))
+    if (sellingPrice != null) await sellInput.fill(String(sellingPrice))
   }
 
   /** Click the "Confirm Adjustment" submit button. */

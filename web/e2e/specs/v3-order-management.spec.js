@@ -227,6 +227,36 @@ test.describe('Order Management', () => {
   test.describe('Cancel Order', () => {
     let detailPage
 
+    // Several tests in this describe depend on the DRAFT seed order
+    // (TS-2026-0006). The 'cancel with reason' test mutates it to CANCELLED;
+    // afterEach restores DRAFT so subsequent tests aren't poisoned.
+    test.afterEach(async () => {
+      const draft = TEST_ORDERS.find(o => o.status === 'DRAFT')
+      if (!draft) return
+      try {
+        const fs = require('fs'), path = require('path')
+        if (!process.env.SUPABASE_URL) {
+          const envPath = path.join(__dirname, '..', '..', '.env.local')
+          const envContent = fs.readFileSync(envPath, 'utf-8')
+          for (const line of envContent.split('\n')) {
+            const m = line.match(/^([^#=\s][^=]*)=(.*)$/)
+            if (m) process.env[m[1].trim()] = m[2].trim()
+          }
+        }
+        const { createClient } = require('@supabase/supabase-js')
+        const supabase = createClient(
+          process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL,
+          process.env.SUPABASE_SERVICE_ROLE_KEY,
+          { auth: { autoRefreshToken: false, persistSession: false } }
+        )
+        await supabase
+          .from('orders')
+          .update({ status: 'DRAFT', cancellation_reason: null, cancelled_at: null })
+          .eq('id', draft.id)
+        await supabase.from('order_status_log').delete().eq('order_id', draft.id)
+      } catch {}
+    })
+
     test.beforeEach(async ({ page }) => {
       detailPage = new OrderDetailPage(page)
     })
@@ -285,7 +315,7 @@ test.describe('Order Management', () => {
       expect(res.ok()).toBe(true)
 
       await expect(modal).not.toBeVisible()
-      await expect(page.getByText('Cancelled', { exact: false })).toBeVisible()
+      await expect(page.getByText('Cancelled', { exact: true }).first()).toBeVisible()
     })
 
     test('stock restored notice shown in cancel modal', async ({ page }) => {
