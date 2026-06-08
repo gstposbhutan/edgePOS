@@ -50,3 +50,9 @@ release/
 pb/pocketbase.exe
 pb/pocketbase_*
 pb/pocketbase.darwin
+
+# PocketBase runtime database — local per-install state, not source.
+# (pb/pb_data/types.d.ts stays tracked — migrations reference it.)
+pb/pb_data/*.db
+pb/pb_data/*.db-shm
+pb/pb_data/*.db-wal
