@@ -5,7 +5,7 @@ import { getPB, getTerminalId } from "@/lib/pb-client";
 import { getRegisterId } from "@/lib/register";
 import { generateOrderNo, generateOrderSignature } from "@/lib/gst";
 import { todayCompact } from "@/lib/date-utils";
-import { MOVEMENT_TYPE, KHATA_TXN, PB_REQ, PAYMENT_METHOD } from "@/lib/constants";
+import { MOVEMENT_TYPE, KHATA_TXN, KHATA_STATUS, PB_REQ, PAYMENT_METHOD } from "@/lib/constants";
 import { toast } from "sonner";
 import type { CartItem } from "./use-cart";
 import type { Product } from "./use-products";
@@ -90,6 +90,13 @@ export function useCheckout(input: CheckoutInput) {
         const limit = fresh
           ? ((fresh as Record<string, unknown>).credit_limit as number) || 0
           : selectedCustomer.credit_limit;
+        const status = fresh
+          ? ((fresh as Record<string, unknown>).status as string) || ""
+          : selectedCustomer.status || "";
+        if (status === KHATA_STATUS.FROZEN) {
+          toast.error(`${selectedCustomer.debtor_name}'s khata account is frozen — credit sale blocked`);
+          return;
+        }
         if (limit > 0 && balance + saleTotal > limit) {
           const available = Math.max(0, limit - balance);
           toast.error(

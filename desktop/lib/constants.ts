@@ -71,6 +71,40 @@ export const KHATA_TXN = {
   ADJUSTMENT: "ADJUSTMENT",
 } as const;
 
+// Khata account status — mirrors the web khata enum (CLOSED reserved for future).
+export const KHATA_STATUS = {
+  ACTIVE: "ACTIVE",
+  FROZEN: "FROZEN",
+} as const;
+export type KhataStatus = (typeof KHATA_STATUS)[keyof typeof KHATA_STATUS];
+
+// Per-line discount input mode (UI only — stored discount is always per-unit flat Nu.).
+export const DISCOUNT_MODE = {
+  FLAT: "FLAT",
+  PERCENT: "PERCENT",
+} as const;
+export type DiscountMode = (typeof DISCOUNT_MODE)[keyof typeof DISCOUNT_MODE];
+
+// Purchase order lifecycle (retailer → wholesaler restock).
+export const PURCHASE_STATUS = {
+  DRAFT: "DRAFT",
+  SUBMITTED: "SUBMITTED",
+  CONFIRMED: "CONFIRMED",
+  RECEIVED: "RECEIVED",
+  CANCELLED: "CANCELLED",
+} as const;
+export type PurchaseStatus = (typeof PURCHASE_STATUS)[keyof typeof PURCHASE_STATUS];
+
+export const PURCHASE_FILTERS = ["all", "draft", "submitted", "confirmed", "received", "cancelled"] as const;
+
+// Wholesaler connection status (a retailer's saved suppliers).
+export const CONNECTION_STATUS = {
+  PENDING: "PENDING",
+  ACTIVE: "ACTIVE",
+  SUSPENDED: "SUSPENDED",
+} as const;
+export type ConnectionStatus = (typeof CONNECTION_STATUS)[keyof typeof CONNECTION_STATUS];
+
 export const CASH_ADJUSTMENT_TYPE = {
   CASH_IN: "CASH_IN",
   CASH_OUT: "CASH_OUT",

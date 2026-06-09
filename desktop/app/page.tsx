@@ -52,6 +52,7 @@ import {
   Sun,
   Moon,
   FilePlus,
+  Truck,
 } from "lucide-react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -574,10 +575,26 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
         <div className="flex items-center gap-0.5">
           <div className="hidden md:flex items-center gap-0.5">
             {isManager && (
+            <Link href="/products">
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
+                <Package className="h-4 w-4 mr-1.5" />
+                Products
+              </Button>
+            </Link>
+            )}
+            {isManager && (
             <Link href="/inventory">
               <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
                 <Package className="h-4 w-4 mr-1.5" />
                 Inventory
+              </Button>
+            </Link>
+            )}
+            {isManager && (
+            <Link href="/purchases">
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
+                <Truck className="h-4 w-4 mr-1.5" />
+                Purchasing
               </Button>
             </Link>
             )}

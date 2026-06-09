@@ -20,24 +20,30 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { KHATA_STATUS } from "@/lib/constants";
 import { toast } from "sonner";
 import {
   ArrowLeft,
   Users,
   Search,
   UserPlus,
-  IndianRupee,
   ArrowDownCircle,
+  SlidersHorizontal,
+  Snowflake,
+  Sun,
 } from "lucide-react";
 
 export default function CustomersPage() {
-  const { customers, loading, createCustomer, recordRepayment, refresh } = useCustomers();
+  const { customers, loading, createCustomer, recordRepayment, adjustBalance, toggleFreeze, refresh } = useCustomers();
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [showRepay, setShowRepay] = useState<string | null>(null);
+  const [showAdjust, setShowAdjust] = useState<string | null>(null);
   const [newCustomer, setNewCustomer] = useState({ debtor_name: "", debtor_phone: "", credit_limit: 0 });
   const [repayAmount, setRepayAmount] = useState(0);
   const [repayMethod, setRepayMethod] = useState("cash");
+  const [adjustAmount, setAdjustAmount] = useState(0);
+  const [adjustReason, setAdjustReason] = useState("");
 
   const filtered = customers.filter(
     (c) =>
@@ -65,6 +71,35 @@ export default function CustomersPage() {
       toast.success("Repayment recorded");
       setShowRepay(null);
       setRepayAmount(0);
+      refresh();
+    } else {
+      toast.error(result.error);
+    }
+  };
+
+  const handleAdjust = async (customerId: string) => {
+    if (adjustAmount === 0) {
+      toast.error("Enter a non-zero amount");
+      return;
+    }
+    const result = await adjustBalance(customerId, adjustAmount, adjustReason.trim() || "Manual adjustment");
+    if (result.success) {
+      toast.success("Balance adjusted");
+      setShowAdjust(null);
+      setAdjustAmount(0);
+      setAdjustReason("");
+      refresh();
+    } else {
+      toast.error(result.error);
+    }
+  };
+
+  const handleToggleFreeze = async (customerId: string) => {
+    const customer = customers.find((c) => c.id === customerId);
+    if (!customer) return;
+    const result = await toggleFreeze(customer);
+    if (result.success) {
+      toast.success(customer.status === KHATA_STATUS.FROZEN ? "Account unfrozen" : "Account frozen");
       refresh();
     } else {
       toast.error(result.error);
@@ -111,6 +146,7 @@ export default function CustomersPage() {
                   <TableHead>Phone</TableHead>
                   <TableHead className="text-right">Credit Limit</TableHead>
                   <TableHead className="text-right">Balance</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -131,20 +167,49 @@ export default function CustomersPage() {
                         <span className="text-muted-foreground text-sm">—</span>
                       )}
                     </TableCell>
+                    <TableCell>
+                      {customer.status === KHATA_STATUS.FROZEN ? (
+                        <Badge variant="outline" className="text-xs border-blue-400/50 text-blue-400">Frozen</Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-xs">Active</Badge>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">
-                      {customer.outstanding_balance > 0 && (
+                      <div className="flex items-center gap-1 justify-end">
+                        {customer.outstanding_balance > 0 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setShowRepay(customer.id);
+                              setRepayAmount(Math.min(customer.outstanding_balance, 1000));
+                            }}
+                          >
+                            <ArrowDownCircle className="h-4 w-4 mr-1" />
+                            Repay
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => {
-                            setShowRepay(customer.id);
-                            setRepayAmount(Math.min(customer.outstanding_balance, 1000));
+                            setShowAdjust(customer.id);
+                            setAdjustAmount(0);
+                            setAdjustReason("");
                           }}
                         >
-                          <ArrowDownCircle className="h-4 w-4 mr-1" />
-                          Repay
+                          <SlidersHorizontal className="h-4 w-4 mr-1" />
+                          Adjust
                         </Button>
-                      )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title={customer.status === KHATA_STATUS.FROZEN ? "Unfreeze account" : "Freeze account"}
+                          onClick={() => handleToggleFreeze(customer.id)}
+                        >
+                          {customer.status === KHATA_STATUS.FROZEN ? <Sun className="h-4 w-4" /> : <Snowflake className="h-4 w-4" />}
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -251,6 +316,54 @@ export default function CustomersPage() {
               })()}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Adjust Balance Modal */}
+      <Dialog open={!!showAdjust} onOpenChange={() => setShowAdjust(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Adjust Balance</DialogTitle>
+          </DialogHeader>
+          {showAdjust && (() => {
+            const customer = customers.find((c) => c.id === showAdjust);
+            if (!customer) return null;
+            const projected = Math.max(0, customer.outstanding_balance + adjustAmount);
+            return (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  Customer: <span className="font-medium text-foreground">{customer.debtor_name}</span>
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Current balance: <span className="font-medium text-foreground">Nu. {customer.outstanding_balance.toFixed(2)}</span>
+                </p>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Amount (+ owes more, − owes less)</label>
+                  <Input
+                    type="number"
+                    step={0.01}
+                    value={adjustAmount}
+                    onChange={(e) => setAdjustAmount(parseFloat(e.target.value) || 0)}
+                    placeholder="e.g. -500 to write off"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Reason</label>
+                  <Input
+                    value={adjustReason}
+                    onChange={(e) => setAdjustReason(e.target.value)}
+                    placeholder="Opening balance, write-off, dispute..."
+                  />
+                </div>
+                <p className="text-sm text-center text-muted-foreground">
+                  New balance: <span className="font-semibold text-foreground tabular-nums">Nu. {projected.toFixed(2)}</span>
+                </p>
+                <Button className="w-full" onClick={() => handleAdjust(showAdjust)} disabled={adjustAmount === 0}>
+                  Apply Adjustment
+                </Button>
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </div>

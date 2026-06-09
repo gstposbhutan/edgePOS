@@ -9,6 +9,7 @@ import { getPB, PB_REQ } from "@/lib/pb-client";
 import { getRegisterId } from "@/lib/register";
 import { printLabel } from "@/lib/print-label";
 import { loadLabelConfig } from "@/lib/label-config";
+import { ReceiveStockModal } from "@/components/pos/receive-stock-modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -26,8 +27,7 @@ import {
   Package,
   Search,
   Plus,
-  Minus,
-  AlertTriangle,
+  PackagePlus,
   Printer,
 } from "lucide-react";
 
@@ -47,6 +47,7 @@ export default function InventoryPage() {
     allProducts,
     loading,
     refresh,
+    receiveStock,
     lowStockCount,
     outOfStockCount,
   } = useProducts();
@@ -54,6 +55,7 @@ export default function InventoryPage() {
   const [showAdjust, setShowAdjust] = useState<string | null>(null);
   const [adjustQty, setAdjustQty] = useState(0);
   const [adjustReason, setAdjustReason] = useState("RESTOCK");
+  const [receiving, setReceiving] = useState<Product | null>(null);
 
   const filtered = allProducts.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -210,6 +212,15 @@ export default function InventoryPage() {
                           <Button
                             variant="ghost"
                             size="sm"
+                            onClick={() => setReceiving(product)}
+                            title="Receive stock from supplier"
+                          >
+                            <PackagePlus className="h-4 w-4 mr-1" />
+                            Receive
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() => {
                               setShowAdjust(product.id);
                               setAdjustQty(0);
@@ -228,6 +239,22 @@ export default function InventoryPage() {
           </div>
         )}
       </main>
+
+      <ReceiveStockModal
+        open={!!receiving}
+        onClose={() => setReceiving(null)}
+        product={receiving}
+        onReceive={async (productId, quantity, opts) => {
+          const result = await receiveStock(productId, quantity, opts);
+          if (result.success) {
+            toast.success(`Received ${quantity} into stock`);
+            refresh();
+          } else {
+            toast.error(result.error || "Failed to receive stock");
+          }
+          return result;
+        }}
+      />
     </div>
   );
 }
