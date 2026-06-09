@@ -66,7 +66,7 @@ Multi-tier isolation ensuring individual business data remains private while "Ce
 Represents every participant in the supply chain.
 - `id`: UUID (PK)
 - `name`: String (Business Legal Name)
-- `role`: Enum (DISTRIBUTOR, WHOLESALER, RETAILER)
+- `role`: Enum (SUPER_ADMIN, DISTRIBUTOR, WHOLESALER, RETAILER, CUSTOMER) - governance centralized in SUPER_ADMIN; DISTRIBUTOR/WHOLESALER/RETAILER are commercial tiers (riders tracked in `riders`)
 - `tpn_gstin`: String (Unique) - Bhutanese Taxpayer Number for GST 2026 compliance
 - `whatsapp_no`: String (E.164 format) - Primary channel for all system communications
 - `credit_limit`: Decimal - Managed by Wholesalers for their Retailer network
@@ -81,6 +81,7 @@ Shared repository for product identification across Bhutan.
 - `current_stock`: Int (Per-store inventory level)
 - `wholesale_price`: Decimal (Rate at which retailer buys)
 - `mrp`: Decimal (2026 regulated maximum retail price)
+- `sold_by_weight`: Bool - Weighed/measured goods (rice, sugar, veg); `selling_price` is the per-unit (per-kg) rate and the cashier enters a weight at checkout
 
 ### transactions (Accounting Ledger)
 Tamper-proof record of every sale, serving as source of truth for GST reporting.
@@ -268,25 +269,34 @@ if (transaction_type === 'B2B') {
 ## 🚀 TECH STACK IMPLEMENTATION STATUS
 
 ### ✅ COMPLETED
-- [x] Next.js 15 project initialized with TypeScript
-- [x] Tailwind CSS configured with App Router
-- [x] Git repository with comprehensive README
-- [x] Monorepo structure foundation
+- [x] Next.js + Tailwind + Turborepo monorepo (web in JS/JSX, desktop in TS)
+- [x] Supabase schema consolidated to one baseline + seed; base RLS + role/JWT claims
+- [x] Multi-tier roles + auth (SUPER_ADMIN, DISTRIBUTOR, WHOLESALER, RETAILER, CUSTOMER, RIDER)
+- [x] Super-admin platform console + per-role consoles (/admin, /distributor, /wholesaler, /pos, /rider, /shop)
+- [x] GST 5% engine (per-line, tax-exclusive) shared across web + desktop
+- [x] Offline POS terminal (Electron + embedded PocketBase): cart, checkout, shifts, cash registers, audit log
+- [x] Terminal → cloud sync (push to /api/sync/ingest, reconciled by business keys in @nexus-bhutan/sync-core)
+- [x] Retailer licensing: machine-locked .lic gate + activation window + revocation endpoint
+- [x] Cloud → terminal provisioning bootstrap (/api/sync/bootstrap + doBootstrap)
+- [x] Weighed-goods checkout + Code128/EAN-13 barcode label maker
+- [x] Windows packaging: bundled pocketbase.exe (v0.37.3) + signed NSIS installer (electron:build:win)
+- [x] Manual + camera barcode scanning
 
-### 🔄 IN PROGRESS  
-- [ ] Shadcn/UI component library installation
-- [ ] Royal Bhutan theme token configuration
-- [ ] Supabase database schema setup
-- [ ] Row-Level Security implementation
+### 🔄 IN PROGRESS / PARTIAL
+- [ ] Per-role scoped RLS for distributor/wholesaler (base RLS done; scoped policies pending)
+- [ ] Distributor/wholesaler favourites + warehouse management (landing consoles exist)
+- [ ] Web touch-POS weighed-checkout parity (desktop done)
+- [ ] Sync follow-ups: signature verify on ingest, synced credit-sale khata balance, shifts sync
+- [ ] Desktop installer hardening: Authenticode signing + single-instance lock
 
-### ⏳ PENDING
-- [ ] YOLO26 ONNX runtime integration
-- [ ] PouchDB offline sync setup
-- [ ] GST calculation engine
-- [ ] Banking API integration (mBoB/mPay)
-- [ ] WhatsApp gateway service
-- [ ] Face-ID authentication system
-- [ ] Supply chain management features
+### ⏳ PENDING (not started)
+- [ ] YOLO26 ONNX vision / product recognition
+- [ ] Face-ID customer recognition (opt-in)
+- [ ] Banking API integration (mBoB/mPay) — replaces OCR payment verification
+- [ ] WhatsApp gateway (PDF receipts, restock alerts)
+- [ ] Predictive restocking + last-mile logistics integrations
+
+> Full open/pending list: `web/docs/pending-tasks.md`.
 
 ---
 
@@ -434,10 +444,10 @@ module.exports = {
 
 ---
 
-**Last Updated**: 2026-04-06  
-**Architecture Version**: 1.0  
-**Status**: Foundation Phase - UI Framework Setup  
-**Next Milestone**: Shadcn/UI Component Library Integration
+**Last Updated**: 2026-06-09  
+**Architecture Version**: 1.1  
+**Status**: Retailer terminal (licensing + provisioning + offline POS) + platform consoles shipped; vision AI + banking/WhatsApp pending  
+**Next Milestone**: production rollout — apply prod migrations, set cloud URLs, sign the installer (see `web/docs/pending-tasks.md`)
 
 
 # IMPORTANT: 

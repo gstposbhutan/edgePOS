@@ -8,6 +8,18 @@
 
 ---
 
+> **AS-BUILT (2026-06).** The shipped sync is **PocketBase (terminal) → Supabase (cloud), push-only**
+> — not the SQLite/PouchDB design below. The terminal collects unsynced rows (`is_synced=false` on
+> orders / inventory_movements / khata_transactions) and POSTs a batch to **`POST /api/sync/ingest`**
+> (per-terminal bearer token; the store is resolved from the token, never the body). Reconciliation
+> lives in **`@nexus-bhutan/sync-core`** (`web/packages/sync-core`) — idempotent by business keys
+> (registers by `machine_id`, orders by `order_no`, movements/khata by `external_id`); synced orders
+> are tagged `origin='TERMINAL_SYNC'` so cloud confirm/cancel triggers don't double-apply, and a PB
+> hook (`reset_sync_on_update.pb.js`) re-flags edited rows so cancels/refunds re-push. The **inverse**
+> (cloud→terminal first-run catalog pull) is `terminal-provisioning.md`. Key files: `desktop/electron/main.js`
+> `doSync()`, `web/app/api/sync/ingest/route.js`, `web/packages/sync-core/src/register-order-sync.ts`.
+> Open: signature-verify on ingest, synced credit-sale khata balance, shifts sync (see `pending-tasks.md`).
+
 ## Overview
 
 The desktop Electron app uses local SQLite (better-sqlite3) as its primary database for instant reads/writes with zero network dependency. The mobile PWA reads and writes Supabase directly. The sync engine bridges these two worlds — pushing local desktop changes up to Supabase and pulling remote changes down to SQLite — so both surfaces share a consistent view of business data.

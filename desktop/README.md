@@ -52,10 +52,11 @@ npm install
 
 #### 2. Start PocketBase
 
-The PocketBase binary is already included at `desktop/pb/pocketbase`. Start it with:
+A Linux PocketBase binary is committed at `desktop/pb/pocketbase`; on **Windows/macOS** fetch the matching binary first (it's gitignored, pinned to v0.37.3):
 
 ```bash
-npm run pb:serve
+npm run pb:fetch    # downloads pocketbase(.exe) for this platform into pb/
+npm run pb:serve    # Linux/macOS dev (Windows: use the Electron app, which launches pb)
 ```
 
 This starts PocketBase on `http://127.0.0.1:8090`, auto-applies migrations, and creates the default superuser.
@@ -120,10 +121,22 @@ The Electron shell auto-launches PocketBase as a subprocess and provides:
 
 ### Build distributable
 
+The platform PocketBase binary is fetched at build time (not committed):
+
 ```bash
-npm run electron:pack    # Local package
-npm run electron:build   # Full installer
+npm run electron:build:win   # fetch pocketbase.exe + next build + signed NSIS installer → release/
+npm run electron:pack        # unpacked package, no installer
+npm run electron:build       # installer for the host platform
 ```
+
+### First run — license activation
+A built terminal is gated by a **machine-locked `.lic`**. On first launch the activation window
+shows the **Machine ID**; the operator clicks **Request license** (cloud URL baked in via
+`electron/config.js` `DEFAULT_CLOUD_URL`), a super-admin issues the `.lic` from the web
+**Licenses** page, and the operator **uploads** it. Activation verifies offline, configures sync,
+and runs the cloud→terminal **bootstrap** (catalog/khata). Dev knobs: `NEXUS_CLOUD_URL` (point at a
+dev cloud), `NEXUS_FORCE_LICENSE=1` (exercise the gate under `electron:dev`), `NEXUS_SERVE_BUILT=1`
+(serve the built UI on :3200 instead of the `:3000` renderer dev server).
 
 ## 📁 Project Structure
 

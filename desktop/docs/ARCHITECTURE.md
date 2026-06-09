@@ -3,6 +3,17 @@
 > Offline-first GST-compliant POS system for Bhutan.  
 > **Stack**: Next.js 16 (App Router) · React 19 · PocketBase 0.37 · TanStack Query · Zustand · @base-ui/react · Tailwind v4 · Electron 41 · next-themes
 
+> **AS-BUILT delta (2026-06).** Since this reference was first written the terminal gained: a
+> machine-locked **`.lic` startup gate + activation window** (`electron/license.js`, `license-store.js`,
+> `machine-id.js`, `config.js`, `activation.html`/`activation-preload.js`); **cloud→terminal bootstrap**
+> + **terminal→cloud push sync** (`electron/main.js` `doBootstrap()`/`doSync()` → `/api/sync/{bootstrap,ingest}`,
+> reconciled in `@nexus-bhutan/sync-core`); **weighed goods + a Code128/EAN-13 label maker** (`lib/labels.ts`,
+> `lib/print-label.ts`, `lib/label-config.ts`, `components/pos/weight-entry-modal.tsx`); **cash registers =
+> terminals** + an **audit log** (pb migrations 004/005, `pb_hooks/`, `lib/register.ts`); and **Windows
+> packaging** (`scripts/fetch-pocketbase.mjs` → bundled `pocketbase.exe`; signed NSIS via `electron:build:win`).
+> Feature docs: `web/docs/features/{terminal-licensing,terminal-provisioning,weighed-goods-labels,offline-sync,desktop-shell}.md`.
+> Open items: `web/docs/pending-tasks.md`. Sections below predate these and are updated incrementally.
+
 ---
 
 ## Table of Contents
@@ -41,6 +52,7 @@ desktop/
 │   │   ├── cart-item-row.tsx     # Single cart line item
 │   │   ├── cart-totals.tsx       # Cart footer with checkout
 │   │   ├── barcode-scanner.tsx   # Camera-based QR/barcode scanner
+│   │   ├── weight-entry-modal.tsx # Weighed-goods checkout (qty × per-unit rate)
 │   │   ├── payment-modal.tsx     # Payment method & tendering
 │   │   ├── customer-modal.tsx    # Customer select/create
 │   │   ├── receipt-modal.tsx     # Post-checkout receipt
@@ -71,14 +83,18 @@ desktop/
 │   ├── use-settings.ts           # Store settings
 │   ├── use-shifts.ts             # Shift open/close/Z-report
 │   ├── use-cash-adjustments.ts    # Cash movement ledger
+│   ├── use-require-role.ts        # Route guard by user role
 │   └── use-undo.ts               # Undo action stack (→ zustand)
 ├── lib/                          # Utility modules
 │   ├── constants.ts              # All enums, magic strings, config values
 │   ├── date-utils.ts             # Date formatting (PB format: "YYYY-MM-DD HH:mm:ss.SSSZ")
 │   ├── gst.ts                    # GST calculation, order signature, currency formatting
 │   ├── pb-client.ts              # PocketBase client singleton + auth helpers
+│   ├── register.ts               # getRegisterId() — this terminal's cash_registers row (by machine_id)
+│   ├── labels.ts                 # Barcode (bwip-js) + printable label HTML (Code128/EAN-13)
+│   ├── label-config.ts           # Per-terminal label settings (localStorage)
+│   ├── print-label.ts            # Print a single label via the OS dialog
 │   ├── print-utils.ts            # Browser/thermal print utilities
-│   ├── query-client.ts           # TanStack Query client factory
 │   ├── query-client.ts           # TanStack Query client factory
 │   ├── types.ts                  # Re-exports all major types
 │   └── utils.ts                  # cn() — Tailwind class merge
@@ -88,16 +104,25 @@ desktop/
 │   ├── query-provider.tsx         # TanStack Query provider wrapper
 │   └── theme-provider.tsx         # next-themes dark/light provider
 ├── electron/                      # Electron main process
-│   ├── main.js                    # Window, tray, IPC, user seed
-│   ├── preload.js                 # Context bridge
-│   ├── pb-launcher.js             # PocketBase binary spawn
-│   └── printer.js                 # Thermal printer integration
+│   ├── main.js                    # Window, tray, IPC, PB launcher, license gate, doSync/doBootstrap
+│   ├── preload.js                 # Context bridge (POS)
+│   ├── pb-launcher.js             # PocketBase spawn (picks pocketbase.exe on Windows)
+│   ├── static-server.js           # Serves built out/ in prod / NEXUS_SERVE_BUILT
+│   ├── printer.js                 # Thermal printer integration (ESC/POS)
+│   ├── machine-id.js              # Terminal id (Windows MachineGuid → MAC → hostname)
+│   ├── license.js                 # Offline Ed25519 .lic verify (embedded public key)
+│   ├── license-store.js           # Read/save/verify userData/license.lic each boot
+│   ├── config.js                  # Build-time config (DEFAULT_CLOUD_URL)
+│   ├── activation.html            # Standalone activation window (upload .lic / request)
+│   └── activation-preload.js      # Activation window context bridge
 ├── pb/
-│   ├── pocketbase                # PocketBase 0.37.3 embedded binary
-│   └── pb_migrations/            # PocketBase migration files
-├── electron/                     # Electron main process & preload
+│   ├── pocketbase                # Linux PB binary (committed); pocketbase.exe fetched per-platform (gitignored)
+│   ├── pb_migrations/            # 000_superuser … 006_sold_by_weight
+│   └── pb_hooks/                 # audit.pb.js, reset_sync_on_update.pb.js
+├── scripts/
+│   └── fetch-pocketbase.mjs      # Downloads the pinned PocketBase binary into pb/
 ├── public/                       # Static assets
-├── setup-pb.js                   # PocketBase schema setup script
+├── setup-pb.js                   # PocketBase schema setup script (live-API path)
 ├── package.json
 ├── tsconfig.json
 └── next.config.mjs
@@ -285,22 +310,26 @@ User clicks Scan → BarcodeScanner opens → Camera captures barcode
 | Collection | Type | Key Fields |
 |------------|------|------------|
 | `users` | auth | email, password, name, `role` (owner/manager/cashier) |
-| `entities` | base | name, tpn_gstin, shop_slug, is_active |
+| `entities` | base | name, role (SUPER_ADMIN/DISTRIBUTOR/WHOLESALER/RETAILER/CUSTOMER), tpn_gstin, shop_slug, is_active |
 | `categories` | base | name, color |
-| `products` | base | name, sku, barcode, mrp, sale_price, current_stock, is_active; `category` → categories |
+| `products` | base | name, sku, barcode, mrp, sale_price, current_stock, **sold_by_weight**, is_active; `category` → categories |
 | `khata_accounts` | base | debtor_name, debtor_phone, credit_limit, outstanding_balance |
 | `carts` | base | status (ACTIVE/CONVERTED/ABANDONED), customer_whatsapp |
-| `cart_items` | base | `cart` → carts, `product` → products; name, qty, unit_price, discount, gst_5, total |
-| `orders` | base | order_no, status, items (json), subtotal, gst_total, grand_total, payment_method, digital_signature |
-| `inventory_movements` | base | `product` → products, movement_type, quantity, `reference_id` → orders |
-| `khata_transactions` | base | `khata_account` → khata_accounts, transaction_type (DEBIT/CREDIT), amount |
-| `cash_adjustments` | base | `amount`, `type` (CASH_IN/CASH_OUT), `reason`, `notes`, `shift` → shifts, `created_by` → users |
-| `settings` | base | store_name, tpn_gstin, gst_rate, receipt_header/footer |
-| `shifts` | base | `opened_by` → users, opening_float, status (active/closed), cash_sales, digital_sales, credit_sales |
+| `cart_items` | base | `cart` → carts, `product` → products; name, qty (fractional for weighed), unit_price, discount, gst_5, total |
+| `orders` | base | order_no, status, items (json), subtotal, gst_total, grand_total, payment_method, payment_channel, digital_signature, **register_id**, **is_synced** |
+| `inventory_movements` | base | `product` → products, movement_type, quantity, `reference_id` → orders, **is_synced** |
+| `khata_transactions` | base | `khata_account` → khata_accounts, transaction_type (DEBIT/CREDIT), amount, **is_synced** |
+| `cash_registers` | base | **machine_id** (unique per terminal), name, default_opening_float, is_active — a register == one physical terminal |
+| `cash_adjustments` | base | `amount`, `type` (CASH_IN/CASH_OUT), `reason`, `notes`, `shift` → shifts, `register_id`, `created_by` → users |
+| `audit_logs` | base | table_name, record_id, operation (INSERT/UPDATE/DELETE), old/new_values (json), actor — append-only (`pb_hooks/audit.pb.js`) |
+| `settings` | base | store_name, tpn_gstin, gst_rate, receipt_header/footer, **store_entity_id** (cloud entity) |
+| `shifts` | base | `opened_by` → users, opening_float, status (active/closed), cash_sales, digital_sales, credit_sales, `register_id` |
 
-**Access rules:** All collections use `@request.auth.id != ''` for list/view/create/update/delete.
+**Access rules:** All collections use `@request.auth.id != ''` for list/view/create/update/delete (writes role-scoped in setup-pb.js).
 
-**Seed data** (from setup-pb.js): Default admin user, 1 entity, 8 categories, 41 products, 3 demo khata accounts, 1 settings record.
+**Schema source:** `pb_migrations/` applied on serve — `000` superuser · `001` initial · `002` shifts · `003` cash_adjustments · `004` cash_registers · `005` audit · `006` sold_by_weight — and mirrored in `setup-pb.js` for the live-API setup path.
+
+**Seed data** (from setup-pb.js): default admin user, entity, categories, products, demo khata accounts, settings record.
 
 ### Database Seeding
 
@@ -603,7 +632,9 @@ Components receive data as props, not from context. They call hooks at the page 
 | jspdf | 4.2.1 | PDF generation |
 | escpos | 3.0.0-alpha.6 | Thermal printer commands |
 | onnxruntime-web | 1.18.0 | Edge AI runtime |
-| pouchdb / pouchdb-browser | 8.0.1 | Offline-first local database |
+| bwip-js | 4.11 | Barcode generation (Code128/EAN-13) for the label maker |
+| adm-zip | 0.5 (dev) | Unzip the fetched PocketBase release (`scripts/fetch-pocketbase.mjs`) |
+| pouchdb / pouchdb-browser | 8.0.1 | (legacy — shipped sync is PocketBase→Supabase push, not PouchDB) |
 | zod | 3.22.4 | Schema validation |
 
 ---
@@ -643,16 +674,18 @@ Components receive data as props, not from context. They call hooks at the page 
 npm run dev                    # Next.js dev server on port 3000
 
 # PocketBase
-npm run pb:serve               # Start PocketBase on port 8090
+npm run pb:fetch               # Download pocketbase(.exe) for this platform into pb/ (pinned v0.37.3)
+npm run pb:serve               # Start PocketBase on port 8090 (Linux/macOS; Windows uses the Electron app)
 npm run pb:setup               # Initialize/update schema & seed data
 
 # Build
-npm run build                  # Production build (static export)
+npm run build                  # Production build (static export → out/)
 
 # Electron
 npm run electron:dev           # Next.js + Electron in dev mode
-npm run electron:build         # Build distributable AppImage
-npm run electron:pack          # Build unpackaged Electron app (testing)
+npm run electron:build         # Installer for the host platform (Linux AppImage / macOS dmg)
+npm run electron:build:win     # Fetch pocketbase.exe + build the signed Windows NSIS installer
+npm run electron:pack          # Unpacked Electron app (no installer, testing)
 
 # Quick rebuild & launch
 ./dev.sh                       # Clean PB data → build → launch AppImage
@@ -682,6 +715,9 @@ The packaged AppImage (`release/NEXUS BHUTAN POS-*.AppImage`):
 |----------|---------|---------|
 | `PB_URL` | `http://127.0.0.1:8090` | PocketBase server URL |
 | `NEXT_PUBLIC_PB_URL` | `http://127.0.0.1:8090` | PocketBase URL exposed to client |
+| `NEXUS_CLOUD_URL` | (baked `config.js`) | Dev override for the activation "Request licence" cloud URL |
+| `NEXUS_FORCE_LICENSE` | unset | `1` forces the `.lic` gate under `electron:dev` (dev otherwise bypasses it) |
+| `NEXUS_SERVE_BUILT` | unset | `1` serves the built `out/` on :3200 instead of the `:3000` renderer dev server |
 
 ### PocketBase Admin
 

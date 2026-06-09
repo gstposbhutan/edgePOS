@@ -7,6 +7,13 @@
 
 ---
 
+> **AS-BUILT (2026-06).** The shell now also bundles **`pocketbase.exe`** (v0.37.3, fetched per
+> platform via `scripts/fetch-pocketbase.mjs`; `pb-launcher.js` selects the right binary) and gates
+> startup on a **machine-locked `.lic`** — `main.js whenReady` verifies the licence (else opens the
+> activation window) before loading the POS, and activation runs the cloud→terminal bootstrap. See
+> `terminal-licensing.md` + `terminal-provisioning.md`. Packaged as a signed **NSIS installer** via
+> `npm run electron:build:win`.
+
 ## Overview
 
 The POS terminal runs as a native Windows desktop application built on Electron. This shell provides the bridge between the browser-based React UI and the physical hardware found in Bhutanese retail environments — thermal printers, cash drawers, dual cameras, and local storage. Without this layer, the POS cannot interact with store peripherals or guarantee data persistence during connectivity outages.
