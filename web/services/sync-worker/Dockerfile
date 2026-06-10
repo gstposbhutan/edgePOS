@@ -1,24 +1,26 @@
-# ---- Stage 1: Dependencies ----
-FROM node:20-alpine AS deps
-WORKDIR /app
+# Monorepo-aware build. Context = web/ (so packages/sync-core is reachable).
+# sync-worker depends on @nexus-bhutan/sync-core (file:../../packages/sync-core),
+# which must be built first; --install-links copies it in (no fragile symlink).
 
-COPY package.json package-lock.json ./
-RUN npm ci
-
-# ---- Stage 2: Builder ----
+# ---- Stage 1: Builder ----
 FROM node:20-alpine AS builder
-WORKDIR /app
+WORKDIR /build
 
-COPY --from=deps /app/node_modules ./node_modules
-COPY package.json tsconfig.json ./
-COPY src/ ./src/
+# Build the local workspace package first
+COPY packages/sync-core/package.json packages/sync-core/tsconfig.json ./packages/sync-core/
+RUN cd packages/sync-core && npm install --no-audit --no-fund
+COPY packages/sync-core/src ./packages/sync-core/src
+RUN cd packages/sync-core && npm run build
 
-RUN npm run build
+# Install + build sync-worker (file: dep resolves to ../../packages/sync-core)
+COPY services/sync-worker/package.json services/sync-worker/tsconfig.json ./services/sync-worker/
+RUN cd services/sync-worker && npm install --install-links --no-audit --no-fund
+COPY services/sync-worker/src ./services/sync-worker/src
+RUN cd services/sync-worker && npm run build
 
-# ---- Stage 3: Runner ----
+# ---- Stage 2: Runner ----
 FROM node:20-alpine AS runner
 WORKDIR /app
-
 ENV NODE_ENV=production
 
 LABEL maintainer="shawnomanuel <shawn.manuel@gmail.com>"
@@ -28,8 +30,8 @@ LABEL org.opencontainers.image.description="PouchDB-to-Supabase background sync 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 appuser
 
-COPY --from=builder /app/dist ./dist
-COPY --from=deps /app/node_modules ./node_modules
+COPY --from=builder /build/services/sync-worker/dist ./dist
+COPY --from=builder /build/services/sync-worker/node_modules ./node_modules
 
 USER appuser
 

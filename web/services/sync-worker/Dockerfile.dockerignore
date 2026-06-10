@@ -1,0 +1,21 @@
+# ignore everything by default...
+**/node_modules
+**/dist
+**/.next
+**/.git
+# ...and the parts of the web app the sync-worker build doesn't need
+app
+components
+hooks
+public
+apps
+prisma
+e2e
+docs
+scripts
+supabase
+coverage
+playwright-report
+test-results
+*.log
+.env*

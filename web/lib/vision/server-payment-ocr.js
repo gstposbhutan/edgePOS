@@ -32,7 +32,7 @@ async function verifyWithZhipu(imageBase64, mimeType, expectedAmount) {
   const client = new ZhipuAI({ apiKey: process.env.ZHIPU_API_KEY })
 
   const response = await client.chat.completions.create({
-    model: 'glm-4v-flash',
+    model: process.env.ZHIPU_VISION_MODEL || 'glm-4.6v',
     messages: [{
       role: 'user',
       content: [
