@@ -29,6 +29,8 @@ import {
   Plus,
   PackagePlus,
   Printer,
+  History,
+  TrendingUp,
 } from "lucide-react";
 
 
@@ -118,7 +120,7 @@ export default function InventoryPage() {
           </Link>
           <h1 className="font-serif font-bold text-lg">Inventory</h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           {outOfStockCount > 0 && (
             <Badge variant="destructive">{outOfStockCount} Out</Badge>
           )}
@@ -127,6 +129,12 @@ export default function InventoryPage() {
               {lowStockCount} Low
             </Badge>
           )}
+          <Link href="/inventory/predictions">
+            <Button variant="ghost" size="sm"><TrendingUp className="h-4 w-4 mr-1" />Reorder</Button>
+          </Link>
+          <Link href="/inventory/movements">
+            <Button variant="ghost" size="sm"><History className="h-4 w-4 mr-1" />History</Button>
+          </Link>
         </div>
       </header>
 
