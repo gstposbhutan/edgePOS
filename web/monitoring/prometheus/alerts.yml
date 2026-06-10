@@ -1,0 +1,33 @@
+groups:
+  - name: edgepos
+    rules:
+      - alert: TargetDown
+        expr: up == 0
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "Scrape target {{ $labels.job }} is down"
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Postgres is unreachable"
+      - alert: HostHighMemory
+        expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > 0.90
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Host RAM > 90% for 5m"
+      - alert: HostLowDisk
+        expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.15
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Root disk < 15% free"
+      - alert: HostHighCPU
+        expr: 1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) > 0.90
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "CPU > 90% for 15m"
