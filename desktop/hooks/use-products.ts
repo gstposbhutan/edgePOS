@@ -3,6 +3,8 @@
 import { useEffect, useCallback, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getPB, PB_REQ } from "@/lib/pb-client";
+import { getRegisterId } from "@/lib/register";
+import { MOVEMENT_TYPE } from "@/lib/constants";
 import { usePosStore } from "@/stores/pos-store";
 
 export interface Product {
@@ -175,6 +177,61 @@ export function useProducts() {
     [updateProductMutation]
   );
 
+  const deleteProductMutation = useMutation({
+    mutationFn: async (id: string) => pb.collection("products").delete(id, PB_REQ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+    },
+  });
+
+  const deleteProduct = useCallback(
+    async (id: string) => {
+      try {
+        await deleteProductMutation.mutateAsync(id);
+        return { success: true };
+      } catch (err: any) {
+        return { success: false, error: err.message };
+      }
+    },
+    [deleteProductMutation]
+  );
+
+  // Receive stock from a supplier: bump current_stock, log a RESTOCK movement
+  // (register-stamped; cost + supplier ride in notes to match the canonical
+  // movement shape), optionally refresh the cost price.
+  const receiveStock = useCallback(
+    async (
+      productId: string,
+      quantity: number,
+      opts: { unitCost?: number; supplierRef?: string; notes?: string; updateCost?: boolean } = {}
+    ) => {
+      try {
+        if (quantity <= 0) throw new Error("Quantity must be greater than zero");
+        const registerId = await getRegisterId();
+        const product = await pb.collection("products").getOne<Product>(productId, PB_REQ);
+        const newStock = (product.current_stock || 0) + quantity;
+        const update: Partial<Product> = { current_stock: newStock };
+        if (opts.updateCost && opts.unitCost && opts.unitCost > 0) update.cost_price = opts.unitCost;
+        await pb.collection("products").update(productId, update, PB_REQ);
+        const parts = [opts.notes || "Stock received"];
+        if (opts.supplierRef) parts.push(`ref ${opts.supplierRef}`);
+        if (opts.unitCost) parts.push(`@ Nu.${opts.unitCost}/unit`);
+        await pb.collection("inventory_movements").create({
+          product: productId,
+          movement_type: MOVEMENT_TYPE.RESTOCK,
+          quantity,
+          register_id: registerId || "",
+          notes: parts.join(" — "),
+        }, PB_REQ);
+        queryClient.invalidateQueries({ queryKey: ["products"] });
+        return { success: true, stock: newStock };
+      } catch (err: any) {
+        return { success: false, error: err.message };
+      }
+    },
+    [pb, queryClient]
+  );
+
   const availableLetters = useMemo(() => {
     const letters = new Set<string>();
     products.forEach((p) => {
@@ -246,6 +303,8 @@ export function useProducts() {
     findById,
     createProduct,
     updateProduct,
+    deleteProduct,
+    receiveStock,
     refresh: () => queryClient.invalidateQueries({ queryKey: ["products"] }),
     lowStockCount,
     outOfStockCount,

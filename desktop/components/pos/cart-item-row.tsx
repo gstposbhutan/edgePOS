@@ -32,9 +32,18 @@ export function CartItemRow({
   onOverridePrice,
 }: CartItemRowProps) {
   const [editDiscount, setEditDiscount] = useState(false);
+  const [discountMode, setDiscountMode] = useState<"FLAT" | "PERCENT">("FLAT");
   const [editPrice, setEditPrice] = useState(false);
   const [editQty, setEditQty] = useState(false);
   const [qtyBuffer, setQtyBuffer] = useState("");
+
+  // The stored discount is always a per-unit flat amount (the canonical field
+  // that syncs). A PERCENT entry is converted to that flat per-unit value here.
+  const applyDisc = (raw: string) => {
+    const v = parseFloat(raw) || 0;
+    const perUnit = discountMode === "PERCENT" ? parseFloat(((item.unit_price * v) / 100).toFixed(2)) : v;
+    onApplyDiscount(item.id, perUnit);
+  };
 
   const confirmQty = () => {
     const qty = parseInt(qtyBuffer) || 1;
@@ -116,15 +125,34 @@ export function CartItemRow({
       {(item.discount > 0 || isManager) && (
         <div className="flex items-center gap-3 text-[11px] border-t border-border/50 pt-2">
           {editDiscount ? (
-            <Input
-              type="number" min={0} step={0.01} defaultValue={item.discount}
-              className="h-7 w-20 text-xs" autoFocus
-              onKeyDown={(e) => {
-                if (e.key === "Enter") { onApplyDiscount(item.id, parseFloat((e.target as HTMLInputElement).value) || 0); setEditDiscount(false); }
-                if (e.key === "Escape") setEditDiscount(false);
-              }}
-              onBlur={(e) => { onApplyDiscount(item.id, parseFloat(e.target.value) || 0); setEditDiscount(false); }}
-            />
+            <div className="flex items-center gap-1">
+              <Input
+                key={discountMode}
+                type="number" min={0} step={0.01}
+                defaultValue={
+                  discountMode === "PERCENT"
+                    ? (item.unit_price > 0 && item.discount > 0
+                        ? parseFloat(((item.discount / item.unit_price) * 100).toFixed(2))
+                        : "")
+                    : (item.discount || "")
+                }
+                placeholder={discountMode === "PERCENT" ? "%" : "Nu."}
+                className="h-7 w-16 text-xs" autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { applyDisc((e.target as HTMLInputElement).value); setEditDiscount(false); }
+                  if (e.key === "Escape") setEditDiscount(false);
+                }}
+                onBlur={(e) => { applyDisc(e.target.value); setEditDiscount(false); }}
+              />
+              <button
+                type="button"
+                title="Toggle flat / percentage"
+                onMouseDown={(e) => { e.preventDefault(); setDiscountMode((m) => (m === "PERCENT" ? "FLAT" : "PERCENT")); }}
+                className="h-7 px-1.5 rounded border border-border text-[10px] font-semibold text-muted-foreground hover:text-primary"
+              >
+                {discountMode === "PERCENT" ? "%" : "Nu."}
+              </button>
+            </div>
           ) : (
             <button onClick={() => setEditDiscount(true)} className="flex items-center gap-1.5 text-muted-foreground hover:text-primary min-h-[2rem]">
               <Tag className="h-3.5 w-3.5" />

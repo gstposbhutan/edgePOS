@@ -356,6 +356,38 @@ async function setup() {
     ],
   });
 
+  // ── Purchasing: wholesaler connections + purchase orders (retailer restock) ──
+  await ensureCollection(pb, 'wholesaler_connections', { listRule: AUTH_RULE, viewRule: AUTH_RULE });
+  await addFields(pb, 'wholesaler_connections', [
+    { name: 'wholesaler', type: 'relation', target: 'entities', required: false },
+    { name: 'wholesaler_name', type: 'text', required: true },
+    { name: 'wholesaler_phone', type: 'text', required: false },
+    { name: 'tpn_gstin', type: 'text', required: false },
+    { name: 'status', type: 'text', required: false },
+    { name: 'notes', type: 'text', required: false },
+    { name: 'created_by', type: 'relation', target: 'users', required: false },
+  ]);
+
+  await ensureCollection(pb, 'purchase_orders', { listRule: AUTH_RULE, viewRule: AUTH_RULE });
+  await addFields(pb, 'purchase_orders', [
+    { name: 'po_no', type: 'text', required: true },
+    { name: 'status', type: 'text', required: true },
+    { name: 'supplier', type: 'relation', target: 'entities', required: false },
+    { name: 'supplier_name', type: 'text', required: false },
+    { name: 'items', type: 'json', required: false },
+    { name: 'subtotal', type: 'number', required: false, options: { default: 0 } },
+    { name: 'gst_total', type: 'number', required: false, options: { default: 0 } },
+    { name: 'grand_total', type: 'number', required: false, options: { default: 0 } },
+    { name: 'notes', type: 'text', required: false },
+    { name: 'expected_at', type: 'date', required: false },
+    { name: 'submitted_at', type: 'date', required: false },
+    { name: 'confirmed_at', type: 'date', required: false },
+    { name: 'received_at', type: 'date', required: false },
+    { name: 'entity_id', type: 'relation', target: 'entities', required: false },
+    { name: 'created_by', type: 'relation', target: 'users', required: false },
+    { name: 'is_synced', type: 'bool', required: false, options: { default: false } },
+  ]);
+
   // ── Canonical payment_method values (P1-1) ───────────────────────────────────
   // The 001 migration defined orders.payment_method as a lowercase select
   // (cash/mbob/mpay/rtgs/credit). Re-point it to the canonical web enum so synced
@@ -403,6 +435,8 @@ async function setup() {
     inventory_movements: { list: AUTH_RULE, view: AUTH_RULE, create: AUTH_RULE,    update: MANAGER_RULE, delete: MANAGER_RULE },
     shifts:              { list: AUTH_RULE, view: AUTH_RULE, create: AUTH_RULE,    update: AUTH_RULE,    delete: MANAGER_RULE },
     cash_adjustments:    { list: AUTH_RULE, view: AUTH_RULE, create: AUTH_RULE,    update: MANAGER_RULE, delete: MANAGER_RULE },
+    wholesaler_connections: { list: AUTH_RULE, view: AUTH_RULE, create: MANAGER_RULE, update: MANAGER_RULE, delete: MANAGER_RULE },
+    purchase_orders:        { list: AUTH_RULE, view: AUTH_RULE, create: MANAGER_RULE, update: MANAGER_RULE, delete: MANAGER_RULE },
   };
   console.log('\n🔒 Access rules:');
   for (const [name, rules] of Object.entries(RULES)) {

@@ -127,3 +127,31 @@ onRecordUpdateRequest((e) => {
     e.app.logger().error("audit_logs write failed", "table", "settings", "err", String(err));
   }
 }, "settings");
+
+// 7. Discounted sales → audit_logs (P1-6: line-item discount accountability).
+//    Logs the discounted lines of a new order so a manager can review who gave
+//    what discount. The stored discount is the per-unit flat amount.
+onRecordCreateRequest((e) => {
+  e.next();
+  try {
+    const items = e.record.get("items");
+    if (!items || typeof items.length !== "number") return;
+    const discounted = [];
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (it && it.discount && it.discount > 0) {
+        discounted.push({ name: it.name, unit_price: it.unit_price, discount: it.discount, quantity: it.quantity });
+      }
+    }
+    if (discounted.length === 0) return;
+    const rec = new Record(e.app.findCollectionByNameOrId("audit_logs"));
+    rec.set("table_name", "orders");
+    rec.set("record_id", e.record.id);
+    rec.set("operation", "INSERT");
+    rec.set("new_values", { order_no: e.record.get("order_no"), discounts: discounted });
+    if (e.auth) { rec.set("actor_id", e.auth.id); rec.set("actor_role", String(e.auth.get("role") || "")); }
+    e.app.save(rec);
+  } catch (err) {
+    e.app.logger().error("audit_logs write failed", "table", "orders(discount)", "err", String(err));
+  }
+}, "orders");
