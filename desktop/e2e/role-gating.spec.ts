@@ -13,7 +13,7 @@ import PocketBase from "pocketbase";
 // timing-sensitive for a deterministic check, and the guard is what P2-1 is about.
 
 const BASE = "http://127.0.0.1:3019";
-const PB_URL = "http://127.0.0.1:8090";
+const PB_URL = process.env.NEXT_PUBLIC_POCKETBASE_URL || "http://127.0.0.1:8090";
 
 async function authBlob(email: string) {
   const pb = new PocketBase(PB_URL);

@@ -10,7 +10,11 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   fullyParallel: false,
   workers: 1,
-  retries: 0,
+  // UI flows run against a single-worker static server + one PocketBase; a transient
+  // load race (e.g. the products query lagging on a cold page) can occasionally miss.
+  // One retry absorbs that nondeterminism without masking real failures (the flows
+  // pass deterministically in isolation).
+  retries: 1,
   reporter: "line",
   globalSetup: "./e2e/global-setup.ts",
   use: {

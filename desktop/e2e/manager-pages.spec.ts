@@ -9,7 +9,7 @@ import PocketBase from "pocketbase";
 // Auth is seeded into localStorage (same approach as role-gating.spec.ts).
 
 const BASE = "http://127.0.0.1:3019";
-const PB_URL = "http://127.0.0.1:8090";
+const PB_URL = process.env.NEXT_PUBLIC_POCKETBASE_URL || "http://127.0.0.1:8090";
 
 async function authBlob(email: string) {
   const pb = new PocketBase(PB_URL);
