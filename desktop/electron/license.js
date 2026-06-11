@@ -4,7 +4,7 @@ const { createPublicKey, verify } = require("node:crypto");
 // web/lib/license/public-key.js — the web super-admin issuer signs with the matching
 // private key (LICENSE_SIGNING_PRIVATE_KEY, server secret). This lets the terminal
 // verify a .lic fully OFFLINE; online revocation is a separate check.
-const LICENSE_PUBLIC_KEY_B64 = "MCowBQYDK2VwAyEAxj73T7ag6Tiv/XfKKtqjk3Nyo/TotaXd0v29TilF8Io=";
+const LICENSE_PUBLIC_KEY_B64 = "MCowBQYDK2VwAyEA7GCA6c/0nh0muQ5z//msPmQcYJKdcjW9FYQVA8zadj0=";
 
 const PREFIX = "nxslic";
 
