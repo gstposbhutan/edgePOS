@@ -508,12 +508,10 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
       <header className="border-b border-border bg-card/80 backdrop-blur-sm px-4 py-2.5 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-              <span className="text-lg">🏔️</span>
-            </div>
+            <img src="/branding/pelbu-icon.png" alt="Pelbu" className="w-8 h-8 rounded-lg" />
             <div className="hidden sm:block">
               <h1 className="font-heading font-bold text-base leading-tight">
-                {settings?.store_name || "NEXUS BHUTAN"}
+                {settings?.store_name || "Pelbu"}
               </h1>
               <p className="text-[10px] text-muted-foreground leading-tight">POS Terminal</p>
             </div>

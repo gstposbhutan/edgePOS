@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  title: "NEXUS BHUTAN — 4K Edge-AI POS",
+  title: "Pelbu — Point of Sale",
   description: "Royal Bhutan's 4K Edge-AI POS & Multi-Tier Supply Chain Ecosystem for GST 2026 Compliance",
 };
 

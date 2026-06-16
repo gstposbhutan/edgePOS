@@ -123,7 +123,7 @@ export default function OrderConfirmationPage() {
   function fallbackWhatsAppWeb() {
     const phone   = order?.buyer_whatsapp?.replace('+', '') ?? ''
     const message = encodeURIComponent(
-      `Your receipt from ${entity?.name ?? 'NEXUS BHUTAN'}\n` +
+      `Your receipt from ${entity?.name ?? 'Pelbu'}\n` +
       `Invoice: ${order?.order_no}\n` +
       `Total: Nu. ${parseFloat(order?.grand_total ?? 0).toFixed(2)}\n` +
       `GST (5%): Nu. ${parseFloat(order?.gst_total ?? 0).toFixed(2)}\n\n` +

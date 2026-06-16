@@ -27,7 +27,7 @@ function findPrinter() {
 function formatReceipt(order, settings) {
   const items = order.items || [];
   const date = new Date(order.created).toLocaleString("en-IN");
-  const storeName = settings?.store_name || "NEXUS BHUTAN";
+  const storeName = settings?.store_name || "Pelbu";
   const footer = settings?.receipt_footer || "Thank you!";
 
   return {

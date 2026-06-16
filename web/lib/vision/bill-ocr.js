@@ -7,7 +7,7 @@
  * @module vision/bill-ocr
  */
 
-const BILL_PROMPT = `You are a wholesale bill parser for a Bhutan POS system (NEXUS BHUTAN).
+const BILL_PROMPT = `You are a wholesale bill parser for a Bhutan POS system (Pelbu).
 
 Analyze this photo of a wholesale delivery note or bill. The bill may be
 handwritten, printed, or a mix of both. It may contain text in English and/or

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import Image from "next/image"
 import Link from "next/link"
+import { Logo } from "@/components/ui/logo"
 import { ProductDetailModal } from "@/components/shop/product-detail-modal"
 import { CartDrawer } from "@/components/shop/cart-drawer"
 import { useCart } from "@/lib/cart-context"
@@ -74,8 +75,8 @@ export default function ShopPage() {
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border">
         <div className="px-4 py-3">
           <div className="flex items-center gap-3">
-            <Link href="/" className="h-10 w-10 rounded-lg bg-primary flex items-center justify-center">
-              <span className="text-xl">🏔️</span>
+            <Link href="/" className="shrink-0">
+              <Logo variant="icon" className="h-10 w-10 rounded-lg" />
             </Link>
 
             <div className="flex-1 relative">

@@ -67,7 +67,7 @@ export function ConnectivityGate({ children }) {
             No Internet Connection
           </h1>
           <p className="text-sm text-muted-foreground">
-            NEXUS BHUTAN requires an active internet connection to operate.
+            Pelbu requires an active internet connection to operate.
             Please restore connectivity to continue.
           </p>
         </div>

@@ -1,6 +1,8 @@
 "use client"
 
 import { Badge } from "@/components/ui/badge"
+import { PELBU_ICON_DATA_URI } from "@/lib/pelbu-icon-data"
+import { BRAND_NAME, BRAND_TAGLINE } from "@/lib/brand"
 
 /**
  * GST-compliant receipt component.
@@ -21,8 +23,8 @@ export function Receipt({ order, entity, items }) {
     <div id="receipt-content" className="bg-white text-gray-900 p-6 rounded-xl max-w-md w-full font-sans text-sm">
       {/* Header */}
       <div className="text-center border-b border-gray-200 pb-4 mb-4">
-        <div className="text-2xl mb-1">🏔️</div>
-        <h1 className="text-lg font-bold">{entity?.name ?? 'NEXUS BHUTAN'}</h1>
+        <img src={PELBU_ICON_DATA_URI} alt={BRAND_NAME} className="h-12 w-12 mx-auto mb-1.5" />
+        <h1 className="text-lg font-bold">{entity?.name ?? BRAND_NAME}</h1>
         {entity?.tpn_gstin && (
           <p className="text-xs text-gray-500 mt-0.5">TPN/GSTIN: {entity.tpn_gstin}</p>
         )}
@@ -112,6 +114,7 @@ export function Receipt({ order, entity, items }) {
         <p>This is a computer-generated invoice. No physical signature required.</p>
         <p>Compliant with Bhutan GST Act 2026 · Ministry of Finance</p>
         <p className="font-medium text-gray-500 mt-1">Thank you for your business!</p>
+        <p className="text-gray-400 mt-1">Powered by {BRAND_NAME} · {BRAND_TAGLINE}</p>
       </div>
     </div>
   )

@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Logo } from "@/components/ui/logo";
 
 export default function Home() {
   return (
@@ -15,20 +16,15 @@ export default function Home() {
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-primary flex items-center justify-center">
-                <span className="text-primary-foreground font-bold text-lg">🏔️</span>
-              </div>
-              <div>
-                <h1 className="text-xl font-serif font-bold text-foreground">NEXUS BHUTAN</h1>
-                <p className="text-sm text-muted-foreground">4K Edge-AI POS System</p>
-              </div>
+              <Logo variant="horizontal" className="h-9 w-auto" />
+              <p className="hidden sm:block text-sm text-muted-foreground border-l border-border pl-3">4K Edge-AI POS System</p>
             </div>
             <div className="flex items-center gap-3">
               <Badge variant="outline" className="border-emerald-500 text-emerald-600">
                 ● System Online
               </Badge>
               <Avatar className="h-8 w-8">
-                <AvatarFallback className="bg-primary text-primary-foreground">NB</AvatarFallback>
+                <AvatarFallback className="bg-primary text-primary-foreground">PB</AvatarFallback>
               </Avatar>
             </div>
           </div>
@@ -40,7 +36,7 @@ export default function Home() {
         {/* Welcome Section */}
         <div className="mb-8">
           <h2 className="text-3xl font-serif font-bold text-foreground mb-2">
-            Welcome to NEXUS BHUTAN
+            Welcome to Pelbu
           </h2>
           <p className="text-muted-foreground">
             Royal Bhutan's 4K Edge-AI POS & Multi-Tier Supply Chain Ecosystem for GST 2026 Compliance
@@ -216,11 +212,11 @@ export default function Home() {
         <div className="mt-6">
           <Dialog>
             <DialogTrigger render={<Button size="lg" className="w-full bg-primary hover:bg-primary/90" />}>
-              🏔️ Explore NEXUS BHUTAN Features
+              🏔️ Explore Pelbu Features
             </DialogTrigger>
             <DialogContent className="glassmorphism">
               <DialogHeader>
-                <DialogTitle className="text-xl font-serif">NEXUS BHUTAN Ecosystem</DialogTitle>
+                <DialogTitle className="text-xl font-serif">Pelbu Ecosystem</DialogTitle>
                 <DialogDescription>
                   Comprehensive POS and Supply Chain Management for Bhutan 2026
                 </DialogDescription>
@@ -287,7 +283,7 @@ export default function Home() {
         <div className="container mx-auto px-4 py-6">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <p className="text-sm text-muted-foreground">
-              © 2026 NEXUS BHUTAN. Built for Bhutan's Digital Transformation.
+              © 2026 Pelbu. Built for Bhutan's Digital Transformation.
             </p>
             <div className="flex items-center gap-4">
               <Badge variant="outline" className="border-emerald-500 text-emerald-600">
