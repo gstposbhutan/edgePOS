@@ -71,6 +71,7 @@
   "build": {
     "appId": "bt.nexus.pos-terminal",
     "productName": "Pelbu POS",
+    "artifactName": "Pelbu-POS-Setup-${version}.${ext}",
     "directories": {
       "output": "release",
       "buildResources": "public"
