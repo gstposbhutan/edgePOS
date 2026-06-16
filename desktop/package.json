@@ -71,9 +71,6 @@
   "build": {
     "appId": "bt.nexus.pos-terminal",
     "productName": "Pelbu POS",
-    "publish": [
-      { "provider": "github", "owner": "gstposbhutan", "repo": "edgePOS" }
-    ],
     "directories": {
       "output": "release",
       "buildResources": "public"

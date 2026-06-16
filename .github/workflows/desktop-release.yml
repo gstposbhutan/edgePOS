@@ -46,7 +46,10 @@ jobs:
 
       - name: Build Windows installer
         # electron:build:win = fetch pocketbase.exe (win32) + next build + electron-builder --win (NSIS).
-        run: npm run electron:build:win
+        # --publish never: we distribute via S3 + the register API, not GitHub Releases, so
+        # electron-builder must not try to publish (it otherwise auto-publishes on a git tag and
+        # demands GH_TOKEN).
+        run: npm run electron:build:win -- --publish never
 
       - name: Resolve version + artifact
         id: meta
