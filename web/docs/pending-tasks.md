@@ -24,6 +24,12 @@ This file records what's **not** yet done. Detailed designs live in the per-area
   - Web: `NEXT_PUBLIC_APP_URL` = real cloud domain (the license issuer derives the ingest URL from it).
   - Desktop: `DEFAULT_CLOUD_URL` in `desktop/electron/config.js` = same domain, then `npm run electron:build:win`.
     *(Dev override: `NEXUS_CLOUD_URL` env var.)*
+- 🟠 **Convert the desktop-release CI to GitHub OIDC** — `.github/workflows/desktop-release.yml` currently
+  authenticates to S3 with the `edgepos-ci-releases` IAM user's long-lived access keys (GitHub secrets
+  `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`). Replace with an IAM OIDC provider + role (web-identity trust
+  scoped to this repo) and `configure-aws-credentials` `role-to-assume` so no keys are stored. Reuse the same
+  least-priv S3 policy (`/home/ubuntu/ci-releases-policy.json`). **Until then: rotate the current key** — it
+  was shared in plaintext during setup.
 
 ## B. Licensing & provisioning hardening — `provisioning-and-licensing-plan.md`
 - 🟠 **Single-instance lock** — add `app.requestSingleInstanceLock()` in `desktop/electron/main.js`;
