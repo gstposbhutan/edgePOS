@@ -1,9 +1,10 @@
 "use client"
 
 import { useState } from "react"
-import { LogOut, RefreshCw, Wifi, Package, BookOpen, ClipboardList, Wallet, ShoppingBag, Keyboard, ChevronDown, Store, LayoutDashboard, ShoppingCart, Landmark } from "lucide-react"
+import { LogOut, RefreshCw, Wifi, Package, BookOpen, ClipboardList, Wallet, ShoppingBag, Keyboard, ChevronDown, Store, LayoutDashboard, ShoppingCart, Landmark, MonitorDown } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Logo } from "@/components/ui/logo"
 import { FaceAuthBadge } from "./face-auth-badge"
 import { ShiftStatusBadge } from "./shift/shift-status-badge"
 import { signOut } from "@/lib/auth"
@@ -31,9 +32,7 @@ export function PosHeader({ storeName, cashierName, customer, syncing, onEnrollF
     <header className="glassmorphism border-b border-border px-4 py-3 flex items-center justify-between gap-4 shrink-0">
       {/* Left — branding + store selector */}
       <div className="flex items-center gap-3">
-        <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
-          <span className="text-sm">🏔️</span>
-        </div>
+        <Logo variant="icon" className="h-8 w-8 rounded-lg shrink-0" />
 
         {hasMultipleStores ? (
           <div className="relative hidden sm:block">
@@ -116,6 +115,12 @@ export function PosHeader({ storeName, cashierName, customer, syncing, onEnrollF
         {userSubRole === 'OWNER' && (
           <Button variant="ghost" size="icon-sm" onClick={() => router.push('/admin/stores')} title="Manage Stores">
             <LayoutDashboard className="h-4 w-4" />
+          </Button>
+        )}
+
+        {userSubRole === 'OWNER' && (
+          <Button variant="ghost" size="icon-sm" onClick={() => router.push('/downloads')} title="Desktop App & Updates">
+            <MonitorDown className="h-4 w-4" />
           </Button>
         )}
 

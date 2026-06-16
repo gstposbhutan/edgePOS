@@ -6,6 +6,7 @@ import { Eye, EyeOff, Loader2, Phone, MessageCircle, Mail } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Logo } from "@/components/ui/logo"
 import { signIn, signInWithWhatsApp, sendWhatsAppOtp, ROLE_HOME, getRoleClaims } from "@/lib/auth"
 
 function LoginForm() {
@@ -132,10 +133,7 @@ function LoginForm() {
     <div className="w-full max-w-sm mx-4">
       {/* Logo */}
       <div className="flex flex-col items-center mb-8">
-        <div className="h-16 w-16 rounded-2xl bg-primary flex items-center justify-center mb-4 shadow-lg shadow-primary/30">
-          <span className="text-3xl">🏔️</span>
-        </div>
-        <h1 className="text-2xl font-serif font-bold text-foreground">NEXUS BHUTAN</h1>
+        <Logo variant="stacked" className="h-28 w-auto mb-2" />
         <p className="text-sm text-muted-foreground mt-1">4K Edge-AI POS System</p>
       </div>
 
@@ -374,7 +372,7 @@ function LoginForm() {
 
       {/* Footer */}
       <p className="text-center text-xs text-muted-foreground mt-6">
-        © 2026 NEXUS BHUTAN · GST 2026 Compliant
+        © 2026 Pelbu · GST 2026 Compliant
       </p>
 
       <div className="text-center text-xs text-muted-foreground mt-2 space-y-1">

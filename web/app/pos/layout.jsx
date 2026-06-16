@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "POS — NEXUS BHUTAN",
+  title: "POS — Pelbu",
 }
 
 export default function PosLayout({ children }) {

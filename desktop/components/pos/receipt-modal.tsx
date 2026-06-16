@@ -10,6 +10,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { PELBU_ICON_DATA_URI } from "@/lib/pelbu-icon-data";
 import { Printer, CheckCircle, Zap, ShoppingCart } from "lucide-react";
 import { formatCurrency } from "@/lib/gst";
 import type { Settings } from "@/hooks/use-settings";
@@ -129,7 +130,8 @@ export function ReceiptModal({ open, onClose, onNewSale, order, settings }: Rece
             className="bg-white text-black p-5 rounded-xl text-sm space-y-3 border border-border"
           >
             <div className="text-center border-b border-gray-200 pb-2">
-              <h1 className="font-bold text-lg">{settings?.store_name || "NEXUS BHUTAN"}</h1>
+              <img src={PELBU_ICON_DATA_URI} alt="Pelbu" className="h-10 w-10 mx-auto mb-1" />
+              <h1 className="font-bold text-lg">{settings?.store_name || "Pelbu"}</h1>
               {settings?.store_address && <p className="text-xs text-gray-500">{settings.store_address}</p>}
               {settings?.tpn_gstin && <p className="text-xs text-gray-500">TPN: {settings.tpn_gstin}</p>}
               <p className="text-xs text-gray-400 mt-1">TAX INVOICE — GST 2026</p>

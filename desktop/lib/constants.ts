@@ -1,5 +1,5 @@
 /**
- * NEXUS BHUTAN POS — Shared Constants
+ * Pelbu POS — Shared Constants
  * Central source of truth for all magic strings, enums, and configuration values.
  */
 

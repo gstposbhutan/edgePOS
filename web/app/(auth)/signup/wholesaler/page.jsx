@@ -6,6 +6,7 @@ import { Eye, EyeOff, Loader2, Phone, Building2, ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Logo } from '@/components/ui/logo'
 
 function SignupForm() {
   const router = useRouter()
@@ -68,7 +69,7 @@ function SignupForm() {
         <div className="h-16 w-16 rounded-2xl bg-primary flex items-center justify-center mb-4 shadow-lg shadow-primary/30">
           <Building2 className="h-8 w-8 text-primary-foreground" />
         </div>
-        <h1 className="text-2xl font-serif font-bold text-foreground">NEXUS BHUTAN</h1>
+        <Logo variant="horizontal" className="h-7 w-auto" />
         <p className="text-sm text-muted-foreground mt-1">Wholesaler Registration</p>
       </div>
 

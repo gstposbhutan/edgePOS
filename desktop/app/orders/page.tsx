@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
+import { PELBU_ICON_DATA_URI } from "@/lib/pelbu-icon-data";
 import {
   Table,
   TableBody,
@@ -155,7 +156,8 @@ export default function OrdersPage() {
         .right { text-align: right; }
         .total { font-weight: bold; border-top: 1px solid #000; margin-top: 8px; padding-top: 8px; }
       </style></head><body>
-      <h2>${order.expand?.customer?.name || "NEXUS BHUTAN"}</h2>
+      <img src="${PELBU_ICON_DATA_URI}" alt="Pelbu" style="height:40px;display:block;margin:0 auto 4px" />
+      <h2 style="text-align:center">${order.expand?.customer?.name || "Pelbu"}</h2>
       <p>Invoice: ${order.order_no}</p>
       <p>Date: ${date}</p>
       <table><thead><tr><th>Item</th><th class="right">Qty</th><th class="right">Total</th></tr></thead><tbody>

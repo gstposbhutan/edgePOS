@@ -35,8 +35,8 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="text-4xl mb-2">🏔️</div>
-          <CardTitle className="text-2xl font-serif">NEXUS BHUTAN</CardTitle>
+          <img src="/branding/pelbu-stacked.png" alt="Pelbu" className="h-24 w-auto mx-auto mb-2" />
+          <CardTitle className="sr-only">Pelbu</CardTitle>
           <CardDescription>Offline POS — GST 2026 Compliant</CardDescription>
         </CardHeader>
         <CardContent>

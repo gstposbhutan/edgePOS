@@ -49,7 +49,7 @@ export default function RiderLoginPage() {
             <span className="text-3xl">🛵</span>
           </div>
           <h1 className="text-2xl font-bold">Rider Portal</h1>
-          <p className="text-sm text-muted-foreground">NEXUS BHUTAN Delivery</p>
+          <p className="text-sm text-muted-foreground">Pelbu Delivery</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useParams, useSearchParams } from "next/navigation"
 import { ShoppingBag, AlertTriangle } from "lucide-react"
 import { CustomerPaymentUpload } from "@/components/shop/payment-upload"
+import { Logo } from "@/components/ui/logo"
 
 export default function PaymentPage() {
   const params = useParams()
@@ -45,10 +46,7 @@ export default function PaymentPage() {
     <div className="min-h-screen bg-background flex flex-col">
       {/* Minimal header — no auth required */}
       <header className="border-b border-border px-4 py-3 flex items-center gap-2">
-        <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-          <span className="text-sm">🏔️</span>
-        </div>
-        <span className="font-semibold text-sm">NEXUS BHUTAN</span>
+        <Logo variant="horizontal" className="h-7 w-auto" />
       </header>
 
       <main className="flex-1 max-w-md mx-auto w-full px-4 py-8">

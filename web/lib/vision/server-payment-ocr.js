@@ -7,7 +7,7 @@
  */
 
 const PROMPT = (expectedAmount) =>
-  `You are a payment verification assistant for a Bhutan POS system (NEXUS BHUTAN).
+  `You are a payment verification assistant for a Bhutan POS system (Pelbu).
 
 Analyze this payment confirmation screenshot and extract:
 1. Transaction amount (numeric value only, no currency symbols)
