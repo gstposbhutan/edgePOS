@@ -1,0 +1,105 @@
+name: Desktop Release
+
+# Builds the Pelbu POS Windows installer and publishes it to GitHub Releases.
+# Trigger by pushing a tag like v1.0.0, or run manually from the Actions tab.
+#
+# Building NSIS requires a real Windows toolchain (Wine on ARM Linux does not
+# work), so this runs on a native windows-latest runner.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (informational; the build uses desktop/package.json version)'
+        required: false
+
+permissions:
+  contents: write   # needed to create/update GitHub Releases
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    env:
+      S3_BUCKET: edgepos-images-430286912237-ap-south-2-an
+      S3_PREFIX: releases
+      CDN_BASE: https://img.pelbu.com
+      AWS_REGION: ap-south-2
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Windows installer
+        # electron:build:win = fetch pocketbase.exe (win32) + next build + electron-builder --win (NSIS).
+        run: npm run electron:build:win
+
+      - name: Resolve version + artifact
+        id: meta
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          EXE=$(ls release/*.exe | head -1)
+          echo "version=$VERSION"            >> "$GITHUB_OUTPUT"
+          echo "exe=$EXE"                     >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$EXE")"      >> "$GITHUB_OUTPUT"
+          echo "size=$(stat -c%s "$EXE")"     >> "$GITHUB_OUTPUT"
+          echo "sha256=$(sha256sum "$EXE" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload installer to S3
+        shell: bash
+        run: |
+          aws s3 cp "${{ steps.meta.outputs.exe }}" \
+            "s3://${S3_BUCKET}/${S3_PREFIX}/${{ steps.meta.outputs.version }}/${{ steps.meta.outputs.name }}" \
+            --content-type application/octet-stream \
+            --cache-control "public, max-age=31536000, immutable"
+
+      - name: Register release in app (publishes it)
+        shell: bash
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          RELEASE_INGEST_TOKEN: ${{ secrets.RELEASE_INGEST_TOKEN }}
+        run: |
+          DOWNLOAD_URL="${CDN_BASE}/${S3_PREFIX}/${{ steps.meta.outputs.version }}/${{ steps.meta.outputs.name }}"
+          jq -n \
+            --arg v   "${{ steps.meta.outputs.version }}" \
+            --arg url "$DOWNLOAD_URL" \
+            --arg name "${{ steps.meta.outputs.name }}" \
+            --argjson size ${{ steps.meta.outputs.size }} \
+            --arg sha "${{ steps.meta.outputs.sha256 }}" \
+            --arg notes "Automated build from ${GITHUB_REF_NAME:-manual}" \
+            '{version:$v, channel:"stable", platform:"win", download_url:$url, file_name:$name, file_size:$size, sha256:$sha, notes:$notes, publish:true}' \
+          | curl -fsS -X POST "${APP_URL}/api/desktop/releases/register" \
+              -H "x-release-token: ${RELEASE_INGEST_TOKEN}" \
+              -H "Content-Type: application/json" \
+              --data @-
+
+      - name: Upload installer as workflow artifact (backup)
+        uses: actions/upload-artifact@v4
+        with:
+          name: pelbu-pos-windows
+          path: |
+            desktop/release/*.exe
+            desktop/release/latest.yml
+          if-no-files-found: error

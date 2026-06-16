@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, dialog } = require("electron");
+const { app, BrowserWindow, ipcMain, Tray, Menu, dialog, shell } = require("electron");
 const path = require("path");
 const { launchPocketBase, PB_URL } = require("./pb-launcher");
 const { printReceipt, getPrinterStatus, testPrint } = require("./printer");
@@ -6,6 +6,7 @@ const { startStaticServer } = require("./static-server");
 const { verifyLicense } = require("./license");
 const { checkLicense, saveLicense } = require("./license-store");
 const { DEFAULT_CLOUD_URL } = require("./config");
+const { fetchLatestRelease } = require("./update-checker");
 
 const isDev = !app.isPackaged;
 // Dev affordance: serve the already-built `out/` via the static server (port APP_PORT) instead
@@ -31,7 +32,7 @@ function createWindow() {
     height: 900,
     minWidth: 1024,
     minHeight: 768,
-    title: "NEXUS BHUTAN POS",
+    title: "Pelbu POS",
     icon: getResourcePath("public", "favicon.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -47,6 +48,14 @@ function createWindow() {
   } else {
     mainWindow.loadURL(`http://127.0.0.1:${APP_PORT}`);
   }
+
+  // After the UI loads, check the cloud for a newer release and tell the renderer.
+  mainWindow.webContents.once("did-finish-load", async () => {
+    const release = await fetchLatestRelease();
+    if (release && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("update:available", release);
+    }
+  });
 
   mainWindow.on("close", (event) => {
     if (process.platform === "darwin") return;
@@ -69,7 +78,7 @@ function createTray() {
         app.exit(0);
       }},
     ]);
-    tray.setToolTip("NEXUS BHUTAN POS");
+    tray.setToolTip("Pelbu POS");
     tray.setContextMenu(contextMenu);
     tray.on("click", () => mainWindow.show());
   } catch (e) {
@@ -100,6 +109,11 @@ ipcMain.handle("printer:test", async () => {
 });
 
 ipcMain.handle("app:get-version", () => app.getVersion());
+
+// Open the installer download in the user's browser (update banner).
+ipcMain.handle("update:open-download", (_, url) => {
+  if (url) shell.openExternal(String(url));
+});
 
 // Stable hardware id for this terminal — Windows MachineGuid (license machine-lock +
 // cash_registers binding + sync external_id prefix), falling back to MAC then hostname.
@@ -333,7 +347,7 @@ function createActivationWindow() {
   activationWindow = new BrowserWindow({
     width: 600,
     height: 720,
-    title: "Activate NEXUS POS",
+    title: "Activate Pelbu POS",
     resizable: false,
     webPreferences: {
       preload: path.join(__dirname, "activation-preload.js"),

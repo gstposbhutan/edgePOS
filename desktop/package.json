@@ -1,6 +1,6 @@
 {
   "name": "pos-terminal",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "main": "electron/main.js",
   "author": "NEXUS Bhutan <hello@nexus-bt.com>",
@@ -70,7 +70,10 @@
   },
   "build": {
     "appId": "bt.nexus.pos-terminal",
-    "productName": "NEXUS BHUTAN POS",
+    "productName": "Pelbu POS",
+    "publish": [
+      { "provider": "github", "owner": "gstposbhutan", "repo": "edgePOS" }
+    ],
     "directories": {
       "output": "release",
       "buildResources": "public"

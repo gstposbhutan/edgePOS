@@ -14,6 +14,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
     platform: process.platform,
   },
 
+  // Update banner — main process pushes an available release; renderer opens the download.
+  update: {
+    onAvailable: (callback) => {
+      const listener = (_, data) => callback(data);
+      ipcRenderer.on("update:available", listener);
+      return () => ipcRenderer.removeListener("update:available", listener);
+    },
+    openDownload: (url) => ipcRenderer.invoke("update:open-download", url),
+  },
+
   // System / hardware identity (binds this terminal to its register)
   system: {
     getMachineId: () => ipcRenderer.invoke("system:get-machine-id"),

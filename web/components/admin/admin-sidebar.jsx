@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Settings, LogOut, Building2, Ruler, FolderTree, Bike, Network, KeyRound, UserCog } from 'lucide-react'
+import { LayoutDashboard, Settings, LogOut, Building2, Ruler, FolderTree, Bike, Network, KeyRound, UserCog, MonitorDown } from 'lucide-react'
 import { signOut, getUser, getRoleClaims } from '@/lib/auth'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { href: '/admin/categories', label: 'Categories', icon: FolderTree,      roles: ['SUPER_ADMIN'] },
   { href: '/admin/units',      label: 'Units',      icon: Ruler,           roles: ['SUPER_ADMIN'] },
   { href: '/admin/riders',     label: 'Riders',     icon: Bike,            roles: ['SUPER_ADMIN'] },
+  { href: '/admin/releases',   label: 'Desktop App', icon: MonitorDown,    roles: ['SUPER_ADMIN'] },
   { href: '/pos/licenses',     label: 'Licenses',   icon: KeyRound,        roles: ['SUPER_ADMIN'] },
   { href: '/admin/settings',   label: 'Settings',   icon: Settings,        roles: null },
 ]
@@ -49,7 +50,7 @@ export function AdminSidebar() {
         <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
           <Building2 className="h-4 w-4 text-primary-foreground" />
         </div>
-        <span className="font-serif font-bold text-foreground text-sm">NEXUS Admin</span>
+        <span className="font-serif font-bold text-foreground text-sm">Pelbu Admin</span>
       </div>
 
       {/* Nav links */}
