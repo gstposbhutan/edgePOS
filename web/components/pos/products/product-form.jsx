@@ -33,6 +33,7 @@ export function ProductForm({ open, product, categories, saving, onSave, onClose
   const [form,         setForm]         = useState(EMPTY_FORM)
   const [selectedCats, setSelectedCats] = useState([])
   const [error,        setError]        = useState(null)
+  const [uploading,    setUploading]    = useState(false)
 
   // Populate form when editing
   useEffect(() => {
@@ -68,6 +69,26 @@ export function ProductForm({ open, product, categories, saving, onSave, onClose
     setSelectedCats(prev =>
       prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
     )
+  }
+
+  async function handleImageFile(e) {
+    const file = e.target.files?.[0]
+    e.target.value = '' // allow re-selecting the same file
+    if (!file) return
+    setError(null)
+    setUploading(true)
+    try {
+      const body = new FormData()
+      body.append('file', file)
+      const res = await fetch('/api/uploads/product-image', { method: 'POST', body })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Upload failed')
+      set('image_url', data.url)
+    } catch (err) {
+      setError(err.message || 'Image upload failed')
+    } finally {
+      setUploading(false)
+    }
   }
 
   async function handleSubmit(e) {
@@ -240,11 +261,45 @@ export function ProductForm({ open, product, categories, saving, onSave, onClose
             </div>
           )}
 
-          {/* Image URL */}
+          {/* Product image — upload to CDN, or paste a URL */}
           <div className="space-y-1.5">
-            <label className="text-sm font-medium text-foreground">Image URL <span className="text-muted-foreground">(optional)</span></label>
+            <label className="text-sm font-medium text-foreground">Product Image <span className="text-muted-foreground">(optional)</span></label>
+            <div className="flex items-center gap-3">
+              <div className="h-16 w-16 shrink-0 rounded-lg border border-border bg-muted/30 overflow-hidden flex items-center justify-center">
+                {form.image_url
+                  ? <img src={form.image_url} alt="" className="h-full w-full object-cover" />
+                  : <span className="text-[10px] text-muted-foreground">No image</span>
+                }
+              </div>
+              <div className="flex-1 space-y-1.5">
+                <label
+                  className={`inline-flex items-center justify-center h-8 px-3 rounded-lg border border-input text-sm cursor-pointer transition-colors hover:bg-muted/50 ${uploading ? 'pointer-events-none opacity-60' : ''}`}
+                >
+                  {uploading
+                    ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Uploading…</>
+                    : (form.image_url ? 'Replace image' : 'Upload image')
+                  }
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/avif,image/gif"
+                    className="hidden"
+                    disabled={uploading}
+                    onChange={handleImageFile}
+                  />
+                </label>
+                {form.image_url && (
+                  <button
+                    type="button"
+                    onClick={() => set('image_url', '')}
+                    className="ml-2 text-xs text-muted-foreground hover:text-tibetan"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            </div>
             <Input
-              placeholder="https://..."
+              placeholder="…or paste an image URL"
               value={form.image_url}
               onChange={e => set('image_url', e.target.value)}
             />
