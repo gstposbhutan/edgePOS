@@ -39,7 +39,7 @@ export async function GET(request) {
   const entityId = cred.entity_id
 
   // Store profile + this store's active catalog (+ category) + its khata accounts.
-  const [entityRes, productsRes, categoriesRes, khataRes] = await Promise.all([
+  const [entityRes, productsRes, categoriesRes, khataRes, storeUsersRes] = await Promise.all([
     supabase
       .from('entities')
       .select('id, name, role, tpn_gstin, whatsapp_no')
@@ -62,6 +62,8 @@ export async function GET(request) {
       .from('khata_accounts')
       .select('debtor_name, debtor_phone, credit_limit, outstanding_balance, party_type, credit_term_days, status')
       .eq('creditor_entity_id', entityId),
+    // Store team — email + bcrypt password hash (same-hash mirror to local PB) + role.
+    supabase.rpc('get_terminal_store_users', { p_entity: entityId }),
   ])
 
   if (productsRes.error) return NextResponse.json({ error: productsRes.error.message }, { status: 500 })
@@ -99,6 +101,13 @@ export async function GET(request) {
     categories: categoriesRes.data ?? [],
     products,
     khata: khataRes.data ?? [],
+    // Team members to mirror into local PB auth (email, name, role, bcrypt hash).
+    users: (storeUsersRes.data ?? []).map((u) => ({
+      email: u.email,
+      full_name: u.full_name || '',
+      sub_role: u.sub_role,
+      password_hash: u.password_hash,
+    })),
     generatedAt: new Date().toISOString(),
   })
 }
