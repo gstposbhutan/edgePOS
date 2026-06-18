@@ -2,8 +2,6 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
-
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -49,136 +47,71 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   NEXUS BHUTAN · Royal POS Terminal Theme
-   Inspired by Square POS, Toast, and Bhutanese royal aesthetics.
-   Warm deep charcoal base with vibrant gold/saffron accents.
+   Pelbu POS Terminal Theme (light only)
+   Champagne Gold (#C0A269) + Deep Forest/Olive (#3B4A3A) on porcelain.
    ═══════════════════════════════════════════════════════════════ */
-
 :root {
-  /* ── Warm parchment light theme (login page, fallback) ── */
-  --background: oklch(0.97 0.01 85); /* Warm off-white */
-  --foreground: oklch(0.18 0.02 260); /* Deep charcoal text */
-  --card: oklch(1.00 0 0);
-  --card-foreground: oklch(0.18 0.02 260);
-  --popover: oklch(1.00 0 0);
-  --popover-foreground: oklch(0.18 0.02 260);
+  /* Core — porcelain base, espresso text */
+  --background: #FAFAF9;
+  --foreground: #23201B;
+  --card: #FFFFFF;
+  --card-foreground: #23201B;
+  --popover: #FFFFFF;
+  --popover-foreground: #23201B;
 
-  /* ── Royal Saffron Gold (Primary) ── */
-  --primary: oklch(0.72 0.18 85);
-  --primary-foreground: oklch(0.12 0.02 260);
+  /* Primary — Champagne Gold */
+  --primary: #C0A269;
+  --primary-foreground: #23201B;
 
-  /* ── Emerald Green (Secondary — success, stock OK) ── */
-  --secondary: oklch(0.58 0.18 150);
-  --secondary-foreground: oklch(0.12 0.02 260);
+  /* Secondary — Deep Forest / Olive */
+  --secondary: #3B4A3A;
+  --secondary-foreground: #F7F6F2;
 
-  /* ── Surface layers ── */
-  --muted: oklch(0.94 0.01 85);
-  --muted-foreground: oklch(0.45 0.02 260);
-  --accent: oklch(0.90 0.05 85);
-  --accent-foreground: oklch(0.18 0.02 260);
+  /* Neutrals */
+  --muted: #F1F0EC;
+  --muted-foreground: #6B675F;
+  --accent: #EDEBE4;
+  --accent-foreground: #23201B;
 
-  /* ── Status ── */
-  --destructive: oklch(0.55 0.22 25);
-  --success: oklch(0.58 0.18 150);
-  --warning: oklch(0.72 0.18 85);
-  --info: oklch(0.58 0.16 240);
+  /* Status */
+  --destructive: #EF4444;
+  --success: #10B981;
+  --warning: #C0A269;
+  --info: #2F6FB0;
 
-  /* ── Borders & inputs ── */
-  --border: oklch(0.88 0.01 260);
-  --input: oklch(0.88 0.01 260);
-  --ring: oklch(0.72 0.18 85);
+  /* Border & Input */
+  --border: #E7E5E0;
+  --input: #E7E5E0;
+  --ring: #C0A269;
 
-  /* ── Charts ── */
-  --chart-1: oklch(0.72 0.18 85);
-  --chart-2: oklch(0.58 0.18 150);
-  --chart-3: oklch(0.55 0.22 25);
-  --chart-4: oklch(0.58 0.16 240);
-  --chart-5: oklch(0.48 0.14 290);
+  /* Charts — gold, forest, emerald, bronze, terracotta */
+  --chart-1: #C0A269;
+  --chart-2: #3B4A3A;
+  --chart-3: #10B981;
+  --chart-4: #B08D57;
+  --chart-5: #8C5A3B;
 
   --radius: 0.625rem;
 
-  /* ── Sidebar (light) ── */
-  --sidebar: oklch(0.97 0.01 85);
-  --sidebar-foreground: oklch(0.18 0.02 260);
-  --sidebar-primary: oklch(0.72 0.18 85);
-  --sidebar-primary-foreground: oklch(0.12 0.02 260);
-  --sidebar-accent: oklch(0.90 0.05 85);
-  --sidebar-accent-foreground: oklch(0.18 0.02 260);
-  --sidebar-border: oklch(0.88 0.01 260);
-  --sidebar-ring: oklch(0.72 0.18 85);
+  /* Sidebar */
+  --sidebar: #F4F3EF;
+  --sidebar-foreground: #23201B;
+  --sidebar-primary: #C0A269;
+  --sidebar-primary-foreground: #23201B;
+  --sidebar-accent: #EDEBE4;
+  --sidebar-accent-foreground: #23201B;
+  --sidebar-border: #E7E5E0;
+  --sidebar-ring: #C0A269;
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   DARK THEME — Midnight Saffron
-   Rich layered dark surfaces with Bhutanese gold accents.
-   ═══════════════════════════════════════════════════════════════ */
-.dark {
-  /* ── Core surfaces — warm deep charcoal, not flat black ── */
-  --background: oklch(0.16 0.02 270); /* Midnight base — subtle purple undertone */
-  --foreground: oklch(0.94 0.01 90); /* Warm off-white text */
-  --card: oklch(0.20 0.02 270); /* Elevated card — slightly lighter */
-  --card-foreground: oklch(0.94 0.01 90);
-  --popover: oklch(0.22 0.03 270); /* Highest elevation surface */
-  --popover-foreground: oklch(0.94 0.01 90);
-
-  /* ── Royal Saffron Gold — vibrant, glowing ── */
-  --primary: oklch(0.78 0.20 85);
-  --primary-foreground: oklch(0.10 0.02 265);
-
-  /* ── Vibrant Emerald ── */
-  --secondary: oklch(0.65 0.22 150);
-  --secondary-foreground: oklch(0.10 0.02 265);
-
-  /* ── Layered surfaces — distinct depths ── */
-  --muted: oklch(0.24 0.03 270); /* Muted surface — between bg and card */
-  --muted-foreground: oklch(0.62 0.03 260); /* Softer text */
-  --accent: oklch(0.28 0.05 85 / 0.15); /* Gold-tinted accent surface */
-  --accent-foreground: oklch(0.85 0.08 85); /* Warm gold text */
-
-  /* ── Status colors — vibrant, distinct ── */
-  --destructive: oklch(0.62 0.25 22); /* Deep crimson red */
-  --success: oklch(0.65 0.22 150); /* Rich emerald */
-  --warning: oklch(0.78 0.20 80); /* Amber-gold */
-  --info: oklch(0.62 0.18 245); /* Electric blue */
-
-  /* ── Borders — subtle color hints ── */
-  --border: oklch(0.32 0.03 270 / 0.6);
-  --input: oklch(0.30 0.03 270 / 0.5);
-  --ring: oklch(0.78 0.20 85);
-
-  /* ── Charts — bright for data viz ── */
-  --chart-1: oklch(0.78 0.20 85);
-  --chart-2: oklch(0.65 0.22 150);
-  --chart-3: oklch(0.62 0.25 22);
-  --chart-4: oklch(0.62 0.18 245);
-  --chart-5: oklch(0.55 0.18 295);
-
-  /* ── Sidebar — distinct from main content ── */
-  --sidebar: oklch(0.14 0.02 270);
-  --sidebar-foreground: oklch(0.90 0.01 90);
-  --sidebar-primary: oklch(0.78 0.20 85);
-  --sidebar-primary-foreground: oklch(0.10 0.02 265);
-  --sidebar-accent: oklch(0.22 0.03 270);
-  --sidebar-accent-foreground: oklch(0.90 0.01 90);
-  --sidebar-border: oklch(0.30 0.03 270 / 0.4);
-  --sidebar-ring: oklch(0.78 0.20 85);
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   Glassmorphism — for overlays & modals
+   Glassmorphism — light porcelain glass
    ═══════════════════════════════════════════════════════════════ */
 .glassmorphism {
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  background: oklch(0.16 0.02 270 / 0.65);
-  border: 1px solid oklch(0.78 0.20 85 / 0.08);
-}
-
-.dark .glassmorphism {
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  background: oklch(0.14 0.02 270 / 0.75);
-  border: 1px solid oklch(0.78 0.20 85 / 0.12);
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid rgba(192, 162, 105, 0.15);
 }
 
 @layer base {
@@ -199,88 +132,49 @@
     font-family: 'Noto Serif', serif;
   }
 
-  /* ── Vibrant selection ── */
   ::selection {
-    background: oklch(0.78 0.20 85 / 0.3);
+    background: rgba(192, 162, 105, 0.3);
     color: var(--foreground);
   }
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   Gradient surface utilities
+   Gradient surface utilities (light)
    ═══════════════════════════════════════════════════════════════ */
 .gradient-card {
-  background: linear-gradient(
-    135deg,
-    oklch(0.22 0.03 270) 0%,
-    oklch(0.20 0.02 285) 100%
-  );
-}
-
-.dark .gradient-card {
-  background: linear-gradient(
-    135deg,
-    oklch(0.22 0.03 270) 0%,
-    oklch(0.19 0.04 290) 100%
-  );
+  background: linear-gradient(135deg, #FFFFFF 0%, #F4F3EF 100%);
 }
 
 .gradient-header {
-  background: linear-gradient(
-    180deg,
-    oklch(0.22 0.03 270) 0%,
-    oklch(0.18 0.02 270) 100%
-  );
-}
-
-.dark .gradient-header {
-  background: linear-gradient(
-    180deg,
-    oklch(0.22 0.03 270) 0%,
-    oklch(0.16 0.02 270) 100%
-  );
+  background: linear-gradient(180deg, #FFFFFF 0%, #F1F0EC 100%);
 }
 
 .gradient-gold {
-  background: linear-gradient(
-    135deg,
-    oklch(0.78 0.20 85) 0%,
-    oklch(0.72 0.22 75) 100%
-  );
+  background: linear-gradient(135deg, #C9AE76 0%, #B0905A 100%);
 }
 
 .gradient-emerald {
-  background: linear-gradient(
-    135deg,
-    oklch(0.65 0.22 150) 0%,
-    oklch(0.58 0.18 160) 100%
-  );
+  background: linear-gradient(135deg, #10B981 0%, #0E9E6E 100%);
 }
 
-/* ── Animated gradient border (for checkout button, active states) ── */
+/* Gold glow for active/checkout states */
 .ring-glow {
   box-shadow:
-    0 0 12px oklch(0.78 0.20 85 / 0.15),
-    0 0 24px oklch(0.78 0.20 85 / 0.05);
+    0 0 12px rgba(192, 162, 105, 0.25),
+    0 0 24px rgba(192, 162, 105, 0.10);
 }
 
-.dark .ring-glow {
-  box-shadow:
-    0 0 16px oklch(0.78 0.20 85 / 0.2),
-    0 0 32px oklch(0.78 0.20 85 / 0.08);
-}
-
-/* ── Card elevation utilities ── */
+/* Card elevation utilities (light) */
 .card-elevated {
   box-shadow:
-    0 1px 2px oklch(0 0 0 / 0.3),
-    0 2px 8px oklch(0 0 0 / 0.15);
+    0 1px 2px rgba(0, 0, 0, 0.06),
+    0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
 .card-floating {
   box-shadow:
-    0 4px 12px oklch(0 0 0 / 0.4),
-    0 8px 24px oklch(0 0 0 / 0.2);
+    0 4px 12px rgba(0, 0, 0, 0.10),
+    0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
 /* Custom POS-specific styles */
@@ -289,29 +183,29 @@
 }
 
 .pos-bounding-box {
-  border: 2px solid oklch(0.68 0.15 85); /* Royal Bhutan Gold */
+  border: 2px solid #C0A269; /* Champagne Gold */
   animation: pulse-gold 2s infinite;
 }
 
 @keyframes pulse-gold {
   0%, 100% {
-    border-color: oklch(0.78 0.20 85);
-    box-shadow: 0 0 0 0 oklch(0.78 0.20 85 / 0.6);
+    border-color: #C0A269;
+    box-shadow: 0 0 0 0 rgba(192, 162, 105, 0.6);
   }
   50% {
-    border-color: oklch(0.82 0.22 80);
-    box-shadow: 0 0 0 10px oklch(0.78 0.20 85 / 0);
+    border-color: #B0905A;
+    box-shadow: 0 0 0 10px rgba(192, 162, 105, 0);
   }
 }
 
 .pos-item-recognized {
-  border-color: oklch(0.65 0.22 150);
+  border-color: #10B981; /* Emerald — verified */
   animation: success-flash 0.5s ease-out;
 }
 
 @keyframes success-flash {
   0% {
-    background-color: oklch(0.65 0.22 150 / 0.3);
+    background-color: rgba(16, 185, 129, 0.3);
     transform: scale(1.05);
   }
   100% {
@@ -321,7 +215,7 @@
 }
 
 .pos-error-flash {
-  border-color: oklch(0.62 0.25 22);
+  border-color: #EF4444; /* Red — danger */
   animation: error-shake 0.5s ease-out;
 }
 
@@ -343,7 +237,7 @@
 /* Smooth scrollbar for product area */
 .overflow-y-auto {
   scrollbar-width: thin;
-  scrollbar-color: oklch(0.40 0.05 264 / 30%) transparent;
+  scrollbar-color: rgba(35, 32, 27, 0.25) transparent;
 }
 
 .overflow-y-auto::-webkit-scrollbar {
@@ -355,12 +249,12 @@
 }
 
 .overflow-y-auto::-webkit-scrollbar-thumb {
-  background: oklch(0.40 0.05 264 / 40%);
+  background: rgba(35, 32, 27, 0.25);
   border-radius: 3px;
 }
 
 .overflow-y-auto::-webkit-scrollbar-thumb:hover {
-  background: oklch(0.40 0.05 264 / 60%);
+  background: rgba(35, 32, 27, 0.4);
 }
 
 /* Card hover animation */
@@ -372,6 +266,7 @@
 
 .product-card:active {
   animation: card-pop 0.2s ease-out;
+  transform: scale(0.97);
 }
 
 /* Tabular nums for prices */
@@ -381,8 +276,8 @@
 
 /* Subtle pulse for checkout button */
 @keyframes pulse-subtle {
-  0%, 100% { box-shadow: 0 0 0 0 oklch(0.78 0.20 85 / 0.4); }
-  50% { box-shadow: 0 0 0 6px oklch(0.78 0.20 85 / 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(192, 162, 105, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(192, 162, 105, 0); }
 }
 
 .animate-pulse-subtle {
@@ -392,14 +287,4 @@
 /* Numpad grid styling */
 .numpad-key {
   @apply h-10 rounded-md text-sm font-medium transition-colors active:scale-95;
-}
-
-/* Product card tap */
-.product-card:active {
-  transform: scale(0.97);
-}
-
-/* Grayscale fallback for out-of-stock products */
-.grayscale {
-  filter: grayscale(100%);
 }

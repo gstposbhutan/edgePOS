@@ -2,8 +2,6 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
-
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -48,123 +46,66 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* Royal Bhutan Theme - NEXUS BHUTAN POS System */
+/* Pelbu Theme (light only) — Champagne Gold (#C0A269) + Deep Forest/Olive (#3B4A3A)
+   on a porcelain base, with emerald/red status accents. */
 :root {
-  /* Core Colors - Royal Bhutan Theme */
-  --background: oklch(0.95 0.01 264); /* Light background */
-  --foreground: oklch(0.15 0.02 264); /* Dark text */
-  --card: oklch(0.98 0.01 264); /* Card background */
-  --card-foreground: oklch(0.15 0.02 264); /* Card text */
-  --popover: oklch(0.98 0.01 264); /* Popover background */
-  --popover-foreground: oklch(0.15 0.02 264); /* Popover text */
+  /* Core — porcelain base, espresso text */
+  --background: #FAFAF9;          /* porcelain */
+  --foreground: #23201B;          /* espresso */
+  --card: #FFFFFF;
+  --card-foreground: #23201B;
+  --popover: #FFFFFF;
+  --popover-foreground: #23201B;
 
-  /* Primary Colors - Royal Bhutan Gold (#D4AF37) */
-  --primary: oklch(0.68 0.15 85); /* Royal Bhutan Gold */
-  --primary-foreground: oklch(0.98 0.01 264); /* White text on gold */
+  /* Primary — Champagne Gold (#C0A269) */
+  --primary: #C0A269;
+  --primary-foreground: #23201B;  /* dark text on gold */
 
-  /* Secondary Colors - Emerald Green (#10B981) */
-  --secondary: oklch(0.52 0.15 145); /* Emerald Green */
-  --secondary-foreground: oklch(0.98 0.01 264); /* White text on emerald */
+  /* Secondary — Deep Forest / Olive (#3B4A3A) */
+  --secondary: #3B4A3A;
+  --secondary-foreground: #F7F6F2;
 
-  /* Accent Colors */
-  --muted: oklch(0.92 0.01 264); /* Muted background */
-  --muted-foreground: oklch(0.45 0.02 264); /* Muted text */
-  --accent: oklch(0.94 0.01 264); /* Accent background */
-  --accent-foreground: oklch(0.15 0.02 264); /* Accent text */
+  /* Neutrals */
+  --muted: #F1F0EC;
+  --muted-foreground: #6B675F;
+  --accent: #EDEBE4;
+  --accent-foreground: #23201B;
 
-  /* Status Colors */
-  --destructive: oklch(0.55 0.20 25); /* Tibetan Red (#EF4444) */
-  --success: oklch(0.52 0.15 145); /* Emerald Green - reuse secondary */
-  --warning: oklch(0.68 0.15 85); /* Gold - reuse primary */
-
-  /* Border & Input */
-  --border: oklch(0.88 0.01 264); /* Subtle border */
-  --input: oklch(0.88 0.01 264); /* Input border */
-  --ring: oklch(0.68 0.15 85); /* Focus ring - Gold */
-
-  /* Chart Colors */
-  --chart-1: oklch(0.68 0.15 85); /* Gold */
-  --chart-2: oklch(0.52 0.15 145); /* Emerald */
-  --chart-3: oklch(0.55 0.20 25); /* Red */
-  --chart-4: oklch(0.45 0.12 220); /* Blue */
-  --chart-5: oklch(0.35 0.10 280); /* Purple */
-
-  /* Design Tokens */
-  --radius: 0.5rem; /* Rounded corners */
-
-  /* Sidebar */
-  --sidebar: oklch(0.96 0.01 264);
-  --sidebar-foreground: oklch(0.15 0.02 264);
-  --sidebar-primary: oklch(0.68 0.15 85); /* Gold */
-  --sidebar-primary-foreground: oklch(0.98 0.01 264);
-  --sidebar-accent: oklch(0.92 0.01 264);
-  --sidebar-accent-foreground: oklch(0.15 0.02 264);
-  --sidebar-border: oklch(0.88 0.01 264);
-  --sidebar-ring: oklch(0.68 0.15 85); /* Gold ring */
-}
-
-/* Dark Theme - Obsidian Deep Slate (#0F172A) */
-.dark {
-  --background: oklch(0.25 0.05 264); /* Obsidian Deep Slate */
-  --foreground: oklch(0.95 0.01 264); /* Light text */
-  --card: oklch(0.30 0.05 264); /* Slightly lighter obsidian */
-  --card-foreground: oklch(0.95 0.01 264); /* Light text */
-  --popover: oklch(0.30 0.05 264); /* Popover background */
-  --popover-foreground: oklch(0.95 0.01 264); /* Popover text */
-
-  /* Primary Colors - Enhanced Gold for Dark Mode */
-  --primary: oklch(0.75 0.18 85); /* Brighter Gold */
-  --primary-foreground: oklch(0.20 0.05 264); /* Dark text on gold */
-
-  /* Secondary Colors - Enhanced Emerald for Dark Mode */
-  --secondary: oklch(0.60 0.18 145); /* Brighter Emerald */
-  --secondary-foreground: oklch(0.20 0.05 264); /* Dark text on emerald */
-
-  /* Accent Colors */
-  --muted: oklch(0.35 0.05 264); /* Muted obsidian */
-  --muted-foreground: oklch(0.65 0.02 264); /* Muted text */
-  --accent: oklch(0.40 0.05 264); /* Accent background */
-  --accent-foreground: oklch(0.95 0.01 264); /* Accent text */
-
-  /* Status Colors */
-  --destructive: oklch(0.65 0.22 25); /* Brighter Red */
-  --success: oklch(0.60 0.18 145); /* Brighter Emerald */
-  --warning: oklch(0.75 0.18 85); /* Brighter Gold */
+  /* Status */
+  --destructive: #EF4444;         /* red */
+  --success: #10B981;             /* emerald */
+  --warning: #C0A269;             /* gold */
 
   /* Border & Input */
-  --border: oklch(0.40 0.05 264 / 50%); /* Subtle border with transparency */
-  --input: oklch(0.40 0.05 264 / 30%); /* Input border */
-  --ring: oklch(0.75 0.18 85); /* Focus ring - Bright Gold */
+  --border: #E7E5E0;
+  --input: #E7E5E0;
+  --ring: #C0A269;                /* gold focus ring */
 
-  /* Chart Colors */
-  --chart-1: oklch(0.75 0.18 85); /* Bright Gold */
-  --chart-2: oklch(0.60 0.18 145); /* Bright Emerald */
-  --chart-3: oklch(0.65 0.22 25); /* Bright Red */
-  --chart-4: oklch(0.55 0.15 220); /* Bright Blue */
-  --chart-5: oklch(0.45 0.12 280); /* Bright Purple */
+  /* Charts — gold, forest, emerald, bronze, terracotta */
+  --chart-1: #C0A269;
+  --chart-2: #3B4A3A;
+  --chart-3: #10B981;
+  --chart-4: #B08D57;
+  --chart-5: #8C5A3B;
+
+  --radius: 0.5rem;
 
   /* Sidebar */
-  --sidebar: oklch(0.30 0.05 264); /* Dark sidebar */
-  --sidebar-foreground: oklch(0.95 0.01 264); /* Light text */
-  --sidebar-primary: oklch(0.75 0.18 85); /* Bright Gold */
-  --sidebar-primary-foreground: oklch(0.20 0.05 264); /* Dark text */
-  --sidebar-accent: oklch(0.35 0.05 264); /* Accent background */
-  --sidebar-accent-foreground: oklch(0.95 0.01 264); /* Accent text */
-  --sidebar-border: oklch(0.40 0.05 264 / 30%); /* Border */
-  --sidebar-ring: oklch(0.75 0.18 85); /* Bright Gold ring */
+  --sidebar: #F4F3EF;
+  --sidebar-foreground: #23201B;
+  --sidebar-primary: #C0A269;
+  --sidebar-primary-foreground: #23201B;
+  --sidebar-accent: #EDEBE4;
+  --sidebar-accent-foreground: #23201B;
+  --sidebar-border: #E7E5E0;
+  --sidebar-ring: #C0A269;
 }
 
-/* Glassmorphism Effect - NEXUS BHUTAN Signature Style */
+/* Glassmorphism — light porcelain glass */
 .glassmorphism {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  background: rgba(15, 23, 42, 0.4); /* Obsidian with transparency */
-}
-
-.dark .glassmorphism {
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  background: rgba(15, 23, 42, 0.6); /* Darker obsidian */
+  background: rgba(255, 255, 255, 0.6);
 }
 
 @layer base {
@@ -193,29 +134,29 @@
 }
 
 .pos-bounding-box {
-  border: 2px solid oklch(0.68 0.15 85); /* Royal Bhutan Gold */
+  border: 2px solid #C0A269; /* Champagne Gold */
   animation: pulse-gold 2s infinite;
 }
 
 @keyframes pulse-gold {
   0%, 100% {
-    border-color: oklch(0.68 0.15 85);
-    box-shadow: 0 0 0 0 rgba(212, 175, 55, 0.7);
+    border-color: #C0A269;
+    box-shadow: 0 0 0 0 rgba(192, 162, 105, 0.7);
   }
   50% {
-    border-color: oklch(0.75 0.18 85);
-    box-shadow: 0 0 0 8px rgba(212, 175, 55, 0);
+    border-color: #CBB07A;
+    box-shadow: 0 0 0 8px rgba(192, 162, 105, 0);
   }
 }
 
 .pos-item-recognized {
-  border-color: oklch(0.52 0.15 145); /* Emerald Green */
+  border-color: #10B981; /* Emerald — verified */
   animation: success-flash 0.5s ease-out;
 }
 
 @keyframes success-flash {
   0% {
-    background-color: oklch(0.52 0.15 145);
+    background-color: #10B981;
     transform: scale(1.05);
   }
   100% {
@@ -225,7 +166,7 @@
 }
 
 .pos-error-flash {
-  border-color: oklch(0.55 0.20 25); /* Tibetan Red */
+  border-color: #EF4444; /* Red — danger */
   animation: error-shake 0.5s ease-out;
 }
 
