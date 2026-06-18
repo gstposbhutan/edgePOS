@@ -3,8 +3,8 @@
   "version": "1.0.1",
   "private": true,
   "main": "electron/main.js",
-  "author": "NEXUS Bhutan <hello@nexus-bt.com>",
-  "homepage": "https://nexus-bt.com",
+  "author": "Pelbu <hello@pelbu.com>",
+  "homepage": "https://pelbu.com",
   "description": "Offline-first GST POS Terminal for Bhutan — Next.js + PocketBase + Electron",
   "scripts": {
     "dev": "next dev -H 0.0.0.0",
