@@ -18,7 +18,7 @@ import { EndShiftModal }      from "@/components/pos/shift/end-shift-modal"
 import { useShift }           from "@/hooks/use-shift"
 import {
   LogOut, ClipboardList, BookOpen, Package,
-  Wallet, Hand, X, LayoutDashboard, ShoppingCart, Landmark, Users
+  Wallet, Hand, X, LayoutDashboard, ShoppingCart, Landmark, Users, MonitorDown
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { CustomerOtpModal } from "@/components/pos/customer-otp-modal"
@@ -301,6 +301,11 @@ export default function KeyboardPosPage() {
           {subRole === 'OWNER' && (
             <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/team')} title="Team">
               <Users className="h-4 w-4" />
+            </Button>
+          )}
+          {subRole === 'OWNER' && (
+            <Button variant="ghost" size="icon-sm" onClick={() => router.push('/downloads')} title="Desktop App & Updates">
+              <MonitorDown className="h-4 w-4" />
             </Button>
           )}
           <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/orders')} title="Orders [O]">

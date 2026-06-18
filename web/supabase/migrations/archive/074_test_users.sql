@@ -179,3 +179,17 @@ ON CONFLICT (id) DO NOTHING;
 -- retailer_wholesalers requires category_id (per-category relationships)
 -- Will be populated during product import when categories are assigned
 -- ============================================================
+
+-- ============================================================
+-- Part E: Owner → store links (owner_stores)
+-- Each RETAILER OWNER owns their store entity (their first/primary store).
+-- Team members (cashier/manager/staff) belong to a store via user_profiles.entity_id
+-- and can be transferred between the owner's stores from the Team page.
+-- ============================================================
+INSERT INTO owner_stores (owner_id, entity_id, is_primary)
+SELECT p.id, p.entity_id, true
+FROM user_profiles p
+WHERE p.role = 'RETAILER' AND p.sub_role = 'OWNER' AND p.entity_id IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM owner_stores os WHERE os.owner_id = p.id AND os.entity_id = p.entity_id
+  );
