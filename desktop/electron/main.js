@@ -314,12 +314,31 @@ async function doBootstrap() {
       if (r.ok) khata++;
     }
 
+    // 4. Store team → local PB auth users (same bcrypt hash → same password as web).
+    //    Uses the custom superuser route that mirrors the cloud hash into users.password.
+    let users = 0;
+    const roleMap = { OWNER: "owner", MANAGER: "manager", CASHIER: "cashier", STAFF: "cashier" };
+    for (const u of data.users || []) {
+      if (!u.email || !u.password_hash) continue;
+      const r = await fetch(`${localUrl}/api/custom/sync-user`, {
+        method: "POST",
+        headers: jsonAuth,
+        body: JSON.stringify({
+          email: u.email,
+          name: u.full_name || "",
+          role: roleMap[u.sub_role] || "cashier",
+          password_hash: u.password_hash,
+        }),
+      });
+      if (r.ok) users++;
+    }
+
     mainWindow?.webContents.send("sync:status", {
       status: "idle",
       lastSync: new Date().toISOString(),
-      message: `Bootstrapped ${products} products, ${catMap.size} categories, ${khata} accounts`,
+      message: `Bootstrapped ${products} products, ${catMap.size} categories, ${khata} accounts, ${users} users`,
     });
-    return { ok: true, products, categories: catMap.size, khata };
+    return { ok: true, products, categories: catMap.size, khata, users };
   } catch (err) {
     mainWindow?.webContents.send("sync:status", { status: "error", message: err.message });
     return { ok: false, error: err.message };
@@ -430,6 +449,10 @@ ipcMain.handle("sync:start", (_, config) => {
   if (syncInterval) clearInterval(syncInterval);
   syncInterval = setInterval(doSync, (config.intervalMinutes || 5) * 60 * 1000);
   doSync();
+  // Pull catalog + team (incl. mirrored password hashes) from the cloud on launch so
+  // cloud-side changes — new products, price updates, password resets — reach the
+  // terminal without re-activation. Best-effort; never blocks the push cycle.
+  doBootstrap().catch(() => {});
   return true;
 });
 

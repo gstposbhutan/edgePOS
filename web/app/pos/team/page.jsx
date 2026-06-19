@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { getUser, getRoleClaims } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { UserPlus, Trash2, Loader2, ArrowLeft, ShieldCheck } from 'lucide-react'
+import { UserPlus, Trash2, Loader2, ArrowLeft, ShieldCheck, KeyRound } from 'lucide-react'
 import { CreateTeamMemberModal } from '@/components/admin/create-team-member-modal'
 
 const SUB_ROLE_STYLES = {
@@ -47,6 +47,20 @@ export default function TeamPage() {
     const data = await res.json()
     if (!res.ok) { alert(data.error); return }
     setTeam(prev => prev.filter(m => m.id !== memberId))
+  }
+
+  async function handleResetPassword(memberId) {
+    const password = prompt('Set a new password (min 6 chars). Share it with the member — it works on both web and the terminal:')
+    if (!password) return
+    if (password.length < 6) { alert('Password must be at least 6 characters'); return }
+    const res = await fetch(`/api/admin/team/${memberId}/password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    })
+    const data = await res.json()
+    if (!res.ok) { alert(data.error); return }
+    alert('Password reset. It syncs to the terminal on its next launch.')
   }
 
   async function handleChangeRole(memberId, newSubRole) {
@@ -129,12 +143,22 @@ export default function TeamPage() {
                     {isOwner && (
                       <td className="px-4 py-3 text-right">
                         {member.sub_role !== 'OWNER' && (
-                          <button
-                            onClick={() => handleDelete(member.id)}
-                            className="text-muted-foreground hover:text-tibetan transition-colors"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                          <>
+                            <button
+                              onClick={() => handleResetPassword(member.id)}
+                              className="text-muted-foreground hover:text-primary transition-colors mr-3"
+                              title="Reset password"
+                            >
+                              <KeyRound className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(member.id)}
+                              className="text-muted-foreground hover:text-tibetan transition-colors"
+                              title="Remove"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </>
                         )}
                       </td>
                     )}
