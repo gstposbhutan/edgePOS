@@ -11,6 +11,7 @@ export async function POST(request) {
     items, subtotal, gstTotal, grandTotal,
     paymentMethod, paymentChannel, paymentRef, customerWhatsapp, buyerHash,
     cartId, invoiceDate,
+    salespersonId, quotation, deliveryAddress,
   } = body
 
   const supabase = ctx.supabase
@@ -46,6 +47,53 @@ export async function POST(request) {
     .update(`${orderNo}:${grandTotal}:${entity?.tpn_gstin ?? ''}`)
     .digest('hex')
 
+  // Phase 4 — Quotation (Alt+Q): a DRAFT SALES_ORDER. No payment and no stock
+  // move — stock is only deducted by the CONFIRM update below, which we skip.
+  if (quotation) {
+    const { data: quote, error: quoteError } = await supabase
+      .from('orders')
+      .insert({
+        order_type:     'SALES_ORDER',
+        order_no:       orderNo,
+        status:         'DRAFT',
+        seller_id:      ctx.entityId,
+        buyer_whatsapp: customerWhatsapp ?? null,
+        buyer_hash:     buyerHash ?? null,
+        items,
+        subtotal,
+        gst_total:      gstTotal,
+        grand_total:    grandTotal,
+        digital_signature: digitalSignature,
+        cart_id:        cartId ?? null,
+        salesperson_id: salespersonId ?? null,
+        delivery_address: deliveryAddress ?? null,
+        created_by:     ctx.userId,
+      })
+      .select('id, order_no')
+      .single()
+    if (quoteError) return NextResponse.json({ error: quoteError.message }, { status: 500 })
+
+    const { error: qItemsError } = await supabase.from('order_items').insert(
+      items.map(item => ({
+        order_id:   quote.id,
+        product_id: item.product_id,
+        batch_id:   item.batch_id ?? null,
+        sku:        item.sku,
+        name:       item.name,
+        quantity:   item.quantity,
+        unit_price: item.unit_price,
+        discount:       item.discount ?? 0,
+        discount_type:  item.discount_type || 'FLAT',
+        discount_value: item.discount_value ?? 0,
+        gst_5:      item.gst_5,
+        total:      item.total,
+        status:     'ACTIVE',
+      }))
+    )
+    if (qItemsError) return NextResponse.json({ error: qItemsError.message }, { status: 500 })
+    return NextResponse.json({ order: quote })
+  }
+
   // Which register/terminal rang this sale: the most-recent ACTIVE shift for the
   // entity. (Proper multi-register web attribution would need the client to pass
   // the active shift/register id; most-recent is the server-side best-effort.)
@@ -79,6 +127,8 @@ export async function POST(request) {
       digital_signature: digitalSignature,
       cart_id:        cartId ?? null,
       invoice_date:   invoiceDateForInsert,   // undefined → column DEFAULT now()
+      salesperson_id: salespersonId ?? null,
+      delivery_address: deliveryAddress ?? null,
       created_by:     ctx.userId,
     })
     .select('id, order_no')

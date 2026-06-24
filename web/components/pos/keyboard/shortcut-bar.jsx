@@ -12,7 +12,7 @@ export function ShortcutBar({ shortcuts = [] }) {
     { key: 'F5',        label: 'Prev Cart' },
     { key: 'F6',        label: 'Customer' },
     { key: 'F7',        label: 'Price List' },
-    { key: 'F8',        label: 'Sales Person', stub: true },
+    { key: 'F8',        label: 'Sales Person' },
     { key: 'F9',        label: 'Change Qty' },
     { key: 'F10',       label: 'Tender' },
     { key: 'Ctrl+A',    label: 'Add' },

@@ -11,6 +11,12 @@ import { DiscountModal }      from "@/components/pos/keyboard/discount-modal"
 import { BillDiscountModal }  from "@/components/pos/keyboard/bill-discount-modal"
 import { CustomerPanelModal } from "@/components/pos/keyboard/customer-panel-modal"
 import { InvoiceSearchModal } from "@/components/pos/keyboard/invoice-search-modal"
+import { SalespersonPickerModal } from "@/components/pos/keyboard/salesperson-picker-modal"
+import { QuotationConfirmModal } from "@/components/pos/keyboard/quotation-confirm-modal"
+import { ComplimentaryConfirmModal } from "@/components/pos/keyboard/complimentary-confirm-modal"
+import { ExchangeModal } from "@/components/pos/keyboard/exchange-modal"
+import { PostMarketModal } from "@/components/pos/keyboard/post-market-modal"
+import { DeliveryAddressModal } from "@/components/pos/keyboard/delivery-address-modal"
 import { useCart }            from "@/hooks/use-cart"
 import { useKhata }           from "@/hooks/use-khata"
 import { getUser, getEnrichedClaims, signOut } from "@/lib/auth"
@@ -52,6 +58,15 @@ export default function KeyboardPosPage() {
   const [showBillDiscount, setShowBillDiscount] = useState(false)
   const [showCustomerPanel, setShowCustomerPanel] = useState(false)
   const [showInvoiceSearch, setShowInvoiceSearch] = useState(false)
+  const [showSalesPerson, setShowSalesPerson] = useState(false)
+  const [salesPersonId, setSalesPersonId] = useState(null)        // attributed salesperson (F8); null = unattributed
+  const [salesPersonName, setSalesPersonName] = useState(null)
+  const [showQuotation, setShowQuotation] = useState(false)
+  const [showComp, setShowComp] = useState(false)
+  const [showExchange, setShowExchange] = useState(false)
+  const [showMarket, setShowMarket] = useState(false)
+  const [showDelivery, setShowDelivery] = useState(false)
+  const [deliveryAddress, setDeliveryAddress] = useState(null)    // attached to the next sale (Alt+D)
   const [priceListMode, setPriceListMode] = useState(() => {              // RETAIL | WHOLESALE | DISTRIBUTOR (persisted)
     try {
       const saved = localStorage.getItem('pos_price_list')
@@ -126,7 +141,7 @@ export default function KeyboardPosPage() {
 
   useEffect(() => {
     function handleKeyDown(e) {
-      if (searchOpen || paymentOpen || helpOpen || showCustomerPanel || showDiscount || showBillDiscount) return
+      if (searchOpen || paymentOpen || helpOpen || showCustomerPanel || showDiscount || showBillDiscount || showInvoiceSearch || showSalesPerson || showQuotation || showComp || showExchange || showMarket || showDelivery) return
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return
 
       // --- Function keys (canonical Pelbu map) ---
@@ -141,7 +156,7 @@ export default function KeyboardPosPage() {
       }
       if (e.key === 'F6')  { e.preventDefault(); setShowCustomerPanel(true); return }                          // Customer Select
       if (e.key === 'F7')  { e.preventDefault(); cyclePriceList(); return }                                      // Price List (cycle Retail→Wholesale→Distributor)
-      if (e.key === 'F8')  { e.preventDefault(); showToast('Sales Person — coming in phase 4'); return }      // stub (P4)
+      if (e.key === 'F8')  { e.preventDefault(); setShowSalesPerson(true); return }                        // Sales Person
       if (e.key === 'F9')  { e.preventDefault(); editRowRef.current?.(selectedRow); return }                  // Change Qty
       if (e.key === 'F10') { e.preventDefault(); if (items.length > 0) setPaymentOpen(true); return }         // Tender
 
@@ -157,17 +172,17 @@ export default function KeyboardPosPage() {
         if (k === 'a') { e.preventDefault(); openSearch(''); return }                                                      // Add product
         if (k === 'r') { e.preventDefault(); voidSelected(); return }                                                       // Remove selected row
         if (k === 'd') { e.preventDefault(); if (items.length > 0) setShowBillDiscount(true); return }                      // Bill discount (all lines)
-        if (k === 'c') { e.preventDefault(); showToast('Complimentary — coming in phase 4'); return }                       // stub (P4)
-        if (k === 'e') { e.preventDefault(); showToast('Exchange — coming in phase 4'); return }                             // stub (P4)
+        if (k === 'c') { e.preventDefault(); if (isManager && items.length > 0) setShowComp(true); else showToast(isManager ? 'Add items first' : 'Complimentary is manager-only'); return }   // Complimentary (manager)
+        if (k === 'e') { e.preventDefault(); setShowExchange(true); return }                                                  // Exchange (return from past order)
       }
 
       // --- Alt modifiers (all stubs) ---
       if (e.altKey && !e.ctrlKey) {
         const k = e.key.toLowerCase()
         if (k === 'a') { e.preventDefault(); cyclePriceList(); return }                                          // Price List (cycle)
-        if (k === 'm') { e.preventDefault(); showToast('Post to Market — coming in phase 4'); return }
-        if (k === 'q') { e.preventDefault(); showToast('Convert to Quotation — coming in phase 4'); return }
-        if (k === 'd') { e.preventDefault(); showToast('Delivery Address — coming in phase 4'); return }
+        if (k === 'm') { e.preventDefault(); if (items.length > 0) setShowMarket(true); else showToast('Add items first'); return }   // Post to Market
+        if (k === 'q') { e.preventDefault(); if (items.length > 0) setShowQuotation(true); else showToast('Add items first'); return }   // Quotation
+        if (k === 'd') { e.preventDefault(); setShowDelivery(true); return }                                                    // Delivery Address
       }
 
       // --- Navigation / cart switching ---
@@ -204,7 +219,7 @@ export default function KeyboardPosPage() {
     // checkoutErr must be a dep: handleNewTransaction (F2) reads it to block
     // clearing on a stock error. Without it, the out-of-stock branch (no item
     // added → items unchanged → effect not re-run) leaves a stale closure.
-  }, [searchOpen, paymentOpen, helpOpen, showCustomerPanel, showDiscount, showBillDiscount, items, selectedRow, carts, activeIndex, subRole, checkoutErr, priceListMode])
+  }, [searchOpen, paymentOpen, helpOpen, showCustomerPanel, showDiscount, showBillDiscount, showInvoiceSearch, showSalesPerson, showQuotation, showComp, showExchange, showMarket, showDelivery, items, selectedRow, carts, activeIndex, subRole, checkoutErr, priceListMode])
 
   function showToast(msg) {
     setToastMsg(msg)
@@ -222,6 +237,37 @@ export default function KeyboardPosPage() {
     try { localStorage.setItem('pos_price_list', next) } catch {}
     repriceCart(next)
     showToast(`Price list: ${next.charAt(0)}${next.slice(1).toLowerCase()}`)
+  }
+
+  // Alt+Q — save the cart as a draft quotation (SALES_ORDER/DRAFT): no payment,
+  // no stock move. Clears the cart on success like a completed sale.
+  async function saveQuotation() {
+    if (items.length === 0) return
+    try {
+      const res = await fetch('/api/pos/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items, subtotal, gstTotal, grandTotal,
+          customerWhatsapp: customer?.whatsapp ?? null,
+          buyerHash: customer?.buyerHash ?? null,
+          cartId,
+          quotation: true,
+          salespersonId: salesPersonId ?? undefined,
+          deliveryAddress: deliveryAddress || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Quotation failed')
+      setLastOrderNo(data.order.order_no)
+      await clearCart()
+      setSelectedRow(0)
+      setShowQuotation(false)
+      showToast(`Quotation ${data.order.order_no} saved`)
+    } catch (err) {
+      setCheckoutErr(err.message)
+      setShowQuotation(false)
+    }
   }
 
   function openSearch(initialChar) {
@@ -339,6 +385,8 @@ export default function KeyboardPosPage() {
           buyerHash: customer?.buyerHash ?? null,
           cartId,
           invoiceDate: isAdmin && dateOverride ? dateOverride : undefined,
+          salespersonId: salesPersonId ?? undefined,
+          deliveryAddress: deliveryAddress || undefined,
         }),
       })
 
@@ -412,6 +460,13 @@ export default function KeyboardPosPage() {
           >
             {priceListMode === 'DISTRIBUTOR' ? 'DISTR.' : priceListMode === 'WHOLESALE' ? 'WSALE' : 'RETAIL'}
           </span>
+          <button
+            onClick={() => setShowSalesPerson(true)}
+            title="Sales person (F8)"
+            className="hidden md:inline text-[10px] font-medium border border-border bg-muted/30 px-2 py-0.5 rounded-full shrink-0 truncate max-w-[120px] hover:bg-muted"
+          >
+            {salesPersonName ?? 'Salesperson'}
+          </button>
           <div className="relative shrink-0">
             <button
               onClick={() => isAdmin && setShowDateOverride(v => !v)}
@@ -684,6 +739,51 @@ export default function KeyboardPosPage() {
 
       {showInvoiceSearch && (
         <InvoiceSearchModal onClose={() => setShowInvoiceSearch(false)} />
+      )}
+
+      {showSalesPerson && (
+        <SalespersonPickerModal
+          selectedId={salesPersonId}
+          onClose={() => setShowSalesPerson(false)}
+          onSelect={(id, name) => { setSalesPersonId(id); setSalesPersonName(name); setShowSalesPerson(false); showToast(`Salesperson: ${name}`) }}
+        />
+      )}
+
+      {showQuotation && (
+        <QuotationConfirmModal
+          itemCount={items.length}
+          grandTotal={grandTotal}
+          onClose={() => setShowQuotation(false)}
+          onConfirm={saveQuotation}
+        />
+      )}
+
+      {showComp && items.length > 0 && (
+        <ComplimentaryConfirmModal
+          onClose={() => setShowComp(false)}
+          onConfirm={(reason) => {
+            items.forEach(it => applyDiscount(it.id, { type: 'PERCENTAGE', value: 100 }))
+            setShowComp(false)
+            showToast(reason ? `Marked complimentary — ${reason}` : 'Marked complimentary')
+          }}
+        />
+      )}
+
+      {showExchange && (
+        <ExchangeModal userId={user?.id} onToast={showToast} onClose={() => setShowExchange(false)} />
+      )}
+
+      {showMarket && items.length > 0 && (
+        <PostMarketModal items={items} onClose={() => setShowMarket(false)} onDone={(m) => showToast(m)} />
+      )}
+
+      {showDelivery && (
+        <DeliveryAddressModal
+          initialAddress={deliveryAddress}
+          onClose={() => setShowDelivery(false)}
+          onApply={(addr) => { setDeliveryAddress(addr); showToast('Delivery address attached') }}
+          onClear={() => { setDeliveryAddress(null); showToast('Delivery address cleared') }}
+        />
       )}
 
       {toastMsg && (
