@@ -14,6 +14,7 @@ import { useLayoutPreset } from "@/hooks/use-layout-preset";
 import { useCustomers } from "@/hooks/use-customers";
 import type { Customer } from "@/hooks/use-customers";
 import { getPB } from "@/lib/pb-client";
+import { peekNextOrderNo } from "@/lib/invoice-header";
 import { LAYOUT_PRESETS, SCREEN_LG, CART_WIDTH } from "@/lib/constants";
 import { ProductGrid } from "@/components/pos/product-grid";
 import { CartPanel } from "@/components/pos/cart-panel";
@@ -53,6 +54,8 @@ import {
   Moon,
   FilePlus,
   Truck,
+  Hash,
+  CalendarClock,
 } from "lucide-react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -121,6 +124,8 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
   const [online, setOnline] = useState(true);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [currentTime, setCurrentTime] = useState("");
+  const [nextInvoiceNo, setNextInvoiceNo] = useState("");
+  const [dateOverride, setDateOverride] = useState<string | null>(null);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [screenWidth, setScreenWidth] = useState(typeof window !== "undefined" ? window.innerWidth : SCREEN_LG);
@@ -144,9 +149,9 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
     clearCart: async () => { await clearCart(); },
     refreshProducts,
     clearUndoStack: () => undoStack.clear(),
+    invoiceDate: dateOverride,
+    isOwner,
   });
-    showScanner || showPayment || showCustomer || showReceipt || showZReport ||
-    showShiftModal !== null || showHeldCarts || showHelp;
 
   // Auto-prompt shift open when no active shift (once data loads)
   const [hasPromptedShift, setHasPromptedShift] = useState(false);
@@ -182,6 +187,23 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
     const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // Live invoice header — peek the next order number for display. Minted at
+  // checkout via the same peekNextOrderNo helper, so preview === final in the
+  // single-terminal case. Refresh on mount, every 60s, and after each sale.
+  const refreshInvoiceHeader = useCallback(async () => {
+    try {
+      setNextInvoiceNo(await peekNextOrderNo(pb));
+    } catch {
+      /* offline / empty — keep the last known number */
+    }
+  }, [pb]);
+
+  useEffect(() => {
+    refreshInvoiceHeader();
+    const t = setInterval(refreshInvoiceHeader, 60_000);
+    return () => clearInterval(t);
+  }, [refreshInvoiceHeader]);
 
   // Load held carts on mount
   useEffect(() => { loadHeld(); }, [loadHeld]);
@@ -330,13 +352,20 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
         setShowPayment(false);
         setLastOrder(orderPayload);
         setShowReceipt(true);
+        refreshInvoiceHeader();
       });
     },
-    [confirmPayment]
+    [confirmPayment, refreshInvoiceHeader]
   );
 
   const handleSelectCustomer = useCallback(
-    async (customer: any) => {
+    async (customer: Customer | null) => {
+      if (!customer) {
+        // Walk-in — clear any attached customer (cash sale).
+        setCartCustomer(null);
+        setSelectedCustomer(null);
+        return;
+      }
       setCartCustomer(customer.id);
       setSelectedCustomer(customer);
     },
@@ -429,7 +458,6 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
   // Keyboard shortcuts
   const setupShortcuts = usePosShortcuts({
     items,
-    lastOrder,
     showPayment,
     showHeldCarts,
     showCustomer,
@@ -437,7 +465,6 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
     setShowHeldCarts,
     showHelpToggle: () => setShowHelp((prev) => !prev),
     setShowCustomer,
-    setShowReceipt,
     setSearchQuery,
     handleNewTransaction,
     handleHoldCart,
@@ -445,8 +472,6 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
     handleVoidLast,
     handleUndo,
     applyDiscount,
-    removeItem,
-    setLayout,
   });
   useEffect(() => setupShortcuts(), [setupShortcuts]);
 
@@ -524,6 +549,29 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
             <Clock className="h-3.5 w-3.5" />
             <span className="font-mono tabular-nums">{currentTime}</span>
           </div>
+          <Badge variant="outline" className="text-[10px] gap-1 font-mono" title="Next invoice number (preview)">
+            <Hash className="h-3 w-3" />
+            {nextInvoiceNo || "—"}
+          </Badge>
+          {(isOwner || isManager) && (
+            <div
+              className="hidden lg:flex items-center gap-1 text-[10px] text-muted-foreground"
+              title="Override the invoice date for the next sale (admin only). Blank = now."
+            >
+              <CalendarClock className="h-3.5 w-3.5" />
+              <input
+                type="datetime-local"
+                value={dateOverride ?? ""}
+                onChange={(e) => setDateOverride(e.target.value || null)}
+                className="h-6 bg-transparent border border-border rounded px-1 text-[10px] text-foreground"
+              />
+              {dateOverride && (
+                <button type="button" onClick={() => setDateOverride(null)} className="hover:text-foreground" title="Clear override">
+                  ×
+                </button>
+              )}
+            </div>
+          )}
           <Badge
             variant={online ? "outline" : "destructive"}
             className={`text-[10px] gap-1 ${online ? "border-emerald-500/30 text-emerald-400" : ""}`}

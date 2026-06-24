@@ -4,11 +4,9 @@ import { useCallback } from "react";
 import { useKeyboardRegistry } from "./use-keyboard-registry";
 import { toast } from "sonner";
 import type { CartItem } from "./use-cart";
-import type { LayoutPreset } from "@/lib/constants";
 
 interface PosShortcutsInput {
   items: CartItem[];
-  lastOrder: any;
   showPayment: boolean;
   showHeldCarts: boolean;
   showCustomer: boolean;
@@ -16,7 +14,6 @@ interface PosShortcutsInput {
   setShowHeldCarts: (v: boolean) => void;
   showHelpToggle: () => void;
   setShowCustomer: (v: boolean) => void;
-  setShowReceipt: (v: boolean) => void;
   setSearchQuery: (q: string) => void;
   handleNewTransaction: () => void;
   handleHoldCart: () => void;
@@ -24,8 +21,6 @@ interface PosShortcutsInput {
   handleVoidLast: () => void;
   handleUndo: () => void;
   applyDiscount: (itemId: string, discount: number) => void;
-  removeItem: (itemId: string) => void;
-  setLayout: (preset: LayoutPreset) => void;
 }
 
 /** Shortcut whose target feature ships in a later phase — shows a toast. */

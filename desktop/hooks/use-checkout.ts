@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback } from "react";
-import { getPB, getTerminalId } from "@/lib/pb-client";
+import { getPB } from "@/lib/pb-client";
 import { getRegisterId } from "@/lib/register";
-import { generateOrderNo, generateOrderSignature } from "@/lib/gst";
-import { todayCompact } from "@/lib/date-utils";
+import { generateOrderSignature } from "@/lib/gst";
+import { nowISO } from "@/lib/date-utils";
+import { peekNextOrderNo } from "@/lib/invoice-header";
 import { MOVEMENT_TYPE, KHATA_TXN, KHATA_STATUS, PB_REQ, PAYMENT_METHOD } from "@/lib/constants";
 import { toast } from "sonner";
 import type { CartItem } from "./use-cart";
@@ -27,6 +28,10 @@ interface CheckoutInput {
   clearCart: () => Promise<void>;
   refreshProducts: () => Promise<void>;
   clearUndoStack: () => void;
+  // Admin-only invoice-date override (datetime-local string). Ignored unless
+  // isOwner — mirrors the web's admin-only invoiceDate (non-admin → 403).
+  invoiceDate?: string | null;
+  isOwner?: boolean;
 }
 
 /** Generate a PocketBase-compatible record id (15 lowercase alphanumeric chars). */
@@ -64,7 +69,7 @@ export function useCheckout(input: CheckoutInput) {
       tendered?: number,
       onSuccess?: (orderPayload: Record<string, unknown>, orderId: string) => void
     ) => {
-      const { pb, user, items, products, subtotal, gstTotal, grandTotal, taxExempt, grandTotalExempt, settings, selectedCustomer, clearCart, refreshProducts, clearUndoStack } = input;
+      const { pb, user, items, products, subtotal, gstTotal, grandTotal, taxExempt, grandTotalExempt, settings, selectedCustomer, clearCart, refreshProducts, clearUndoStack, invoiceDate, isOwner } = input;
 
       if (!user) return;
 
@@ -107,14 +112,7 @@ export function useCheckout(input: CheckoutInput) {
       }
 
       try {
-        const today = todayCompact();
-        const terminalId = getTerminalId();
-        const count = await pb.collection("orders").getList(1, 1, {
-          filter: `order_no ~ "POS-${terminalId}-${today}-"`,
-          sort: "-created_at",
-          requestKey: null,
-        });
-        const orderNo = generateOrderNo(terminalId, today, (count.totalItems || 0) + 1);
+        const orderNo = await peekNextOrderNo(pb);
 
         const digitalSignature = await generateOrderSignature(
           orderNo,
@@ -154,6 +152,8 @@ export function useCheckout(input: CheckoutInput) {
           created_by: user.id,
           register_id: registerId || "",
           digital_signature: digitalSignature,
+          invoice_date:
+            isOwner && invoiceDate ? new Date(invoiceDate).toISOString() : nowISO(),
         };
 
         // P0-5: write the order, stock decrements, movements, and any khata debit
