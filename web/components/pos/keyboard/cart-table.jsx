@@ -96,7 +96,10 @@ export function CartTable({ items, onUpdateQty, onRemoveItem, selectedRow, onSel
           {items.map((item, i) => {
             const isSelected = selectedRow === i
             const isEditing  = editingRow  === i
-            const total = parseFloat(item.total ?? (item.unit_price * item.quantity * 1.05))
+            const unitPrice = parseFloat(item.unit_price)
+            const discount  = parseFloat(item.discount ?? 0)
+            const finalRate = Math.max(0, unitPrice - discount)             // post-discount unit price (Final Rate)
+            const total     = parseFloat(item.total ?? (finalRate * item.quantity * 1.05))
 
             return (
               <tr
@@ -155,7 +158,12 @@ export function CartTable({ items, onUpdateQty, onRemoveItem, selectedRow, onSel
                   {item.available_stock != null ? item.available_stock : (item.batch?.available_qty != null ? item.batch.available_qty : '—')}
                 </td>
                 <td className="px-4 py-2.5 text-right tabular-nums">
-                  Nu. {parseFloat(item.unit_price).toFixed(2)}
+                  <span className={discount > 0 ? 'line-through text-muted-foreground/60 text-xs' : ''}>
+                    Nu. {unitPrice.toFixed(2)}
+                  </span>
+                  {discount > 0 && (
+                    <span className="block text-emerald-600 font-medium">→ Nu. {finalRate.toFixed(2)}</span>
+                  )}
                 </td>
                 <td className="px-4 py-2.5 text-right tabular-nums">
                   {parseFloat(item.discount) > 0 ? (
