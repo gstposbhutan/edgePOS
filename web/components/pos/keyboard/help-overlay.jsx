@@ -2,36 +2,64 @@
 
 import { useEffect } from "react"
 
-const SHORTCUTS = [
-  { key: 'F1',     label: 'Help overlay' },
-  { key: 'F2',   label: 'New transaction (clear active cart)' },
-  { key: 'F3',   label: 'Add item / open product search' },
-  { key: 'F4',   label: 'New cart (hold current, open blank)' },
-  { key: 'F6',   label: 'Cancel / clear active cart' },
-  { key: 'Tab',      label: 'Switch to next cart' },
-  { key: '⇧Tab',    label: 'Switch to previous cart' },
-  { key: 'Ctrl+1–9', label: 'Jump to cart by number' },
-  { key: 'F4',     label: 'Assign customer' },
-  { key: 'F5',     label: 'Payment' },
-  { key: 'F6',     label: 'Print / send last receipt' },
-  { key: 'F7',     label: 'Void selected row' },
-  { key: 'F8',     label: 'Open cash drawer' },
-  { key: 'F9',     label: 'Switch Touch / Keyboard mode' },
-  { key: 'Ctrl+M', label: 'Discount on selected row' },
-  { key: 'F12',    label: 'Lock terminal' },
-  { key: '↑ ↓',    label: 'Navigate rows' },
-  { key: 'Enter',  label: 'Edit qty on selected row' },
-  { key: 'Delete', label: 'Remove selected row' },
-  { key: 'Esc',    label: 'Cancel / close modal' },
-  { key: 'Any key', label: 'Open product search' },
-  { key: '1–5',    label: 'Select payment method (in payment modal)' },
-  { key: 'E',      label: 'Exact amount (CASH)' },
-  { key: 'R',      label: 'Round to Nu.5 (CASH)' },
-  { key: 'Ctrl+1–5', label: 'Add denomination (CASH)' },
+const GROUPS = [
+  {
+    title: 'Functional',
+    shortcuts: [
+      { key: 'F1',        label: 'Help overlay' },
+      { key: 'F2',        label: 'Clear / new transaction' },
+      { key: 'F3',        label: 'Search / add item' },
+      { key: 'F4',        label: 'New cart (hold current)' },
+      { key: 'F5',        label: 'Previous cart' },
+      { key: 'F6',        label: 'Customer select' },
+      { key: 'F9',        label: 'Change qty (selected row)' },
+      { key: 'F10',       label: 'Tender / payment' },
+      { key: 'Enter',     label: 'Change qty (selected row)' },
+      { key: 'Ctrl+A',    label: 'Add product (open search)' },
+      { key: 'Ctrl+R',    label: 'Remove selected row' },
+      { key: 'Ctrl+D',    label: 'Bill discount (all lines)' },
+      { key: 'Ctrl+M',    label: 'Discount on selected row' },
+      { key: 'Tab / ⇧Tab', label: 'Next / previous cart' },
+      { key: 'Ctrl+1–9',  label: 'Jump to cart by number' },
+      { key: '↑ ↓',       label: 'Navigate rows' },
+      { key: 'Delete',    label: 'Remove selected row' },
+      { key: 'Any key',   label: 'Open product search' },
+    ],
+  },
+  {
+    title: 'Manager',
+    shortcuts: [
+      { key: 'Ctrl+⇧X', label: 'Cash In/Out (manager)' },
+      { key: 'Ctrl+⇧Z', label: 'Z-Report (manager)' },
+    ],
+  },
+  {
+    title: 'In payment modal',
+    shortcuts: [
+      { key: '1–5',     label: 'Select payment method' },
+      { key: 'E',       label: 'Exact amount (CASH)' },
+      { key: 'R',       label: 'Round to Nu.5 (CASH)' },
+      { key: 'Ctrl+1–5', label: 'Add denomination (CASH)' },
+    ],
+  },
+  {
+    title: 'Coming soon',
+    stub: true,
+    shortcuts: [
+      { key: 'F7',     label: 'Price list (phase 3)' },
+      { key: 'Alt+A',  label: 'Apply price list (phase 3)' },
+      { key: 'F8',     label: 'Sales person (phase 4)' },
+      { key: 'Ctrl+C', label: 'Complimentary (phase 4)' },
+      { key: 'Ctrl+E', label: 'Exchange (phase 4)' },
+      { key: 'Alt+M',  label: 'Post to market (phase 4)' },
+      { key: 'Alt+Q',  label: 'Convert to quotation (phase 4)' },
+      { key: 'Alt+D',  label: 'Delivery address (phase 4)' },
+    ],
+  },
 ]
 
 /**
- * F1 help overlay — full shortcut reference.
+ * F1 help overlay — full shortcut reference, grouped by status.
  * @param {{ open: boolean, onClose: () => void }} props
  */
 export function HelpOverlay({ open, onClose }) {
@@ -57,13 +85,22 @@ export function HelpOverlay({ open, onClose }) {
           <h2 className="font-semibold">Keyboard Shortcuts</h2>
           <span className="text-xs text-muted-foreground">[F1], [Enter] or [Esc] to close</span>
         </div>
-        <div className="p-5 grid grid-cols-2 gap-2 max-h-[70vh] overflow-y-auto">
-          {SHORTCUTS.map(s => (
-            <div key={s.key} className="flex items-center gap-3 py-1.5 border-b border-border/40">
-              <span className="text-xs font-mono font-bold px-2 py-0.5 bg-muted border border-border rounded text-foreground shrink-0 min-w-[60px] text-center">
-                {s.key}
-              </span>
-              <span className="text-sm text-muted-foreground">{s.label}</span>
+        <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+          {GROUPS.map(group => (
+            <div key={group.title}>
+              <h3 className={`text-xs font-semibold uppercase tracking-wide mb-1 ${group.stub ? 'text-muted-foreground/60' : 'text-muted-foreground'}`}>
+                {group.title}
+              </h3>
+              <div className="grid grid-cols-2 gap-x-4">
+                {group.shortcuts.map(s => (
+                  <div key={s.key + s.label} className={`flex items-center gap-3 py-1.5 border-b border-border/40 ${group.stub ? 'opacity-50' : ''}`}>
+                    <span className="text-xs font-mono font-bold px-2 py-0.5 bg-muted border border-border rounded text-foreground shrink-0 min-w-[64px] text-center">
+                      {s.key}
+                    </span>
+                    <span className="text-sm text-muted-foreground">{s.label}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
         </div>

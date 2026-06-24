@@ -10,10 +10,22 @@ export async function POST(request) {
   const {
     items, subtotal, gstTotal, grandTotal,
     paymentMethod, paymentChannel, paymentRef, customerWhatsapp, buyerHash,
-    cartId,
+    cartId, invoiceDate,
   } = body
 
   const supabase = ctx.supabase
+
+  // Phase 2: admin-only invoice date override. Non-admins cannot back/forward-date;
+  // otherwise the column defaults to now() (resolved at insert below). The override
+  // is self-auditing: invoice_date diverging from created_at is the trail.
+  const isAdmin = ['OWNER', 'ADMIN'].includes(ctx.subRole)
+  let invoiceDateForInsert   // undefined → column DEFAULT now()
+  if (invoiceDate !== undefined && invoiceDate !== null && invoiceDate !== '') {
+    if (!isAdmin) return NextResponse.json({ error: 'Date override is admin-only' }, { status: 403 })
+    const parsed = new Date(invoiceDate)
+    if (Number.isNaN(parsed.getTime())) return NextResponse.json({ error: 'Invalid invoice date' }, { status: 400 })
+    invoiceDateForInsert = parsed.toISOString()
+  }
 
   // P1-2: the order number and digital signature are issued server-side and are
   // never trusted from the client. Prefix + signature inputs come from the seller
@@ -66,6 +78,7 @@ export async function POST(request) {
       payment_ref:     paymentRef ?? null,
       digital_signature: digitalSignature,
       cart_id:        cartId ?? null,
+      invoice_date:   invoiceDateForInsert,   // undefined → column DEFAULT now()
       created_by:     ctx.userId,
     })
     .select('id, order_no')
