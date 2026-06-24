@@ -16,6 +16,8 @@ import { FaceStore }          from "@/lib/vision/face-store"
 import { RestockModal }       from "@/components/pos/restock/restock-modal"
 import { StartShiftModal }    from "@/components/pos/shift/start-shift-modal"
 import { EndShiftModal }      from "@/components/pos/shift/end-shift-modal"
+import { CashAdjustmentModal } from "@/components/pos/cash-adjustment-modal"
+import { ZReportModal }       from "@/components/pos/z-report-modal"
 import { useCart }         from "@/hooks/use-cart"
 import { useProducts }     from "@/hooks/use-products"
 import { useKhata }        from "@/hooks/use-khata"
@@ -46,6 +48,8 @@ export default function PosPage() {
   const [showCreditOtp,     setShowCreditOtp]     = useState(false)
   const [showStartShift,    setShowStartShift]    = useState(false)
   const [showEndShift,      setShowEndShift]      = useState(false)
+  const [showCashAdj,       setShowCashAdj]       = useState(false)
+  const [showZReport,       setShowZReport]       = useState(false)
 
   const { shift, openShift, closeShift } = useShift()
 
@@ -377,6 +381,8 @@ export default function PosPage() {
         shift={shift}
         onStartShift={() => setShowStartShift(true)}
         onEndShift={() => setShowEndShift(true)}
+        onCashAdj={() => setShowCashAdj(true)}
+        onZReport={() => setShowZReport(true)}
         faceCamera={
           <FaceCamera
             entityId={entity?.id}
@@ -522,6 +528,14 @@ export default function PosPage() {
           onClose={() => setShowEndShift(false)}
           onEndShift={closeShift}
         />
+      )}
+
+      {showCashAdj && (
+        <CashAdjustmentModal shift={shift} onClose={() => setShowCashAdj(false)} />
+      )}
+
+      {showZReport && (
+        <ZReportModal onClose={() => setShowZReport(false)} />
       )}
     </>
   )

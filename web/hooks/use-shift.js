@@ -49,5 +49,23 @@ export function useShift() {
     throw new Error(data.error || 'Failed to close shift')
   }
 
-  return { shift, loading, fetchShift, openShift, closeShift }
+  // Live drawer reconciliation for an open shift (manager/owner). Returns null for a
+  // cashier (403) so the end-shift modal can stay blind.
+  async function getReconciliation(shiftId) {
+    const res = await fetch(`/api/shifts/${shiftId}/reconciliation`)
+    if (res.status === 403) return null
+    const data = await res.json()
+    if (res.ok) return data
+    throw new Error(data.error || 'Failed to load reconciliation')
+  }
+
+  // Daily Z-report (end-of-day aggregates) for a given YYYY-MM-DD.
+  async function getZReport(date) {
+    const res = await fetch(`/api/shifts/z-report?date=${encodeURIComponent(date)}`)
+    const data = await res.json()
+    if (res.ok) return data.report
+    throw new Error(data.error || 'Failed to load Z-report')
+  }
+
+  return { shift, loading, fetchShift, openShift, closeShift, getReconciliation, getZReport }
 }

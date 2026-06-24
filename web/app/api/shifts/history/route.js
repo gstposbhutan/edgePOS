@@ -25,11 +25,27 @@ export async function GET(request) {
   const { data: shifts, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // Resolve cashier names for opened_by / closed_by (user ids → full_name).
+  const actorIds = [...new Set([
+    ...shifts.map(s => s.opened_by),
+    ...shifts.map(s => s.closed_by).filter(Boolean),
+  ])]
+  const nameById = {}
+  if (actorIds.length > 0) {
+    const { data: actors } = await supabase
+      .from('user_profiles')
+      .select('id, full_name')
+      .in('id', actorIds)
+    for (const a of actors || []) nameById[a.id] = a.full_name
+  }
+
   const result = shifts.map(s => ({
     id: s.id,
     register_name: s.cash_registers?.name,
     opened_by: s.opened_by,
+    opened_by_name: nameById[s.opened_by] || null,
     closed_by: s.closed_by,
+    closed_by_name: s.closed_by ? nameById[s.closed_by] || null : null,
     opening_float: s.opening_float,
     closing_count: s.closing_count,
     opened_at: s.opened_at,
