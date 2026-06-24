@@ -9,7 +9,17 @@ function calcItemTotals(unitPrice, discount, quantity) {
   return { gst5, total }
 }
 
-export function useCart(entityId, createdBy) {
+// Per-unit price for a product under the active POS price list. Retail = batch
+// selling price → MRP → wholesale (legacy fallback); Wholesale = wholesale_price;
+// Distributor = distributor_price (→ wholesale → mrp when unset). Never NaN.
+function priceFor(product, mode) {
+  const num = v => parseFloat(v ?? 0) || 0
+  if (mode === 'WHOLESALE')   return num(product.wholesale_price)   || num(product.mrp)
+  if (mode === 'DISTRIBUTOR') return num(product.distributor_price) || num(product.wholesale_price) || num(product.mrp)
+  return num(product.selling_price) || num(product.mrp) || num(product.wholesale_price)
+}
+
+export function useCart(entityId, createdBy, priceListMode = 'RETAIL') {
   const [carts,       setCarts]       = useState([])
   const [activeIndex, setActiveIndex] = useState(0)
   const [loading,     setLoading]     = useState(true)
@@ -95,7 +105,8 @@ export function useCart(entityId, createdBy) {
   const addItem = useCallback(async (product) => {
     if (!cartId) return
 
-    const unitPrice = parseFloat(product.selling_price ?? product.mrp ?? product.wholesale_price ?? 0)
+    // Apply the active price list so the server inserts the tier price.
+    const unitPrice = priceFor(product, priceListMode)
     const batchId   = product.batch_id ?? null
 
     // Dedup: same product + same batch = merge quantity
@@ -111,7 +122,7 @@ export function useCart(entityId, createdBy) {
       const res = await fetch('/api/pos/cart/items', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'add', cartId, product }),
+        body: JSON.stringify({ action: 'add', cartId, product: { ...product, unitPrice } }),
       })
       if (res.ok) {
         const data = await res.json()
@@ -124,7 +135,7 @@ export function useCart(entityId, createdBy) {
         }
       }
     } catch { /* silently fail */ }
-  }, [cartId, items, activeIndex])
+  }, [cartId, items, activeIndex, priceListMode])
 
   const updateQty = useCallback(async (itemId, newQty) => {
     if (newQty < 1) return removeItem(itemId)
@@ -209,6 +220,30 @@ export function useCart(entityId, createdBy) {
     } catch { /* silently fail */ }
   }, [activeIndex])
 
+  // Re-price every line in the active cart to the given price list: fetch the
+  // product ladder once (batched via ?ids=), then overridePrice each item whose
+  // price actually changed. Per-line discounts are preserved (override_price
+  // recomputes gst/total against the new price, see api/pos/cart/items).
+  const repriceCart = useCallback(async (mode) => {
+    if (!items.length) return
+    const ids = [...new Set(items.map(i => i.product_id).filter(Boolean))]
+    if (!ids.length) return
+    try {
+      const res = await fetch(`/api/pos/products?ids=${encodeURIComponent(ids.join(','))}`)
+      if (!res.ok) return
+      const { products = [] } = await res.json()
+      const byId = new Map(products.map(p => [p.id, p]))
+      for (const item of items) {
+        const prod = byId.get(item.product_id)
+        if (!prod) continue
+        const newPrice = priceFor(prod, mode)
+        if (Number.isFinite(newPrice) && Math.abs(newPrice - parseFloat(item.unit_price)) > 0.001) {
+          await overridePrice(item.id, newPrice)
+        }
+      }
+    } catch { /* silently fail */ }
+  }, [items, overridePrice])
+
   const removeItem = useCallback(async (itemId) => {
     try {
       await fetch('/api/pos/cart/items', {
@@ -279,6 +314,6 @@ export function useCart(entityId, createdBy) {
     holdCart,
     switchCart,
     cancelCart,
-    addItem, updateQty, applyDiscount, overridePrice, removeItem, clearCart, setCustomerIdentity,
+    addItem, updateQty, applyDiscount, overridePrice, repriceCart, removeItem, clearCart, setCustomerIdentity,
   }
 }

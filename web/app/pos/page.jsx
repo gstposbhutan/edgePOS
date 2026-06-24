@@ -10,6 +10,7 @@ import { ShortcutBar }        from "@/components/pos/keyboard/shortcut-bar"
 import { DiscountModal }      from "@/components/pos/keyboard/discount-modal"
 import { BillDiscountModal }  from "@/components/pos/keyboard/bill-discount-modal"
 import { CustomerPanelModal } from "@/components/pos/keyboard/customer-panel-modal"
+import { InvoiceSearchModal } from "@/components/pos/keyboard/invoice-search-modal"
 import { useCart }            from "@/hooks/use-cart"
 import { useKhata }           from "@/hooks/use-khata"
 import { getUser, getEnrichedClaims, signOut } from "@/lib/auth"
@@ -50,6 +51,13 @@ export default function KeyboardPosPage() {
   const [showZReport,    setShowZReport]    = useState(false)
   const [showBillDiscount, setShowBillDiscount] = useState(false)
   const [showCustomerPanel, setShowCustomerPanel] = useState(false)
+  const [showInvoiceSearch, setShowInvoiceSearch] = useState(false)
+  const [priceListMode, setPriceListMode] = useState(() => {              // RETAIL | WHOLESALE | DISTRIBUTOR (persisted)
+    try {
+      const saved = localStorage.getItem('pos_price_list')
+      return ['RETAIL', 'WHOLESALE', 'DISTRIBUTOR'].includes(saved) ? saved : 'RETAIL'
+    } catch { return 'RETAIL' }
+  })
   const [selectedCustomer, setSelectedCustomer] = useState(null)        // full khata account for header display
   const [nextInvoiceNo, setNextInvoiceNo] = useState(null)              // live preview of the next order no
   const [serverTime, setServerTime] = useState(null)                    // internet-sourced clock
@@ -104,8 +112,9 @@ export default function KeyboardPosPage() {
     subtotal, gstTotal, grandTotal,
     carts, activeIndex,
     addItem, updateQty, removeItem, clearCart, setCustomerIdentity, applyDiscount,
+    repriceCart,
     holdCart, switchCart, cancelCart,
-  } = useCart(entity?.id, user?.id)
+  } = useCart(entity?.id, user?.id, priceListMode)
 
   const { accounts, lookupAccount, createAccount } = useKhata(entity?.id)
 
@@ -131,7 +140,7 @@ export default function KeyboardPosPage() {
         return
       }
       if (e.key === 'F6')  { e.preventDefault(); setShowCustomerPanel(true); return }                          // Customer Select
-      if (e.key === 'F7')  { e.preventDefault(); showToast('Price List — coming in phase 3'); return }        // stub (P3)
+      if (e.key === 'F7')  { e.preventDefault(); cyclePriceList(); return }                                      // Price List (cycle Retail→Wholesale→Distributor)
       if (e.key === 'F8')  { e.preventDefault(); showToast('Sales Person — coming in phase 4'); return }      // stub (P4)
       if (e.key === 'F9')  { e.preventDefault(); editRowRef.current?.(selectedRow); return }                  // Change Qty
       if (e.key === 'F10') { e.preventDefault(); if (items.length > 0) setPaymentOpen(true); return }         // Tender
@@ -155,7 +164,7 @@ export default function KeyboardPosPage() {
       // --- Alt modifiers (all stubs) ---
       if (e.altKey && !e.ctrlKey) {
         const k = e.key.toLowerCase()
-        if (k === 'a') { e.preventDefault(); showToast('Price List — coming in phase 3'); return }
+        if (k === 'a') { e.preventDefault(); cyclePriceList(); return }                                          // Price List (cycle)
         if (k === 'm') { e.preventDefault(); showToast('Post to Market — coming in phase 4'); return }
         if (k === 'q') { e.preventDefault(); showToast('Convert to Quotation — coming in phase 4'); return }
         if (k === 'd') { e.preventDefault(); showToast('Delivery Address — coming in phase 4'); return }
@@ -195,12 +204,24 @@ export default function KeyboardPosPage() {
     // checkoutErr must be a dep: handleNewTransaction (F2) reads it to block
     // clearing on a stock error. Without it, the out-of-stock branch (no item
     // added → items unchanged → effect not re-run) leaves a stale closure.
-  }, [searchOpen, paymentOpen, helpOpen, showCustomerPanel, showDiscount, showBillDiscount, items, selectedRow, carts, activeIndex, subRole, checkoutErr])
+  }, [searchOpen, paymentOpen, helpOpen, showCustomerPanel, showDiscount, showBillDiscount, items, selectedRow, carts, activeIndex, subRole, checkoutErr, priceListMode])
 
   function showToast(msg) {
     setToastMsg(msg)
     if (toastTimer.current) clearTimeout(toastTimer.current)
     toastTimer.current = setTimeout(() => setToastMsg(null), 2600)
+  }
+
+  // Cycle the active price list (F7 / Alt+A), persist it, and re-price the
+  // current cart to the new tier. Bare 'A' is intentionally NOT bound — it
+  // stays type-to-search so products beginning with "a" remain searchable.
+  function cyclePriceList() {
+    const order = ['RETAIL', 'WHOLESALE', 'DISTRIBUTOR']
+    const next = order[(order.indexOf(priceListMode) + 1) % order.length]
+    setPriceListMode(next)
+    try { localStorage.setItem('pos_price_list', next) } catch {}
+    repriceCart(next)
+    showToast(`Price list: ${next.charAt(0)}${next.slice(1).toLowerCase()}`)
   }
 
   function openSearch(initialChar) {
@@ -374,11 +395,23 @@ export default function KeyboardPosPage() {
           >
             {customerLabel}
           </button>
-          {nextInvoiceNo && (
-            <span className="hidden md:inline text-[11px] font-mono text-muted-foreground border border-border bg-muted/30 px-2 py-0.5 rounded-full shrink-0" title="Next invoice number (live preview)">
-              Inv: {nextInvoiceNo}
-            </span>
-          )}
+          <button
+            onDoubleClick={() => setShowInvoiceSearch(true)}
+            title="Next invoice number — double-click to search past invoices"
+            className="hidden md:inline text-[11px] font-mono text-muted-foreground border border-border bg-muted/30 px-2 py-0.5 rounded-full shrink-0 cursor-pointer hover:bg-muted"
+          >
+            Inv: {nextInvoiceNo ?? '—'}
+          </button>
+          <span
+            title={`Active price list: ${priceListMode} — F7 / Alt+A to cycle`}
+            className={`hidden md:inline text-[10px] font-semibold uppercase tracking-wide border px-2 py-0.5 rounded-full shrink-0 ${
+              priceListMode === 'RETAIL' ? 'text-muted-foreground border-border bg-muted/30'
+                : priceListMode === 'WHOLESALE' ? 'text-gold border-gold/30 bg-gold/10'
+                : 'text-emerald-600 border-emerald-500/30 bg-emerald-500/10'
+            }`}
+          >
+            {priceListMode === 'DISTRIBUTOR' ? 'DISTR.' : priceListMode === 'WHOLESALE' ? 'WSALE' : 'RETAIL'}
+          </span>
           <div className="relative shrink-0">
             <button
               onClick={() => isAdmin && setShowDateOverride(v => !v)}
@@ -647,6 +680,10 @@ export default function KeyboardPosPage() {
             setShowCustomerPanel(false)
           }}
         />
+      )}
+
+      {showInvoiceSearch && (
+        <InvoiceSearchModal onClose={() => setShowInvoiceSearch(false)} />
       )}
 
       {toastMsg && (

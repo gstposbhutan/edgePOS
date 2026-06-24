@@ -15,6 +15,8 @@ function mapBatch(b) {
     unit:            b.products.unit,
     mrp:             b.mrp ?? b.products.mrp,
     selling_price:   b.selling_price ?? b.products.selling_price ?? b.mrp,
+    wholesale_price: b.products.wholesale_price,
+    distributor_price: b.products.distributor_price,
     available_stock: b.quantity,
     batch_id:        b.id,
     batch_number:    b.batch_number,

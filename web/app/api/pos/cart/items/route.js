@@ -21,7 +21,7 @@ export async function POST(request) {
   // Add item
   if (action === 'add' || !action) {
     const { cartId, product } = body
-    const unitPrice = parseFloat(product.selling_price ?? product.mrp ?? product.wholesale_price ?? 0)
+    const unitPrice = parseFloat(product.unitPrice ?? product.selling_price ?? product.mrp ?? product.wholesale_price ?? 0)
     const batchId   = product.batch_id ?? null
     const packageId = product.package_def_id ?? null
 
