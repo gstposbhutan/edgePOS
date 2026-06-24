@@ -5,12 +5,15 @@ Porting the web keyboard-POS redesign (Phases 2–4) to the **desktop** app
 `web/docs/pelbu-ui-change-spec.md`.
 
 **Status (2026-06-24):**
-- **P1 (canonical keyboard map + final-rate cart) — DONE & VERIFIED.** Commit
-  `d522920` on `feat/web-pos-ui-overhaul`. `tsc --noEmit` + `next build` both
-  pass green (linux/arm64 native build). Files: `app/page.tsx`,
-  `components/pos/cart-item-row.tsx`, `components/pos/help-overlay.tsx`,
-  `hooks/use-pos-shortcuts.ts`.
-- **P2/P3/P4 — PLANNED (this doc).** Not yet implemented.
+- **P1–P4 — ALL DONE & VERIFIED (linux/arm64 native build).** Commits on
+  `feat/web-pos-ui-overhaul`: `d522920` (P1), `f6b3871` (P2), `3a269dc` (P3),
+  `7d32198` (P4). Each phase: `tsc --noEmit` + `npm run build` pass green.
+- **Needs runtime verify (this box can't run embedded PocketBase):** PB
+  migrations `007`–`010` run on terminal startup; `009` extends
+  `orders.order_type` via `field.values=[...]`; `010` creates the `refunds`
+  collection. Sync: `doSync` carries the new order fields, but `refunds` +
+  `products.visible_on_web` are not yet pushed (cloud-ingest follow-up).
+  Complimentary assumes PaymentModal accepts a 0-total CASH tender.
 
 > Source-of-truth mapping produced by a 4-agent read-only fan-out (3 per-phase +
 > 1 cross-phase synthesizer). All four agreed → high confidence.
