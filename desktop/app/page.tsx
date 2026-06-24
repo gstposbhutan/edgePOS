@@ -357,6 +357,10 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
 
   const handleNewTransaction = useCallback(async () => {
     if (items.length === 0) return;
+    if (!validateStock()) {
+      toast.error("Resolve the stock shortage first — remove the item or complete the sale");
+      return;
+    }
     const confirmed = window.confirm("Clear cart and start new transaction?");
     if (confirmed) {
       const result = await clearCart();
@@ -368,7 +372,7 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
         toast.error(result.error || "Failed to clear cart");
       }
     }
-  }, [items, clearCart]);
+  }, [items, clearCart, validateStock]);
 
   const handleHoldCart = useCallback(async () => {
     if (items.length === 0) {
