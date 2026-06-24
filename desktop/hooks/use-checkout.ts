@@ -32,6 +32,9 @@ interface CheckoutInput {
   // isOwner — mirrors the web's admin-only invoiceDate (non-admin → 403).
   invoiceDate?: string | null;
   isOwner?: boolean;
+  salespersonId?: string | null;
+  deliveryAddress?: string | null;
+  complimentaryReason?: string | null;
 }
 
 /** Generate a PocketBase-compatible record id (15 lowercase alphanumeric chars). */
@@ -69,7 +72,7 @@ export function useCheckout(input: CheckoutInput) {
       tendered?: number,
       onSuccess?: (orderPayload: Record<string, unknown>, orderId: string) => void
     ) => {
-      const { pb, user, items, products, subtotal, gstTotal, grandTotal, taxExempt, grandTotalExempt, settings, selectedCustomer, clearCart, refreshProducts, clearUndoStack, invoiceDate, isOwner } = input;
+      const { pb, user, items, products, subtotal, gstTotal, grandTotal, taxExempt, grandTotalExempt, settings, selectedCustomer, clearCart, refreshProducts, clearUndoStack, invoiceDate, isOwner, salespersonId, deliveryAddress, complimentaryReason } = input;
 
       if (!user) return;
 
@@ -154,6 +157,9 @@ export function useCheckout(input: CheckoutInput) {
           digital_signature: digitalSignature,
           invoice_date:
             isOwner && invoiceDate ? new Date(invoiceDate).toISOString() : nowISO(),
+          salesperson_id: salespersonId || "",
+          delivery_address: deliveryAddress || "",
+          complimentary_reason: complimentaryReason || "",
         };
 
         // P0-5: write the order, stock decrements, movements, and any khata debit
@@ -211,5 +217,62 @@ export function useCheckout(input: CheckoutInput) {
     [input]
   );
 
-  return { validateStock, confirmPayment };
+  // Save the cart as a DRAFT quotation (SALES_ORDER) — issues an order_no +
+  // signature but takes NO payment and moves NO stock. The cashier can convert
+  // it to a real sale later (conversion flow is a follow-up, as on web).
+  const saveQuotation = useCallback(
+    async (onSuccess?: (orderNo: string) => void) => {
+      const { pb, user, items, subtotal, gstTotal, grandTotal, taxExempt, grandTotalExempt, settings, selectedCustomer, clearCart, refreshProducts, clearUndoStack, salespersonId, deliveryAddress } = input;
+      if (!user) return;
+      if (items.length === 0) { toast.error("Cart is empty"); return; }
+      try {
+        const orderNo = await peekNextOrderNo(pb);
+        const digitalSignature = await generateOrderSignature(
+          orderNo,
+          taxExempt ? grandTotalExempt : grandTotal,
+          settings?.tpn_gstin || ""
+        );
+        const orderId = genPbId();
+        await pb.collection("orders").create({
+          id: orderId,
+          order_type: "SALES_ORDER",
+          order_no: orderNo,
+          status: "DRAFT",
+          items: items.map((i) => ({
+            id: i.id,
+            product: i.product,
+            name: i.name,
+            sku: i.sku,
+            quantity: i.quantity,
+            unit_price: i.unit_price,
+            discount: i.discount,
+            gst_5: taxExempt ? 0 : i.gst_5,
+            total: taxExempt ? parseFloat((i.total - i.gst_5).toFixed(2)) : i.total,
+          })),
+          subtotal,
+          gst_total: taxExempt ? 0 : gstTotal,
+          grand_total: taxExempt ? grandTotalExempt : grandTotal,
+          payment_method: "CASH", // placeholder — quotations take no payment (field is required)
+          customer_name: selectedCustomer?.debtor_name || "",
+          customer_phone: selectedCustomer?.debtor_phone || "",
+          created_by: user.id,
+          digital_signature: digitalSignature,
+          invoice_date: nowISO(),
+          salesperson_id: salespersonId || "",
+          delivery_address: deliveryAddress || "",
+        });
+        await clearCart();
+        await refreshProducts();
+        clearUndoStack();
+        toast.success(`Quotation ${orderNo} saved (draft)`);
+        onSuccess?.(orderNo);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Quotation failed";
+        toast.error(msg);
+      }
+    },
+    [input]
+  );
+
+  return { validateStock, confirmPayment, saveQuotation };
 }

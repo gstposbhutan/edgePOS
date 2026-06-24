@@ -22,6 +22,13 @@ interface PosShortcutsInput {
   handleUndo: () => void;
   applyDiscount: (itemId: string, discount: number) => void;
   cyclePriceList: () => void;
+  isManager: boolean;
+  setShowSalesperson: (v: boolean) => void;
+  setShowComplimentary: (v: boolean) => void;
+  setShowExchange: (v: boolean) => void;
+  setShowPostMarket: (v: boolean) => void;
+  setShowQuotation: (v: boolean) => void;
+  setShowDeliveryAddress: (v: boolean) => void;
 }
 
 /** Shortcut whose target feature ships in a later phase — shows a toast. */
@@ -62,7 +69,7 @@ export function usePosShortcuts(input: PosShortcutsInput) {
       registerShortcut("global", { key: "F5" }, () => input.setShowHeldCarts(true)),   // Previous Cart (recall held)
       registerShortcut("global", { key: "F6" }, () => input.setShowCustomer(true)),    // Customer
       registerShortcut("global", { key: "F7" }, () => input.cyclePriceList()),                       // Price list
-      registerShortcut("global", { key: "F8" }, stub("Sales Person — coming in phase 4")),
+      registerShortcut("global", { key: "F8" }, () => input.setShowSalesperson(true)),                 // Sales person
       registerShortcut("global", { key: "F9" }, stub("Change qty — tap +/- or # on any line")),
       registerShortcut("global", { key: "F10" }, () => input.handleCheckout()),        // Tender
       registerShortcut("global", { key: "F11" }, () => {                               // fullscreen (utility, kept)
@@ -83,14 +90,18 @@ export function usePosShortcuts(input: PosShortcutsInput) {
       registerShortcut("global", { key: "a", ctrl: true }, (e) => { e.preventDefault(); focusSearch(); }),    // Add
       registerShortcut("global", { key: "r", ctrl: true }, (e) => { e.preventDefault(); input.handleVoidLast(); }),     // Remove last (toast + undo)
       registerShortcut("global", { key: "d", ctrl: true }, (e) => { e.preventDefault(); billDiscount(); }),   // Bill discount (all lines)
-      registerShortcut("global", { key: "c", ctrl: true }, stub("Complimentary — coming in phase 4")),
-      registerShortcut("global", { key: "e", ctrl: true }, stub("Exchange — coming in phase 4")),
+      registerShortcut("global", { key: "c", ctrl: true }, (e) => {
+        e.preventDefault();
+        if (!input.isManager) { toast("Complimentary is manager-only"); return; }
+        input.setShowComplimentary(true);
+      }),                                                                                              // Complimentary (manager)
+      registerShortcut("global", { key: "e", ctrl: true }, (e) => { e.preventDefault(); input.setShowExchange(true); }),                  // Exchange / return
 
       // --- Alt modifiers (all stubs) ---
       registerShortcut("global", { key: "a", alt: true }, (e) => { e.preventDefault(); input.cyclePriceList(); }),  // Price list
-      registerShortcut("global", { key: "m", alt: true }, stub("Post to Market — coming in phase 4")),
-      registerShortcut("global", { key: "q", alt: true }, stub("Convert to Quotation — coming in phase 4")),
-      registerShortcut("global", { key: "d", alt: true }, stub("Delivery Address — coming in phase 4")),
+      registerShortcut("global", { key: "m", alt: true }, (e) => { e.preventDefault(); input.setShowPostMarket(true); }),                  // Post to market
+      registerShortcut("global", { key: "q", alt: true }, (e) => { e.preventDefault(); input.setShowQuotation(true); }),                   // Save as quotation
+      registerShortcut("global", { key: "d", alt: true }, (e) => { e.preventDefault(); input.setShowDeliveryAddress(true); }),             // Delivery address
     ];
 
     return () => unregs.forEach((un) => un());

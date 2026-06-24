@@ -24,6 +24,12 @@ import { BarcodeScanner } from "@/components/pos/barcode-scanner";
 import { PaymentModal } from "@/components/pos/payment-modal";
 import { CustomerModal } from "@/components/pos/customer-modal";
 import { InvoiceSearchModal } from "@/components/pos/invoice-search-modal";
+import { SalespersonPickerModal, type TeamUser } from "@/components/pos/salesperson-picker-modal";
+import { ComplimentaryConfirmModal } from "@/components/pos/complimentary-confirm-modal";
+import { QuotationConfirmModal } from "@/components/pos/quotation-confirm-modal";
+import { PostMarketModal } from "@/components/pos/post-market-modal";
+import { DeliveryAddressModal } from "@/components/pos/delivery-address-modal";
+import { ExchangeModal } from "@/components/pos/exchange-modal";
 import { ReceiptModal } from "@/components/pos/receipt-modal";
 import { ZReportModal } from "@/components/pos/z-report-modal";
 import { ShiftModal } from "@/components/pos/shift-modal";
@@ -136,6 +142,16 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
   const [nextInvoiceNo, setNextInvoiceNo] = useState("");
   const [dateOverride, setDateOverride] = useState<string | null>(null);
   const [showInvoiceSearch, setShowInvoiceSearch] = useState(false);
+  const [showSalesperson, setShowSalesperson] = useState(false);
+  const [selectedSalesperson, setSelectedSalesperson] = useState<TeamUser | null>(null);
+  const [showComplimentary, setShowComplimentary] = useState(false);
+  const [showExchange, setShowExchange] = useState(false);
+  const [showPostMarket, setShowPostMarket] = useState(false);
+  const [showQuotation, setShowQuotation] = useState(false);
+  const [quotationSaving, setQuotationSaving] = useState(false);
+  const [showDeliveryAddress, setShowDeliveryAddress] = useState(false);
+  const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [complimentaryReason, setComplimentaryReason] = useState<string | null>(null);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [screenWidth, setScreenWidth] = useState(typeof window !== "undefined" ? window.innerWidth : SCREEN_LG);
@@ -144,7 +160,7 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
     showScanner || showPayment || showCustomer || showReceipt || showZReport ||
     showShiftModal !== null || showHeldCarts || showHelp;
 
-  const { validateStock, confirmPayment } = useCheckout({
+  const { validateStock, confirmPayment, saveQuotation } = useCheckout({
     pb,
     user,
     items,
@@ -161,6 +177,9 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
     clearUndoStack: () => undoStack.clear(),
     invoiceDate: dateOverride,
     isOwner,
+    salespersonId: selectedSalesperson?.id ?? null,
+    deliveryAddress,
+    complimentaryReason,
   });
 
   // Auto-prompt shift open when no active shift (once data loads)
@@ -363,6 +382,9 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
         setLastOrder(orderPayload);
         setShowReceipt(true);
         refreshInvoiceHeader();
+        // Per-sale attachments — clear so they don't leak onto the next sale.
+        setComplimentaryReason(null);
+        setDeliveryAddress("");
       });
     },
     [confirmPayment, refreshInvoiceHeader]
@@ -401,6 +423,36 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
     }
     toast.success(`Price list: ${PRICE_LIST_LABEL[next]}${changed ? ` · ${changed} line(s) repriced` : ""}`);
   }, [priceListMode, items, products, overridePrice]);
+
+  // Complimentary (Ctrl+C, manager): 100% discount on every line — cart zeroes
+  // and the cashier tenders the resulting 0-total sale (F10).
+  const handleComplimentary = useCallback(async (reason: string) => {
+    if (items.length === 0) { toast.error("Cart is empty"); return; }
+    for (const it of items) await applyDiscount(it.id, it.unit_price);
+    setComplimentaryReason(reason || "Complimentary");
+    toast.success("Complimentary applied — press F10 to tender");
+  }, [items, applyDiscount]);
+
+  const handleSaveQuotation = useCallback(async () => {
+    setQuotationSaving(true);
+    await saveQuotation();
+    setQuotationSaving(false);
+    setShowQuotation(false);
+  }, [saveQuotation]);
+
+  // Post to Market (Alt+M): flip visible_on_web on the cart's products.
+  const handlePostMarket = useCallback(async () => {
+    const ids = Array.from(new Set(items.map((i) => i.product)));
+    if (ids.length === 0) return;
+    try {
+      const batch = pb.createBatch();
+      for (const id of ids) batch.collection("products").update(id, { visible_on_web: true, is_synced: false });
+      await batch.send();
+      toast.success(`Posted ${ids.length} product(s) to market`);
+    } catch {
+      toast.error("Failed to post to market");
+    }
+  }, [items, pb]);
 
   const handleCreateCustomer = useCallback(
     async (data: { debtor_name: string; debtor_phone: string }) => {
@@ -503,6 +555,13 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
     handleUndo,
     applyDiscount,
     cyclePriceList,
+    isManager,
+    setShowSalesperson,
+    setShowComplimentary,
+    setShowExchange,
+    setShowPostMarket,
+    setShowQuotation,
+    setShowDeliveryAddress,
   });
   useEffect(() => setupShortcuts(), [setupShortcuts]);
 
@@ -864,6 +923,13 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
       />
 
       {showInvoiceSearch && <InvoiceSearchModal onClose={() => setShowInvoiceSearch(false)} />}
+
+      <SalespersonPickerModal open={showSalesperson} onClose={() => setShowSalesperson(false)} onSelect={setSelectedSalesperson} />
+      <ComplimentaryConfirmModal open={showComplimentary} onClose={() => setShowComplimentary(false)} onConfirm={handleComplimentary} itemCount={items.length} grandTotal={taxExempt ? grandTotalExempt : grandTotal} />
+      <QuotationConfirmModal open={showQuotation} onClose={() => setShowQuotation(false)} onConfirm={handleSaveQuotation} itemCount={items.length} grandTotal={taxExempt ? grandTotalExempt : grandTotal} saving={quotationSaving} />
+      <PostMarketModal open={showPostMarket} onClose={() => setShowPostMarket(false)} onConfirm={handlePostMarket} productNames={Array.from(new Set(items.map((i) => i.name)))} />
+      <DeliveryAddressModal open={showDeliveryAddress} onClose={() => setShowDeliveryAddress(false)} initial={deliveryAddress} onApply={setDeliveryAddress} />
+      <ExchangeModal open={showExchange} onClose={() => setShowExchange(false)} />
 
       <ReceiptModal
         open={showReceipt}
