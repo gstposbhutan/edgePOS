@@ -22,6 +22,7 @@ const GROUPS: { title: string; stub?: boolean; shortcuts: { key: string; action:
       { key: "F4", action: "New cart (hold current)" },
       { key: "F5", action: "Recall held cart" },
       { key: "F6", action: "Customer select" },
+      { key: "F7 / Alt+A", action: "Price list (Retail / Wholesale / Distributor)" },
       { key: "F9", action: "Change qty (line +/-)" },
       { key: "F10", action: "Tender / checkout" },
       { key: "Ctrl+A", action: "Add product (focus search)" },
@@ -39,8 +40,6 @@ const GROUPS: { title: string; stub?: boolean; shortcuts: { key: string; action:
     title: "Coming soon",
     stub: true,
     shortcuts: [
-      { key: "F7", action: "Price list (phase 3)" },
-      { key: "Alt+A", action: "Apply price list (phase 3)" },
       { key: "F8", action: "Sales person (phase 4)" },
       { key: "Ctrl+C", action: "Complimentary (phase 4)" },
       { key: "Ctrl+E", action: "Exchange (phase 4)" },

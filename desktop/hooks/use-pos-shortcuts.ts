@@ -21,6 +21,7 @@ interface PosShortcutsInput {
   handleVoidLast: () => void;
   handleUndo: () => void;
   applyDiscount: (itemId: string, discount: number) => void;
+  cyclePriceList: () => void;
 }
 
 /** Shortcut whose target feature ships in a later phase — shows a toast. */
@@ -60,7 +61,7 @@ export function usePosShortcuts(input: PosShortcutsInput) {
       registerShortcut("global", { key: "F4" }, () => input.handleHoldCart()),         // New Cart (hold current)
       registerShortcut("global", { key: "F5" }, () => input.setShowHeldCarts(true)),   // Previous Cart (recall held)
       registerShortcut("global", { key: "F6" }, () => input.setShowCustomer(true)),    // Customer
-      registerShortcut("global", { key: "F7" }, stub("Price List — coming in phase 3")),
+      registerShortcut("global", { key: "F7" }, () => input.cyclePriceList()),                       // Price list
       registerShortcut("global", { key: "F8" }, stub("Sales Person — coming in phase 4")),
       registerShortcut("global", { key: "F9" }, stub("Change qty — tap +/- or # on any line")),
       registerShortcut("global", { key: "F10" }, () => input.handleCheckout()),        // Tender
@@ -86,7 +87,7 @@ export function usePosShortcuts(input: PosShortcutsInput) {
       registerShortcut("global", { key: "e", ctrl: true }, stub("Exchange — coming in phase 4")),
 
       // --- Alt modifiers (all stubs) ---
-      registerShortcut("global", { key: "a", alt: true }, stub("Price List — coming in phase 3")),
+      registerShortcut("global", { key: "a", alt: true }, (e) => { e.preventDefault(); input.cyclePriceList(); }),  // Price list
       registerShortcut("global", { key: "m", alt: true }, stub("Post to Market — coming in phase 4")),
       registerShortcut("global", { key: "q", alt: true }, stub("Convert to Quotation — coming in phase 4")),
       registerShortcut("global", { key: "d", alt: true }, stub("Delivery Address — coming in phase 4")),

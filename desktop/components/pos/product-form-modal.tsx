@@ -27,6 +27,7 @@ export interface ProductFormData {
   cost_price: number;
   sale_price: number;
   wholesale_price: number;
+  distributor_price: number;
   current_stock: number;
   reorder_point: number;
   category: string;
@@ -43,6 +44,7 @@ const EMPTY_FORM: ProductFormData = {
   cost_price: 0,
   sale_price: 0,
   wholesale_price: 0,
+  distributor_price: 0,
   current_stock: 0,
   reorder_point: 10,
   category: "",
@@ -75,6 +77,7 @@ export function ProductFormModal({ open, onClose, product, categories, onSave }:
           cost_price: product.cost_price || 0,
           sale_price: product.sale_price || product.mrp || 0,
           wholesale_price: product.wholesale_price || 0,
+          distributor_price: product.distributor_price || 0,
           current_stock: product.current_stock || 0,
           reorder_point: product.reorder_point || 10,
           category: product.category || "",
@@ -318,17 +321,31 @@ export function ProductFormModal({ open, onClose, product, categories, onSave }:
             </div>
           </div>
 
-          {/* Wholesale price */}
-          <div className="space-y-1.5">
-            <Label htmlFor="wholesale">Wholesale Price</Label>
-            <Input
-              id="wholesale"
-              type="number"
-              min={0}
-              step={0.01}
-              value={form.wholesale_price || ""}
-              onChange={(e) => updateField("wholesale_price", parseFloat(e.target.value) || 0)}
-            />
+          {/* Wholesale + Distributor prices */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="wholesale">Wholesale Price</Label>
+              <Input
+                id="wholesale"
+                type="number"
+                min={0}
+                step={0.01}
+                value={form.wholesale_price || ""}
+                onChange={(e) => updateField("wholesale_price", parseFloat(e.target.value) || 0)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="distributor">Distributor Price</Label>
+              <Input
+                id="distributor"
+                type="number"
+                min={0}
+                step={0.01}
+                value={form.distributor_price || ""}
+                onChange={(e) => updateField("distributor_price", parseFloat(e.target.value) || 0)}
+              />
+              <p className="text-[10px] text-muted-foreground">Distributor tier falls back to wholesale if 0.</p>
+            </div>
           </div>
 
           <div className="flex gap-3 pt-2">

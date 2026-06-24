@@ -5,6 +5,8 @@ import { getPB, PB_REQ } from "@/lib/pb-client";
 import { calcItemTotals, calcCartTotals } from "@/lib/gst";
 import { CART_STATUS } from "@/lib/constants";
 import { usePosStore } from "@/stores/pos-store";
+import { priceFor } from "@/lib/price-list";
+import type { PriceListMode } from "@/lib/price-list";
 import type { Product } from "./use-products";
 
 export interface CartItem {
@@ -54,7 +56,7 @@ async function fetchCartItems(cartId: string): Promise<CartItem[]> {
   });
 }
 
-export function useCart() {
+export function useCart(priceListMode: PriceListMode = "RETAIL") {
   const pb = getPB();
   const queryClient = useQueryClient();
   const taxExempt = usePosStore((s) => s.taxExempt);
@@ -93,7 +95,7 @@ export function useCart() {
   const addItemMutation = useMutation({
     mutationFn: async ({ product, weight }: { product: Product; weight?: number }): Promise<CartItem> => {
       if (!cart) throw new Error("No active cart");
-      const unitPrice = product.sale_price || product.mrp || 0;
+      const unitPrice = priceFor(product, priceListMode);
       // Weighed goods: `weight` is the measured quantity (in product.unit) and unitPrice is
       // the per-unit rate → total = weight × rate. Each weighing is a distinct line, so we
       // don't merge with an existing row (unlike discrete items, which increment qty).

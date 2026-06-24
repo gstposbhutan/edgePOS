@@ -19,6 +19,7 @@ export interface Product {
   cost_price: number;
   sale_price: number;
   wholesale_price: number;
+  distributor_price?: number;
   entity_id?: string;
   created_by?: string;
   current_stock: number;

@@ -15,12 +15,15 @@ import { useCustomers } from "@/hooks/use-customers";
 import type { Customer } from "@/hooks/use-customers";
 import { getPB } from "@/lib/pb-client";
 import { peekNextOrderNo } from "@/lib/invoice-header";
+import { priceFor, PRICE_LIST_LABEL, PRICE_LIST_ORDER, parsePriceListMode } from "@/lib/price-list";
+import type { PriceListMode } from "@/lib/price-list";
 import { LAYOUT_PRESETS, SCREEN_LG, CART_WIDTH } from "@/lib/constants";
 import { ProductGrid } from "@/components/pos/product-grid";
 import { CartPanel } from "@/components/pos/cart-panel";
 import { BarcodeScanner } from "@/components/pos/barcode-scanner";
 import { PaymentModal } from "@/components/pos/payment-modal";
 import { CustomerModal } from "@/components/pos/customer-modal";
+import { InvoiceSearchModal } from "@/components/pos/invoice-search-modal";
 import { ReceiptModal } from "@/components/pos/receipt-modal";
 import { ZReportModal } from "@/components/pos/z-report-modal";
 import { ShiftModal } from "@/components/pos/shift-modal";
@@ -56,6 +59,7 @@ import {
   Truck,
   Hash,
   CalendarClock,
+  Tags,
 } from "lucide-react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -88,6 +92,11 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
     findByBarcode, refresh: refreshProducts,
     lowStockCount, outOfStockCount,
   } = useProducts();
+  // Declared above useCart() so newly-added lines price at the active tier.
+  const [priceListMode, setPriceListMode] = useState<PriceListMode>(() =>
+    parsePriceListMode(typeof window !== "undefined" ? localStorage.getItem("pos_price_list") : null)
+  );
+
   const {
     items, loading: cartLoading,
     subtotal, discountTotal, taxableSubtotal, gstTotal, grandTotal,
@@ -95,7 +104,7 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
     subtotalExTax, gstTotalExempt, grandTotalExempt,
     addItem, updateQty, applyDiscount, overridePrice, removeItem, clearCart,
     setCustomer: setCartCustomer,
-  } = useCart();
+  } = useCart(priceListMode);
   const { customers, createCustomer } = useCustomers();
   const { settings } = useSettings();
   const { activeShift, openShift, closeShift, getReconciliation, loading: shiftLoading } = useShifts();
@@ -126,6 +135,7 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
   const [currentTime, setCurrentTime] = useState("");
   const [nextInvoiceNo, setNextInvoiceNo] = useState("");
   const [dateOverride, setDateOverride] = useState<string | null>(null);
+  const [showInvoiceSearch, setShowInvoiceSearch] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [screenWidth, setScreenWidth] = useState(typeof window !== "undefined" ? window.innerWidth : SCREEN_LG);
@@ -372,6 +382,26 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
     [setCartCustomer]
   );
 
+  // Cycle Retail → Wholesale → Distributor (F7 / Alt+A, or click the badge).
+  // Persists per terminal and reprices the existing cart via overridePrice
+  // (preserves per-line discount), reading fresh tier rates from the products list.
+  const cyclePriceList = useCallback(async () => {
+    const next = PRICE_LIST_ORDER[(PRICE_LIST_ORDER.indexOf(priceListMode) + 1) % PRICE_LIST_ORDER.length];
+    setPriceListMode(next);
+    if (typeof window !== "undefined") localStorage.setItem("pos_price_list", next);
+    let changed = 0;
+    for (const item of items) {
+      const prod = products.find((p) => p.id === item.product);
+      if (!prod) continue;
+      const newPrice = priceFor(prod, next);
+      if (Number.isFinite(newPrice) && Math.abs(newPrice - item.unit_price) > 0.001) {
+        await overridePrice(item.id, newPrice);
+        changed++;
+      }
+    }
+    toast.success(`Price list: ${PRICE_LIST_LABEL[next]}${changed ? ` · ${changed} line(s) repriced` : ""}`);
+  }, [priceListMode, items, products, overridePrice]);
+
   const handleCreateCustomer = useCallback(
     async (data: { debtor_name: string; debtor_phone: string }) => {
       const result = await createCustomer(data);
@@ -472,6 +502,7 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
     handleVoidLast,
     handleUndo,
     applyDiscount,
+    cyclePriceList,
   });
   useEffect(() => setupShortcuts(), [setupShortcuts]);
 
@@ -549,9 +580,23 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
             <Clock className="h-3.5 w-3.5" />
             <span className="font-mono tabular-nums">{currentTime}</span>
           </div>
-          <Badge variant="outline" className="text-[10px] gap-1 font-mono" title="Next invoice number (preview)">
+          <Badge
+            variant="outline"
+            className="text-[10px] gap-1 font-mono cursor-pointer select-none"
+            title="Next invoice number — double-click to look up a past invoice"
+            onDoubleClick={() => setShowInvoiceSearch(true)}
+          >
             <Hash className="h-3 w-3" />
             {nextInvoiceNo || "—"}
+          </Badge>
+          <Badge
+            variant={priceListMode === "RETAIL" ? "outline" : "default"}
+            className="text-[10px] gap-1 cursor-pointer select-none"
+            title="Price list — click to cycle (F7 / Alt+A)"
+            onClick={cyclePriceList}
+          >
+            <Tags className="h-3 w-3" />
+            {PRICE_LIST_LABEL[priceListMode]}
           </Badge>
           {(isOwner || isManager) && (
             <div
@@ -817,6 +862,8 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
         onSelect={handleSelectCustomer}
         onCreate={handleCreateCustomer}
       />
+
+      {showInvoiceSearch && <InvoiceSearchModal onClose={() => setShowInvoiceSearch(false)} />}
 
       <ReceiptModal
         open={showReceipt}
