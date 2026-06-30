@@ -131,8 +131,8 @@ export async function POST(request) {
   }
 
   // Insert order_items
-  const itemRows = orderItems.map((item, idx) => ({
-    id: `00000000-0000-4000-8000-${String(Date.now()).slice(-12 + idx.toString().length).padStart(12, '0')}${String(idx).padStart(2, '0')}`,
+  const itemRows = orderItems.map((item) => ({
+    id: crypto.randomUUID(),
     order_id: order.id,
     ...item,
   }))
