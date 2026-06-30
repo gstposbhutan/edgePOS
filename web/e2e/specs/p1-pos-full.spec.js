@@ -1,185 +1,105 @@
 /**
  * P1 — POS Full Production E2E (PocketBase)
  *
+ * STATUS: SKIPPED — wholesale surface drift (not selector drift).
+ *
+ * ROOT CAUSE: This spec was written against the OLD monolithic POS that lived
+ * at the app root `/`. The Pelbu redesign replaced that surface entirely:
+ *
+ *   - app/page.jsx (`/`) is now a marketing/landing page ("Welcome to Pelbu",
+ *     feature cards, demo table) — NOT a POS. proxy.js middleware redirects
+ *     authenticated RETAILER users from `/` to `/pos`.
+ *   - The POS moved to `/pos` (keyboard) + `/pos/touch` (touch). The keyboard
+ *     `/pos` (app/pos/page.jsx + components/pos/keyboard/*) has a completely
+ *     different structure: a cart TABLE (not product cards), type-to-search /
+ *     F3 product-search modal, a payment modal with different labels, and
+ *     "Pelbu" branding (the old spec asserts "NEXUS BHUTAN").
+ *
+ * Every selector in this file is stale:
+ *   - `getByPlaceholder(/search products/i)`  → keyboard POS uses
+ *     [data-testid="keyboard-product-search-input"] inside a modal opened by
+ *     typing or F3; there is no always-visible search bar.
+ *   - `getByRole('button', { name: /Coca Cola 1L/ })` → products are no longer
+ *     rendered as clickable cards on the root; the keyboard cart is a table.
+ *   - `getByText('Clear')`, `'Add customer'`, `'Amount Due'`, `'Tendered
+ *     Amount'`, `'Select Customer'`, `'Opening Float'`, `'NEXUS BHUTAN'`,
+ *     `'Cart is empty'` → none of these strings exist on the redesigned
+ *     keyboard POS surface (branding is "Pelbu"; checkout is a payment modal;
+ *     customer selection is the customer-panel-modal via F6).
+ *   - `a[href="/settings"]`, `a[href="/customers"]` → nav moved into icon
+ *     buttons in the keyboard header.
+ *
+ * COVERAGE: The Pelbu POS surfaces ARE covered elsewhere:
+ *   - Keyboard /pos cart editing → v10-keyboard-cart-edit.spec.js
+ *   - Touch /pos/touch full flow  → f5-pos-touch-flow.spec.js
+ *   - Touch product/cart/checkout/GST/discounts/errors → v2a–v2h
+ *
+ * Resurrecting this file would mean rewriting every test against the keyboard
+ * /pos page object (which does not yet exist as a dedicated PO) — that is a
+ * new-feature task, not a drift fix. Skipping wholesale with the reason
+ * recorded so the serial-verification run does not attempt these.
+ *
  * Auth comes from the `pocketbase-pos` project's storageState (set up in
  * auth-setup.js). No per-test login.
  */
-const { test, expect } = require('@playwright/test')
+const { test } = require('@playwright/test')
+
+const SKIP_REASON =
+  'Drifted: targets the pre-Pelbu POS at /, which is now a landing page. ' +
+  'The POS moved to /pos (keyboard) + /pos/touch; see v10, f5, and v2a–v2h ' +
+  'for current coverage. Rewrite against the keyboard /pos page object to re-enable.'
 
 // ── Auth (storage state covers most flows; logout/refresh need explicit handling) ──
 
 test.describe('Auth', () => {
-  test('session persists after refresh', async ({ page }) => {
-    await page.goto('/')
-    await expect(page).not.toHaveURL(/\/login/)
-    await expect(page.getByText('NEXUS BHUTAN')).toBeVisible()
-    await page.reload()
-    await expect(page).not.toHaveURL(/\/login/)
-  })
-
-  test('logout clears session', async ({ page }) => {
-    await page.goto('/')
-    await page.locator('header button').last().click()
-    await expect(page).toHaveURL(/\/login/)
-  })
+  test.skip('session persists after refresh', SKIP_REASON)
+  test.skip('logout clears session', SKIP_REASON)
 })
 
 // ── Products ─────────────────────────────────────────────────────────────
 
 test.describe('Products', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/')
-    await expect(page.getByPlaceholder(/search products/i)).toBeVisible()
-  })
-
-  test('product grid loads with seed data', async ({ page }) => {
-    await expect(page.getByText('Coca Cola 1L', { exact: false }).first()).toBeVisible()
-    await expect(page.getByText('Red Bull', { exact: false })).toBeVisible()
-  })
-
-  test('search filters by name', async ({ page }) => {
-    await page.getByPlaceholder(/search products/i).fill('Druk')
-    await expect(page.getByText('Druk 1104 Beer', { exact: false })).toBeVisible()
-    // Non-matching products should be filtered out
-    await expect(page.getByText('Wai Wai Noodles', { exact: false })).not.toBeVisible()
-  })
-
-  test('all seed products render', async ({ page }) => {
-    await expect(page.getByText('Wai Wai Noodles', { exact: false })).toBeVisible()
-    await expect(page.getByText('Sunrise Tea', { exact: false })).toBeVisible()
-    await expect(page.getByText('Dahlia Soap', { exact: false })).toBeVisible()
-  })
+  test.skip('product grid loads with seed data', SKIP_REASON)
+  test.skip('search filters by name', SKIP_REASON)
+  test.skip('all seed products render', SKIP_REASON)
 })
 
 // ── Cart ─────────────────────────────────────────────────────────────────
 
 test.describe('Cart', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/')
-    await expect(page.getByPlaceholder(/search products/i)).toBeVisible()
-  })
-
-  test('add product to cart', async ({ page }) => {
-    await page.getByRole('button', { name: /Coca Cola 1L/ }).click()
-    await expect(page.getByRole('button', { name: /checkout/i })).toBeVisible()
-  })
-
-  test('quantity changes', async ({ page }) => {
-    await page.getByRole('button', { name: /Aashirvaad Atta/ }).click()
-    await expect(page.getByRole('button', { name: /checkout/i })).toBeVisible()
-  })
-
-  test('clear cart removes items', async ({ page }) => {
-    await page.getByRole('button', { name: /Red Bull/ }).click()
-    await expect(page.getByRole('button', { name: /checkout/i })).toBeVisible()
-    await page.getByText('Clear').click()
-    await expect(page.getByText('Cart is empty')).toBeVisible()
-  })
-
-  test('cart panel shows correct structure', async ({ page }) => {
-    await expect(page.getByText('Cart', { exact: true }).first()).toBeVisible()
-  })
-
-  test('checkout opens payment modal', async ({ page }) => {
-    await page.getByRole('button', { name: /Coca Cola 1L/ }).click()
-    await page.getByRole('button', { name: /checkout/i }).click()
-    await expect(page.getByText('Amount Due')).toBeVisible()
-  })
-
-  test('credit payment requires customer', async ({ page }) => {
-    await page.getByRole('button', { name: /Coca Cola 1L/ }).click()
-    await page.getByRole('button', { name: /checkout/i }).click()
-    await expect(page.getByText('Amount Due')).toBeVisible()
-    await page.getByText('Khata').click()
-    await page.getByRole('button', { name: /confirm payment/i }).click()
-    await expect(page.getByText(/customer is required/i)).toBeVisible()
-  })
+  test.skip('add product to cart', SKIP_REASON)
+  test.skip('quantity changes', SKIP_REASON)
+  test.skip('clear cart removes items', SKIP_REASON)
+  test.skip('cart panel shows correct structure', SKIP_REASON)
+  test.skip('checkout opens payment modal', SKIP_REASON)
+  test.skip('credit payment requires customer', SKIP_REASON)
 })
 
 // ── Customers ────────────────────────────────────────────────────────────
 
 test.describe('Customers', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/')
-  })
-
-  test('customer modal opens from cart', async ({ page }) => {
-    await page.getByText('Add customer').click()
-    await expect(page.getByText('Select Customer')).toBeVisible()
-  })
-
-  test('seed customers appear in modal', async ({ page }) => {
-    await page.getByText('Add customer').click()
-    await expect(page.getByText('Select Customer')).toBeVisible()
-    await expect(page.getByText('Karma Dorji')).toBeVisible()
-    await expect(page.getByText('Pema Wangchuk')).toBeVisible()
-  })
-
-  test('customers page shows list', async ({ page }) => {
-    await page.getByText('Customers').click()
-    await page.waitForURL(/\/customers/)
-    await expect(page.getByText('Karma Dorji')).toBeVisible()
-  })
+  test.skip('customer modal opens from cart', SKIP_REASON)
+  test.skip('seed customers appear in modal', SKIP_REASON)
+  test.skip('customers page shows list', SKIP_REASON)
 })
 
 // ── Shifts ───────────────────────────────────────────────────────────────
 
 test.describe('Shifts', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/')
-  })
-
-  test('open shift button visible', async ({ page }) => {
-    await expect(page.getByText('Open Shift')).toBeVisible()
-  })
-
-  test('open shift modal works', async ({ page }) => {
-    await page.getByText('Open Shift').click()
-    await expect(page.getByText('Opening Float')).toBeVisible()
-    await page.getByRole('button', { name: /cancel/i }).click()
-    await expect(page.getByText('Opening Float')).not.toBeVisible()
-  })
+  test.skip('open shift button visible', SKIP_REASON)
+  test.skip('open shift modal works', SKIP_REASON)
 })
 
 // ── Settings ─────────────────────────────────────────────────────────────
 
 test.describe('Settings', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/')
-  })
-
-  test('settings page accessible', async ({ page }) => {
-    await page.locator('a[href="/settings"]').click()
-    await page.waitForURL(/\/settings/)
-    await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
-  })
-
-  test('settings has store profile section', async ({ page }) => {
-    await page.locator('a[href="/settings"]').click()
-    await page.waitForURL(/\/settings/)
-    await expect(page.getByText('Store Profile')).toBeVisible()
-    await expect(page.getByText('TPN / GSTIN')).toBeVisible()
-  })
+  test.skip('settings page accessible', SKIP_REASON)
+  test.skip('settings has store profile section', SKIP_REASON)
 })
 
 // ── Receipt / Payment Modal ──────────────────────────────────────────────
 
 test.describe('Receipt Modal', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/')
-    await expect(page.getByPlaceholder(/search products/i)).toBeVisible()
-    await page.getByRole('button', { name: /Coca Cola 1L/ }).click()
-    await page.getByRole('button', { name: /checkout/i }).click()
-  })
-
-  test('payment modal shows all methods', async ({ page }) => {
-    await expect(page.getByText('Cash')).toBeVisible()
-    await expect(page.getByText('mBoB')).toBeVisible()
-    await expect(page.getByText('mPay')).toBeVisible()
-    await expect(page.getByText('RTGS')).toBeVisible()
-  })
-
-  test('cash payment shows tendered input', async ({ page }) => {
-    await expect(page.getByText('Tendered Amount')).toBeVisible()
-  })
+  test.skip('payment modal shows all methods', SKIP_REASON)
+  test.skip('cash payment shows tendered input', SKIP_REASON)
 })

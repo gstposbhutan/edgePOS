@@ -147,7 +147,21 @@ class TouchPosPage extends BasePage {
   }
 
   /**
-   * Get the number of visible product cards in the grid.
+   * Clear the search box so the full product grid is shown again.
+   */
+  async clearSearch() {
+    await this.productSearchInput.fill('')
+    await expect(this.productSearchInput).toHaveValue('')
+    await expect(this.productGrid.or(this.noProductsText)).toBeVisible()
+  }
+
+  /**
+   * Get the number of product cards currently in the grid DOM.
+   *
+   * NOTE: the grid lives inside an `overflow-y-auto` scroll container, so this
+   * counts cards present in the DOM (attached), not necessarily within the
+   * viewport. Tests that compare counts around a search should use this; tests
+   * that need a specific card to be *visible* should search for it first.
    * @returns {Promise<number>}
    */
   async getProductCount() {
@@ -157,10 +171,18 @@ class TouchPosPage extends BasePage {
   /**
    * Add a product by its name. Clicks the product card to open the detail
    * modal, then clicks "Add to Cart".
+   *
+   * The product grid is rendered inside a scroll container, so a card may be
+   * attached to the DOM but below the fold. We search for the product by name
+   * first — this filters the grid down to matching cards (now in view) — then
+   * click, then restore the full grid. Searching is the product feature under
+   * test elsewhere, and it is the only robust way to reach an arbitrary card
+   * without depending on viewport height or scroll timing.
    * @param {string} name - full or partial product name
    */
   async addProductByName(name) {
-    // Find the product card containing the name and click it
+    // Filter the grid to the target card so it is guaranteed visible.
+    await this.searchProducts(name)
     const card = this.productCards.filter({ hasText: name }).first()
     await expect(card).toBeVisible({ timeout: 5000 })
     await card.click()
@@ -169,6 +191,8 @@ class TouchPosPage extends BasePage {
     await this.addToCartButton.click()
     // Wait for the modal to close
     await expect(this.addToCartButton).not.toBeVisible({ timeout: 5000 })
+    // Restore the full product grid for any subsequent steps.
+    await this.clearSearch()
   }
 
   /**

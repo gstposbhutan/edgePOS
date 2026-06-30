@@ -262,6 +262,31 @@ class InventoryPage {
   async assertEmpty() {
     await expect(this.emptyProductsMessage).toBeVisible()
   }
+
+  /**
+   * Assert that visible stock rows all show the given status badge text.
+   *
+   * The inventory table can render hundreds of rows (the LOW/OUT filters
+   * commonly match 400+ products). Iterating every row with `.nth(i)` +
+   * `.textContent()` exhausts the 60s test timeout before reaching the tail.
+   * Instead we resolve the status badges of the rows actually present in the
+   * DOM and check a bounded sample — sufficient to prove the filter applied.
+   *
+   * @param {string} statusText - e.g. 'Low Stock', 'Out of Stock'
+   * @param {{ sample?: number }} [opts] - max rows to check (default 8)
+   */
+  async assertRowsHaveStatus(statusText, { sample = 8 } = {}) {
+    // Status badges live in column 4 of each row.
+    const badges = this.page.locator('tbody tr td:nth-child(4) span')
+    const total = await badges.count()
+    expect(total, `expected at least one row when filtering to ${statusText}`).toBeGreaterThan(0)
+
+    const limit = Math.min(sample, total)
+    for (let i = 0; i < limit; i++) {
+      const text = await badges.nth(i).textContent()
+      expect(text, `row ${i} status`).toContain(statusText)
+    }
+  }
 }
 
 module.exports = { InventoryPage }

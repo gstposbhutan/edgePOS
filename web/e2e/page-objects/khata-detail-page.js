@@ -33,13 +33,30 @@ class KhataDetailPage {
   }
 
   /**
+   * Resolve the value <p> inside the summary card whose label is exactly `label`.
+   * The detail page renders three cards as:
+   *   <div class="..."><p class="text-[10px] ...">{Label}</p><p class="text-lg font-bold ...">Nu. X</p></div>
+   * We scope to the label paragraph's parent card to avoid matching the parent grid.
+   * @param {string} label e.g. 'Outstanding' | 'Credit Limit' | 'Available'
+   * @returns {Promise<string>}
+   */
+  async _getSummaryValue(label) {
+    const labelP = this.page.locator(`p.text-\\[10px\\]`, { hasText: label })
+      .filter({ hasText: new RegExp(`^${label}$`) })
+      .first()
+    await labelP.waitFor({ state: 'visible', timeout: 10000 })
+    const card = labelP.locator('xpath=..')
+    const value = card.locator('p.font-bold').first()
+    await value.waitFor({ state: 'visible', timeout: 5000 })
+    return (await value.textContent()).trim()
+  }
+
+  /**
    * Get the outstanding balance text (e.g. "Nu. 500.00").
    * @returns {Promise<string>}
    */
   async getOutstandingBalance() {
-    const card = this.page.locator('div').filter({ hasText: /^Outstanding/ }).first()
-    const text = await card.locator('p.font-bold').textContent()
-    return text.trim()
+    return this._getSummaryValue('Outstanding')
   }
 
   /**
@@ -47,9 +64,7 @@ class KhataDetailPage {
    * @returns {Promise<string>}
    */
   async getCreditLimit() {
-    const card = this.page.locator('div').filter({ hasText: /^Credit Limit/ }).first()
-    const text = await card.locator('p.font-bold').textContent()
-    return text.trim()
+    return this._getSummaryValue('Credit Limit')
   }
 
   /**
@@ -57,9 +72,7 @@ class KhataDetailPage {
    * @returns {Promise<string>}
    */
   async getAvailableBalance() {
-    const card = this.page.locator('div').filter({ hasText: /^Available/ }).first()
-    const text = await card.locator('p.font-bold').textContent()
-    return text.trim()
+    return this._getSummaryValue('Available')
   }
 
   async clickRecordPayment() {

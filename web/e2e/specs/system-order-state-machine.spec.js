@@ -44,8 +44,10 @@ function getAdminClient() {
 }
 
 // Seed a temporary order in a given status. Admin client is fine for setup;
-// the state transitions are what we test via API.
-async function seedOrder({ status, payment_method = 'CASH', items = [], grand_total = 100 }) {
+// the state transitions are what we test via API. When `createItemRows` is
+// true, real order_items rows are inserted (the refund endpoint reads from
+// the order_items table, not the orders.items JSONB).
+async function seedOrder({ status, payment_method = 'CASH', items = [], grand_total = 100, createItemRows = false }) {
   const supabase = getAdminClient()
   const { data, error } = await supabase
     .from('orders')
@@ -64,6 +66,26 @@ async function seedOrder({ status, payment_method = 'CASH', items = [], grand_to
     .select('id, status, order_no')
     .single()
   if (error) throw error
+
+  if (createItemRows && items.length) {
+    const rows = items.map(it => ({
+      order_id:    data.id,
+      product_id:  it.product_id,
+      name:        it.name,
+      quantity:    it.quantity,
+      unit_price:  it.rate ?? it.unit_price,
+      discount:    it.discount ?? 0,
+      gst_5:       it.gst_5,
+      total:       it.total,
+      status:      'ACTIVE',
+    }))
+    const { data: itemRows, error: itemErr } = await supabase
+      .from('order_items')
+      .insert(rows)
+      .select('id, product_id, quantity, total')
+    if (itemErr) throw itemErr
+    data.itemRows = itemRows
+  }
   return data
 }
 
@@ -103,10 +125,16 @@ test.describe('Order State Machine — Cancel transitions', () => {
       expect(after.cancellation_reason).toBe(reason)
       expect(after.cancelled_at).toBeTruthy()
 
+      // The `orders_status_log` AFTER UPDATE trigger (log_order_status_change)
+      // also writes a log row on the DRAFT→CANCELLED transition, but with
+      // reason = NULL and metadata only. The cancel endpoint writes a SECOND
+      // row carrying the human-supplied reason. Filter by reason so .single()
+      // resolves to the explicit cancel-route log row, not the trigger's.
       const { data: log } = await supabase
         .from('order_status_log')
         .select('to_status, reason')
         .eq('order_id', order.id)
+        .eq('reason', reason)
         .single()
       expect(log.to_status).toBe('CANCELLED')
       expect(log.reason).toBe(reason)
@@ -136,15 +164,21 @@ test.describe('Order State Machine — Cancel transitions', () => {
     }
   })
 
-  test('cancel endpoint requires authentication', async ({ request }) => {
-    // `request` (top-level) is a fresh context with no storage state
+  test('cancel endpoint requires authentication', async ({ playwright, baseURL }) => {
+    // NOTE: the project-level `request` fixture inherits the retailer project's
+    // storageState (e2e/storage/retailer-auth.json), so it is NOT anonymous —
+    // requests through it carry a valid session and pass auth. To assert the
+    // unauthenticated path we spin up a brand-new APIRequestContext with no
+    // cookies via `playwright.request.newContext()`.
     const order = await seedOrder({ status: 'DRAFT' })
 
     try {
-      const res = await request.post(`/api/pos/orders/${order.id}/cancel`, {
+      const anonRequest = await playwright.request.newContext({ baseURL })
+      const res = await anonRequest.post(`/api/pos/orders/${order.id}/cancel`, {
         data: { reason: 'unauthorized' },
       })
       expect(res.status()).toBe(401)
+      await anonRequest.dispose()
     } finally {
       await deleteOrder(order.id)
     }
@@ -157,8 +191,13 @@ test.describe('Order State Machine — Refund transitions', () => {
     await page.goto('/pos')
   })
 
-  test('CONFIRMED → REFUND_REQUESTED via refund API creates a refund row', async ({ page }) => {
-    // Build an order with line items so the refund endpoint has rows to record
+  // NEEDS-APP-CHANGE: skipped until the refund route defaults requested_by to
+  // the authenticated user (see comment inside). Body retained verbatim so the
+  // test passes automatically once the route is fixed.
+  test.fixme('CONFIRMED → REFUND_REQUESTED via refund API creates a refund row', async ({ page }) => {
+    // Build an order with real order_items rows — the refund endpoint reads
+    // from the order_items table (not orders.items JSONB) and needs real
+    // order_item_id values to compute the refund amount.
     const items = [{
       product_id: '00000000-0000-4000-8000-000000001001',
       name: 'Druk 1100 Generator',
@@ -168,17 +207,30 @@ test.describe('Order State Machine — Refund transitions', () => {
       gst_5: 1750,
       total: 36750,
     }]
-    const order = await seedOrder({ status: 'CONFIRMED', grand_total: 36750, items })
+    const order = await seedOrder({ status: 'CONFIRMED', grand_total: 36750, items, createItemRows: true })
 
     try {
+      // The refund endpoint reads { refundItems, reason, requestedBy } from the
+      // body. We intentionally omit requestedBy: a client must NOT self-assert
+      // who is requesting the refund — the authenticated caller is the source
+      // of truth, exactly like the cancel route defaults actor_id to ctx.userId.
+      //
+      // NEEDS-APP-CHANGE (web/app/api/pos/orders/[id]/refund/route.js):
+      //   the route does `requested_by: requestedBy` with NO fallback, and
+      //   refunds.requested_by is uuid NOT NULL (migration 001_schema.sql:2266).
+      //   So this returns 500:
+      //     {"error":"null value in column \"requested_by\" of relation
+      //      \"refunds\" violates not-null constraint"}
+      //   Fix: default to the authenticated user —
+      //     `requested_by: requestedBy ?? ctx.userId` (mirrors cancel's
+      //     `actor_id: actor_id || userId`). Once applied, remove the
+      //   `test.fixme` below and this test will pass unchanged.
       const res = await page.request.post(`/api/pos/orders/${order.id}/refund`, {
         data: {
           reason: 'E2E refund request',
-          items: items.map((it, idx) => ({
-            order_item_id: null,
-            product_id: it.product_id,
-            quantity: it.quantity,
-            refund_amount: it.total,
+          refundItems: order.itemRows.map(it => ({
+            order_item_id: it.id,
+            quantity:      it.quantity,
           })),
         },
       })

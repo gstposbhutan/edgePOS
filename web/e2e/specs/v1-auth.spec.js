@@ -11,10 +11,10 @@ const { test, expect } = require('@playwright/test')
 const { LoginPage } = require('../page-objects/login-page')
 const { TEST_USERS } = require('../fixtures/test-data')
 
-// Convenience aliases for test users
-const CASHIER = TEST_USERS[0]  // cashier@teststore.bt
-const MANAGER = TEST_USERS[1]  // manager@teststore.bt
-const OWNER   = TEST_USERS[2]  // owner@teststore.bt
+// Convenience aliases for test users (emails are *@nexus.bt — see fixtures/test-data.js)
+const CASHIER = TEST_USERS[0]  // cashier@nexus.bt
+const MANAGER = TEST_USERS[1]  // manager@nexus.bt
+const OWNER   = TEST_USERS[2]  // owner@nexus.bt
 
 // ─────────────────────────────────────────────────────────────────────
 // Email / Password Login
@@ -68,14 +68,16 @@ test.describe('Email/Password Login', () => {
   })
 
   test('redirects to ?redirect path after login', async ({ page }) => {
-    // Navigate directly with a redirect query param
-    await page.goto('/login?redirect=/pos/settings')
+    // Navigate directly with a redirect query param.
+    // /pos/orders is a real cashier-accessible route (the old /pos/settings
+    // target no longer exists — settings live under /pos/registers etc.).
+    await page.goto('/login?redirect=/pos/orders')
 
     await loginPage.emailInput.fill(CASHIER.email)
     await loginPage.passwordInput.fill(CASHIER.password)
     await loginPage.signInButton.click()
 
-    await expect(page).toHaveURL(/\/pos\/settings/, { timeout: 30000 })
+    await expect(page).toHaveURL(/\/pos\/orders/, { timeout: 30000 })
   })
 })
 
@@ -90,10 +92,12 @@ test.describe('Sign Out', () => {
     await loginPage.loginWithEmail(CASHIER.email, CASHIER.password)
     await expect(page).toHaveURL(/\/pos/, { timeout: 30000 })
 
-    // Wait for POS to finish loading (spinner disappears), then click sign out
-    await expect(page.getByText('Loading POS...')).not.toBeVisible({ timeout: 30000 })
+    // Wait for the keyboard POS to finish loading its entity, then click sign out.
+    // The /pos page renders a spinner (animate-spin) while fetching the entity;
+    // once loaded, the header (with the sign-out button) appears. There is no
+    // "Loading POS..." text on the keyboard POS (that text only exists on /pos/touch).
     const signOutButton = page.locator('button[title="Sign out"]')
-    await signOutButton.waitFor({ state: 'visible', timeout: 15000 })
+    await signOutButton.waitFor({ state: 'visible', timeout: 30000 })
     await signOutButton.click()
 
     await expect(page).toHaveURL(/\/login/, { timeout: 10000 })
@@ -130,7 +134,9 @@ test.describe('Route Protection', () => {
   })
 
   test('preserves intended destination in redirect param', async ({ page }) => {
-    await page.goto('/pos/settings')
+    // /pos/orders is a real protected route; proxy.js bounces unauthenticated
+    // users to /login?redirect=<original path>.
+    await page.goto('/pos/orders')
 
     await expect(page).toHaveURL(/\/login.*redirect=/, { timeout: 10000 })
   })

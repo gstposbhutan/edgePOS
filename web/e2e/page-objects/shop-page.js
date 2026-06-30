@@ -57,14 +57,16 @@ class ShopPage {
    */
   async getProductNames() {
     const names = this.page.locator(PRODUCT_NAME)
-    // Wait for at least one product to render (client-side hydration)
-    await names.first().waitFor({ state: 'visible', timeout: 10000 }).catch(() => {})
-    const count = await names.count()
-    const result = []
-    for (let i = 0; i < count; i++) {
-      result.push((await names.nth(i).textContent()).trim())
-    }
-    return result
+    // Wait for at least one product to render (client-side hydration via the
+    // /api/shop/stores/[id] fetch in app/shop/[id]/page.jsx).
+    await names.first().waitFor({ state: 'visible', timeout: 15000 }).catch(() => {})
+    // Use a single bulk allTextContents() call instead of iterating .nth(i).
+    // The store page renders a flat grid of every in-stock product (often
+    // 300+ cards), and resolving .nth(i).textContent() one-by-one over hundreds
+    // of locator re-evaluations blew past the 60s test timeout. allTextContents
+    // resolves all matches in one round-trip.
+    const raw = await names.allTextContents()
+    return raw.map(t => (t || '').trim()).filter(Boolean)
   }
 
   /**

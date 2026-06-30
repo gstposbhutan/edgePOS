@@ -1,5 +1,5 @@
 const { test: base, expect } = require('@playwright/test')
-const { TEST_USERS } = require('../fixtures/test-data')
+const { TEST_USERS, VENDOR_USERS } = require('../fixtures/test-data')
 
 const test = base.extend({})
 
@@ -10,6 +10,9 @@ test.describe('Auth Setup', () => {
     { key: 'manager', user: TEST_USERS[1], file: 'e2e/storage/manager-auth.json' },
     // OWNER is the same user as retailer; v6 references owner-auth.json for clarity.
     { key: 'owner', user: TEST_USERS[2], file: 'e2e/storage/owner-auth.json' },
+    // B2B supply-chain roles (vendor accounts) — land on their own consoles.
+    { key: 'distributor', user: VENDOR_USERS.distributor, file: 'e2e/storage/distributor-auth.json' },
+    { key: 'wholesaler', user: VENDOR_USERS.wholesaler, file: 'e2e/storage/wholesaler-auth.json' },
   ]
 
   for (const { key, user, file } of roles) {
@@ -20,7 +23,9 @@ test.describe('Auth Setup', () => {
       await page.getByPlaceholder('you@business.bt').fill(user.email)
       await page.getByPlaceholder('••••••••').fill(user.password)
       await page.getByRole('button', { name: /sign in/i }).click()
-      await page.waitForURL('**/pos**', { timeout: 30000 })
+      // Wait until redirected off /login to the role's home (/pos for retailer
+      // roles, /distributor or /wholesaler for B2B roles) — role-agnostic.
+      await page.waitForURL((url) => !url.pathname.startsWith('/login'), { timeout: 30000 })
       await page.context().storageState({ path: file })
     })
   }

@@ -81,9 +81,11 @@ test.describe('Purchase Order Flow — PO → PI', () => {
     await expect(confirmButton).toBeVisible()
     page.on('dialog', dialog => dialog.accept())
 
-    // Wait for the receipt POST so we know it finished before navigating away.
+    // Wait for the confirm POST so we know it finished before navigating away.
+    // The receipt endpoint is POST /api/purchases/[id]/confirm (the DB trigger
+    // restock_on_invoice_confirm fires server-side here).
     const receiptResponse = page.waitForResponse(
-      (res) => /\/api\/.*purchases?\/.*\/receipt/i.test(res.url()) && res.request().method() === 'POST',
+      (res) => /\/api\/purchases\/.*\/confirm/i.test(res.url()) && res.request().method() === 'POST',
       { timeout: 10000 }
     ).catch(() => null)
     await confirmButton.click()
@@ -104,10 +106,9 @@ test.describe('Purchase Order Flow — PO → PI', () => {
     const invoiceTab = page.getByRole('button', { name: /purchase invoices/i })
 
     await poTab.click()
-    await expect(poTab).toHaveAttribute('aria-selected', /true/i).catch(async () => {
-      // Fallback if the component doesn't use aria-selected: visible active styling
-      await expect(poTab).toHaveClass(/active|selected|bg-/i)
-    })
+    // The purchases list renders tabs as styled <button>s (no aria-selected);
+    // the active tab carries the `bg-primary` class (see app/pos/purchases/page.jsx).
+    await expect(poTab).toHaveClass(/bg-primary/)
 
     await invoiceTab.click()
     await expect(invoiceTab).toBeVisible()

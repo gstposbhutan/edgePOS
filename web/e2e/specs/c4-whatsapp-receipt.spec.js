@@ -23,7 +23,10 @@ async function isGatewayAvailable() {
 }
 
 test.describe('WhatsApp Receipt Delivery', () => {
-  test.skip(async () => !(await isGatewayAvailable()), 'WhatsApp gateway not available')
+  // The gateway service (services/whatsapp-gateway) is built but is NOT started
+  // by the Playwright webServer config. Self-skips when :3001 is unreachable.
+  // Start the gateway (`npm run dev` in services/whatsapp-gateway) to enable.
+  test.skip(async () => !(await isGatewayAvailable()), 'WhatsApp gateway not running on :3001 — start services/whatsapp-gateway to enable')
 
   test('receipt is sent after checkout', async ({ request }) => {
     const order = TEST_ORDERS[0] // COMPLETED order

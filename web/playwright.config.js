@@ -46,6 +46,23 @@ module.exports = defineConfig({
       use: { ...devices['Desktop Chrome'], storageState: 'e2e/storage/manager-auth.json' },
       dependencies: ['auth-setup'],
     },
+    // Pelbu keyboard-POS redesign (P1–P4) on /pos. video:'on' records every test
+    // so the flows can be visually verified (not just green checkmarks). slowMo
+    // spaces out each click/keystroke so the recording is watchable.
+    {
+      name: 'pelbu',
+      testMatch: /pelbu-.*\.spec\.js/,
+      use: { ...devices['Desktop Chrome'], storageState: 'e2e/storage/manager-auth.json', video: 'on', launchOptions: { slowMo: 500 } },
+      dependencies: ['auth-setup'],
+    },
+    // B2B roles (distributor / wholesaler) — their consoles + role-gating. Each
+    // spec sets its own storageState per describe. video + slowMo for review.
+    {
+      name: 'b2b',
+      testMatch: /b2b-.*\.spec\.js/,
+      use: { ...devices['Desktop Chrome'], video: 'on', launchOptions: { slowMo: 500 } },
+      dependencies: ['auth-setup'],
+    },
     {
       name: 'unauthenticated',
       testMatch: /v1-auth\.spec\.js|c3-whatsapp-otp\.spec\.js/,

@@ -12,6 +12,7 @@ node_modules
 /blob-report/
 /playwright/.cache/
 /e2e/storage/*.json
+/e2e/recordings/
 
 # next.js
 /.next/
