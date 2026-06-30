@@ -19,7 +19,10 @@ function priceFor(product, mode) {
   return num(product.selling_price) || num(product.mrp) || num(product.wholesale_price)
 }
 
-export function useCart(entityId, createdBy, priceListMode = 'RETAIL') {
+// `onStockCap(name, available)` — optional. Fired when the server clamps a line's
+// quantity down to the available stock (hard stock cap), so the page can toast
+// "Only N in stock". Untracked-stock products never trigger it.
+export function useCart(entityId, createdBy, priceListMode = 'RETAIL', onStockCap) {
   const [carts,       setCarts]       = useState([])
   const [activeIndex, setActiveIndex] = useState(0)
   const [loading,     setLoading]     = useState(true)
@@ -132,14 +135,21 @@ export function useCart(entityId, createdBy, priceListMode = 'RETAIL') {
               ? { ...c, cart_items: [...c.cart_items, data.item] }
               : c
           ))
+          if (data.stockCapped) onStockCap?.(data.item.name ?? product.name, data.available)
         }
       }
     } catch { /* silently fail */ }
-  }, [cartId, items, activeIndex, priceListMode])
+  }, [cartId, items, activeIndex, priceListMode, onStockCap])
 
   const updateQty = useCallback(async (itemId, newQty) => {
     if (newQty < 1) return removeItem(itemId)
 
+    // Send the requested qty as-is and let the server be the single source of
+    // truth for the hard stock cap — it clamps and reports back via stockCapped
+    // (this also covers packages and any stale client stock). The displayed qty
+    // only re-renders from the returned data.item, so the over-stock number is
+    // never actually committed to the cart.
+    const item = items.find(i => i.id === itemId)
     try {
       const res = await fetch('/api/pos/cart/items', {
         method: 'POST',
@@ -154,10 +164,11 @@ export function useCart(entityId, createdBy, priceListMode = 'RETAIL') {
               ? { ...c, cart_items: c.cart_items.map(ci => ci.id === itemId ? data.item : ci) }
               : c
           ))
+          if (data.stockCapped) onStockCap?.(data.item.name ?? item?.name, data.available)
         }
       }
     } catch { /* silently fail */ }
-  }, [activeIndex])
+  }, [items, activeIndex, onStockCap])
 
   const applyDiscount = useCallback(async (itemId, input) => {
     const item = items.find(i => i.id === itemId)
