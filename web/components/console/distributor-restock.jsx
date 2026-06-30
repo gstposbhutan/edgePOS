@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import {
   ArrowLeft, Building2, Star, CheckCircle, Search, Plus, Minus, Trash2,
-  ShoppingCart, Send, Loader2, Package, AlertCircle, CheckCircle2,
+  ShoppingCart, Send, Loader2, Package, Boxes, AlertCircle, CheckCircle2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -85,29 +85,35 @@ export function DistributorRestock() {
   }
 
   function addToCart(product) {
+    // A cart line is keyed by the level: product_id + package_id (null for a plain SINGLE). Ordering
+    // a pallet and a piece of the same tree are distinct lines, so the order can deduct/receive each.
+    const lineKey = `${product.id}:${product.package_id || ''}`
     setCart(prev => {
-      const existing = prev.find(c => c.product_id === product.id)
+      const existing = prev.find(c => c.line_key === lineKey)
       if (existing) {
-        return prev.map(c => c.product_id === product.id ? { ...c, quantity: c.quantity + 1 } : c)
+        return prev.map(c => c.line_key === lineKey ? { ...c, quantity: c.quantity + 1 } : c)
       }
       return [...prev, {
+        line_key: lineKey,
         product_id: product.id,
+        package_id: product.package_id || null,
+        product_type: product.product_type || 'SINGLE',
         name: product.name,
         sku: product.sku,
-        unit_price: parseFloat(product.distributor_price),
+        unit_price: parseFloat(product.price ?? product.distributor_price ?? 0),
         quantity: 1,
       }]
     })
   }
 
-  function updateQty(productId, delta) {
+  function updateQty(lineKey, delta) {
     setCart(prev => prev.map(c =>
-      c.product_id === productId ? { ...c, quantity: Math.max(1, c.quantity + delta) } : c
+      c.line_key === lineKey ? { ...c, quantity: Math.max(1, c.quantity + delta) } : c
     ))
   }
 
-  function removeItem(productId) {
-    setCart(prev => prev.filter(c => c.product_id !== productId))
+  function removeItem(lineKey) {
+    setCart(prev => prev.filter(c => c.line_key !== lineKey))
   }
 
   async function submit() {
@@ -120,7 +126,7 @@ export function DistributorRestock() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           supplier_id: selected.id,
-          items: cart.map(c => ({ product_id: c.product_id, quantity: c.quantity })),
+          items: cart.map(c => ({ product_id: c.product_id, package_id: c.package_id, quantity: c.quantity })),
         }),
       })
       const data = await res.json()
@@ -195,28 +201,41 @@ export function DistributorRestock() {
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {catalog.map(p => (
-                  <button
-                    key={p.id}
-                    onClick={() => addToCart(p)}
-                    className="flex items-start gap-3 p-3 rounded-lg border border-border bg-card hover:bg-muted/50 transition-colors text-left"
-                  >
-                    <div className="h-10 w-10 rounded-lg bg-muted/50 flex items-center justify-center shrink-0">
-                      <Package className="h-5 w-5 text-muted-foreground" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{p.name}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-sm font-bold text-primary">Nu. {parseFloat(p.distributor_price).toFixed(2)}</span>
-                        <span className="text-xs text-muted-foreground">/ {p.unit || 'pcs'}</span>
+                {catalog.map(p => {
+                  const isPkg = p.product_type === 'PACKAGE'
+                  const price = parseFloat(p.price ?? p.distributor_price ?? 0)
+                  const avail = p.availability ?? p.current_stock ?? 0
+                  return (
+                    <button
+                      key={`${p.id}:${p.package_id || ''}`}
+                      onClick={() => addToCart(p)}
+                      disabled={avail <= 0}
+                      className="flex items-start gap-3 p-3 rounded-lg border border-border bg-card hover:bg-muted/50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <div className="h-10 w-10 rounded-lg bg-muted/50 flex items-center justify-center shrink-0">
+                        {isPkg ? <Boxes className="h-5 w-5 text-emerald-500" /> : <Package className="h-5 w-5 text-muted-foreground" />}
                       </div>
-                      <span className={`text-xs ${p.current_stock > 10 ? 'text-emerald-500' : p.current_stock > 0 ? 'text-amber-500' : 'text-tibetan'}`}>
-                        {p.current_stock} in stock
-                      </span>
-                    </div>
-                    <Plus className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
-                  </button>
-                ))}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-medium truncate">{p.name}</p>
+                          {isPkg && (
+                            <span className="text-[10px] font-semibold px-1.5 py-0 rounded bg-emerald-500/10 text-emerald-600 shrink-0">
+                              {p.package_type || 'PACKAGE'}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-sm font-bold text-primary">Nu. {price.toFixed(2)}</span>
+                          <span className="text-xs text-muted-foreground">/ {isPkg ? 'unit' : (p.unit || 'pcs')}</span>
+                        </div>
+                        <span className={`text-xs ${avail > 10 ? 'text-emerald-500' : avail > 0 ? 'text-amber-500' : 'text-tibetan'}`}>
+                          {avail} {isPkg ? 'sealed' : 'in stock'}
+                        </span>
+                      </div>
+                      <Plus className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
+                    </button>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -306,22 +325,27 @@ function Cart({ items, onUpdateQty, onRemove, subtotal, gstTotal, grandTotal, on
         <>
           <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
             {items.map(item => (
-              <div key={item.product_id} className="flex items-center gap-2 p-2 rounded-lg bg-card">
+              <div key={item.line_key} className="flex items-center gap-2 p-2 rounded-lg bg-card">
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium truncate">{item.name}</p>
+                  <p className="text-xs font-medium truncate">
+                    {item.name}
+                    {item.product_type === 'PACKAGE' && (
+                      <span className="ml-1 text-[10px] font-semibold text-emerald-600">· pkg</span>
+                    )}
+                  </p>
                   <p className="text-xs text-muted-foreground">Nu. {item.unit_price.toFixed(2)} × {item.quantity}</p>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button onClick={() => onUpdateQty(item.product_id, -1)} className="h-6 w-6 rounded flex items-center justify-center hover:bg-muted">
+                  <button onClick={() => onUpdateQty(item.line_key, -1)} className="h-6 w-6 rounded flex items-center justify-center hover:bg-muted">
                     <Minus className="h-3 w-3" />
                   </button>
                   <span className="w-6 text-center text-xs font-medium">{item.quantity}</span>
-                  <button onClick={() => onUpdateQty(item.product_id, +1)} className="h-6 w-6 rounded flex items-center justify-center hover:bg-muted">
+                  <button onClick={() => onUpdateQty(item.line_key, +1)} className="h-6 w-6 rounded flex items-center justify-center hover:bg-muted">
                     <Plus className="h-3 w-3" />
                   </button>
                 </div>
                 <p className="text-xs font-bold w-16 text-right">Nu. {(item.unit_price * item.quantity).toFixed(2)}</p>
-                <button onClick={() => onRemove(item.product_id)} className="h-6 w-6 rounded flex items-center justify-center text-muted-foreground hover:text-tibetan hover:bg-tibetan/10">
+                <button onClick={() => onRemove(item.line_key)} className="h-6 w-6 rounded flex items-center justify-center text-muted-foreground hover:text-tibetan hover:bg-tibetan/10">
                   <Trash2 className="h-3 w-3" />
                 </button>
               </div>
