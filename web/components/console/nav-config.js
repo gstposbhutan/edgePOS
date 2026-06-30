@@ -25,7 +25,7 @@ export function wholesalerNav() {
   return [
     { key: 'retailers',  label: 'Retailers',  href: '/wholesaler/retailers',  icon: Store,     enabled: true,  note: 'Browse all · save favourites' },
     { key: 'saved',      label: 'Saved',      href: '/wholesaler/saved',      icon: Star,      enabled: true,  note: 'Your favourites' },
-    { key: 'warehouses', label: 'Warehouses', href: '/wholesaler/warehouses', icon: Warehouse, enabled: false, note: 'Your buildings/depots' },
+    { key: 'warehouses', label: 'Warehouses', href: '/wholesaler/warehouses', icon: Warehouse, enabled: true,  note: 'Your buildings/depots' },
     { key: 'catalog',    label: 'Catalog',    href: '/wholesaler/catalog',    icon: Package,   enabled: true,  note: 'Your products' },
     { key: 'team',       label: 'Team',       href: '/wholesaler/team',       icon: Users,     enabled: true,  note: 'Your staff' },
     { key: 'settings',   label: 'Settings',   href: '/wholesaler/settings',   icon: Settings,  enabled: true,  note: 'Business profile' },
