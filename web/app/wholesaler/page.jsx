@@ -8,8 +8,8 @@ import { Loader2 } from 'lucide-react'
 import { ConsoleShell } from '@/components/console/console-shell'
 import { wholesalerNav } from '@/components/console/nav-config'
 
-// Wholesaler console landing. Team + Settings are live (Phase 1); browse/favourites/warehouses/
-// catalog are still being built and surface as "coming soon" tiles. Web-only (no offline desktop).
+// Wholesaler console landing. Catalog + Team + Settings are live; browse/favourites/warehouses
+// are still being built and surface as "coming soon" tiles. Web-only (no offline desktop).
 export default function WholesalerHome() {
   const router = useRouter()
   const [user, setUser] = useState(null)
@@ -34,7 +34,7 @@ export default function WholesalerHome() {
   return (
     <ConsoleShell title="Wholesaler Console" name={name} nav={tiles} active={null}>
       <div className="rounded-lg border border-dashed border-border p-4 mb-6 text-sm text-muted-foreground">
-        Manage your team and business profile now. Browsing retailers, favourites, warehouses and your catalog are on the way.
+        Manage your catalog, team and business profile now. Browsing retailers, favourites and warehouses are on the way.
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {tiles.map(({ key, label, href, icon: Icon, enabled, note }) =>

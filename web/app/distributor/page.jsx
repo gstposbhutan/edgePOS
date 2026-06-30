@@ -8,7 +8,7 @@ import { Loader2 } from 'lucide-react'
 import { ConsoleShell } from '@/components/console/console-shell'
 import { distributorNav } from '@/components/console/nav-config'
 
-// Distributor console landing. Team + Settings are live (Phase 1); browse/favourites/catalog
+// Distributor console landing. Catalog + Team + Settings are live; browse/favourites
 // are still being built and surface as "coming soon" tiles.
 export default function DistributorHome() {
   const router = useRouter()
@@ -34,7 +34,7 @@ export default function DistributorHome() {
   return (
     <ConsoleShell title="Distributor Console" name={name} nav={tiles} active={null}>
       <div className="rounded-lg border border-dashed border-border p-4 mb-6 text-sm text-muted-foreground">
-        Manage your team and business profile now. Browsing wholesalers &amp; retailers, favourites and your catalog are on the way.
+        Manage your catalog, team and business profile now. Browsing wholesalers &amp; retailers and favourites are on the way.
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {tiles.map(({ key, label, href, icon: Icon, enabled, note }) =>
