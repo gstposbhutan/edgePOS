@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Logo } from "@/components/ui/logo"
 import { FaceAuthBadge } from "./face-auth-badge"
 import { ShiftStatusBadge } from "./shift/shift-status-badge"
+import { HandoverModal } from "./handover-modal"
 import { signOut } from "@/lib/auth"
 import { useRouter } from "next/navigation"
 
@@ -14,16 +15,29 @@ import { useRouter } from "next/navigation"
  * @param {{ storeName: string, cashierName: string, customer: object|null, syncing: boolean,
  *   onEnrollFace: fn, onRestock: fn, userSubRole: string, faceCamera: ReactNode,
  *   ownedStores?: object[], onSwitchStore?: (entityId: string) => void,
- *   shift?: object|null, onStartShift?: fn, onEndShift?: fn,
+ *   shift?: object|null, currentUserId?: string|null, onStartShift?: fn, onEndShift?: fn,
  *   onCashAdj?: fn, onZReport?: fn }} props
  */
-export function PosHeader({ storeName, cashierName, customer, syncing, onEnrollFace, onRestock, userSubRole, faceCamera, ownedStores = [], onSwitchStore, shift, onStartShift, onEndShift, onCashAdj, onZReport }) {
+export function PosHeader({ storeName, cashierName, customer, syncing, onEnrollFace, onRestock, userSubRole, faceCamera, ownedStores = [], onSwitchStore, shift, currentUserId, onCloseShiftAndSignOut, onStartShift, onEndShift, onCashAdj, onZReport }) {
   const router = useRouter()
   const [storeMenuOpen, setStoreMenuOpen] = useState(false)
+  const [showHandover, setShowHandover] = useState(false)
 
   async function handleSignOut() {
+    // An open shift can never be silently orphaned by a logout — prompt the cashier
+    // to close it or hand the register to a teammate first.
+    if (shift) { setShowHandover(true); return }
     await signOut()
     router.push('/login')
+  }
+
+  // "Close shift & sign out" → run the parent's end-shift flow. Prefer the
+  // sign-out-aware handler (parent counts the drawer, closes the shift, then signs
+  // out); fall back to a plain end-shift if a host doesn't provide it.
+  function handleCloseShift() {
+    setShowHandover(false)
+    if (onCloseShiftAndSignOut) onCloseShiftAndSignOut()
+    else onEndShift?.()
   }
 
   const isOwner = userSubRole === 'OWNER'
@@ -192,6 +206,13 @@ export function PosHeader({ storeName, cashierName, customer, syncing, onEnrollF
           <LogOut className="h-4 w-4" />
         </Button>
       </div>
+
+      <HandoverModal
+        open={showHandover}
+        currentUserId={currentUserId}
+        onCloseShift={handleCloseShift}
+        onClose={() => setShowHandover(false)}
+      />
     </header>
   )
 }

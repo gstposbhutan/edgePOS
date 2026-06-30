@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { PosHeader }       from "@/components/pos/pos-header"
 import { ProductPanel }    from "@/components/pos/product-panel"
@@ -23,7 +23,7 @@ import { useProducts }     from "@/hooks/use-products"
 import { useKhata }        from "@/hooks/use-khata"
 import { useOwnerStores }  from "@/hooks/use-owner-stores"
 import { useShift }        from "@/hooks/use-shift"
-import { getUser, getRoleClaims } from "@/lib/auth"
+import { getUser, getRoleClaims, signOut } from "@/lib/auth"
 
 export default function PosPage() {
   const router   = useRouter()
@@ -50,8 +50,28 @@ export default function PosPage() {
   const [showEndShift,      setShowEndShift]      = useState(false)
   const [showCashAdj,       setShowCashAdj]       = useState(false)
   const [showZReport,       setShowZReport]       = useState(false)
+  const [toastMsg,          setToastMsg]          = useState(null)
+  const toastTimer = useRef(null)
+
+  function showToast(msg) {
+    setToastMsg(msg)
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    toastTimer.current = setTimeout(() => setToastMsg(null), 2600)
+  }
 
   const { shift, openShift, closeShift } = useShift()
+
+  // When the logout handover routes through "Close shift & sign out", finish the
+  // sign-out once the drawer is counted and the shift actually closes. closeShift
+  // throws on failure, so closedOkRef flips true only on a real close (a cancel
+  // leaves it false → no sign-out).
+  const pendingSignOutRef = useRef(false)
+  const closedOkRef = useRef(false)
+  async function closeShiftAndTrack(id, count) {
+    const res = await closeShift(id, count)
+    closedOkRef.current = true
+    return res
+  }
 
   useEffect(() => {
     async function load() {
@@ -90,7 +110,7 @@ export default function PosPage() {
     carts, activeIndex,
     addItem, updateQty, applyDiscount, overridePrice, removeItem, clearCart, setCustomerIdentity,
     holdCart, switchCart, cancelCart,
-  } = useCart(entity?.id, user?.id)
+  } = useCart(entity?.id, user?.id, 'RETAIL', (name, avail) => showToast(`Only ${avail} in stock`))
 
   const { products, loading: productsLoading, search } = useProducts(entity?.id)
   const { lookupAccount, createAccount } = useKhata(entity?.id)
@@ -379,6 +399,8 @@ export default function PosPage() {
         ownedStores={ownedStores}
         onSwitchStore={handleSwitchStore}
         shift={shift}
+        currentUserId={user?.id}
+        onCloseShiftAndSignOut={() => { pendingSignOutRef.current = true; closedOkRef.current = false; setShowEndShift(true) }}
         onStartShift={() => setShowStartShift(true)}
         onEndShift={() => setShowEndShift(true)}
         onCashAdj={() => setShowCashAdj(true)}
@@ -525,8 +547,16 @@ export default function PosPage() {
       {showEndShift && shift && (
         <EndShiftModal
           shift={shift}
-          onClose={() => setShowEndShift(false)}
-          onEndShift={closeShift}
+          onClose={() => {
+            setShowEndShift(false)
+            if (pendingSignOutRef.current && closedOkRef.current) {
+              pendingSignOutRef.current = false
+              signOut().then(() => router.push('/login'))
+            } else {
+              pendingSignOutRef.current = false
+            }
+          }}
+          onEndShift={closeShiftAndTrack}
         />
       )}
 
@@ -536,6 +566,12 @@ export default function PosPage() {
 
       {showZReport && (
         <ZReportModal onClose={() => setShowZReport(false)} />
+      )}
+
+      {toastMsg && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] px-4 py-2 rounded-lg bg-foreground text-background text-sm shadow-lg pointer-events-none">
+          {toastMsg}
+        </div>
       )}
     </>
   )

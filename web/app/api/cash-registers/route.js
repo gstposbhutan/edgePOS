@@ -5,10 +5,10 @@ export async function GET(request) {
   const ctx = await getAuthContext()
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { entityId, subRole, supabase } = ctx
-  if (!['MANAGER', 'OWNER', 'ADMIN'].includes(subRole)) {
-    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-  }
+  // Listing registers is read-only and entity-scoped — any authenticated user in the
+  // store needs it (a CASHIER picks a register when starting a shift). Management
+  // (rename/deactivate) stays manager-gated on the [id] route; creation is disabled.
+  const { entityId, supabase } = ctx
   const { data: registers, error } = await supabase
     .from('cash_registers')
     .select('id, name, default_opening_float, is_active, created_at')

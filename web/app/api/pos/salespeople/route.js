@@ -18,5 +18,17 @@ export async function GET() {
     .order('sub_role', { ascending: true })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ salespeople: data ?? [] })
+
+  // Enrich with login email so the logout handover prompt can switch the active
+  // cashier by name (the switch endpoint needs an email to authenticate against).
+  let emailMap = {}
+  try {
+    const { data: list } = await ctx.supabase.auth.admin.listUsers()
+    emailMap = Object.fromEntries((list?.users ?? []).map(u => [u.id, u.email]))
+  } catch {
+    // best-effort — fall back to no emails (handover modal can prompt for one)
+  }
+
+  const salespeople = (data ?? []).map(p => ({ ...p, email: emailMap[p.id] || '' }))
+  return NextResponse.json({ salespeople })
 }

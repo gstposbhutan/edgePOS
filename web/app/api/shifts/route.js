@@ -1,22 +1,34 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/supabase/server'
 
-// GET /api/shifts — current active shift
-export async function GET() {
+// GET /api/shifts — current active shift (optionally scoped to ?register_id=)
+export async function GET(request) {
   const ctx = await getAuthContext()
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { entityId, subRole, userId, supabase } = ctx
 
-  // Find active shift for this entity
-  const { data: shift, error } = await supabase
+  const registerId = new URL(request.url).searchParams.get('register_id')
+
+  // Find the most-recent active shift for this entity. A store can run more than
+  // one register at once, so we can't assume a single row — order by opened_at and
+  // take the latest. With ?register_id= we scope to that register (handover view);
+  // without it, single-register stores get the same single active shift as before.
+  let query = supabase
     .from('shifts')
     .select('id, register_id, opened_by, opening_float, status, opened_at, cash_registers(name)')
     .eq('entity_id', entityId)
     .in('status', ['ACTIVE', 'CLOSING'])
-    .maybeSingle()
+
+  if (registerId) query = query.eq('register_id', registerId)
+
+  const { data: rows, error } = await query
+    .order('opened_at', { ascending: false })
+    .limit(1)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  const shift = rows?.[0] ?? null
 
   if (!shift) return NextResponse.json({ shift: null })
 

@@ -2,10 +2,15 @@
 
 import { useEffect, useState, useRef } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
-import { CheckCircle, Download, MessageCircle, ShoppingCart, Loader2, AlertCircle } from "lucide-react"
+import { CheckCircle, Download, Printer, MessageCircle, ShoppingCart, Loader2, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Receipt } from "@/components/pos/receipt"
+import {
+  printReceiptNode,
+  getReceiptPaperWidth,
+  setReceiptPaperWidth,
+} from "@/components/pos/receipt-print"
 import { getUser, getRoleClaims } from "@/lib/auth"
 
 export default function OrderConfirmationPage() {
@@ -23,10 +28,16 @@ export default function OrderConfirmationPage() {
   const [pdfLoading, setPdfLoading] = useState(false)
   const [waLoading,  setWaLoading]  = useState(false)
   const [waSent,     setWaSent]     = useState(false)
+  const [paperWidth, setPaperWidth] = useState(80)
 
   useEffect(() => {
     loadOrder()
   }, [id])
+
+  // Per-station thermal paper width (mm); SSR-safe read on mount.
+  useEffect(() => {
+    setPaperWidth(getReceiptPaperWidth())
+  }, [])
 
   async function loadOrder() {
     setLoading(true)
@@ -83,6 +94,15 @@ export default function OrderConfirmationPage() {
     } finally {
       setPdfLoading(false)
     }
+  }
+
+  function handlePrint() {
+    if (receiptRef.current) printReceiptNode(receiptRef.current, { paperWidthMm: paperWidth })
+  }
+
+  function changePaperWidth(mm) {
+    setPaperWidth(mm)
+    setReceiptPaperWidth(mm)
   }
 
   async function handleSendWhatsApp() {
@@ -188,7 +208,16 @@ export default function OrderConfirmationPage() {
         )}
 
         {/* Action buttons */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-4 gap-3">
+          <Button
+            onClick={handlePrint}
+            variant="outline"
+            className="flex flex-col gap-1.5 h-auto py-3 border-border"
+          >
+            <Printer className="h-5 w-5" />
+            <span className="text-xs">Print</span>
+          </Button>
+
           <Button
             onClick={handleDownloadPdf}
             disabled={pdfLoading}
@@ -228,6 +257,24 @@ export default function OrderConfirmationPage() {
             <ShoppingCart className="h-5 w-5" />
             <span className="text-xs">New Sale</span>
           </Button>
+        </div>
+
+        {/* Paper width — drives the thermal Print output (per-station) */}
+        <div className="flex items-center justify-center gap-1.5">
+          <span className="text-[11px] text-muted-foreground mr-1">Print paper</span>
+          {[58, 80].map(mm => (
+            <button
+              key={mm}
+              onClick={() => changePaperWidth(mm)}
+              className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium border transition-colors ${
+                paperWidth === mm
+                  ? 'bg-primary text-primary-foreground border-transparent'
+                  : 'border-border text-muted-foreground hover:bg-muted'
+              }`}
+            >
+              {mm}mm
+            </button>
+          ))}
         </div>
 
         {/* Receipt */}

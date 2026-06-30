@@ -48,7 +48,15 @@ export async function POST(request) {
     .select('id, opened_at, status')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    // Two cashiers can both clear the pre-check SELECT above and race the insert;
+    // the partial unique index (idx_shifts_one_active_per_register) lets exactly one
+    // win. Map the loser's unique-violation to the same friendly 409 as the pre-check.
+    if (error.code === '23505') {
+      return NextResponse.json({ error: 'A shift is already active on this register' }, { status: 409 })
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
 
   return NextResponse.json({
     shift: {

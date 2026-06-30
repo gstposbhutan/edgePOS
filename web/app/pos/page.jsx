@@ -26,6 +26,8 @@ import { StartShiftModal }    from "@/components/pos/shift/start-shift-modal"
 import { EndShiftModal }      from "@/components/pos/shift/end-shift-modal"
 import { CashAdjustmentModal } from "@/components/pos/cash-adjustment-modal"
 import { ZReportModal }       from "@/components/pos/z-report-modal"
+import { HandoverModal }      from "@/components/pos/handover-modal"
+import { ReceiptPreviewModal } from "@/components/pos/keyboard/receipt-preview-modal"
 import { useShift }           from "@/hooks/use-shift"
 import {
   LogOut, ClipboardList, BookOpen, Package,
@@ -50,11 +52,15 @@ export default function KeyboardPosPage() {
   const [creditOtpOpen, setCreditOtpOpen] = useState(false)
   const pendingPayment  = useRef(null)
   const [lastOrderNo,  setLastOrderNo]  = useState(null)
+  const [showReceipt,  setShowReceipt]  = useState(false)
+  const [receiptOrder, setReceiptOrder] = useState(null)
+  const [receiptItems, setReceiptItems] = useState([])
   const [showDiscount, setShowDiscount] = useState(false)
   const [showStartShift, setShowStartShift] = useState(false)
   const [showEndShift,   setShowEndShift]   = useState(false)
   const [showCashAdj,    setShowCashAdj]    = useState(false)
   const [showZReport,    setShowZReport]    = useState(false)
+  const [showHandover,   setShowHandover]   = useState(false)
   const [showBillDiscount, setShowBillDiscount] = useState(false)
   const [showCustomerPanel, setShowCustomerPanel] = useState(false)
   const [showInvoiceSearch, setShowInvoiceSearch] = useState(false)
@@ -83,6 +89,18 @@ export default function KeyboardPosPage() {
   const toastTimer = useRef(null)
 
   const { shift, openShift, closeShift } = useShift()
+
+  // After the logout handover routes through "Close shift & sign out", finish the
+  // sign-out once the drawer is counted and the shift actually closes. closeShift
+  // throws on failure, so closedOkRef flips true only on a real close (a cancel
+  // leaves it false → no sign-out).
+  const pendingSignOutRef = useRef(false)
+  const closedOkRef = useRef(false)
+  async function closeShiftAndTrack(id, count) {
+    const res = await closeShift(id, count)
+    closedOkRef.current = true
+    return res
+  }
 
   useEffect(() => {
     async function load() {
@@ -129,7 +147,7 @@ export default function KeyboardPosPage() {
     addItem, updateQty, removeItem, clearCart, setCustomerIdentity, applyDiscount,
     repriceCart,
     holdCart, switchCart, cancelCart,
-  } = useCart(entity?.id, user?.id, priceListMode)
+  } = useCart(entity?.id, user?.id, priceListMode, (name, avail) => showToast(`Only ${avail} in stock`))
 
   const { accounts, lookupAccount, createAccount } = useKhata(entity?.id)
 
@@ -141,7 +159,7 @@ export default function KeyboardPosPage() {
 
   useEffect(() => {
     function handleKeyDown(e) {
-      if (searchOpen || paymentOpen || helpOpen || showCustomerPanel || showDiscount || showBillDiscount || showInvoiceSearch || showSalesPerson || showQuotation || showComp || showExchange || showMarket || showDelivery) return
+      if (searchOpen || paymentOpen || helpOpen || showCustomerPanel || showDiscount || showBillDiscount || showInvoiceSearch || showSalesPerson || showQuotation || showComp || showExchange || showMarket || showDelivery || showHandover || showReceipt) return
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return
 
       // --- Function keys (canonical Pelbu map) ---
@@ -219,7 +237,7 @@ export default function KeyboardPosPage() {
     // checkoutErr must be a dep: handleNewTransaction (F2) reads it to block
     // clearing on a stock error. Without it, the out-of-stock branch (no item
     // added → items unchanged → effect not re-run) leaves a stale closure.
-  }, [searchOpen, paymentOpen, helpOpen, showCustomerPanel, showDiscount, showBillDiscount, showInvoiceSearch, showSalesPerson, showQuotation, showComp, showExchange, showMarket, showDelivery, items, selectedRow, carts, activeIndex, subRole, checkoutErr, priceListMode])
+  }, [searchOpen, paymentOpen, helpOpen, showCustomerPanel, showDiscount, showBillDiscount, showInvoiceSearch, showSalesPerson, showQuotation, showComp, showExchange, showMarket, showDelivery, showHandover, showReceipt, items, selectedRow, carts, activeIndex, subRole, checkoutErr, priceListMode])
 
   function showToast(msg) {
     setToastMsg(msg)
@@ -400,9 +418,26 @@ export default function KeyboardPosPage() {
       setDateOverride(null)         // an override applies to one sale only
       setDateOverrideDraft('')
 
+      // Pop the printable receipt preview. The POST only returns {id, order_no},
+      // so re-fetch the full order + items (same shape the order page feeds to
+      // <Receipt/>) before showing the modal.
+      openReceiptForOrder(data.order.id)
+
     } catch (err) {
       setCheckoutErr(err.message)
     }
+  }
+
+  async function openReceiptForOrder(orderId) {
+    try {
+      const res = await fetch(`/api/pos/orders/${orderId}`)
+      if (!res.ok) return                       // banner already confirms the sale
+      const data = await res.json()
+      if (!data.order) return
+      setReceiptOrder(data.order)
+      setReceiptItems(data.items ?? [])
+      setShowReceipt(true)
+    } catch { /* ignore — the success banner still confirms the sale */ }
   }
 
   if (!entity) {
@@ -414,8 +449,20 @@ export default function KeyboardPosPage() {
   }
 
   async function handleSignOut() {
+    // Don't let a logout silently orphan an open shift — prompt to close it or
+    // hand the register to another cashier first (parity with /pos/touch).
+    if (shift) { setShowHandover(true); return }
     await signOut()
     router.push('/login')
+  }
+
+  // "Close shift & sign out" → open the existing end-shift reconcile flow. After the
+  // drawer is counted and the shift closes, the next sign-out goes straight through.
+  function handleCloseShiftFromHandover() {
+    setShowHandover(false)
+    pendingSignOutRef.current = true
+    closedOkRef.current = false
+    setShowEndShift(true)
   }
 
   const isAdmin = ['OWNER', 'ADMIN'].includes(subRole)
@@ -684,8 +731,16 @@ export default function KeyboardPosPage() {
       {showEndShift && shift && (
         <EndShiftModal
           shift={shift}
-          onClose={() => setShowEndShift(false)}
-          onEndShift={closeShift}
+          onClose={() => {
+            setShowEndShift(false)
+            if (pendingSignOutRef.current && closedOkRef.current) {
+              pendingSignOutRef.current = false
+              signOut().then(() => router.push('/login'))
+            } else {
+              pendingSignOutRef.current = false
+            }
+          }}
+          onEndShift={closeShiftAndTrack}
         />
       )}
 
@@ -695,6 +750,23 @@ export default function KeyboardPosPage() {
 
       {showZReport && (
         <ZReportModal onClose={() => setShowZReport(false)} />
+      )}
+
+      <HandoverModal
+        open={showHandover}
+        currentUserId={user?.id}
+        onCloseShift={handleCloseShiftFromHandover}
+        onClose={() => setShowHandover(false)}
+      />
+
+      {showReceipt && receiptOrder && (
+        <ReceiptPreviewModal
+          order={receiptOrder}
+          entity={entity}
+          items={receiptItems}
+          onNewSale={() => { setShowReceipt(false); setLastOrderNo(null) }}
+          onClose={() => setShowReceipt(false)}
+        />
       )}
 
       {showDiscount && items[selectedRow] && (

@@ -2,13 +2,26 @@
 
 import { useState, useEffect, useCallback } from "react"
 
+// Remembers which register this browser opened a shift on, so the "current shift"
+// query stays register-scoped (multiple registers can be active at once → handover).
+const REGISTER_KEY = 'pos_active_register'
+
+function readActiveRegister() {
+  if (typeof window === 'undefined') return null
+  try { return window.localStorage.getItem(REGISTER_KEY) } catch { return null }
+}
+
 export function useShift() {
   const [shift, setShift] = useState(null)
   const [loading, setLoading] = useState(true)
 
   const fetchShift = useCallback(async () => {
     try {
-      const res = await fetch('/api/shifts')
+      const registerId = readActiveRegister()
+      const url = registerId
+        ? `/api/shifts?register_id=${encodeURIComponent(registerId)}`
+        : '/api/shifts'
+      const res = await fetch(url)
       if (res.ok) {
         const data = await res.json()
         setShift(data.shift)
@@ -29,6 +42,9 @@ export function useShift() {
     })
     const data = await res.json()
     if (res.ok) {
+      if (typeof window !== 'undefined') {
+        try { window.localStorage.setItem(REGISTER_KEY, register_id) } catch {}
+      }
       await fetchShift()
       return data.shift
     }
