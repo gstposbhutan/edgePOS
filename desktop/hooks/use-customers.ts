@@ -12,6 +12,7 @@ export interface Customer {
   credit_limit: number;
   outstanding_balance: number;
   status?: string;
+  party_type?: string;
   created_at: string;
 }
 

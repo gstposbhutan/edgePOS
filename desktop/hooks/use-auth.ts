@@ -41,6 +41,20 @@ export function useAuth() {
     }
   }, [pb]);
 
+  // Atomic cashier handover: authWithPassword either swaps the authStore wholesale
+  // (new cashier active) or leaves it untouched on a wrong password — so a failed
+  // handover keeps the current cashier logged in, exactly as required.
+  const switchUser = useCallback(async (email: string, password: string) => {
+    try {
+      const auth = await pb.collection("users").authWithPassword(email, password);
+      setUser(auth.record as unknown as PBUser);
+      return { success: true, error: null };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Sign-in failed";
+      return { success: false, error: msg };
+    }
+  }, [pb]);
+
   const signOut = useCallback(() => {
     logout();
     setUser(null);
@@ -62,6 +76,7 @@ export function useAuth() {
     user,
     loading,
     login,
+    switchUser,
     signOut,
     hasRole,
     isOwner,

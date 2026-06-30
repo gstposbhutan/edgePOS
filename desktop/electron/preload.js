@@ -3,9 +3,10 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("electronAPI", {
   // Printer
   printer: {
-    getStatus: () => ipcRenderer.invoke("printer:get-status"),
+    list: () => ipcRenderer.invoke("printer:list"),
+    getStatus: (settings) => ipcRenderer.invoke("printer:get-status", settings),
     print: (order, settings) => ipcRenderer.invoke("printer:print", order, settings),
-    test: () => ipcRenderer.invoke("printer:test"),
+    test: (settings) => ipcRenderer.invoke("printer:test", settings),
   },
 
   // App info

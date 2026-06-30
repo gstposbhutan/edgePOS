@@ -8,6 +8,15 @@ import { PaymentModal }       from "@/components/pos/keyboard/payment-modal"
 import { HelpOverlay }        from "@/components/pos/keyboard/help-overlay"
 import { ShortcutBar }        from "@/components/pos/keyboard/shortcut-bar"
 import { DiscountModal }      from "@/components/pos/keyboard/discount-modal"
+import { BillDiscountModal }  from "@/components/pos/keyboard/bill-discount-modal"
+import { CustomerPanelModal } from "@/components/pos/keyboard/customer-panel-modal"
+import { InvoiceSearchModal } from "@/components/pos/keyboard/invoice-search-modal"
+import { SalespersonPickerModal } from "@/components/pos/keyboard/salesperson-picker-modal"
+import { QuotationConfirmModal } from "@/components/pos/keyboard/quotation-confirm-modal"
+import { ComplimentaryConfirmModal } from "@/components/pos/keyboard/complimentary-confirm-modal"
+import { ExchangeModal } from "@/components/pos/keyboard/exchange-modal"
+import { PostMarketModal } from "@/components/pos/keyboard/post-market-modal"
+import { DeliveryAddressModal } from "@/components/pos/keyboard/delivery-address-modal"
 import { useCart }            from "@/hooks/use-cart"
 import { useKhata }           from "@/hooks/use-khata"
 import { getUser, getEnrichedClaims, signOut } from "@/lib/auth"
@@ -15,10 +24,14 @@ import { Logo }                from "@/components/ui/logo"
 import { ShiftStatusBadge }   from "@/components/pos/shift/shift-status-badge"
 import { StartShiftModal }    from "@/components/pos/shift/start-shift-modal"
 import { EndShiftModal }      from "@/components/pos/shift/end-shift-modal"
+import { CashAdjustmentModal } from "@/components/pos/cash-adjustment-modal"
+import { ZReportModal }       from "@/components/pos/z-report-modal"
+import { HandoverModal }      from "@/components/pos/handover-modal"
+import { ReceiptPreviewModal } from "@/components/pos/keyboard/receipt-preview-modal"
 import { useShift }           from "@/hooks/use-shift"
 import {
   LogOut, ClipboardList, BookOpen, Package,
-  Wallet, Hand, X, LayoutDashboard, ShoppingCart, Landmark, Users, MonitorDown
+  Wallet, Hand, X, LayoutDashboard, ShoppingCart, Landmark, Users, MonitorDown, Clock, Calendar
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { CustomerOtpModal } from "@/components/pos/customer-otp-modal"
@@ -39,11 +52,55 @@ export default function KeyboardPosPage() {
   const [creditOtpOpen, setCreditOtpOpen] = useState(false)
   const pendingPayment  = useRef(null)
   const [lastOrderNo,  setLastOrderNo]  = useState(null)
+  const [showReceipt,  setShowReceipt]  = useState(false)
+  const [receiptOrder, setReceiptOrder] = useState(null)
+  const [receiptItems, setReceiptItems] = useState([])
   const [showDiscount, setShowDiscount] = useState(false)
   const [showStartShift, setShowStartShift] = useState(false)
   const [showEndShift,   setShowEndShift]   = useState(false)
+  const [showCashAdj,    setShowCashAdj]    = useState(false)
+  const [showZReport,    setShowZReport]    = useState(false)
+  const [showHandover,   setShowHandover]   = useState(false)
+  const [showBillDiscount, setShowBillDiscount] = useState(false)
+  const [showCustomerPanel, setShowCustomerPanel] = useState(false)
+  const [showInvoiceSearch, setShowInvoiceSearch] = useState(false)
+  const [showSalesPerson, setShowSalesPerson] = useState(false)
+  const [salesPersonId, setSalesPersonId] = useState(null)        // attributed salesperson (F8); null = unattributed
+  const [salesPersonName, setSalesPersonName] = useState(null)
+  const [showQuotation, setShowQuotation] = useState(false)
+  const [showComp, setShowComp] = useState(false)
+  const [showExchange, setShowExchange] = useState(false)
+  const [showMarket, setShowMarket] = useState(false)
+  const [showDelivery, setShowDelivery] = useState(false)
+  const [deliveryAddress, setDeliveryAddress] = useState(null)    // attached to the next sale (Alt+D)
+  const [priceListMode, setPriceListMode] = useState(() => {              // RETAIL | WHOLESALE | DISTRIBUTOR (persisted)
+    try {
+      const saved = localStorage.getItem('pos_price_list')
+      return ['RETAIL', 'WHOLESALE', 'DISTRIBUTOR'].includes(saved) ? saved : 'RETAIL'
+    } catch { return 'RETAIL' }
+  })
+  const [selectedCustomer, setSelectedCustomer] = useState(null)        // full khata account for header display
+  const [nextInvoiceNo, setNextInvoiceNo] = useState(null)              // live preview of the next order no
+  const [serverTime, setServerTime] = useState(null)                    // internet-sourced clock
+  const [dateOverride, setDateOverride] = useState(null)                // ISO applied to the next sale (admin)
+  const [dateOverrideDraft, setDateOverrideDraft] = useState('')
+  const [showDateOverride, setShowDateOverride] = useState(false)
+  const [toastMsg, setToastMsg] = useState(null)
+  const toastTimer = useRef(null)
 
   const { shift, openShift, closeShift } = useShift()
+
+  // After the logout handover routes through "Close shift & sign out", finish the
+  // sign-out once the drawer is counted and the shift actually closes. closeShift
+  // throws on failure, so closedOkRef flips true only on a real close (a cancel
+  // leaves it false → no sign-out).
+  const pendingSignOutRef = useRef(false)
+  const closedOkRef = useRef(false)
+  async function closeShiftAndTrack(id, count) {
+    const res = await closeShift(id, count)
+    closedOkRef.current = true
+    return res
+  }
 
   useEffect(() => {
     async function load() {
@@ -63,15 +120,36 @@ export default function KeyboardPosPage() {
     load()
   }, [])
 
+  async function refreshInvoiceHeader() {
+    try {
+      const res = await fetch('/api/pos/next-invoice')
+      if (res.ok) {
+        const data = await res.json()
+        setNextInvoiceNo(data.orderNo)
+        setServerTime(data.serverTime)
+      }
+    } catch { /* ignore — header keeps the last known value */ }
+  }
+
+  // Live invoice-no preview + internet-sourced clock. Refresh on entity load, every
+  // 60s (keeps the clock honest), and after each completed sale (see processPayment).
+  useEffect(() => {
+    if (!entity?.id) return
+    refreshInvoiceHeader()
+    const id = setInterval(refreshInvoiceHeader, 60000)
+    return () => clearInterval(id)
+  }, [entity?.id])
+
   const {
     cartId, items, customer,
     subtotal, gstTotal, grandTotal,
     carts, activeIndex,
     addItem, updateQty, removeItem, clearCart, setCustomerIdentity, applyDiscount,
+    repriceCart,
     holdCart, switchCart, cancelCart,
-  } = useCart(entity?.id, user?.id)
+  } = useCart(entity?.id, user?.id, priceListMode, (name, avail) => showToast(`Only ${avail} in stock`))
 
-  const { lookupAccount, createAccount } = useKhata(entity?.id)
+  const { accounts, lookupAccount, createAccount } = useKhata(entity?.id)
 
   useEffect(() => {
     if (items.length === 0) { setSelectedRow(0); return }
@@ -81,21 +159,51 @@ export default function KeyboardPosPage() {
 
   useEffect(() => {
     function handleKeyDown(e) {
-      if (searchOpen || paymentOpen || helpOpen) return
+      if (searchOpen || paymentOpen || helpOpen || showCustomerPanel || showDiscount || showBillDiscount || showInvoiceSearch || showSalesPerson || showQuotation || showComp || showExchange || showMarket || showDelivery || showHandover || showReceipt) return
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return
 
+      // --- Function keys (canonical Pelbu map) ---
       if (e.key === 'F1')  { e.preventDefault(); setHelpOpen(true); return }
       if (e.key === 'F2')  { e.preventDefault(); handleNewTransaction(); return }
       if (e.key === 'F3')  { e.preventDefault(); openSearch(''); return }
-      if (e.key === 'F4')  { e.preventDefault(); holdCart(); return }
-      if (e.key === 'F5')  { e.preventDefault(); if (items.length > 0) setPaymentOpen(true); return }
-      if (e.key === 'F6')  { e.preventDefault(); cancelCart(activeIndex); return }
-      if (e.key === 'F7')  { e.preventDefault(); voidSelected(); return }
-      if (e.ctrlKey && e.key === 'm') {
+      if (e.key === 'F4')  { e.preventDefault(); holdCart(); return }                       // New Cart
+      if (e.key === 'F5')  {                                                                 // Previous Cart
         e.preventDefault()
-        if (items.length > 0 && items[selectedRow]) setShowDiscount(true)
+        if (carts.length > 1) switchCart((activeIndex - 1 + carts.length) % carts.length)
         return
       }
+      if (e.key === 'F6')  { e.preventDefault(); setShowCustomerPanel(true); return }                          // Customer Select
+      if (e.key === 'F7')  { e.preventDefault(); cyclePriceList(); return }                                      // Price List (cycle Retail→Wholesale→Distributor)
+      if (e.key === 'F8')  { e.preventDefault(); setShowSalesPerson(true); return }                        // Sales Person
+      if (e.key === 'F9')  { e.preventDefault(); editRowRef.current?.(selectedRow); return }                  // Change Qty
+      if (e.key === 'F10') { e.preventDefault(); if (items.length > 0) setPaymentOpen(true); return }         // Tender
+
+      // --- Manager shortcuts ---
+      const isManager = ['MANAGER', 'OWNER', 'ADMIN'].includes(subRole)
+      if (e.ctrlKey && e.shiftKey && (e.key === 'z' || e.key === 'Z') && isManager) { e.preventDefault(); setShowZReport(true); return }
+      if (e.ctrlKey && e.shiftKey && (e.key === 'x' || e.key === 'X') && isManager) { e.preventDefault(); setShowCashAdj(true); return }   // Cash In/Out (relocated off F8)
+
+      // --- Ctrl modifiers ---
+      if (e.ctrlKey && !e.shiftKey) {
+        const k = e.key.toLowerCase()
+        if (k === 'm') { e.preventDefault(); if (items.length > 0 && items[selectedRow]) setShowDiscount(true); return }   // per-row discount
+        if (k === 'a') { e.preventDefault(); openSearch(''); return }                                                      // Add product
+        if (k === 'r') { e.preventDefault(); voidSelected(); return }                                                       // Remove selected row
+        if (k === 'd') { e.preventDefault(); if (items.length > 0) setShowBillDiscount(true); return }                      // Bill discount (all lines)
+        if (k === 'c') { e.preventDefault(); if (isManager && items.length > 0) setShowComp(true); else showToast(isManager ? 'Add items first' : 'Complimentary is manager-only'); return }   // Complimentary (manager)
+        if (k === 'e') { e.preventDefault(); setShowExchange(true); return }                                                  // Exchange (return from past order)
+      }
+
+      // --- Alt modifiers (all stubs) ---
+      if (e.altKey && !e.ctrlKey) {
+        const k = e.key.toLowerCase()
+        if (k === 'a') { e.preventDefault(); cyclePriceList(); return }                                          // Price List (cycle)
+        if (k === 'm') { e.preventDefault(); if (items.length > 0) setShowMarket(true); else showToast('Add items first'); return }   // Post to Market
+        if (k === 'q') { e.preventDefault(); if (items.length > 0) setShowQuotation(true); else showToast('Add items first'); return }   // Quotation
+        if (k === 'd') { e.preventDefault(); setShowDelivery(true); return }                                                    // Delivery Address
+      }
+
+      // --- Navigation / cart switching ---
       if (e.key === 'Tab' && !e.shiftKey) {
         e.preventDefault()
         if (carts.length > 1) switchCart((activeIndex + 1) % carts.length)
@@ -106,7 +214,6 @@ export default function KeyboardPosPage() {
         if (carts.length > 1) switchCart((activeIndex - 1 + carts.length) % carts.length)
         return
       }
-      if (e.key === 'F9')  { e.preventDefault(); switchToTouch(); return }
       if (e.key === 'Delete') { e.preventDefault(); voidSelected(); return }
       if (e.key === 'ArrowDown') { e.preventDefault(); if (items.length > 0) setSelectedRow(r => (r + 1) % items.length); return }
       if (e.key === 'ArrowUp')   { e.preventDefault(); if (items.length > 0) setSelectedRow(r => (r - 1 + items.length) % items.length); return }
@@ -118,6 +225,7 @@ export default function KeyboardPosPage() {
         return
       }
 
+      // Type-to-search (single char, no modifiers)
       if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
         e.preventDefault()
         openSearch(e.key)
@@ -126,7 +234,59 @@ export default function KeyboardPosPage() {
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [searchOpen, paymentOpen, helpOpen, items, selectedRow])
+    // checkoutErr must be a dep: handleNewTransaction (F2) reads it to block
+    // clearing on a stock error. Without it, the out-of-stock branch (no item
+    // added → items unchanged → effect not re-run) leaves a stale closure.
+  }, [searchOpen, paymentOpen, helpOpen, showCustomerPanel, showDiscount, showBillDiscount, showInvoiceSearch, showSalesPerson, showQuotation, showComp, showExchange, showMarket, showDelivery, showHandover, showReceipt, items, selectedRow, carts, activeIndex, subRole, checkoutErr, priceListMode])
+
+  function showToast(msg) {
+    setToastMsg(msg)
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    toastTimer.current = setTimeout(() => setToastMsg(null), 2600)
+  }
+
+  // Cycle the active price list (F7 / Alt+A), persist it, and re-price the
+  // current cart to the new tier. Bare 'A' is intentionally NOT bound — it
+  // stays type-to-search so products beginning with "a" remain searchable.
+  function cyclePriceList() {
+    const order = ['RETAIL', 'WHOLESALE', 'DISTRIBUTOR']
+    const next = order[(order.indexOf(priceListMode) + 1) % order.length]
+    setPriceListMode(next)
+    try { localStorage.setItem('pos_price_list', next) } catch {}
+    repriceCart(next)
+    showToast(`Price list: ${next.charAt(0)}${next.slice(1).toLowerCase()}`)
+  }
+
+  // Alt+Q — save the cart as a draft quotation (SALES_ORDER/DRAFT): no payment,
+  // no stock move. Clears the cart on success like a completed sale.
+  async function saveQuotation() {
+    if (items.length === 0) return
+    try {
+      const res = await fetch('/api/pos/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items, subtotal, gstTotal, grandTotal,
+          customerWhatsapp: customer?.whatsapp ?? null,
+          buyerHash: customer?.buyerHash ?? null,
+          cartId,
+          quotation: true,
+          salespersonId: salesPersonId ?? undefined,
+          deliveryAddress: deliveryAddress || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Quotation failed')
+      setLastOrderNo(data.order.order_no)
+      await clearCart()
+      setSelectedRow(0)
+      setShowQuotation(false)
+      showToast(`Quotation ${data.order.order_no} saved`)
+    } catch (err) {
+      setCheckoutErr(err.message)
+      setShowQuotation(false)
+    }
+  }
 
   function openSearch(initialChar) {
     setSearchQuery(initialChar)
@@ -137,14 +297,21 @@ export default function KeyboardPosPage() {
     if (items[selectedRow]) {
       removeItem(items[selectedRow].id)
       setSelectedRow(r => Math.max(0, r - (r >= items.length - 1 ? 1 : 0)))
+      setCheckoutErr(null)   // removing an item clears the stock-error path
     }
   }
 
   function handleNewTransaction() {
+    if (checkoutErr) { showToast('Resolve the stock error first — remove the item or complete the sale'); return }
     if (items.length > 0 && !confirm('Clear cart and start new transaction?')) return
     clearCart()
     setSelectedRow(0)
     setCheckoutErr(null)
+  }
+
+  function handleCancelCart(index) {
+    if (checkoutErr) { showToast('Resolve the stock error first — remove the item or complete the sale'); return }
+    cancelCart(index)
   }
 
   function switchToTouch() {
@@ -218,25 +385,14 @@ export default function KeyboardPosPage() {
     }
 
     try {
-      const year   = new Date().getFullYear()
-      const serial = String(Math.floor(Math.random() * 99999)).padStart(5, '0')
-      const orderNo = `${entity?.name?.substring(0, 4).toUpperCase() ?? 'POS'}-${year}-${serial}`
-
-      let signature = ''
-      try {
-        const { createHash } = await import('crypto')
-        if (createHash) {
-          signature = createHash('sha256')
-            .update(`${orderNo}:${grandTotal}:${entity?.tpn_gstin ?? ''}`)
-            .digest('hex')
-        }
-      } catch { /* crypto not available in browser, skip signature */ }
+      // Order no + digital signature are issued server-side (next_pos_order_no RPC +
+      // sha256 over orderNo:grandTotal:tpn). Admin-only invoice date override (Phase 2).
+      const isAdmin = ['OWNER', 'ADMIN'].includes(subRole)
 
       const res = await fetch('/api/pos/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          orderNo,
           items,
           subtotal,
           gstTotal,
@@ -246,7 +402,9 @@ export default function KeyboardPosPage() {
           customerWhatsapp: customer?.whatsapp ?? null,
           buyerHash: customer?.buyerHash ?? null,
           cartId,
-          digitalSignature: signature,
+          invoiceDate: isAdmin && dateOverride ? dateOverride : undefined,
+          salespersonId: salesPersonId ?? undefined,
+          deliveryAddress: deliveryAddress || undefined,
         }),
       })
 
@@ -256,10 +414,30 @@ export default function KeyboardPosPage() {
       setLastOrderNo(data.order.order_no)
       await clearCart()
       setSelectedRow(0)
+      refreshInvoiceHeader()        // bump the displayed next invoice no
+      setDateOverride(null)         // an override applies to one sale only
+      setDateOverrideDraft('')
+
+      // Pop the printable receipt preview. The POST only returns {id, order_no},
+      // so re-fetch the full order + items (same shape the order page feeds to
+      // <Receipt/>) before showing the modal.
+      openReceiptForOrder(data.order.id)
 
     } catch (err) {
       setCheckoutErr(err.message)
     }
+  }
+
+  async function openReceiptForOrder(orderId) {
+    try {
+      const res = await fetch(`/api/pos/orders/${orderId}`)
+      if (!res.ok) return                       // banner already confirms the sale
+      const data = await res.json()
+      if (!data.order) return
+      setReceiptOrder(data.order)
+      setReceiptItems(data.items ?? [])
+      setShowReceipt(true)
+    } catch { /* ignore — the success banner still confirms the sale */ }
   }
 
   if (!entity) {
@@ -271,9 +449,25 @@ export default function KeyboardPosPage() {
   }
 
   async function handleSignOut() {
+    // Don't let a logout silently orphan an open shift — prompt to close it or
+    // hand the register to another cashier first (parity with /pos/touch).
+    if (shift) { setShowHandover(true); return }
     await signOut()
     router.push('/login')
   }
+
+  // "Close shift & sign out" → open the existing end-shift reconcile flow. After the
+  // drawer is counted and the shift closes, the next sign-out goes straight through.
+  function handleCloseShiftFromHandover() {
+    setShowHandover(false)
+    pendingSignOutRef.current = true
+    closedOkRef.current = false
+    setShowEndShift(true)
+  }
+
+  const isAdmin = ['OWNER', 'ADMIN'].includes(subRole)
+  const displayDate = dateOverride ?? serverTime
+  const customerLabel = selectedCustomer?.debtor_name ?? customer?.whatsapp ?? 'Walk-in Customer'
 
   return (
     <div className="flex flex-col h-screen bg-background select-none">
@@ -285,11 +479,80 @@ export default function KeyboardPosPage() {
             <p className="text-sm font-serif font-bold leading-none truncate">{entity.name}</p>
             <p className="text-[10px] text-muted-foreground">{user?.email}</p>
           </div>
-          {customer?.whatsapp && (
-            <span className="text-xs text-emerald-600 font-medium border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 rounded-full">
-              {customer.whatsapp}
-            </span>
-          )}
+          <button
+            onClick={() => setShowCustomerPanel(true)}
+            title="Select customer (F6)"
+            className={`text-xs font-medium border px-2 py-0.5 rounded-full shrink-0 truncate max-w-[160px] ${
+              selectedCustomer
+                ? 'text-emerald-600 border-emerald-500/30 bg-emerald-500/10'
+                : 'text-muted-foreground border-border bg-muted/40 hover:bg-muted'
+            }`}
+          >
+            {customerLabel}
+          </button>
+          <button
+            onDoubleClick={() => setShowInvoiceSearch(true)}
+            title="Next invoice number — double-click to search past invoices"
+            className="hidden md:inline text-[11px] font-mono text-muted-foreground border border-border bg-muted/30 px-2 py-0.5 rounded-full shrink-0 cursor-pointer hover:bg-muted"
+          >
+            Inv: {nextInvoiceNo ?? '—'}
+          </button>
+          <span
+            title={`Active price list: ${priceListMode} — F7 / Alt+A to cycle`}
+            className={`hidden md:inline text-[10px] font-semibold uppercase tracking-wide border px-2 py-0.5 rounded-full shrink-0 ${
+              priceListMode === 'RETAIL' ? 'text-muted-foreground border-border bg-muted/30'
+                : priceListMode === 'WHOLESALE' ? 'text-gold border-gold/30 bg-gold/10'
+                : 'text-emerald-600 border-emerald-500/30 bg-emerald-500/10'
+            }`}
+          >
+            {priceListMode === 'DISTRIBUTOR' ? 'DISTR.' : priceListMode === 'WHOLESALE' ? 'WSALE' : 'RETAIL'}
+          </span>
+          <button
+            onClick={() => setShowSalesPerson(true)}
+            title="Sales person (F8)"
+            className="hidden md:inline text-[10px] font-medium border border-border bg-muted/30 px-2 py-0.5 rounded-full shrink-0 truncate max-w-[120px] hover:bg-muted"
+          >
+            {salesPersonName ?? 'Salesperson'}
+          </button>
+          <div className="relative shrink-0">
+            <button
+              onClick={() => isAdmin && setShowDateOverride(v => !v)}
+              title={isAdmin ? 'Invoice date — click to override (admin)' : 'Invoice date (server time)'}
+              className={`text-[11px] tabular-nums border bg-muted/30 px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${
+                isAdmin ? 'text-foreground border-border hover:bg-muted cursor-pointer' : 'text-muted-foreground border-border cursor-default'
+              } ${dateOverride ? 'ring-1 ring-primary' : ''}`}
+            >
+              <Calendar className="h-3 w-3" />
+              {displayDate ? new Date(displayDate).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '—'}
+            </button>
+            {showDateOverride && isAdmin && (
+              <div className="absolute right-0 top-full mt-1 z-50 bg-background border border-border rounded-lg shadow-lg p-3 w-64">
+                <p className="text-xs font-medium mb-2">Override invoice date</p>
+                <input
+                  type="datetime-local"
+                  value={dateOverrideDraft}
+                  onChange={e => setDateOverrideDraft(e.target.value)}
+                  className="w-full h-9 px-2 rounded border border-border bg-background text-sm"
+                />
+                <div className="flex gap-2 mt-2">
+                  <Button
+                    className="flex-1 h-8 text-xs"
+                    disabled={!dateOverrideDraft}
+                    onClick={() => {
+                      const d = new Date(dateOverrideDraft)
+                      if (!Number.isNaN(d.getTime())) { setDateOverride(d.toISOString()); setShowDateOverride(false) }
+                    }}
+                  >Apply</Button>
+                  <Button
+                    variant="outline"
+                    className="h-8 text-xs"
+                    onClick={() => { setDateOverride(null); setDateOverrideDraft(''); setShowDateOverride(false) }}
+                  >Reset</Button>
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-2">Applies to the next sale only.</p>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
@@ -333,12 +596,25 @@ export default function KeyboardPosPage() {
           <Button
             variant="ghost"
             size="icon-sm"
-            title="Switch to Touch Mode [F9]"
+            title="Switch to Touch Mode"
             onClick={switchToTouch}
             className="text-muted-foreground hover:text-foreground"
           >
             <Hand className="h-4 w-4" />
           </Button>
+          {['MANAGER', 'OWNER', 'ADMIN'].includes(subRole) && (
+            <div className="flex items-center gap-0.5 mr-1">
+              <Button variant="ghost" size="icon-sm" title="Cash In/Out [Ctrl+Shift+X]" onClick={() => setShowCashAdj(true)} className="text-muted-foreground hover:text-foreground">
+                <Wallet className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon-sm" title="Z-Report [Ctrl+Shift+Z]" onClick={() => setShowZReport(true)} className="text-muted-foreground hover:text-foreground">
+                <ClipboardList className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon-sm" title="Shift history" onClick={() => router.push('/pos/shifts')} className="text-muted-foreground hover:text-foreground">
+                <Clock className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
           <ShiftStatusBadge shift={shift} onStart={() => setShowStartShift(true)} onEnd={() => setShowEndShift(true)} />
           <Button variant="ghost" size="icon-sm" onClick={handleSignOut} title="Sign out">
             <LogOut className="h-4 w-4" />
@@ -381,7 +657,7 @@ export default function KeyboardPosPage() {
                   )}
                 </button>
                 <button
-                  onClick={() => cancelCart(i)}
+                  onClick={() => handleCancelCart(i)}
                   className="ml-0.5 text-muted-foreground hover:text-tibetan transition-colors"
                   title="Cancel cart"
                 >
@@ -455,8 +731,41 @@ export default function KeyboardPosPage() {
       {showEndShift && shift && (
         <EndShiftModal
           shift={shift}
-          onClose={() => setShowEndShift(false)}
-          onEndShift={closeShift}
+          onClose={() => {
+            setShowEndShift(false)
+            if (pendingSignOutRef.current && closedOkRef.current) {
+              pendingSignOutRef.current = false
+              signOut().then(() => router.push('/login'))
+            } else {
+              pendingSignOutRef.current = false
+            }
+          }}
+          onEndShift={closeShiftAndTrack}
+        />
+      )}
+
+      {showCashAdj && (
+        <CashAdjustmentModal shift={shift} onClose={() => setShowCashAdj(false)} />
+      )}
+
+      {showZReport && (
+        <ZReportModal onClose={() => setShowZReport(false)} />
+      )}
+
+      <HandoverModal
+        open={showHandover}
+        currentUserId={user?.id}
+        onCloseShift={handleCloseShiftFromHandover}
+        onClose={() => setShowHandover(false)}
+      />
+
+      {showReceipt && receiptOrder && (
+        <ReceiptPreviewModal
+          order={receiptOrder}
+          entity={entity}
+          items={receiptItems}
+          onNewSale={() => { setShowReceipt(false); setLastOrderNo(null) }}
+          onClose={() => setShowReceipt(false)}
         />
       )}
 
@@ -469,6 +778,90 @@ export default function KeyboardPosPage() {
             setShowDiscount(false)
           }}
         />
+      )}
+
+      {showBillDiscount && items.length > 0 && (
+        <BillDiscountModal
+          items={items}
+          onClose={() => setShowBillDiscount(false)}
+          onApply={(discount) => {
+            items.forEach(it => applyDiscount(it.id, discount))
+            setShowBillDiscount(false)
+          }}
+        />
+      )}
+
+      {showCustomerPanel && (
+        <CustomerPanelModal
+          accounts={accounts}
+          selectedPhone={selectedCustomer?.debtor_phone ?? customer?.whatsapp ?? null}
+          onClose={() => setShowCustomerPanel(false)}
+          onSelect={(account) => {
+            if (account) {
+              setCustomerIdentity({ whatsapp: account.debtor_phone, buyerHash: null })
+              setSelectedCustomer(account)
+            } else {
+              setCustomerIdentity({ whatsapp: null, buyerHash: null })
+              setSelectedCustomer(null)
+            }
+            setShowCustomerPanel(false)
+          }}
+        />
+      )}
+
+      {showInvoiceSearch && (
+        <InvoiceSearchModal onClose={() => setShowInvoiceSearch(false)} />
+      )}
+
+      {showSalesPerson && (
+        <SalespersonPickerModal
+          selectedId={salesPersonId}
+          onClose={() => setShowSalesPerson(false)}
+          onSelect={(id, name) => { setSalesPersonId(id); setSalesPersonName(name); setShowSalesPerson(false); showToast(`Salesperson: ${name}`) }}
+        />
+      )}
+
+      {showQuotation && (
+        <QuotationConfirmModal
+          itemCount={items.length}
+          grandTotal={grandTotal}
+          onClose={() => setShowQuotation(false)}
+          onConfirm={saveQuotation}
+        />
+      )}
+
+      {showComp && items.length > 0 && (
+        <ComplimentaryConfirmModal
+          onClose={() => setShowComp(false)}
+          onConfirm={(reason) => {
+            items.forEach(it => applyDiscount(it.id, { type: 'PERCENTAGE', value: 100 }))
+            setShowComp(false)
+            showToast(reason ? `Marked complimentary — ${reason}` : 'Marked complimentary')
+          }}
+        />
+      )}
+
+      {showExchange && (
+        <ExchangeModal userId={user?.id} onToast={showToast} onClose={() => setShowExchange(false)} />
+      )}
+
+      {showMarket && items.length > 0 && (
+        <PostMarketModal items={items} onClose={() => setShowMarket(false)} onDone={(m) => showToast(m)} />
+      )}
+
+      {showDelivery && (
+        <DeliveryAddressModal
+          initialAddress={deliveryAddress}
+          onClose={() => setShowDelivery(false)}
+          onApply={(addr) => { setDeliveryAddress(addr); showToast('Delivery address attached') }}
+          onClear={() => { setDeliveryAddress(null); showToast('Delivery address cleared') }}
+        />
+      )}
+
+      {toastMsg && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[60] px-4 py-2 rounded-lg bg-foreground text-background text-sm shadow-lg pointer-events-none">
+          {toastMsg}
+        </div>
       )}
     </div>
   )

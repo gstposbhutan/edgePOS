@@ -39,6 +39,13 @@ export default function SettingsPage() {
     enabled: false,
   });
   const [printerStatus, setPrinterStatus] = useState<any>(null);
+  const [printers, setPrinters] = useState<{ name: string; displayName: string; isDefault: boolean }[]>([]);
+  const [printerForm, setPrinterForm] = useState({
+    printer_device_name: "",
+    printer_paper_width: 80,
+    printer_auto_print: false,
+    printer_copies: 1,
+  });
   // Per-terminal label settings (localStorage) — lazy init so it reads once, client-side.
   const [labelCfg, setLabelCfg] = useState<LabelConfig>(() => loadLabelConfig());
 
@@ -54,18 +61,31 @@ export default function SettingsPage() {
         gst_rate: settings.gst_rate || 5,
         store_entity_id: settings.store_entity_id || "",
       });
+      setPrinterForm({
+        printer_device_name: settings.printer_device_name || "",
+        printer_paper_width: settings.printer_paper_width || 80,
+        printer_auto_print: !!settings.printer_auto_print,
+        printer_copies: settings.printer_copies || 1,
+      });
     }
   }, [settings]);
 
   useEffect(() => {
     if (isElectron && api) {
-      api.printer.getStatus().then(setPrinterStatus);
+      api.printer.list().then(setPrinters);
       api.pb.getUrl().then(setPbUrl);
       api.sync.getStatus().then((s: any) => {
         if (s.config) setSyncConfig(s.config);
       });
     }
   }, [isElectron, api]);
+
+  // Printer status depends on the configured device — re-check when settings load/change.
+  useEffect(() => {
+    if (isElectron && api && settings) {
+      api.printer.getStatus(settings).then(setPrinterStatus);
+    }
+  }, [isElectron, api, settings]);
 
   const handleSave = async () => {
     const result = await updateSettings(form);
@@ -76,9 +96,20 @@ export default function SettingsPage() {
     }
   };
 
+  const handleSavePrinter = async () => {
+    const result = await updateSettings(printerForm);
+    if (result.success) {
+      toast.success("Printer settings saved");
+      if (api) api.printer.getStatus(result.settings).then(setPrinterStatus);
+    } else {
+      toast.error(result.error);
+    }
+  };
+
   const handleTestPrinter = async () => {
     if (!api) return;
-    const result = await api.printer.test();
+    // Test with the current form + store details so it reflects unsaved tweaks.
+    const result = await api.printer.test({ ...settings, ...printerForm });
     if (result.success) toast.success("Test print sent");
     else toast.error(result.error);
   };
@@ -275,7 +306,10 @@ export default function SettingsPage() {
                 Thermal Printer
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Prints the receipt silently to a printer installed on this computer (Windows driver). Leave the printer on &quot;System default&quot; to use the OS default.
+              </p>
               <div className="flex items-center justify-between">
                 <span className="text-sm">Status</span>
                 <Badge variant={printerStatus?.connected ? "default" : "destructive"}>
@@ -285,9 +319,63 @@ export default function SettingsPage() {
               {printerStatus?.name && (
                 <p className="text-xs text-muted-foreground">{printerStatus.name}</p>
               )}
-              <Button variant="outline" size="sm" onClick={handleTestPrinter} disabled={!printerStatus?.connected}>
-                Test Print
-              </Button>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5 sm:col-span-2">
+                  <label className="text-sm font-medium">Printer</label>
+                  <select
+                    value={printerForm.printer_device_name}
+                    onChange={(e) => setPrinterForm({ ...printerForm, printer_device_name: e.target.value })}
+                    className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring"
+                  >
+                    <option value="">System default</option>
+                    {printers.map((p) => (
+                      <option key={p.name} value={p.name}>
+                        {p.displayName}{p.isDefault ? " (default)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Paper width</label>
+                  <select
+                    value={printerForm.printer_paper_width}
+                    onChange={(e) => setPrinterForm({ ...printerForm, printer_paper_width: parseInt(e.target.value) || 80 })}
+                    className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring"
+                  >
+                    <option value={58}>58 mm</option>
+                    <option value={80}>80 mm</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Copies</label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={printerForm.printer_copies}
+                    onChange={(e) => setPrinterForm({ ...printerForm, printer_copies: parseInt(e.target.value) || 1 })}
+                  />
+                </div>
+              </div>
+
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-primary"
+                  checked={printerForm.printer_auto_print}
+                  onChange={(e) => setPrinterForm({ ...printerForm, printer_auto_print: e.target.checked })}
+                />
+                Auto-print receipt after each sale
+              </label>
+
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={handleTestPrinter}>
+                  Test Print
+                </Button>
+                <Button size="sm" onClick={handleSavePrinter}>
+                  <Save className="h-4 w-4 mr-1" /> Save printer
+                </Button>
+              </div>
             </CardContent>
           </Card>
         )}

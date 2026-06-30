@@ -84,7 +84,6 @@ export function CartTable({ items, onUpdateQty, onRemoveItem, selectedRow, onSel
             <th className="text-left px-4 py-2 w-8">#</th>
             <th className="text-center px-2 py-2 w-20">Qty</th>
             <th className="text-left px-4 py-2">Product</th>
-            <th className="text-left px-4 py-2 w-32">Batch</th>
             <th className="text-right px-4 py-2 w-20">Stock</th>
             <th className="text-right px-4 py-2 w-28">Unit Price</th>
             <th className="text-right px-4 py-2 w-24">Discount</th>
@@ -96,7 +95,25 @@ export function CartTable({ items, onUpdateQty, onRemoveItem, selectedRow, onSel
           {items.map((item, i) => {
             const isSelected = selectedRow === i
             const isEditing  = editingRow  === i
-            const total = parseFloat(item.total ?? (item.unit_price * item.quantity * 1.05))
+            const unitPrice = parseFloat(item.unit_price)
+            const discount  = parseFloat(item.discount ?? 0)
+            const finalRate = Math.max(0, unitPrice - discount)             // post-discount unit price (Final Rate)
+            const total     = parseFloat(item.total ?? (finalRate * item.quantity * 1.05))
+
+            // Sub-text under the product name: sku · batch no (trailing 10) · expiry.
+            const batchNumber  = item.batch?.batch_number ?? item.batch_number
+            const stock        = item.available_stock != null
+              ? item.available_stock
+              : (item.batch?.available_qty != null ? item.batch.available_qty : null)
+            const batchTrailing = batchNumber
+              ? (batchNumber.length > 10 ? '…' + batchNumber.slice(-10) : batchNumber)
+              : null
+            const expiresAt    = item.batch?.expires_at ?? item.expires_at
+            const subParts = [
+              item.sku,
+              batchTrailing,
+              expiresAt ? `exp ${new Date(expiresAt).toLocaleDateString()}` : null,
+            ].filter(Boolean)
 
             return (
               <tr
@@ -138,24 +155,20 @@ export function CartTable({ items, onUpdateQty, onRemoveItem, selectedRow, onSel
                 </td>
                 <td className="px-4 py-2.5">
                   <p className="truncate max-w-xs">{item.name}</p>
-                  <p className="text-[10px] text-muted-foreground font-mono">{item.sku}</p>
+                  <p className="text-[10px] font-mono text-muted-foreground">
+                    {subParts.length ? subParts.join(' · ') : '—'}
+                  </p>
                 </td>
-                <td className="px-4 py-2.5 text-xs">
-                  {(item.batch?.batch_number ?? item.batch_number)
-                    ? <>
-                        <p className="text-blue-600 font-medium">{item.batch?.batch_number ?? item.batch_number}</p>
-                        {(item.batch?.expires_at ?? item.expires_at) && (
-                          <p className="text-[10px] text-muted-foreground">exp {new Date(item.batch?.expires_at ?? item.expires_at).toLocaleDateString()}</p>
-                        )}
-                      </>
-                    : <span className="text-muted-foreground">—</span>
-                  }
-                </td>
-                <td className="px-4 py-2.5 text-right tabular-nums text-xs text-muted-foreground/60">
-                  {item.available_stock != null ? item.available_stock : (item.batch?.available_qty != null ? item.batch.available_qty : '—')}
+                <td className="px-4 py-2.5 text-right tabular-nums text-xs font-bold">
+                  {stock != null ? stock : '—'}
                 </td>
                 <td className="px-4 py-2.5 text-right tabular-nums">
-                  Nu. {parseFloat(item.unit_price).toFixed(2)}
+                  <span className={discount > 0 ? 'line-through text-muted-foreground/60 text-xs' : ''}>
+                    Nu. {unitPrice.toFixed(2)}
+                  </span>
+                  {discount > 0 && (
+                    <span className="block text-emerald-600 font-medium">→ Nu. {finalRate.toFixed(2)}</span>
+                  )}
                 </td>
                 <td className="px-4 py-2.5 text-right tabular-nums">
                   {parseFloat(item.discount) > 0 ? (

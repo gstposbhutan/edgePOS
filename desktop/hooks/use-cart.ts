@@ -1,10 +1,13 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { getPB, PB_REQ } from "@/lib/pb-client";
 import { calcItemTotals, calcCartTotals } from "@/lib/gst";
 import { CART_STATUS } from "@/lib/constants";
 import { usePosStore } from "@/stores/pos-store";
+import { priceFor } from "@/lib/price-list";
+import { toast } from "sonner";
+import type { PriceListMode } from "@/lib/price-list";
 import type { Product } from "./use-products";
 
 export interface CartItem {
@@ -31,6 +34,19 @@ function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : "Operation failed";
 }
 
+// Resolve the live current_stock for a product id. Reads the shared ["products"]
+// query cache first (kept fresh by the realtime subscription in useProducts), and
+// falls back to the cart item's expanded product if the id isn't in cache. Returns
+// null/undefined when the product can't be found or doesn't track stock — callers
+// treat that as "untracked" and skip the cap.
+function resolveStock(qc: QueryClient, productId: string, fallback?: Product): number | null {
+  const products = qc.getQueryData<Product[]>(["products"]);
+  const live = products?.find((p) => p.id === productId);
+  const stock = live ? live.current_stock : fallback?.current_stock;
+  // Only a real number is a tracked cap; anything else is "untracked" (no cap).
+  return typeof stock === "number" ? stock : null;
+}
+
 async function fetchActiveCart(): Promise<Cart> {
   const pb = getPB();
   if (!pb.authStore.isValid) throw new Error("Not authenticated");
@@ -54,7 +70,7 @@ async function fetchCartItems(cartId: string): Promise<CartItem[]> {
   });
 }
 
-export function useCart() {
+export function useCart(priceListMode: PriceListMode = "RETAIL") {
   const pb = getPB();
   const queryClient = useQueryClient();
   const taxExempt = usePosStore((s) => s.taxExempt);
@@ -93,7 +109,7 @@ export function useCart() {
   const addItemMutation = useMutation({
     mutationFn: async ({ product, weight }: { product: Product; weight?: number }): Promise<CartItem> => {
       if (!cart) throw new Error("No active cart");
-      const unitPrice = product.sale_price || product.mrp || 0;
+      const unitPrice = priceFor(product, priceListMode);
       // Weighed goods: `weight` is the measured quantity (in product.unit) and unitPrice is
       // the per-unit rate → total = weight × rate. Each weighing is a distinct line, so we
       // don't merge with an existing row (unlike discrete items, which increment qty).
@@ -103,7 +119,14 @@ export function useCart() {
         const current = queryClient.getQueryData<CartItem[]>(["cart-items", cartId]) ?? [];
         const existing = current.find((i) => i.product === product.id);
         if (existing) {
-          const newQty = existing.quantity + 1;
+          // Hard cap: never increment past current_stock. If the line is already at
+          // (or over) the cap, hold it there and let the cashier know. Untracked
+          // stock (null/undefined) increments freely, as before.
+          const stock = resolveStock(queryClient, product.id, product);
+          const wanted = existing.quantity + 1;
+          const newQty = typeof stock === "number" ? Math.min(wanted, Math.max(1, stock)) : wanted;
+          if (newQty < wanted) toast.error(`Only ${stock} in stock`);
+          if (newQty === existing.quantity) return existing; // already at the cap — nothing to write
           const { gstAmount, total } = calcItemTotals({
             unitPrice: existing.unit_price, discount: existing.discount, quantity: newQty,
           });
@@ -157,10 +180,20 @@ export function useCart() {
       const current = queryClient.getQueryData<CartItem[]>(["cart-items", cartId]) ?? [];
       const item = current.find((i) => i.id === itemId);
       if (!item) throw new Error("Item not found");
+      // Hard cap: a line can never exceed the product's current_stock. Stock-tracked
+      // items clamp to the max (and toast); untracked products (stock null/undefined)
+      // pass through unchanged. This is the single chokepoint for the +/- buttons and
+      // the qty-numpad commit, so the cap holds no matter how the qty was entered.
+      const stock = resolveStock(queryClient, item.product, item.expand?.product);
+      let qty = newQty;
+      if (typeof stock === "number" && newQty > stock) {
+        qty = Math.max(1, stock);
+        toast.error(`Only ${stock} in stock`);
+      }
       const { gstAmount, total } = calcItemTotals({
-        unitPrice: item.unit_price, discount: item.discount, quantity: newQty,
+        unitPrice: item.unit_price, discount: item.discount, quantity: qty,
       });
-      await pb.collection("cart_items").update(itemId, { quantity: newQty, gst_5: gstAmount, total }, PB_REQ);
+      await pb.collection("cart_items").update(itemId, { quantity: qty, gst_5: gstAmount, total }, PB_REQ);
       return null;
     },
     onSuccess: () => refetchItems(),

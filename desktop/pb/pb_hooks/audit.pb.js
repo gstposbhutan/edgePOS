@@ -128,6 +128,41 @@ onRecordUpdateRequest((e) => {
   }
 }, "settings");
 
+// Cashier handover → audit_logs. A handover swaps the logged-in cashier on an open
+// shift WITHOUT mutating the shift record (it stays open, opened_by unchanged), so no
+// model hook fires. The POS posts here right after a successful authWithPassword to
+// record who handed over to whom. By that point the token is already the INCOMING
+// cashier (it authorizes the call); the outgoing cashier is captured client-side
+// before the switch and passed in the body. audit_logs is append-only over the normal
+// API (createRule:null), so the write goes through the rule-bypassing $app.save().
+routerAdd("POST", "/api/custom/handover-audit", (e) => {
+  const auth = e.auth;
+  if (!auth) return e.json(401, { error: "auth required" });
+
+  const body = e.requestInfo().body || {};
+  try {
+    const rec = new Record($app.findCollectionByNameOrId("audit_logs"));
+    rec.set("table_name", "shifts");
+    rec.set("record_id", String(body.shift_id || ""));
+    rec.set("operation", "UPDATE");
+    rec.set("old_values", {
+      cashier_id: String(body.from_user_id || ""),
+      cashier_name: String(body.from_user_name || ""),
+    });
+    rec.set("new_values", {
+      cashier_id: auth.id,
+      cashier_name: String(auth.get("name") || ""),
+      action: "HANDOVER",
+    });
+    rec.set("actor_id", auth.id);
+    rec.set("actor_role", String(auth.get("role") || ""));
+    $app.save(rec);
+  } catch (err) {
+    $app.logger().error("audit_logs write failed", "table", "shifts(handover)", "err", String(err));
+  }
+  return e.json(200, { ok: true });
+}, $apis.requireAuth());
+
 // 7. Discounted sales → audit_logs (P1-6: line-item discount accountability).
 //    Logs the discounted lines of a new order so a manager can review who gave
 //    what discount. The stored discount is the per-unit flat amount.

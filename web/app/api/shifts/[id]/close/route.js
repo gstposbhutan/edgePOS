@@ -26,7 +26,9 @@ export async function POST(request, { params }) {
   if (shift.entity_id !== entityId) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
   if (shift.status === 'CLOSED') return NextResponse.json({ error: 'Shift already closed' }, { status: 409 })
 
-  // Calculate expected total from cash transactions only
+  // Calculate expected total: opening float + CASH sales − CASH refunds + cash in − cash out.
+  // Matches the desktop close math (desktop/hooks/use-shifts.ts) so a terminal and the
+  // web reconcile the same drawer figure. Only CASH refunds leave the drawer.
   const { data: txns } = await supabase
     .from('shift_transactions')
     .select('transaction_type, payment_method, amount')
@@ -45,7 +47,21 @@ export async function POST(request, { params }) {
     }
   }
 
-  const expected_total = parseFloat(shift.opening_float) + cash_sales - cash_refunds
+  // Cash drawer adjustments (cash in/out) recorded against this shift.
+  const { data: adjs } = await supabase
+    .from('cash_adjustments')
+    .select('type, amount')
+    .eq('shift_id', id)
+
+  let total_cash_in = 0
+  let total_cash_out = 0
+  for (const a of adjs || []) {
+    if (a.type === 'CASH_IN') total_cash_in += parseFloat(a.amount)
+    else total_cash_out += parseFloat(a.amount)
+  }
+
+  const expected_total =
+    parseFloat(shift.opening_float) + cash_sales - cash_refunds + total_cash_in - total_cash_out
   const discrepancy = closing_count - expected_total
 
   let classification = 'BALANCED'
@@ -91,6 +107,10 @@ export async function POST(request, { params }) {
     response.discrepancy = discrepancy
     response.classification = classification
     response.total_transactions = total_transactions
+    response.cash_sales = cash_sales
+    response.cash_refunds = cash_refunds
+    response.total_cash_in = total_cash_in
+    response.total_cash_out = total_cash_out
   }
 
   return NextResponse.json(response)

@@ -2,13 +2,26 @@
 
 import { useState, useEffect, useCallback } from "react"
 
+// Remembers which register this browser opened a shift on, so the "current shift"
+// query stays register-scoped (multiple registers can be active at once → handover).
+const REGISTER_KEY = 'pos_active_register'
+
+function readActiveRegister() {
+  if (typeof window === 'undefined') return null
+  try { return window.localStorage.getItem(REGISTER_KEY) } catch { return null }
+}
+
 export function useShift() {
   const [shift, setShift] = useState(null)
   const [loading, setLoading] = useState(true)
 
   const fetchShift = useCallback(async () => {
     try {
-      const res = await fetch('/api/shifts')
+      const registerId = readActiveRegister()
+      const url = registerId
+        ? `/api/shifts?register_id=${encodeURIComponent(registerId)}`
+        : '/api/shifts'
+      const res = await fetch(url)
       if (res.ok) {
         const data = await res.json()
         setShift(data.shift)
@@ -29,6 +42,9 @@ export function useShift() {
     })
     const data = await res.json()
     if (res.ok) {
+      if (typeof window !== 'undefined') {
+        try { window.localStorage.setItem(REGISTER_KEY, register_id) } catch {}
+      }
       await fetchShift()
       return data.shift
     }
@@ -49,5 +65,23 @@ export function useShift() {
     throw new Error(data.error || 'Failed to close shift')
   }
 
-  return { shift, loading, fetchShift, openShift, closeShift }
+  // Live drawer reconciliation for an open shift (manager/owner). Returns null for a
+  // cashier (403) so the end-shift modal can stay blind.
+  async function getReconciliation(shiftId) {
+    const res = await fetch(`/api/shifts/${shiftId}/reconciliation`)
+    if (res.status === 403) return null
+    const data = await res.json()
+    if (res.ok) return data
+    throw new Error(data.error || 'Failed to load reconciliation')
+  }
+
+  // Daily Z-report (end-of-day aggregates) for a given YYYY-MM-DD.
+  async function getZReport(date) {
+    const res = await fetch(`/api/shifts/z-report?date=${encodeURIComponent(date)}`)
+    const data = await res.json()
+    if (res.ok) return data.report
+    throw new Error(data.error || 'Failed to load Z-report')
+  }
+
+  return { shift, loading, fetchShift, openShift, closeShift, getReconciliation, getZReport }
 }

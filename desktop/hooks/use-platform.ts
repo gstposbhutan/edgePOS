@@ -4,9 +4,10 @@ import { useState, useEffect } from "react";
 
 export interface ElectronAPI {
   printer: {
-    getStatus: () => Promise<{ connected: boolean; name: string }>;
+    list: () => Promise<{ name: string; displayName: string; isDefault: boolean }[]>;
+    getStatus: (settings: any) => Promise<{ connected: boolean; name: string }>;
     print: (order: any, settings: any) => Promise<{ success: boolean; error?: string }>;
-    test: () => Promise<{ success: boolean; error?: string }>;
+    test: (settings: any) => Promise<{ success: boolean; error?: string }>;
   };
   app: {
     getVersion: () => Promise<string>;

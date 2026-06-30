@@ -10,6 +10,40 @@ const ITEM_SELECT = `
   )
 `
 
+// Available stock for a cart line, matching the values surfaced as
+// `available_stock`/`batch.available_qty` elsewhere in the POS:
+//   • batch line   → product_batches.quantity for that batch
+//   • package line → package_available_qty(package_id) (floored component stock)
+//   • plain product → products.current_stock
+// Returns a number when stock is tracked, or null when it isn't (no clamp).
+async function availableStockFor(supabase, { productId, batchId, packageId }) {
+  if (batchId) {
+    const { data } = await supabase
+      .from('product_batches')
+      .select('quantity')
+      .eq('id', batchId)
+      .single()
+    return data?.quantity ?? null
+  }
+
+  if (packageId) {
+    const { data, error } = await supabase.rpc('package_available_qty', { p_package_id: packageId })
+    if (error) return null
+    return typeof data === 'number' ? data : null
+  }
+
+  if (productId) {
+    const { data } = await supabase
+      .from('products')
+      .select('current_stock')
+      .eq('id', productId)
+      .single()
+    return data?.current_stock ?? null
+  }
+
+  return null
+}
+
 export async function POST(request) {
   const ctx = await getAuthContext()
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -21,11 +55,14 @@ export async function POST(request) {
   // Add item
   if (action === 'add' || !action) {
     const { cartId, product } = body
-    const unitPrice = parseFloat(product.selling_price ?? product.mrp ?? product.wholesale_price ?? 0)
+    const unitPrice = parseFloat(product.unitPrice ?? product.selling_price ?? product.mrp ?? product.wholesale_price ?? 0)
     const batchId   = product.batch_id ?? null
     const packageId = product.package_def_id ?? null
 
-    // Dedup check handled by the hook — just insert
+    // Dedup check handled by the hook — just insert. A new line is always qty 1,
+    // so there's nothing to cap on add: a fully-out-of-stock product (tracked 0)
+    // is still added as 1 and caught by the checkout stock gate, same as before.
+    // Real over-stock entry comes through update_qty, which is clamped below.
     const taxable = Math.max(0, unitPrice - 0)
     const gst5  = parseFloat((taxable * 0.05 * 1).toFixed(2))
     const total = parseFloat(((taxable * 1.05) * 1).toFixed(2))
@@ -55,30 +92,40 @@ export async function POST(request) {
   // Update quantity
   if (action === 'update_qty') {
     const { itemId, quantity } = body
-    // Get current item for price calc
+    // Get current item for price calc + stock source (product/batch/package)
     const { data: item } = await supabase
       .from('cart_items')
-      .select('unit_price, discount')
+      .select('unit_price, discount, product_id, batch_id, package_id')
       .eq('id', itemId)
       .single()
 
     if (!item) return NextResponse.json({ error: 'Item not found' }, { status: 404 })
 
+    // Hard cap: a line can never carry more than the available stock. Untracked
+    // stock (null) is unaffected. Floor at 1 — dropping to zero is a remove.
+    const available = await availableStockFor(supabase, {
+      productId: item.product_id,
+      batchId:   item.batch_id,
+      packageId: item.package_id,
+    })
+    const stockCapped = available != null && quantity > available
+    const finalQty    = stockCapped ? Math.max(1, available) : quantity
+
     const unitPrice = parseFloat(item.unit_price)
     const discount  = parseFloat(item.discount ?? 0)
     const taxable   = Math.max(0, unitPrice - discount)
-    const gst5    = parseFloat((taxable * 0.05 * quantity).toFixed(2))
-    const total   = parseFloat(((taxable * 1.05) * quantity).toFixed(2))
+    const gst5    = parseFloat((taxable * 0.05 * finalQty).toFixed(2))
+    const total   = parseFloat(((taxable * 1.05) * finalQty).toFixed(2))
 
     const { data, error } = await supabase
       .from('cart_items')
-      .update({ quantity, gst_5: gst5, total })
+      .update({ quantity: finalQty, gst_5: gst5, total })
       .eq('id', itemId)
       .select(ITEM_SELECT)
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ item: data })
+    return NextResponse.json({ item: data, stockCapped, available: stockCapped ? available : null })
   }
 
   // Apply discount

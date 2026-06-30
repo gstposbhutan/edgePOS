@@ -1,12 +1,13 @@
 "use client"
 
 import { useState } from "react"
-import { LogOut, RefreshCw, Wifi, Package, BookOpen, ClipboardList, Wallet, ShoppingBag, Keyboard, ChevronDown, Store, LayoutDashboard, ShoppingCart, Landmark, MonitorDown } from "lucide-react"
+import { LogOut, RefreshCw, Wifi, Package, BookOpen, ClipboardList, Wallet, ShoppingBag, Keyboard, ChevronDown, Store, LayoutDashboard, ShoppingCart, Landmark, MonitorDown, Banknote, ReceiptText, History } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Logo } from "@/components/ui/logo"
 import { FaceAuthBadge } from "./face-auth-badge"
 import { ShiftStatusBadge } from "./shift/shift-status-badge"
+import { HandoverModal } from "./handover-modal"
 import { signOut } from "@/lib/auth"
 import { useRouter } from "next/navigation"
 
@@ -14,15 +15,29 @@ import { useRouter } from "next/navigation"
  * @param {{ storeName: string, cashierName: string, customer: object|null, syncing: boolean,
  *   onEnrollFace: fn, onRestock: fn, userSubRole: string, faceCamera: ReactNode,
  *   ownedStores?: object[], onSwitchStore?: (entityId: string) => void,
- *   shift?: object|null, onStartShift?: fn, onEndShift?: fn }} props
+ *   shift?: object|null, currentUserId?: string|null, onStartShift?: fn, onEndShift?: fn,
+ *   onCashAdj?: fn, onZReport?: fn }} props
  */
-export function PosHeader({ storeName, cashierName, customer, syncing, onEnrollFace, onRestock, userSubRole, faceCamera, ownedStores = [], onSwitchStore, shift, onStartShift, onEndShift }) {
+export function PosHeader({ storeName, cashierName, customer, syncing, onEnrollFace, onRestock, userSubRole, faceCamera, ownedStores = [], onSwitchStore, shift, currentUserId, onCloseShiftAndSignOut, onStartShift, onEndShift, onCashAdj, onZReport }) {
   const router = useRouter()
   const [storeMenuOpen, setStoreMenuOpen] = useState(false)
+  const [showHandover, setShowHandover] = useState(false)
 
   async function handleSignOut() {
+    // An open shift can never be silently orphaned by a logout — prompt the cashier
+    // to close it or hand the register to a teammate first.
+    if (shift) { setShowHandover(true); return }
     await signOut()
     router.push('/login')
+  }
+
+  // "Close shift & sign out" → run the parent's end-shift flow. Prefer the
+  // sign-out-aware handler (parent counts the drawer, closes the shift, then signs
+  // out); fall back to a plain end-shift if a host doesn't provide it.
+  function handleCloseShift() {
+    setShowHandover(false)
+    if (onCloseShiftAndSignOut) onCloseShiftAndSignOut()
+    else onEndShift?.()
   }
 
   const isOwner = userSubRole === 'OWNER'
@@ -167,12 +182,37 @@ export function PosHeader({ storeName, cashierName, customer, syncing, onEnrollF
           <Keyboard className="h-4 w-4" />
         </Button>
 
+        {['MANAGER', 'OWNER', 'ADMIN'].includes(userSubRole) && (
+          <>
+            {onCashAdj && (
+              <Button variant="ghost" size="icon-sm" onClick={onCashAdj} title="Cash In/Out">
+                <Banknote className="h-4 w-4" />
+              </Button>
+            )}
+            {onZReport && (
+              <Button variant="ghost" size="icon-sm" onClick={onZReport} title="Z-Report">
+                <ReceiptText className="h-4 w-4" />
+              </Button>
+            )}
+            <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/shifts')} title="Shift history">
+              <History className="h-4 w-4" />
+            </Button>
+          </>
+        )}
+
         <ShiftStatusBadge shift={shift} onStart={onStartShift} onEnd={onEndShift} />
 
         <Button variant="ghost" size="icon-sm" onClick={handleSignOut} title="Sign out">
           <LogOut className="h-4 w-4" />
         </Button>
       </div>
+
+      <HandoverModal
+        open={showHandover}
+        currentUserId={currentUserId}
+        onCloseShift={handleCloseShift}
+        onClose={() => setShowHandover(false)}
+      />
     </header>
   )
 }

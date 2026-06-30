@@ -64,7 +64,14 @@ export function CartItemRow({
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{item.sku}</p>
           )}
           <p className="text-xs text-muted-foreground">
-            Nu. {item.unit_price.toFixed(2)} / unit
+            {item.discount > 0 ? (
+              <>
+                <span className="line-through opacity-60">Nu. {item.unit_price.toFixed(2)}</span>{" "}
+                <span className="text-emerald-600 font-medium">→ Nu. {(item.unit_price - item.discount).toFixed(2)} / unit</span>
+              </>
+            ) : (
+              <>Nu. {item.unit_price.toFixed(2)} / unit</>
+            )}
           </p>
         </div>
         <Button

@@ -15,6 +15,8 @@ function mapBatch(b) {
     unit:            b.products.unit,
     mrp:             b.mrp ?? b.products.mrp,
     selling_price:   b.selling_price ?? b.products.selling_price ?? b.mrp,
+    wholesale_price: b.products.wholesale_price,
+    distributor_price: b.products.distributor_price,
     available_stock: b.quantity,
     batch_id:        b.id,
     batch_number:    b.batch_number,
@@ -106,8 +108,8 @@ export function ProductSearchModal({ open, initialQuery = '', entityId, onAdd, o
     } else if (e.key === 'Enter') {
       e.preventDefault()
       if (results[selected]) handleAdd(results[selected])
-    } else if (/^[1-9]$/.test(e.key) && !e.ctrlKey && !e.altKey) {
-      const idx = parseInt(e.key, 10) - 1
+    } else if (/^F[1-9]$/.test(e.key)) {
+      const idx = parseInt(e.key.slice(1), 10) - 1   // F1 → row 0 … F9 → row 8
       if (results[idx]) {
         e.preventDefault()
         handleAdd(results[idx])
@@ -174,13 +176,15 @@ export function ProductSearchModal({ open, initialQuery = '', entityId, onAdd, o
                   }`}
                 >
                   <td className="px-2 py-3 text-center">
-                    <span className={`inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-bold border ${
-                      i === selected
-                        ? 'bg-primary text-primary-foreground border-primary'
-                        : 'bg-muted border-border text-muted-foreground'
-                    }`}>
-                      {i + 1}
-                    </span>
+                    {i < 9 && (
+                      <span className={`inline-flex items-center justify-center w-6 h-5 rounded text-[10px] font-bold border ${
+                        i === selected
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-muted border-border text-muted-foreground'
+                      }`}>
+                        {`F${i + 1}`}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <p className="font-medium">{product.name}</p>
@@ -194,7 +198,7 @@ export function ProductSearchModal({ open, initialQuery = '', entityId, onAdd, o
                       <p className="text-[10px] text-muted-foreground">exp {new Date(product.expires_at).toLocaleDateString()}</p>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-right text-muted-foreground tabular-nums">{product.available_stock}</td>
+                  <td className="px-4 py-3 text-right font-bold text-foreground tabular-nums">{product.available_stock}</td>
                   <td className="px-4 py-3 text-right">
                     <p className="font-semibold text-primary">Nu. {parseFloat(product.selling_price ?? product.mrp).toFixed(2)}</p>
                     {product.selling_price && product.mrp && parseFloat(product.selling_price) < parseFloat(product.mrp) && (
@@ -222,7 +226,7 @@ export function ProductSearchModal({ open, initialQuery = '', entityId, onAdd, o
         </div>
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
           <span>↑↓ navigate</span>
-          <span>1–9 add directly</span>
+          <span>F1–F9 add directly</span>
           <span>Enter add selected</span>
           <span>Esc close</span>
         </div>

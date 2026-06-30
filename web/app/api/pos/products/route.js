@@ -15,7 +15,21 @@ export async function GET(request) {
 
   const supabase = ctx.supabase
 
-  const selectFields = 'id, batch_number, expires_at, mrp, selling_price, quantity, products!inner(id, name, sku, unit, mrp, selling_price)'
+  const selectFields = 'id, batch_number, expires_at, mrp, selling_price, quantity, products!inner(id, name, sku, unit, mrp, selling_price, wholesale_price, distributor_price)'
+
+  // Price-ladder lookup for a set of product ids (used by the POS price-list
+  // re-pricer). Returns the product's mrp / wholesale / distributor so the cart
+  // can re-price existing lines when the active price list changes.
+  const ids = searchParams.get('ids') ?? ''
+  if (ids) {
+    const idList = ids.split(',').map(s => s.trim()).filter(Boolean)
+    const { data, error } = await supabase
+      .from('products')
+      .select('id, mrp, selling_price, wholesale_price, distributor_price')
+      .in('id', idList)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ products: data ?? [] })
+  }
 
   // Stock check: single product by ID
   if (productId) {

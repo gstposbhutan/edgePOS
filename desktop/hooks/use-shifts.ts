@@ -31,8 +31,16 @@ export interface Shift {
 
 async function fetchActiveShift(): Promise<Shift | null> {
   const pb = getPB();
+  // Scope to THIS terminal's register so handover (a shift opened by another
+  // cashier on this register) stays visible, and a pre-existing orphan is surfaced
+  // to be closed rather than silently dropped. First-run fallback (no register yet):
+  // the original status-only query.
+  const registerId = await getRegisterId();
+  const filter = registerId
+    ? `status = "active" && register_id = "${registerId}"`
+    : 'status = "active"';
   const records = await pb.collection("shifts").getFullList<Shift>({
-    filter: 'status = "active"',
+    filter,
     sort: "-opened_at",
     limit: 1,
     expand: "opened_by",
@@ -124,19 +132,38 @@ export function useShifts() {
 
   const openShiftMutation = useMutation({
     mutationFn: async ({ userId, openingFloat }: { userId: string; openingFloat: number }) => {
-      const stale = await pb.collection("shifts").getFullList<Shift>({ filter: 'status = "active"' });
-      for (const s of stale) {
-        await pb.collection("shifts").update(s.id, { status: "closed", closed_at: pbNow() }, PB_REQ);
-      }
       const registerId = await getRegisterId();
-      const record = await pb.collection("shifts").create({
-        opened_by: userId,
-        opening_float: openingFloat,
-        status: "active",
-        opened_at: pbNow(),
-        register_id: registerId || "",
-      }, PB_REQ);
-      return record as unknown as Shift;
+      // Reject (parity with web's 409) if this register already has a live shift —
+      // it must be handed over or closed, never silently force-closed. The partial
+      // unique index (011) is the atomic backstop for a concurrent open.
+      if (registerId) {
+        const existing = await pb.collection("shifts").getFullList<Shift>({
+          filter: `status = "active" && register_id = "${registerId}"`,
+          limit: 1,
+          requestKey: null,
+        });
+        if (existing.length > 0) {
+          throw new Error("A shift is already active on this register");
+        }
+      }
+      try {
+        const record = await pb.collection("shifts").create({
+          opened_by: userId,
+          opening_float: openingFloat,
+          status: "active",
+          opened_at: pbNow(),
+          register_id: registerId || "",
+        }, PB_REQ);
+        return record as unknown as Shift;
+      } catch (err: unknown) {
+        // PocketBase surfaces a partial-unique-index violation as a 400 referencing
+        // the index/"unique" — map it to the same friendly message as the pre-check.
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/unique|idx_shifts_one_active/i.test(msg)) {
+          throw new Error("A shift is already active on this register");
+        }
+        throw err;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["shifts"] });

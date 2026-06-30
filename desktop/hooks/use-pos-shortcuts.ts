@@ -3,13 +3,10 @@
 import { useCallback } from "react";
 import { useKeyboardRegistry } from "./use-keyboard-registry";
 import { toast } from "sonner";
-import { LAYOUT_PRESETS } from "@/lib/constants";
 import type { CartItem } from "./use-cart";
-import type { LayoutPreset } from "@/lib/constants";
 
 interface PosShortcutsInput {
   items: CartItem[];
-  lastOrder: any;
   showPayment: boolean;
   showHeldCarts: boolean;
   showCustomer: boolean;
@@ -17,7 +14,6 @@ interface PosShortcutsInput {
   setShowHeldCarts: (v: boolean) => void;
   showHelpToggle: () => void;
   setShowCustomer: (v: boolean) => void;
-  setShowReceipt: (v: boolean) => void;
   setSearchQuery: (q: string) => void;
   handleNewTransaction: () => void;
   handleHoldCart: () => void;
@@ -25,66 +21,102 @@ interface PosShortcutsInput {
   handleVoidLast: () => void;
   handleUndo: () => void;
   applyDiscount: (itemId: string, discount: number) => void;
-  removeItem: (itemId: string) => void;
-  setLayout: (preset: LayoutPreset) => void;
+  cyclePriceList: () => void;
+  isManager: boolean;
+  setShowSalesperson: (v: boolean) => void;
+  setShowComplimentary: (v: boolean) => void;
+  setShowExchange: (v: boolean) => void;
+  setShowPostMarket: (v: boolean) => void;
+  setShowQuotation: (v: boolean) => void;
+  setShowDeliveryAddress: (v: boolean) => void;
+  // Optional overrides — the listing (keyboard) layout routes F3 to its full-screen
+  // search modal and F9 to the cart-table inline qty edit. When omitted, F3 focuses
+  // the grid search box and F9 shows the change-qty hint (grid-mode default).
+  onFocusSearch?: () => void;
+  onChangeQty?: () => void;
 }
+
+/** Shortcut whose target feature ships in a later phase — shows a toast. */
+const stub = (msg: string) => (e: KeyboardEvent) => {
+  e.preventDefault();
+  toast(msg);
+};
 
 export function usePosShortcuts(input: PosShortcutsInput) {
   const { registerShortcut } = useKeyboardRegistry();
 
   const setup = useCallback(() => {
-    const unreg1 = registerShortcut("global", { key: "F1" }, () => { input.showHelpToggle(); });
-    const unreg2 = registerShortcut("global", { key: "F2" }, () => { input.handleNewTransaction(); });
-    const unreg3 = registerShortcut("global", { key: "F3" }, () => { input.handleHoldCart(); });
-    const unreg4 = registerShortcut("global", { key: "F4" }, () => { input.setShowHeldCarts(true); });
-    const unreg5 = registerShortcut("global", { key: "F5" }, () => { input.handleCheckout(); });
-    const unreg6 = registerShortcut("global", { key: "F6" }, () => {
-      if (input.lastOrder) input.setShowReceipt(true);
-      else toast("No receipt to print");
-    });
-    const unreg7 = registerShortcut("global", { key: "F7" }, () => { input.handleVoidLast(); });
-    const unreg8 = registerShortcut("global", { key: "F9" }, () => {
-      document.getElementById("pos-search")?.focus();
-    });
-    const unreg9 = registerShortcut("global", { key: "F10" }, () => {
+    // Grid-mode default: focus the in-grid search box. Listing mode overrides this
+    // (input.onFocusSearch) to open the full-screen product-search modal.
+    const focusSearch = () => input.onFocusSearch ? input.onFocusSearch() : document.getElementById("pos-search")?.focus();
+    // Ctrl+D — percentage bill discount applied to every line via the existing
+    // per-item applyDiscount (PERCENT converted to a per-unit flat amount).
+    const billDiscount = () => {
       if (input.items.length === 0) {
         toast("Cart is empty — add items first");
         return;
       }
-      const amt = prompt("Enter discount per unit (Nu.):");
-      if (amt !== null && input.items.length > 0) {
-        const discount = parseFloat(amt) || 0;
-        input.applyDiscount(input.items[input.items.length - 1].id, discount);
-        toast.success(`Discount set: Nu. ${discount.toFixed(2)}`);
-      }
-    });
-    const unreg10 = registerShortcut("global", { key: "F11" }, () => {
-      if (document.fullscreenElement) {
-        document.exitFullscreen();
-      } else {
-        document.documentElement.requestFullscreen();
-      }
-    });
-    const unreg11 = registerShortcut("global", { key: "Escape" }, () => {
-      if (input.showPayment) input.setShowPayment(false);
-      else if (input.showHeldCarts) input.setShowHeldCarts(false);
-      else if (input.showCustomer) input.setShowCustomer(false);
-      else input.setSearchQuery("");
-    });
-    const unreg12 = registerShortcut("global", { key: "Tab" }, () => {
-      // Toggle handled externally
-    });
-    const unreg13 = registerShortcut("global", { key: "z", ctrl: true }, () => { input.handleUndo(); });
-    const unreg14 = registerShortcut("global", { key: "Delete" }, () => {
-      if (input.items.length > 0) input.removeItem(input.items[input.items.length - 1].id);
-    });
-    const unreg15 = registerShortcut("global", { key: "c", ctrl: true, shift: false }, () => { input.setLayout(LAYOUT_PRESETS.COMPACT); });
-    const unreg16 = registerShortcut("global", { key: "s", ctrl: true }, () => { input.setLayout(LAYOUT_PRESETS.STANDARD); });
-
-    return () => {
-      unreg1(); unreg2(); unreg3(); unreg4(); unreg5(); unreg6(); unreg7(); unreg8();
-      unreg9(); unreg10(); unreg11(); unreg12(); unreg13(); unreg14(); unreg15(); unreg16();
+      const raw = window.prompt("Bill discount (%) — applies to all lines:");
+      if (raw === null) return;
+      const pct = Math.min(100, Math.max(0, parseFloat(raw) || 0));
+      if (pct <= 0) return;
+      input.items.forEach((it) => {
+        const perUnit = parseFloat(((it.unit_price * pct) / 100).toFixed(2));
+        input.applyDiscount(it.id, perUnit);
+      });
+      toast.success(`Bill discount ${pct}% applied to ${input.items.length} item(s)`);
     };
+
+    // --- Function keys (canonical Pelbu map) ---
+    const unregs = [
+      registerShortcut("global", { key: "F1" }, () => input.showHelpToggle()),
+      registerShortcut("global", { key: "F2" }, () => input.handleNewTransaction()),
+      registerShortcut("global", { key: "F3" }, focusSearch),                          // Search
+      registerShortcut("global", { key: "F4" }, () => input.handleHoldCart()),         // New Cart (hold current)
+      registerShortcut("global", { key: "F5" }, () => input.setShowHeldCarts(true)),   // Previous Cart (recall held)
+      registerShortcut("global", { key: "F6" }, () => input.setShowCustomer(true)),    // Customer
+      registerShortcut("global", { key: "F7" }, () => input.cyclePriceList()),                       // Price list
+      registerShortcut("global", { key: "F8" }, () => input.setShowSalesperson(true)),                 // Sales person
+      registerShortcut("global", { key: "F9" }, (e) => {
+        // Listing mode: edit qty on the selected cart row. Grid mode has no row
+        // selection, so fall back to the change-qty hint.
+        if (input.onChangeQty) { e.preventDefault(); input.onChangeQty(); }
+        else stub("Change qty — tap +/- or # on any line")(e);
+      }),
+      registerShortcut("global", { key: "F10" }, () => input.handleCheckout()),        // Tender
+      registerShortcut("global", { key: "F11" }, () => {                               // fullscreen (utility, kept)
+        if (document.fullscreenElement) document.exitFullscreen();
+        else document.documentElement.requestFullscreen();
+      }),
+      registerShortcut("global", { key: "Escape" }, () => {
+        if (input.showPayment) input.setShowPayment(false);
+        else if (input.showHeldCarts) input.setShowHeldCarts(false);
+        else if (input.showCustomer) input.setShowCustomer(false);
+        else input.setSearchQuery("");
+      }),
+      registerShortcut("global", { key: "Tab" }, () => { /* panel toggle handled externally */ }),
+      registerShortcut("global", { key: "z", ctrl: true }, () => input.handleUndo()),
+      registerShortcut("global", { key: "Delete" }, () => input.handleVoidLast()),  // Remove last (toast + undo)
+
+      // --- Ctrl modifiers ---
+      registerShortcut("global", { key: "a", ctrl: true }, (e) => { e.preventDefault(); focusSearch(); }),    // Add
+      registerShortcut("global", { key: "r", ctrl: true }, (e) => { e.preventDefault(); input.handleVoidLast(); }),     // Remove last (toast + undo)
+      registerShortcut("global", { key: "d", ctrl: true }, (e) => { e.preventDefault(); billDiscount(); }),   // Bill discount (all lines)
+      registerShortcut("global", { key: "c", ctrl: true }, (e) => {
+        e.preventDefault();
+        if (!input.isManager) { toast("Complimentary is manager-only"); return; }
+        input.setShowComplimentary(true);
+      }),                                                                                              // Complimentary (manager)
+      registerShortcut("global", { key: "e", ctrl: true }, (e) => { e.preventDefault(); input.setShowExchange(true); }),                  // Exchange / return
+
+      // --- Alt modifiers (all stubs) ---
+      registerShortcut("global", { key: "a", alt: true }, (e) => { e.preventDefault(); input.cyclePriceList(); }),  // Price list
+      registerShortcut("global", { key: "m", alt: true }, (e) => { e.preventDefault(); input.setShowPostMarket(true); }),                  // Post to market
+      registerShortcut("global", { key: "q", alt: true }, (e) => { e.preventDefault(); input.setShowQuotation(true); }),                   // Save as quotation
+      registerShortcut("global", { key: "d", alt: true }, (e) => { e.preventDefault(); input.setShowDeliveryAddress(true); }),             // Delivery address
+    ];
+
+    return () => unregs.forEach((un) => un());
   }, [registerShortcut, input]);
 
   return setup;

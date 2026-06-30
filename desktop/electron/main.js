@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, Tray, Menu, dialog, shell } = require("electron");
 const path = require("path");
 const { launchPocketBase, PB_URL } = require("./pb-launcher");
-const { printReceipt, getPrinterStatus, testPrint } = require("./printer");
+const { printReceipt, getPrinterStatus, testPrint, listPrinters } = require("./printer");
 const { startStaticServer } = require("./static-server");
 const { verifyLicense } = require("./license");
 const { checkLicense, saveLicense } = require("./license-store");
@@ -70,7 +70,7 @@ function createTray() {
     const contextMenu = Menu.buildFromTemplate([
       { label: "Show", click: () => mainWindow.show() },
       { label: "Test Printer", click: async () => {
-        try { await testPrint(); } catch (e) { dialog.showErrorBox("Printer", e.message); }
+        try { await testPrint(mainWindow, { printer_paper_width: 80 }); } catch (e) { dialog.showErrorBox("Printer", e.message); }
       }},
       { type: "separator" },
       { label: "Quit", click: () => {
@@ -88,20 +88,22 @@ function createTray() {
 
 // ── IPC Handlers ────────────────────────────────────────────────────────────
 
-ipcMain.handle("printer:get-status", async () => getPrinterStatus());
+ipcMain.handle("printer:list", async () => listPrinters(mainWindow));
+
+ipcMain.handle("printer:get-status", async (_, settings) => getPrinterStatus(mainWindow, settings));
 
 ipcMain.handle("printer:print", async (_, order, settings) => {
   try {
-    await printReceipt(order, settings);
+    await printReceipt(mainWindow, order, settings);
     return { success: true };
   } catch (err) {
     return { success: false, error: err.message };
   }
 });
 
-ipcMain.handle("printer:test", async () => {
+ipcMain.handle("printer:test", async (_, settings) => {
   try {
-    await testPrint();
+    await testPrint(mainWindow, settings);
     return { success: true };
   } catch (err) {
     return { success: false, error: err.message };
@@ -188,7 +190,7 @@ async function doSync() {
     const batch = {
       machineId,
       registers: registers.map((r) => ({ id: r.id, machine_id: r.machine_id, name: r.name, default_opening_float: r.default_opening_float, is_active: r.is_active })),
-      orders: orders.map((o) => ({ id: o.id, order_no: o.order_no, register_id: o.register_id || null, order_type: o.order_type, status: o.status, items: o.items, subtotal: o.subtotal, gst_total: o.gst_total, grand_total: o.grand_total, payment_method: o.payment_method, payment_channel: o.payment_channel || null, payment_ref: o.payment_ref || null, digital_signature: o.digital_signature || null, created: o.created })),
+      orders: orders.map((o) => ({ id: o.id, order_no: o.order_no, register_id: o.register_id || null, order_type: o.order_type, status: o.status, items: o.items, subtotal: o.subtotal, gst_total: o.gst_total, grand_total: o.grand_total, payment_method: o.payment_method, payment_channel: o.payment_channel || null, payment_ref: o.payment_ref || null, digital_signature: o.digital_signature || null, invoice_date: o.invoice_date || null, customer_name: o.customer_name || null, customer_phone: o.customer_phone || null, salesperson_id: o.salesperson_id || null, delivery_address: o.delivery_address || null, complimentary_reason: o.complimentary_reason || null, created: o.created })),
       products: products.map((p) => ({ id: p.id, sku: p.sku })),
       movements: movements.map((m) => ({ id: m.id, product: m.product, movement_type: m.movement_type, quantity: m.quantity, reference_id: m.reference_id || null, notes: m.notes || null })),
       khataAccounts: khataAccounts.map((a) => ({ id: a.id, debtor_name: a.debtor_name, debtor_phone: a.debtor_phone || null, credit_limit: a.credit_limit })),

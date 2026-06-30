@@ -1,6 +1,6 @@
 {
   "name": "pos-terminal",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "main": "electron/main.js",
   "author": "Pelbu <hello@pelbu.com>",
