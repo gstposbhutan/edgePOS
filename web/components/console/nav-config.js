@@ -12,9 +12,9 @@ import { Store, Building2, Star, Package, Users, Warehouse, Settings } from 'luc
 
 export function distributorNav() {
   return [
-    { key: 'wholesalers', label: 'Wholesalers', href: '/distributor/wholesalers', icon: Store,     enabled: false, note: 'Browse all · save favourites' },
-    { key: 'retailers',   label: 'Retailers',   href: '/distributor/retailers',   icon: Building2, enabled: false, note: 'Browse all · save favourites' },
-    { key: 'saved',       label: 'Saved',       href: '/distributor/saved',       icon: Star,      enabled: false, note: 'Your favourites' },
+    { key: 'wholesalers', label: 'Wholesalers', href: '/distributor/wholesalers', icon: Store,     enabled: true,  note: 'Browse all · save favourites' },
+    { key: 'retailers',   label: 'Retailers',   href: '/distributor/retailers',   icon: Building2, enabled: true,  note: 'Browse all · save favourites' },
+    { key: 'saved',       label: 'Saved',       href: '/distributor/saved',       icon: Star,      enabled: true,  note: 'Your favourites' },
     { key: 'catalog',     label: 'Catalog',     href: '/distributor/catalog',     icon: Package,   enabled: true,  note: 'Your products' },
     { key: 'team',        label: 'Team',        href: '/distributor/team',        icon: Users,     enabled: true,  note: 'Your staff' },
     { key: 'settings',    label: 'Settings',    href: '/distributor/settings',    icon: Settings,  enabled: true,  note: 'Business profile' },
@@ -23,8 +23,8 @@ export function distributorNav() {
 
 export function wholesalerNav() {
   return [
-    { key: 'retailers',  label: 'Retailers',  href: '/wholesaler/retailers',  icon: Store,     enabled: false, note: 'Browse all · save favourites' },
-    { key: 'saved',      label: 'Saved',      href: '/wholesaler/saved',      icon: Star,      enabled: false, note: 'Your favourites' },
+    { key: 'retailers',  label: 'Retailers',  href: '/wholesaler/retailers',  icon: Store,     enabled: true,  note: 'Browse all · save favourites' },
+    { key: 'saved',      label: 'Saved',      href: '/wholesaler/saved',      icon: Star,      enabled: true,  note: 'Your favourites' },
     { key: 'warehouses', label: 'Warehouses', href: '/wholesaler/warehouses', icon: Warehouse, enabled: false, note: 'Your buildings/depots' },
     { key: 'catalog',    label: 'Catalog',    href: '/wholesaler/catalog',    icon: Package,   enabled: true,  note: 'Your products' },
     { key: 'team',       label: 'Team',       href: '/wholesaler/team',       icon: Users,     enabled: true,  note: 'Your staff' },
