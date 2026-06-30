@@ -143,8 +143,8 @@ export function hasPermission(user, permission) {
  */
 export const ROLE_HOME = {
   SUPER_ADMIN:  '/admin',
-  DISTRIBUTOR:  '/admin',
-  WHOLESALER:   '/admin',
+  DISTRIBUTOR:  '/distributor',
+  WHOLESALER:   '/wholesaler',
   RETAILER:     '/pos',
   CUSTOMER:     '/shop',
 }
