@@ -63,6 +63,19 @@ async function ensureBuyerMirror(supabase, sellerProductId, buyerId) {
   if (sellerErr) return { productId: null, error: sellerErr.message }
   if (!seller) return { productId: null, error: `Seller product ${sellerProductId} not found` }
 
+  // Seed the buyer's sell price for this level. Sellers price the level THEY sell (a distributor
+  // prices the pallet, not the boxes inside it), so a received-then-opened sub-level often arrives
+  // with wholesale_price = 0 and only an mrp. The buyer must still be able to on-sell it, so fall
+  // back to the level's mrp. Without this the opened box never carries a price and is invisible to
+  // /api/wholesale/catalog (which filters wholesale_price > 0), breaking sell-any-level (Model B).
+  const sellPrice = (p) => {
+    for (const c of [p?.wholesale_price, p?.mrp]) {
+      const n = parseFloat(c)
+      if (Number.isFinite(n) && n > 0) return n
+    }
+    return seller.wholesale_price ?? null
+  }
+
   // Create the buyer's mirror products row (created_by = buyer, no opening stock — the RESTOCK
   // movement drives current_stock). source_product_id marks provenance + dedupes future receives.
   const { data: mirror, error: mirrorErr } = await supabase
@@ -73,7 +86,7 @@ async function ensureBuyerMirror(supabase, sellerProductId, buyerId) {
       hsn_code:         seller.hsn_code || '9999',
       unit:             seller.unit || 'pcs',
       mrp:              seller.mrp,
-      wholesale_price:  seller.wholesale_price,
+      wholesale_price:  sellPrice(seller),
       image_url:        seller.image_url || null,
       product_type:     seller.product_type,
       is_active:        true,
@@ -117,7 +130,7 @@ async function ensureBuyerMirror(supabase, sellerProductId, buyerId) {
         name:             sellerPkg.name,
         package_type:     sellerPkg.package_type,
         // Barcodes are unique-ish identifiers; don't copy them onto the buyer's row.
-        wholesale_price:  sellerPkg.wholesale_price,
+        wholesale_price:  sellPrice(sellerPkg),
         mrp:              sellerPkg.mrp,
         hsn_code:         sellerPkg.hsn_code,
         is_active:        true,
