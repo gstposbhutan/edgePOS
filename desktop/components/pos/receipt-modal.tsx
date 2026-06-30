@@ -29,12 +29,31 @@ export function ReceiptModal({ open, onClose, onNewSale, order, settings }: Rece
   const { isElectron, api } = usePlatform();
   const [printerStatus, setPrinterStatus] = useState<{ connected: boolean; name: string } | null>(null);
   const [countdown, setCountdown] = useState(8);
+  // Guard so auto-print fires once per opened order — re-renders and the 8s
+  // auto-close timer must not trigger a second silent print.
+  const autoPrintedRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (isElectron && api) {
-      api.printer.getStatus().then(setPrinterStatus);
+      api.printer.getStatus(settings).then(setPrinterStatus);
     }
-  }, [isElectron, api, open]);
+  }, [isElectron, api, open, settings]);
+
+  // Silent auto-print on open (opt-in). Independent of the 8s auto-close so the
+  // print is sent even if the cashier dismisses the preview early.
+  useEffect(() => {
+    if (!open || !order) {
+      if (!open) autoPrintedRef.current = null;
+      return;
+    }
+    if (!isElectron || !api || !settings?.printer_auto_print) return;
+    const orderKey = order.id || order.order_no;
+    if (autoPrintedRef.current === orderKey) return;
+    autoPrintedRef.current = orderKey;
+    api.printer.print(order, settings).then((result: { success: boolean; error?: string }) => {
+      if (!result.success) toast.error(result.error || "Auto-print failed");
+    });
+  }, [open, order, isElectron, api, settings]);
 
   useEffect(() => {
     if (!open) {
@@ -124,10 +143,10 @@ export function ReceiptModal({ open, onClose, onNewSale, order, settings }: Rece
             <p className="text-xs text-muted-foreground mt-1">{order.order_no}</p>
           </div>
 
-          {/* Receipt */}
+          {/* Receipt — narrow thermal-style preview that mirrors the printout */}
           <div
             ref={receiptRef}
-            className="bg-white text-black p-5 rounded-xl text-sm space-y-3 border border-border"
+            className="bg-white text-black p-4 rounded-xl font-mono text-xs space-y-3 border border-border w-[300px] max-w-full mx-auto"
           >
             <div className="text-center border-b border-gray-200 pb-2">
               <img src={PELBU_ICON_DATA_URI} alt="Pelbu" className="h-10 w-10 mx-auto mb-1" />

@@ -20,6 +20,9 @@ import type { PriceListMode } from "@/lib/price-list";
 import { LAYOUT_PRESETS, SCREEN_LG, CART_WIDTH } from "@/lib/constants";
 import { ProductGrid } from "@/components/pos/product-grid";
 import { CartPanel } from "@/components/pos/cart-panel";
+import { CartTable } from "@/components/pos/keyboard/cart-table";
+import { ProductSearchModal } from "@/components/pos/keyboard/product-search-modal";
+import { ListingFooter } from "@/components/pos/keyboard/listing-footer";
 import { BarcodeScanner } from "@/components/pos/barcode-scanner";
 import { PaymentModal } from "@/components/pos/payment-modal";
 import { CustomerModal } from "@/components/pos/customer-modal";
@@ -34,6 +37,7 @@ import { ReceiptModal } from "@/components/pos/receipt-modal";
 import { ZReportModal } from "@/components/pos/z-report-modal";
 import { ShiftModal } from "@/components/pos/shift-modal";
 import type { ShiftReconciliation } from "@/components/pos/shift-modal";
+import { HandoverModal } from "@/components/pos/handover-modal";
 import { HeldCartsModal } from "@/components/pos/held-carts-modal";
 import { HelpOverlay } from "@/components/pos/help-overlay";
 import { WeightEntryModal } from "@/components/pos/weight-entry-modal";
@@ -66,6 +70,8 @@ import {
   Hash,
   CalendarClock,
   Tags,
+  List,
+  LayoutGrid,
 } from "lucide-react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -73,7 +79,7 @@ import dynamic from "next/dynamic";
 const LoginFallback = dynamic(() => import("@/app/login/page"), { ssr: false });
 
 export default function PosPage() {
-  const { user, isAuthenticated, signOut, isManager, isOwner, loading: authLoading } = useAuth();
+  const { user, isAuthenticated, signOut, switchUser, isManager, isOwner, loading: authLoading } = useAuth();
 
   if (authLoading) {
     return <div className="min-h-screen flex items-center justify-center"><p className="text-muted-foreground">Loading...</p></div>;
@@ -81,10 +87,10 @@ export default function PosPage() {
 
   if (!isAuthenticated) return <LoginFallback />;
 
-  return <PosTerminal user={user} isManager={isManager} isOwner={isOwner} signOut={signOut} />;
+  return <PosTerminal user={user} isManager={isManager} isOwner={isOwner} signOut={signOut} switchUser={switchUser} />;
 }
 
-function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManager: boolean; isOwner: boolean; signOut: () => void }) {
+function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: any; isManager: boolean; isOwner: boolean; signOut: () => void; switchUser: (email: string, password: string) => Promise<{ success: boolean; error: string | null }> }) {
   const {
     products,
     loading: productsLoading,
@@ -130,6 +136,10 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
   const [showReceipt, setShowReceipt] = useState(false);
   const [showZReport, setShowZReport] = useState(false);
   const [showShiftModal, setShowShiftModal] = useState<"open" | "close" | null>(null);
+  const [showHandover, setShowHandover] = useState(false);
+  // Set when the handover modal routes to the close-shift flow: once the close
+  // succeeds we sign the cashier out (the act they originally requested).
+  const [pendingSignOut, setPendingSignOut] = useState(false);
   const [showHeldCarts, setShowHeldCarts] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showTabletCart, setShowTabletCart] = useState(false);
@@ -156,9 +166,32 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [screenWidth, setScreenWidth] = useState(typeof window !== "undefined" ? window.innerWidth : SCREEN_LG);
   const [showCart, setShowCart] = useState(true);
+
+  // Input mode: "listing" = keyboard-driven cart table (web parity, default),
+  // "grid" = the touch card grid. Persisted per-station; SSR/first-render is
+  // guarded so the server and client agree until the effect reads localStorage.
+  const [inputMode, setInputMode] = useState<"listing" | "grid">("listing");
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("pos_input_mode");
+      if (saved === "grid" || saved === "listing") setInputMode(saved);
+    } catch { /* no localStorage — keep the default */ }
+  }, []);
+  const changeInputMode = useCallback((mode: "listing" | "grid") => {
+    setInputMode(mode);
+    try { localStorage.setItem("pos_input_mode", mode); } catch { /* ignore */ }
+  }, []);
+
+  // Listing-mode cart row selection + inline-qty-edit handle (mirrors web's
+  // selectedRow + editRowRef). Unused in grid mode.
+  const [selectedRow, setSelectedRow] = useState(0);
+  const editRowRef = useRef<((index: number) => void) | null>(null);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchSeed, setSearchSeed] = useState("");
+
   const anyModalOpen =
     showScanner || showPayment || showCustomer || showReceipt || showZReport ||
-    showShiftModal !== null || showHeldCarts || showHelp;
+    showShiftModal !== null || showHandover || showHeldCarts || showHelp || showSearch;
 
   const { validateStock, confirmPayment, saveQuotation } = useCheckout({
     pb,
@@ -237,6 +270,18 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
   // Load held carts on mount
   useEffect(() => { loadHeld(); }, [loadHeld]);
 
+  // Keep the listing-mode cart selection in range as items come and go.
+  useEffect(() => {
+    if (items.length === 0) { setSelectedRow(0); return; }
+    setSelectedRow((r) => Math.min(r, items.length - 1));
+  }, [items.length]);
+
+  // Open the listing-mode product search, seeded with the char that triggered it.
+  const openSearch = useCallback((seed: string) => {
+    setSearchSeed(seed);
+    setShowSearch(true);
+  }, []);
+
   // Screen width tracking
   useEffect(() => {
     const handler = () => setScreenWidth(window.innerWidth);
@@ -260,9 +305,16 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
       return await openShift(user.id, amount);
     } else {
       if (!activeShift) return { success: false, error: "No active shift" };
-      return await closeShift(activeShift.id, user.id, amount);
+      const result = await closeShift(activeShift.id, user.id, amount);
+      // If this close came from the sign-out handover prompt, complete the sign-out
+      // the cashier asked for once the shift is reconciled and closed.
+      if (result.success && pendingSignOut) {
+        setPendingSignOut(false);
+        signOut();
+      }
+      return result;
     }
-  }, [user, showShiftModal, openShift, activeShift, closeShift]);
+  }, [user, showShiftModal, openShift, activeShift, closeShift, pendingSignOut, signOut]);
 
   // Online status
   useEffect(() => {
@@ -562,11 +614,72 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
     setShowPostMarket,
     setShowQuotation,
     setShowDeliveryAddress,
+    // Listing mode reroutes F3 → full-screen search and F9 → inline qty edit on the
+    // selected row. In grid mode these are undefined, so the canonical defaults apply
+    // (F3 focuses the grid search, F9 shows the change-qty hint).
+    onFocusSearch: inputMode === "listing" ? () => openSearch("") : undefined,
+    onChangeQty: inputMode === "listing" ? () => editRowRef.current?.(selectedRow) : undefined,
   });
   useEffect(() => setupShortcuts(), [setupShortcuts]);
 
-  // Type-to-search: capture keystrokes when no modal is open
+  // Listing mode: cart-table navigation + type-to-search. ↑↓ move the selected row,
+  // Enter edits its qty (via the cart-table handle), Delete removes it, and any single
+  // printable char opens the full-screen search modal seeded with that char. F-keys and
+  // modifier combos stay owned by usePosShortcuts (the keyboard registry), so this
+  // listener only consumes the keys above.
+  //
+  // Runs in the capture phase and calls stopImmediatePropagation on the keys it owns so
+  // the registry's bubble-phase listener can't ALSO act on them — most importantly
+  // Delete, which the registry maps to handleVoidLast (would otherwise double-remove).
   useEffect(() => {
+    if (inputMode !== "listing") return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (anyModalOpen) return;
+      const target = e.target as HTMLElement;
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) return;
+
+      const consume = () => { e.preventDefault(); e.stopImmediatePropagation(); };
+
+      if (e.key === "ArrowDown") {
+        consume();
+        if (items.length > 0) setSelectedRow((r) => (r + 1) % items.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        consume();
+        if (items.length > 0) setSelectedRow((r) => (r - 1 + items.length) % items.length);
+        return;
+      }
+      if (e.key === "Enter") {
+        consume();
+        if (items.length > 0) editRowRef.current?.(selectedRow);
+        return;
+      }
+      if (e.key === "Delete") {
+        consume();
+        const row = items[selectedRow];
+        if (row) {
+          const prod = products.find((p) => p.id === row.product);
+          removeItem(row.id);
+          if (prod) undoStack.push(() => { addItem(prod); });
+        }
+        return;
+      }
+
+      // Type-to-search: a single printable char (no modifiers) opens the search modal.
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        consume();
+        openSearch(e.key);
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => document.removeEventListener("keydown", handleKeyDown, true);
+  }, [inputMode, anyModalOpen, items, selectedRow, products, openSearch, removeItem, addItem, undoStack]);
+
+  // Grid mode: the original type-to-search that drives the product grid filter.
+  useEffect(() => {
+    if (inputMode !== "grid") return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (anyModalOpen) return;
       const target = e.target as HTMLElement;
@@ -615,7 +728,7 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [anyModalOpen, products, highlightedIndex, setSearchQuery, handleAddProduct]);
+  }, [inputMode, anyModalOpen, products, highlightedIndex, searchQuery, setSearchQuery, handleAddProduct]);
 
   const totalItemsCount = items.reduce((sum, i) => sum + i.quantity, 0);
 
@@ -724,6 +837,29 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
               Full
             </Button>
           </div>
+          {/* Input mode: keyboard listing vs touch grid (persists per station) */}
+          <div className="hidden lg:flex items-center border border-border rounded-md overflow-hidden ml-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`text-[10px] h-6 px-2 rounded-none gap-1 ${inputMode === "listing" ? "bg-primary text-primary-foreground hover:bg-primary/90" : "text-muted-foreground"}`}
+              onClick={() => changeInputMode("listing")}
+              title="Keyboard listing layout"
+            >
+              <List className="h-3 w-3" />
+              List
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`text-[10px] h-6 px-2 rounded-none gap-1 ${inputMode === "grid" ? "bg-primary text-primary-foreground hover:bg-primary/90" : "text-muted-foreground"}`}
+              onClick={() => changeInputMode("grid")}
+              title="Touch card grid"
+            >
+              <LayoutGrid className="h-3 w-3" />
+              Grid
+            </Button>
+          </div>
         </div>
 
         <div className="flex items-center gap-0.5">
@@ -806,91 +942,137 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
             </Button>
           </Link>
           )}
-          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={signOut}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground hover:text-destructive"
+            onClick={() => { if (activeShift) setShowHandover(true); else signOut(); }}
+          >
             <LogOut className="h-4 w-4" />
           </Button>
         </div>
       </header>
 
       {/* Main Content */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Product Grid */}
-        <div className={`flex-1 min-w-0 ${layoutPreset === "fullcart" && !showCart ? "hidden" : ""}`}>
-          <ProductGrid
-            onAddProduct={handleAddProduct}
-            onScan={() => setShowScanner(true)}
-            highlightedIndex={highlightedIndex}
-            setHighlightedIndex={setHighlightedIndex}
+      {inputMode === "listing" ? (
+        /* Keyboard listing layout: cart table fills the screen, totals + shortcuts below */
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <CartTable
+            items={items}
+            products={products}
+            selectedRow={selectedRow}
+            onSelectRow={setSelectedRow}
+            onUpdateQty={(itemId, qty) => updateQty(itemId, qty)}
+            onRemoveItem={removeItem}
+            onEditRequest={editRowRef}
+          />
+          <ListingFooter
+            itemCount={totalItemsCount}
+            subtotal={subtotal}
+            gstTotal={taxExempt ? gstTotalExempt : gstTotal}
+            grandTotal={taxExempt ? grandTotalExempt : grandTotal}
           />
         </div>
-
-        {/* Cart Panel — always visible on lg+, slide-over on md */}
-        {(showCart || screenWidth >= SCREEN_LG) && (
-          <div className={`${cartColumnWidth} shrink-0 hidden md:block ${layoutPreset === "fullcart" && !showCart ? "hidden" : ""}`}>
-          <CartPanel
-            customer={selectedCustomer}
-            isManager={isManager}
-            onCheckout={handleCheckout}
-            onSelectCustomer={() => setShowCustomer(true)}
-            onClearCustomer={() => setSelectedCustomer(null)}
-            onNewSale={handleNewTransaction}
-            noShift={!activeShift}
-          />
+      ) : (
+        <div className="flex-1 flex overflow-hidden">
+          {/* Product Grid */}
+          <div className={`flex-1 min-w-0 ${layoutPreset === "fullcart" && !showCart ? "hidden" : ""}`}>
+            <ProductGrid
+              onAddProduct={handleAddProduct}
+              onScan={() => setShowScanner(true)}
+              highlightedIndex={highlightedIndex}
+              setHighlightedIndex={setHighlightedIndex}
+            />
           </div>
-        )}
 
-        {/* Tablet Cart Slide-over */}
-        {showTabletCart && (
-          <div className="fixed inset-0 z-40 md:hidden">
-            <div className="absolute inset-0 bg-black/50" onClick={() => setShowTabletCart(false)} />
-            <div className="absolute right-0 top-0 bottom-0 w-[360px] max-w-[85vw]">
-              <CartPanel
-                customer={selectedCustomer}
-                isManager={isManager}
-                onCheckout={handleCheckout}
-                onSelectCustomer={() => setShowCustomer(true)}
-                onClearCustomer={() => setSelectedCustomer(null)}
-                onNewSale={handleNewTransaction}
-                noShift={!activeShift}
-              />
+          {/* Cart Panel — always visible on lg+, slide-over on md */}
+          {(showCart || screenWidth >= SCREEN_LG) && (
+            <div className={`${cartColumnWidth} shrink-0 hidden md:block ${layoutPreset === "fullcart" && !showCart ? "hidden" : ""}`}>
+            <CartPanel
+              customer={selectedCustomer}
+              isManager={isManager}
+              onCheckout={handleCheckout}
+              onSelectCustomer={() => setShowCustomer(true)}
+              onClearCustomer={() => setSelectedCustomer(null)}
+              onNewSale={handleNewTransaction}
+              noShift={!activeShift}
+            />
             </div>
-          </div>
-        )}
-      </div>
-
-      {/* Mobile/Tablet Floating Cart Button */}
-      <div className="md:hidden fixed bottom-4 right-4 z-50">
-        <Button
-          size="lg"
-          className="rounded-full shadow-lg h-14 w-14 relative"
-          onClick={() => setShowTabletCart(!showTabletCart)}
-        >
-          <ShoppingCart className="h-6 w-6" />
-          {totalItemsCount > 0 && (
-            <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center">
-              {totalItemsCount}
-            </span>
           )}
-        </Button>
-      </div>
 
-      {/* Quick Checkout bar for md screens */}
-      <div className="hidden md:flex lg:hidden fixed bottom-0 left-0 right-0 bg-card border-t border-border p-3 items-center justify-between z-50">
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-medium text-muted-foreground">
-            {totalItemsCount} items
-          </span>
-          <span className="text-lg font-bold text-primary tabular-nums">
-            Nu. {taxExempt ? grandTotalExempt.toFixed(0) : grandTotal.toFixed(0)}
-          </span>
+          {/* Tablet Cart Slide-over */}
+          {showTabletCart && (
+            <div className="fixed inset-0 z-40 md:hidden">
+              <div className="absolute inset-0 bg-black/50" onClick={() => setShowTabletCart(false)} />
+              <div className="absolute right-0 top-0 bottom-0 w-[360px] max-w-[85vw]">
+                <CartPanel
+                  customer={selectedCustomer}
+                  isManager={isManager}
+                  onCheckout={handleCheckout}
+                  onSelectCustomer={() => setShowCustomer(true)}
+                  onClearCustomer={() => setSelectedCustomer(null)}
+                  onNewSale={handleNewTransaction}
+                  noShift={!activeShift}
+                />
+              </div>
+            </div>
+          )}
         </div>
-        <Button onClick={handleCheckout} disabled={items.length === 0}>
-          Checkout
-          <ArrowRight className="h-4 w-4 ml-2" />
-        </Button>
-      </div>
+      )}
+
+      {/* Mobile/Tablet touch affordances — grid mode only (the listing layout fills the
+          screen with the cart table and shows totals in its footer). */}
+      {inputMode === "grid" && (
+        <>
+          {/* Mobile/Tablet Floating Cart Button */}
+          <div className="md:hidden fixed bottom-4 right-4 z-50">
+            <Button
+              size="lg"
+              className="rounded-full shadow-lg h-14 w-14 relative"
+              onClick={() => setShowTabletCart(!showTabletCart)}
+            >
+              <ShoppingCart className="h-6 w-6" />
+              {totalItemsCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center">
+                  {totalItemsCount}
+                </span>
+              )}
+            </Button>
+          </div>
+
+          {/* Quick Checkout bar for md screens */}
+          <div className="hidden md:flex lg:hidden fixed bottom-0 left-0 right-0 bg-card border-t border-border p-3 items-center justify-between z-50">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-muted-foreground">
+                {totalItemsCount} items
+              </span>
+              <span className="text-lg font-bold text-primary tabular-nums">
+                Nu. {taxExempt ? grandTotalExempt.toFixed(0) : grandTotal.toFixed(0)}
+              </span>
+            </div>
+            <Button onClick={handleCheckout} disabled={items.length === 0}>
+              Checkout
+              <ArrowRight className="h-4 w-4 ml-2" />
+            </Button>
+          </div>
+        </>
+      )}
 
       {/* Modals */}
+      <ProductSearchModal
+        open={showSearch}
+        initialQuery={searchSeed}
+        priceListMode={priceListMode}
+        onAdd={(product) => {
+          // Move the listing selection to the appended line (weighed goods open the
+          // weight modal first, but the cart still grows by one row on confirm).
+          setSelectedRow(items.length);
+          handleAddProduct(product);
+        }}
+        onScan={handleScan}
+        onClose={() => { setShowSearch(false); setSearchSeed(""); }}
+      />
+
       <BarcodeScanner
         open={showScanner}
         onClose={() => setShowScanner(false)}
@@ -946,10 +1128,18 @@ function PosTerminal({ user, isManager, isOwner, signOut }: { user: any; isManag
 
       <ShiftModal
         open={showShiftModal !== null}
-        onClose={() => setShowShiftModal(null)}
+        onClose={() => { setShowShiftModal(null); setPendingSignOut(false); }}
         mode={showShiftModal || "open"}
         onConfirm={handleShiftAction}
         reconciliation={reconData || undefined}
+      />
+
+      <HandoverModal
+        open={showHandover}
+        onClose={() => setShowHandover(false)}
+        onCloseShift={() => { setShowHandover(false); setPendingSignOut(true); setShowShiftModal("close"); }}
+        switchUser={switchUser}
+        currentUserId={user?.id}
       />
 
       <HeldCartsModal

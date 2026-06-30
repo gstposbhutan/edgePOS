@@ -29,6 +29,11 @@ interface PosShortcutsInput {
   setShowPostMarket: (v: boolean) => void;
   setShowQuotation: (v: boolean) => void;
   setShowDeliveryAddress: (v: boolean) => void;
+  // Optional overrides — the listing (keyboard) layout routes F3 to its full-screen
+  // search modal and F9 to the cart-table inline qty edit. When omitted, F3 focuses
+  // the grid search box and F9 shows the change-qty hint (grid-mode default).
+  onFocusSearch?: () => void;
+  onChangeQty?: () => void;
 }
 
 /** Shortcut whose target feature ships in a later phase — shows a toast. */
@@ -41,7 +46,9 @@ export function usePosShortcuts(input: PosShortcutsInput) {
   const { registerShortcut } = useKeyboardRegistry();
 
   const setup = useCallback(() => {
-    const focusSearch = () => document.getElementById("pos-search")?.focus();
+    // Grid-mode default: focus the in-grid search box. Listing mode overrides this
+    // (input.onFocusSearch) to open the full-screen product-search modal.
+    const focusSearch = () => input.onFocusSearch ? input.onFocusSearch() : document.getElementById("pos-search")?.focus();
     // Ctrl+D — percentage bill discount applied to every line via the existing
     // per-item applyDiscount (PERCENT converted to a per-unit flat amount).
     const billDiscount = () => {
@@ -70,7 +77,12 @@ export function usePosShortcuts(input: PosShortcutsInput) {
       registerShortcut("global", { key: "F6" }, () => input.setShowCustomer(true)),    // Customer
       registerShortcut("global", { key: "F7" }, () => input.cyclePriceList()),                       // Price list
       registerShortcut("global", { key: "F8" }, () => input.setShowSalesperson(true)),                 // Sales person
-      registerShortcut("global", { key: "F9" }, stub("Change qty — tap +/- or # on any line")),
+      registerShortcut("global", { key: "F9" }, (e) => {
+        // Listing mode: edit qty on the selected cart row. Grid mode has no row
+        // selection, so fall back to the change-qty hint.
+        if (input.onChangeQty) { e.preventDefault(); input.onChangeQty(); }
+        else stub("Change qty — tap +/- or # on any line")(e);
+      }),
       registerShortcut("global", { key: "F10" }, () => input.handleCheckout()),        // Tender
       registerShortcut("global", { key: "F11" }, () => {                               // fullscreen (utility, kept)
         if (document.fullscreenElement) document.exitFullscreen();

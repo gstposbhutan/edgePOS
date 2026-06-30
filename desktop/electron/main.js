@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, Tray, Menu, dialog, shell } = require("electron");
 const path = require("path");
 const { launchPocketBase, PB_URL } = require("./pb-launcher");
-const { printReceipt, getPrinterStatus, testPrint } = require("./printer");
+const { printReceipt, getPrinterStatus, testPrint, listPrinters } = require("./printer");
 const { startStaticServer } = require("./static-server");
 const { verifyLicense } = require("./license");
 const { checkLicense, saveLicense } = require("./license-store");
@@ -70,7 +70,7 @@ function createTray() {
     const contextMenu = Menu.buildFromTemplate([
       { label: "Show", click: () => mainWindow.show() },
       { label: "Test Printer", click: async () => {
-        try { await testPrint(); } catch (e) { dialog.showErrorBox("Printer", e.message); }
+        try { await testPrint(mainWindow, { printer_paper_width: 80 }); } catch (e) { dialog.showErrorBox("Printer", e.message); }
       }},
       { type: "separator" },
       { label: "Quit", click: () => {
@@ -88,20 +88,22 @@ function createTray() {
 
 // ── IPC Handlers ────────────────────────────────────────────────────────────
 
-ipcMain.handle("printer:get-status", async () => getPrinterStatus());
+ipcMain.handle("printer:list", async () => listPrinters(mainWindow));
+
+ipcMain.handle("printer:get-status", async (_, settings) => getPrinterStatus(mainWindow, settings));
 
 ipcMain.handle("printer:print", async (_, order, settings) => {
   try {
-    await printReceipt(order, settings);
+    await printReceipt(mainWindow, order, settings);
     return { success: true };
   } catch (err) {
     return { success: false, error: err.message };
   }
 });
 
-ipcMain.handle("printer:test", async () => {
+ipcMain.handle("printer:test", async (_, settings) => {
   try {
-    await testPrint();
+    await testPrint(mainWindow, settings);
     return { success: true };
   } catch (err) {
     return { success: false, error: err.message };

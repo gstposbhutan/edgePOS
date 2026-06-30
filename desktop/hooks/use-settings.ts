@@ -14,6 +14,10 @@ export interface Settings {
   receipt_footer: string;
   gst_rate: number;
   store_entity_id: string;
+  printer_device_name: string;
+  printer_paper_width: number;
+  printer_auto_print: boolean;
+  printer_copies: number;
 }
 
 async function fetchSettings(): Promise<Settings> {
@@ -30,6 +34,10 @@ async function fetchSettings(): Promise<Settings> {
     receipt_footer: "Thank you for your business!",
     gst_rate: 5,
     store_entity_id: "",
+    printer_device_name: "",
+    printer_paper_width: 80,
+    printer_auto_print: false,
+    printer_copies: 1,
   }, PB_REQ);
   return defaultSettings as unknown as Settings;
 }
