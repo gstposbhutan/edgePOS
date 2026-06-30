@@ -23,7 +23,7 @@ export async function GET() {
         .from('products')
         .select(`
           id, name, sku, hsn_code, unit, wholesale_price, mrp, distributor_price,
-          current_stock, is_active, sold_by_weight, created_at,
+          current_stock, is_active, sold_by_weight, product_type, created_at,
           product_categories(category_id, categories(id, name))
         `)
         .eq('created_by', entityId)
