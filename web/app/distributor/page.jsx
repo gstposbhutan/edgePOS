@@ -2,13 +2,14 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { getUser, getRoleClaims, signOut } from '@/lib/auth'
-import { Button } from '@/components/ui/button'
-import { Loader2, Building2, Store, Star, Package, Users, LogOut } from 'lucide-react'
+import Link from 'next/link'
+import { getUser, getRoleClaims } from '@/lib/auth'
+import { Loader2 } from 'lucide-react'
+import { ConsoleShell } from '@/components/console/console-shell'
+import { distributorNav } from '@/components/console/nav-config'
 
-// Distributor console landing. Full features (browse all wholesalers/retailers with a
-// favourites overlay, own catalog/products, own team) are the deferred distributor-scope
-// work; this is the role's valid landing so signup/login completes.
+// Distributor console landing. Team + Settings are live (Phase 1); browse/favourites/catalog
+// are still being built and surface as "coming soon" tiles.
 export default function DistributorHome() {
   const router = useRouter()
   const [user, setUser] = useState(null)
@@ -28,41 +29,31 @@ export default function DistributorHome() {
   if (!ready) return <div className="flex items-center justify-center h-screen"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
 
   const name = user?.user_metadata?.full_name || user?.user_metadata?.name || ''
-  const tiles = [
-    { label: 'Wholesalers', icon: Store, note: 'Browse all · save favourites' },
-    { label: 'Retailers', icon: Building2, note: 'Browse all · save favourites' },
-    { label: 'Saved', icon: Star, note: 'Your favourites' },
-    { label: 'Catalog', icon: Package, note: 'Your products' },
-    { label: 'Team', icon: Users, note: 'Your staff' },
-  ]
+  const tiles = distributorNav()
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border px-6 py-4 flex items-center gap-3">
-        <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center"><Building2 className="h-4 w-4 text-primary-foreground" /></div>
-        <div className="flex-1">
-          <h1 className="font-serif font-bold">Distributor Console</h1>
-          <p className="text-xs text-muted-foreground">{name}</p>
-        </div>
-        <Button variant="ghost" size="sm" onClick={async () => { await signOut(); router.push('/login') }} className="gap-2">
-          <LogOut className="h-4 w-4" /> Sign out
-        </Button>
-      </header>
-      <main className="p-6 max-w-4xl mx-auto">
-        <div className="rounded-lg border border-dashed border-border p-4 mb-6 text-sm text-muted-foreground">
-          Distributor features are being built — browse all wholesalers &amp; retailers with a favourites overlay, manage your catalog and team. This is your console landing.
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {tiles.map(({ label, icon: Icon, note }) => (
-            <div key={label} className="border border-border rounded-xl p-4 space-y-1 opacity-70">
+    <ConsoleShell title="Distributor Console" name={name} nav={tiles} active={null}>
+      <div className="rounded-lg border border-dashed border-border p-4 mb-6 text-sm text-muted-foreground">
+        Manage your team and business profile now. Browsing wholesalers &amp; retailers, favourites and your catalog are on the way.
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        {tiles.map(({ key, label, href, icon: Icon, enabled, note }) =>
+          enabled ? (
+            <Link key={key} href={href} className="group border border-border rounded-xl p-4 space-y-1 transition-colors hover:border-primary/40 hover:bg-muted/30">
+              <Icon className="h-5 w-5 text-primary" />
+              <p className="font-medium text-sm">{label}</p>
+              <p className="text-xs text-muted-foreground">{note}</p>
+            </Link>
+          ) : (
+            <div key={key} className="border border-border rounded-xl p-4 space-y-1 opacity-70">
               <Icon className="h-5 w-5 text-muted-foreground" />
               <p className="font-medium text-sm">{label}</p>
               <p className="text-xs text-muted-foreground">{note}</p>
               <span className="inline-block text-[10px] text-muted-foreground border border-border rounded-full px-1.5 py-0.5 mt-1">Coming soon</span>
             </div>
-          ))}
-        </div>
-      </main>
-    </div>
+          )
+        )}
+      </div>
+    </ConsoleShell>
   )
 }
