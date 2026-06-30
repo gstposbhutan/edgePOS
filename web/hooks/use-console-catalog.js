@@ -77,9 +77,96 @@ export function useConsoleCatalog() {
     setProducts(prev => prev.map(p => p.id === productId ? { ...p, is_active: isActive } : p))
   }, [])
 
+  // -- Packages (Model B) --
+  // The package CRUD endpoints are entity-scoped via getAuthContext (created_by), so they work
+  // unchanged from the console. Vendor packages are stocked_as_unit = true and carry opening
+  // stock, which is what makes them discrete per-level inventory.
+
+  const fetchPackages = useCallback(async () => {
+    try {
+      const res  = await fetch('/api/products/catalog/_/package')
+      const data = await res.json()
+      if (res.ok) return data.packages ?? []
+    } catch {
+      // fall through
+    }
+    return []
+  }, [])
+
+  const createPackage = useCallback(async (formData, componentItems, categoryIds) => {
+    setSaving(true)
+    try {
+      const res = await fetch('/api/products/catalog/_/package', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          formData: { ...formData, stocked_as_unit: true },
+          componentItems, categoryIds,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setSaving(false); return { error: data.error } }
+      await fetchProducts()
+      setSaving(false)
+      return { error: null, packageId: data.packageId }
+    } catch (err) {
+      setSaving(false)
+      return { error: err.message }
+    }
+  }, [fetchProducts])
+
+  const updatePackage = useCallback(async (packageId, productId, formData, componentItems, categoryIds) => {
+    setSaving(true)
+    try {
+      const res = await fetch('/api/products/catalog/_/package', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          packageId, productId,
+          formData: { ...formData, stocked_as_unit: true },
+          componentItems, categoryIds,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setSaving(false); return { error: data.error } }
+      await fetchProducts()
+      setSaving(false)
+      return { error: null }
+    } catch (err) {
+      setSaving(false)
+      return { error: err.message }
+    }
+  }, [fetchProducts])
+
+  const deactivatePackage = useCallback(async (packageId, productId) => {
+    await fetch('/api/products/catalog/_/package', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ packageId, productId }),
+    })
+    await fetchProducts()
+  }, [fetchProducts])
+
+  const openPackage = useCallback(async (packageProductId, qty) => {
+    try {
+      const res = await fetch('/api/console/packages/open', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ package_product_id: packageProductId, qty }),
+      })
+      const data = await res.json()
+      if (!res.ok) return { error: data.error }
+      await fetchProducts()
+      return { error: null, stocks: data.stocks ?? [] }
+    } catch (err) {
+      return { error: err.message }
+    }
+  }, [fetchProducts])
+
   return {
     products, categories, loading, saving,
     createProduct, updateProduct, toggleActive,
+    fetchPackages, createPackage, updatePackage, deactivatePackage, openPackage,
     refresh: fetchProducts,
   }
 }

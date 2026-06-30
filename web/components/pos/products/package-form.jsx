@@ -14,7 +14,7 @@ const PKG_TYPES = [
 
 const EMPTY_FORM = {
   name: '', package_type: 'BUNDLE', mrp: '', wholesale_price: '',
-  hsn_code: '', barcode: '', qr_code: '', image_url: '',
+  hsn_code: '', barcode: '', qr_code: '', image_url: '', opening_stock: '',
 }
 
 /**
@@ -22,9 +22,13 @@ const EMPTY_FORM = {
  * For PALLET type, component picker shows packages (product_type = 'PACKAGE').
  * For all others, component picker shows SINGLE products.
  *
- * @param {{ open, pkg, allProducts, categories, saving, onSave, onClose }} props
+ * `vendorMode` (distributor / wholesaler consoles) turns on Model-B behavior: an opening-stock
+ * field for the level's sealed on-hand, and a relaxed (optional) retail price for
+ * distributor-only pallets. Retailer POS callers omit it, so their flow is unchanged.
+ *
+ * @param {{ open, pkg, allProducts, categories, saving, vendorMode, onSave, onClose }} props
  */
-export function PackageForm({ open, pkg, allProducts, categories, saving, onSave, onClose }) {
+export function PackageForm({ open, pkg, allProducts, categories, saving, vendorMode = false, onSave, onClose }) {
   const isEdit    = !!pkg
 
   const [form,       setForm]       = useState(EMPTY_FORM)
@@ -44,6 +48,7 @@ export function PackageForm({ open, pkg, allProducts, categories, saving, onSave
         barcode:         pkg.barcode ?? '',
         qr_code:         pkg.qr_code ?? '',
         image_url:       pkg.product?.image_url ?? '',
+        opening_stock:   '',   // on-hand is managed via Open / movements, never re-set on edit
       })
       setComponents(
         (pkg.package_items ?? []).map(pi => ({
@@ -100,7 +105,8 @@ export function PackageForm({ open, pkg, allProducts, categories, saving, onSave
     setError(null)
     if (!form.name.trim())         return setError('Package name is required')
     if (components.length === 0)   return setError('Add at least one component')
-    if (!form.mrp || isNaN(parseFloat(form.mrp))) return setError('Retail price is required')
+    // Retail price is required for retailer packages; vendor pallets can be distributor-priced only.
+    if (!vendorMode && (!form.mrp || isNaN(parseFloat(form.mrp)))) return setError('Retail price is required')
 
     const { error: err } = await onSave(form, components.map(c => ({
       product_id: c.product_id,
@@ -154,9 +160,11 @@ export function PackageForm({ open, pkg, allProducts, categories, saving, onSave
           {/* Pricing */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">Retail Price (Nu.) <span className="text-tibetan">*</span></label>
+              <label className="text-sm font-medium text-foreground">
+                Retail Price (Nu.) {!vendorMode && <span className="text-tibetan">*</span>}
+              </label>
               <Input type="number" min="0" step="0.01" placeholder="0.00"
-                value={form.mrp} onChange={e => set('mrp', e.target.value)} required />
+                value={form.mrp} onChange={e => set('mrp', e.target.value)} required={!vendorMode} />
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-foreground">Wholesale Price (Nu.)</label>
@@ -164,6 +172,24 @@ export function PackageForm({ open, pkg, allProducts, categories, saving, onSave
                 value={form.wholesale_price} onChange={e => set('wholesale_price', e.target.value)} />
             </div>
           </div>
+
+          {/* Opening stock — vendor consoles only. Seeds this level's own sealed on-hand. */}
+          {vendorMode && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">
+                Opening Stock {isEdit && <span className="text-[10px] text-muted-foreground">(add via Open / restock)</span>}
+              </label>
+              <Input type="number" min="0" step="1" placeholder="0"
+                value={form.opening_stock}
+                onChange={e => set('opening_stock', e.target.value)}
+                disabled={isEdit} />
+              {!isEdit && (
+                <p className="text-[10px] text-muted-foreground">
+                  Sealed units of this package you currently hold. Opening one releases its components.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* HSN + Barcode */}
           <div className="grid grid-cols-2 gap-3">
