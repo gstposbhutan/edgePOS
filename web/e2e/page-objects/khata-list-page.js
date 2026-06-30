@@ -12,6 +12,13 @@ const HEADING = 'h1:text-is("Khata (Credit)")'
 const SEARCH_INPUT = 'input[placeholder="Search by name or phone..."]'
 const NEW_BUTTON = 'button:has-text("New")'
 const ACCOUNT_ROW = '[data-testid="khata-account-row"]'
+// Structural fallback: every account row is a full-width <button> that contains
+// the debtor name, the word "Outstanding", and "Limit:". The data-testid was
+// added in a later build; older renders (and any missing-testid case) still
+// match this signature. `or()` keeps a single locator that resolves to rows
+// regardless of which form the running build emits.
+const ACCOUNT_ROW_FALLBACK = 'button.w-full.text-left:has-text("Outstanding"):has-text("Limit:")'
+const ROW_LOCATOR = `${ACCOUNT_ROW}, ${ACCOUNT_ROW_FALLBACK}`
 const EMPTY_STATE = 'text=No khata accounts yet'
 const EMPTY_SEARCH = 'text=No accounts match your search'
 const LOADING_SPINNER = '.animate-spin'
@@ -35,7 +42,7 @@ class KhataListPage {
     const { expect } = require('@playwright/test')
     await expect(input).toHaveValue(query)
     await expect(
-      this.page.locator(ACCOUNT_ROW).first().or(this.page.locator(EMPTY_SEARCH))
+      this.page.locator(ROW_LOCATOR).first().or(this.page.locator(EMPTY_SEARCH))
     ).toBeVisible()
   }
 
@@ -56,10 +63,12 @@ class KhataListPage {
 
   /**
    * Count the visible account rows.
+   * Matches the data-testid form when present, falling back to the structural
+   * button signature (name + "Outstanding" + "Limit:") for older builds.
    * @returns {Promise<number>}
    */
   async getAccountCount() {
-    return this.page.locator(ACCOUNT_ROW).count()
+    return this.page.locator(ROW_LOCATOR).count()
   }
 
   /**
@@ -87,7 +96,10 @@ class KhataListPage {
 
   /**
    * Get the account row locator by debtor name.
-   * The row text includes the name in a span with class "font-medium".
+   * Prefers the data-testid row keyed by data-account-name; falls back to any
+   * data-testid row containing the name; finally falls back to the structural
+   * button signature (full-width row with "Outstanding" + "Limit:") filtered by
+   * name, for builds that predate the data-testid attribute.
    * @param {string} name
    * @returns {import('@playwright/test').Locator}
    */
@@ -95,6 +107,7 @@ class KhataListPage {
     const safe = name.replace(/"/g, '\\"')
     return this.page.locator(`${ACCOUNT_ROW}[data-account-name="${safe}"]`)
       .or(this.page.locator(ACCOUNT_ROW).filter({ hasText: name }))
+      .or(this.page.locator(ACCOUNT_ROW_FALLBACK).filter({ hasText: name }))
       .first()
   }
 

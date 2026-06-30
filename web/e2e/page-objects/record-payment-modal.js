@@ -12,13 +12,18 @@
  *   - Error displayed in <p class="text-xs text-tibetan">
  */
 
-const DIALOG_TITLE = 'text=Record Payment'
-const AMOUNT_INPUT = 'input[type="number"][min="0.01"][step="0.01"]'
-const REFERENCE_INPUT = 'input[placeholder="e.g. RTGS ref number"]'
-const NOTES_INPUT = 'input[placeholder="e.g. Partial payment for March"]'
-const SUBMIT_BTN = 'button[type="submit"]:has-text("Record")'
-const CANCEL_BTN = 'div[role="dialog"] button:has-text("Cancel")'
-const ERROR_TEXT = 'div[role="dialog"] p.text-tibetan'
+// The detail page renders a "Record Payment" *button* (the trigger) AND the
+// modal renders a "Record Payment" <h2> DialogTitle. A bare `text=Record Payment`
+// resolves to both → strict-mode violation. Scope every selector to the open
+// dialog so we never match the trigger button behind it.
+const DIALOG = 'div[role="dialog"]:has(h2:text-is("Record Payment"))'
+const DIALOG_TITLE = `${DIALOG} h2:text-is("Record Payment")`
+const AMOUNT_INPUT = `${DIALOG} input[type="number"][min="0.01"]`
+const REFERENCE_INPUT = `${DIALOG} input[placeholder="e.g. RTGS ref number"]`
+const NOTES_INPUT = `${DIALOG} input[placeholder="e.g. Partial payment for March"]`
+const SUBMIT_BTN = `${DIALOG} button[type="submit"]:has-text("Record")`
+const CANCEL_BTN = `${DIALOG} button:has-text("Cancel")`
+const ERROR_TEXT = `${DIALOG} p.text-tibetan`
 
 /** Map of display labels to their internal IDs */
 const METHOD_LABELS = {
@@ -50,8 +55,10 @@ class RecordPaymentModal {
    * @param {'Cash'|'mBoB'|'mPay'|'RTGS'|'Bank'} method — display label
    */
   async selectMethod(method) {
-    // Payment method buttons are inside a grid inside the dialog
-    const dialog = this.page.locator('div[role="dialog"]')
+    // Payment method buttons are inside a grid inside the Record Payment dialog.
+    // Scope to DIALOG so we never accidentally click a button in another open
+    // dialog (e.g. Adjust Balance) or the page behind it.
+    const dialog = this.page.locator(DIALOG)
     await dialog.locator('button[type="button"]', { hasText: method }).click()
   }
 

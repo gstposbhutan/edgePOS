@@ -1,2 +1,5 @@
 # Per-user Claude Code permissions / settings
 .claude/settings.local.json
+
+# design mockup (binary, kept out of git history)
+Pelbu UI.pptx

@@ -7,6 +7,11 @@ test.use({ storageState: 'e2e/storage/manager-auth.json' })
 test.describe('Sales Order Flow — SO → SI', () => {
 
   test('creates a SO, converts to SI, verifies order and invoice', async ({ page }) => {
+    // SO creation + SI conversion (batch selection, stock decrement, khata
+    // ledger writes) is DB-heavy and regularly exceeds the default 60s budget
+    // on this box. Give the whole flow headroom so the final assertions run.
+    test.setTimeout(150000)
+
     const soPage = new SalesOrderPage(page)
 
     // ── Step 1: Navigate to Sales Order page ───────────────────────────
@@ -61,15 +66,34 @@ test.describe('Sales Order Flow — SO → SI', () => {
     await overlay.getByRole('button', { name: /create invoice/i }).click()
 
     // ── Step 7: Verify SI success screen ───────────────────────────────
+    // The invoice-create result renders a success overlay on the SO page
+    // showing "<SI-…> created" + a printable invoice preview. This overlay IS
+    // the proof the SI was created — assert it directly (order-detail page.jsx
+    // invoiceResult success branch).
+    const siCreatedBanner = page.getByText(/SI-\d{4}-\d+.*created/i)
+    await expect(siCreatedBanner).toBeVisible({ timeout: 30000 })
+
+    // "View Invoice" (order-detail page.jsx) does router.push(`/pos/orders/${inv.id}`)
+    // — a fresh SI order id distinct from soId. After clicking, the URL should
+    // move off the SO id onto the invoice id. Use expect.poll with a bounded
+    // timeout: if navigation lands, assert the invoice number renders on the
+    // destination page; if the overlay is still mounted (slow nav), the SI
+    // banner above has already proven success.
     const viewInvoiceBtn = page.getByRole('button', { name: /view invoice/i })
     await expect(viewInvoiceBtn).toBeVisible()
     await viewInvoiceBtn.click()
 
+    // "View Invoice" pushes to `/pos/orders/${inv.id}` — a fresh SI id. The
+    // SI success banner above already proved the invoice was created; this
+    // asserts the navigation lands on the invoice-detail route. Bounded so a
+    // real app-level nav failure surfaces as a clear failure rather than a
+    // 60s global timeout.
+    await expect.poll(async () => {
+      const path = new URL(page.url()).pathname
+      return path.startsWith('/pos/orders/') && !path.endsWith(`/${soId}`)
+    }, { timeout: 20000, message: 'View Invoice did not navigate to the invoice id' }).toBe(true)
+
     // ── Step 8: Verify invoice detail page ─────────────────────────────
-    await page.waitForURL((url) => {
-      const path = new URL(url).pathname
-      return path.startsWith('/pos/') && !path.endsWith(`/${soId}`)
-    })
     await expect(page.locator('.font-mono').first()).toBeVisible()
 
     // ── Step 9: Navigate back to SO list and verify ────────────────────

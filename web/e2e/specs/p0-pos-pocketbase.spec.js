@@ -1,6 +1,33 @@
 /**
- * P0 — POS Core E2E (PocketBase)
+ * P0 — POS Core E2E (PocketBase)  —  SKIPPED
  *
+ * STATUS: Entire describe block is skipped (test.describe.skip).
+ *
+ * ROOT CAUSE: This spec was written for the DESKTOP terminal's embedded
+ * PocketBase backend (http://127.0.0.1:8090) and its login form, which uses
+ * `id="email"` / `id="password"` inputs and renders a plain "NEXUS BHUTAN"
+ * brand label. The WEB app does not use PocketBase — it authenticates via
+ * Supabase (lib/auth.js → lib/supabase/*) and renders the Pelbu login form
+ * (app/(auth)/login/page.jsx), whose inputs use placeholder-based selectors
+ * (you@business.bt / ••••••••), not #email/#password. There are zero
+ * PocketBase references anywhere under web/app or web/lib.
+ *
+ * None of the selectors below exist in the current web app:
+ *   - #email / #password (no such ids on the Supabase login form)
+ *   - "NEXUS BHUTAN" text (brand was renamed to Pelbu; the logo is an <img>)
+ *   - PocketBase seed products (Wai Wai Noodles / Druk 1104 Beer / Coca Cola 1L)
+ *   - a[href="/settings"] and header-button logout (keyboard POS has neither)
+ *
+ * Per the e2e fix guidance ("if the PocketBase login form isn't present,
+ * that's expected → skip with a clear reason, don't force them"), the whole
+ * block is skipped rather than rewritten. The equivalent web flow is covered
+ * by v1-auth.spec.js (login/sign-out/session) and the keyboard-POS specs.
+ *
+ * To re-enable: restore a PocketBase-backed login form with #email/#password
+ * and a running PocketBase seed, then flip test.describe.skip back to test.describe.
+ *
+ * ---
+ * Original description (kept for context):
  * Tests the core POS flow against the PocketBase backend:
  *   - Login with default admin credentials
  *   - POS dashboard loads (product grid, cart panel visible)
@@ -8,9 +35,6 @@
  *   - Cart creation on first load
  *   - Settings initialization
  *   - Logout and re-login
- *
- * This spec is self-contained — it handles its own auth at test start.
- * It uses the PocketBase backend at http://127.0.0.1:8090.
  */
 const { test, expect } = require('@playwright/test')
 
@@ -36,7 +60,9 @@ async function login(page, { email, password, timeout = 15000 } = {}) {
 
 // ── POS Core Flow ────────────────────────────────────────────────────────
 
-test.describe('POS Core (PocketBase)', () => {
+// SKIPPED: PocketBase login form (#email/#password) is not present in the web app,
+// which uses Supabase auth + the Pelbu login form. See the header comment above.
+test.describe.skip('POS Core (PocketBase) — SKIPPED: web uses Supabase auth, no #email form', () => {
 
   test('login page renders', async ({ page }) => {
     await page.goto('/login')

@@ -3,20 +3,23 @@ const { BasePage } = require('./base-page')
 /**
  * LoginPage — page object for /(auth)/login.
  *
- * Selectors are derived from the actual login page JSX:
+ * Selectors are derived from the actual login page JSX (app/(auth)/login/page.jsx):
+ *   - Brand logo: <Logo variant="stacked"> renders an <img> with alt
+ *     "Pelbu — Point of Sale" (brand was renamed from NEXUS BHUTAN to Pelbu;
+ *     there is no longer a plain-text brand label to match)
  *   - Tabs are plain <button> elements with text "Email" and "WhatsApp"
- *   - Email field: <input type="email"> with label "Email"
- *   - Password field: <input type="password|text"> with label "Password"
+ *   - Email field: <input type="email"> with placeholder "you@business.bt"
+ *   - Password field: <input type="password|text"> with placeholder "••••••••"
  *   - Password toggle: a <button type="button"> next to the password field
  *   - Email submit: <button> "Sign In"
- *   - WhatsApp phone: <input type="tel"> with label "WhatsApp Number"
+ *   - WhatsApp phone: <input type="tel"> with placeholder "+975 17 123 456"
  *   - Send OTP: <button> "Send Verification Code"
  *   - OTP: six single-digit <input maxlength="1"> elements
  *   - Verify OTP: <button> "Verify & Sign In"
  *   - Change number: <button type="button"> "Change number"
  *   - Resend code: <button type="button"> "Resend code" / "Resend in Ns"
- *   - Error alerts: <div> containing <p> with error text (bg-tibetan)
- *   - Forgot password: <a href="/login/reset">
+ *   - Error alerts: <p data-testid="login-error-message"> (bg-tibetan)
+ *   - Forgot password: <a href="/login/reset"> "Reset via Email or WhatsApp"
  */
 class LoginPage extends BasePage {
   /**
@@ -27,8 +30,9 @@ class LoginPage extends BasePage {
 
     // ── Locators (built from actual JSX) ───────────────────────────
 
-    // Logo / header
-    this.logo = page.getByText('NEXUS BHUTAN')
+    // Logo / header — Logo component renders <img alt="Pelbu — Point of Sale">.
+    // Match the brand wordmark via the logo alt text (no plain-text brand label exists).
+    this.logo = page.getByAltText(/pelbu/i)
     this.heading = page.getByText('Sign In', { exact: true }).first()
 
     // Tabs
@@ -152,13 +156,22 @@ class LoginPage extends BasePage {
 
   /**
    * Fill a 6-digit OTP code into the individual digit inputs.
+   *
+   * Uses Locator.fill() per digit rather than pressSequentially(): the OTP
+   * inputs are React-controlled (`value={waOtp[i] ?? ''}`) and the WhatsApp
+   * send handler AUTO-FILLS the correct demo code (`setWaOtp(data.otp)`).
+   * pressSequentially appends to the pre-filled value and is unreliable for
+   * controlled inputs; fill() replaces the value and dispatches a proper
+   * `input` event so React's onChange picks up the new digit. This makes a
+   * deliberate wrong-code (`000000`) overwrite the auto-filled `123456`.
+   *
    * @param {string} code - exactly 6 digits
    */
   async fillOtp(code) {
     const inputs = await this.getOtpInputs()
     for (let i = 0; i < 6; i++) {
-      await inputs[i].click()
-      await inputs[i].pressSequentially(code[i] || '')
+      // fill() clears any auto-filled digit first, then types the new one.
+      await inputs[i].fill(code[i] || '')
     }
   }
 

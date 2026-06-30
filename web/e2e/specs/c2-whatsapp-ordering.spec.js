@@ -25,7 +25,11 @@ async function isGatewayAvailable() {
 }
 
 test.describe('WhatsApp Ordering', () => {
-  test.skip(async () => !(await isGatewayAvailable()), 'WhatsApp gateway not available')
+  // The gateway service (services/whatsapp-gateway) is built but is NOT started
+  // by the Playwright webServer config (only the Next.js app on :3000 is). These
+  // tests self-skip when the gateway on :3001 is unreachable. Run the gateway
+  // (`npm run dev` in services/whatsapp-gateway) to exercise them.
+  test.skip(async () => !(await isGatewayAvailable()), 'WhatsApp gateway not running on :3001 — start services/whatsapp-gateway to enable')
   const testPhone = '+97517900001'
   const testMsgId = `wamid_${Date.now()}`
 

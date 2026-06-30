@@ -19,8 +19,9 @@ class OrderDetailPage {
     // WhatsApp source badge — green badge with "WhatsApp" text and MessageCircle icon
     this.whatsappBadge = page.locator('span.inline-flex', { hasText: 'WhatsApp' }).first()
 
-    // Status badge (rendered by OrderStatusBadge component)
-    this.statusBadge = page.locator('span.inline-flex.rounded-full').last()
+    // Status badge (rendered by OrderStatusBadge component) — scope to the
+    // header breadcrumb row so refund-row badges don't shadow it via .last().
+    this.statusBadge = page.locator('div.flex.items-center.gap-2.flex-wrap span.inline-flex.rounded-full').first()
 
     // Summary cards
     this.grandTotalCard = page.locator('text=Grand Total').locator('..')
