@@ -393,6 +393,19 @@ function stopPocketBase() {
   });
 }
 
+// Delete a directory, retrying to ride out Windows file-lock lag after PB exits, and verify it is
+// actually gone — so a "Clear & Re-sync" can never silently leave the old database behind.
+async function wipeDir(dir) {
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+    } catch (_) { /* files still locked — wait and retry */ }
+    if (!fs.existsSync(dir)) return true;
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return !fs.existsSync(dir);
+}
+
 // Owner action (Settings → Central Sync → Clear & Re-sync): wipe the local database and rebuild
 // it from the cloud. Push any unsynced sales up first, stop PB, delete the data dir, relaunch
 // (migrations re-run), re-seed the default owner, then re-bootstrap catalog + store team. The
@@ -416,9 +429,14 @@ ipcMain.handle("sync:reset-resync", async () => {
 
     mainWindow?.webContents.send("sync:status", { status: "syncing", message: "Clearing local database…" });
     await stopPocketBase();
-    if (pbDataDir) {
-      try { fs.rmSync(pbDataDir, { recursive: true, force: true }); }
-      catch (e) { console.error("[Main] wipe failed:", e.message); }
+    if (pbDataDir && !(await wipeDir(pbDataDir))) {
+      // Couldn't enforce the wipe (files still locked). Bring the existing DB back so the terminal
+      // keeps working, and report failure rather than silently pretending it was cleared.
+      const relaunch = launchPocketBase(pbDataDir);
+      pbProcess = relaunch.proc;
+      try { await relaunch.ready(); } catch (_) {}
+      mainWindow?.webContents.send("sync:status", { status: "error", message: "Could not clear local data (files in use)" });
+      return { ok: false, error: "Could not clear the local database — files are in use. Close any other Pelbu windows and try again." };
     }
 
     const { proc, ready } = launchPocketBase(pbDataDir);
