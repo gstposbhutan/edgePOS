@@ -76,10 +76,19 @@ function launchPocketBase(dataDirOverride) {
   }
 
   const migrationsDir = path.join(getAppBase(), "pb", "pb_migrations");
+  const hooksDir = path.join(getAppBase(), "pb", "pb_hooks");
 
   const args = ["serve", "--dir", dataDir, "--http", "127.0.0.1:8090"];
   if (fs.existsSync(migrationsDir)) {
     args.push("--migrationsDir", migrationsDir);
+  }
+  // Explicitly point PocketBase at the bundled hooks. PB defaults --hooksDir to
+  // {dataDir}/../pb_hooks; in the packaged app the data dir is userData/pb_data, so that
+  // default misses the hooks bundled under resources/app.asar.unpacked/pb/pb_hooks. Without
+  // this the custom routes never load — notably /api/custom/sync-user, which mirrors each web
+  // user's bcrypt hash into the terminal so store team logins work here (and audit hooks).
+  if (fs.existsSync(hooksDir)) {
+    args.push("--hooksDir", hooksDir);
   }
 
   console.log(`[PB] Starting PocketBase: ${binary}`);

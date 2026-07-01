@@ -159,6 +159,25 @@ export default function SettingsPage() {
     }
   };
 
+  const [resetting, setResetting] = useState(false);
+  const handleResetResync = async () => {
+    if (!api) return;
+    setResetting(true);
+    try {
+      const r = await api.sync.resetResync();
+      if (r?.cancelled) return; // user backed out at the confirm dialog
+      if (r?.ok) {
+        toast.success(`Local data cleared — re-synced ${r.products ?? 0} products, ${r.users ?? 0} users`);
+        signOut();
+        if (typeof window !== "undefined") window.location.href = "/";
+      } else {
+        toast.error(r?.error || "Clear & re-sync failed");
+      }
+    } finally {
+      setResetting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card px-4 py-3 flex items-center justify-between">
@@ -517,6 +536,20 @@ export default function SettingsPage() {
               <p className="text-[10px] text-muted-foreground">
                 First-run provisioning — pulls this store&apos;s products, categories, and credit accounts from the cloud into this terminal.
               </p>
+
+              <div className="pt-3 mt-1 border-t border-border/60 space-y-1.5">
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleResetResync}
+                  disabled={resetting || bootstrapping}
+                >
+                  {resetting ? "Clearing…" : "Clear local data & re-sync"}
+                </Button>
+                <p className="text-[10px] text-muted-foreground">
+                  Wipes this terminal&apos;s local database and rebuilds it from the cloud — products, customers, and team logins. Unsynced sales are pushed up first. You&apos;ll be signed out.
+                </p>
+              </div>
             </CardContent>
           </Card>
         )}

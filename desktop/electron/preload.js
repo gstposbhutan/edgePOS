@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     stop: () => ipcRenderer.invoke("sync:stop"),
     forceSync: () => ipcRenderer.invoke("sync:force"),
     bootstrap: () => ipcRenderer.invoke("sync:bootstrap"),
+    resetResync: () => ipcRenderer.invoke("sync:reset-resync"),
   },
 
   // PocketBase

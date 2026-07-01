@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, Tray, Menu, dialog, shell } = require("electron");
 const path = require("path");
+const fs = require("fs");
 const { launchPocketBase, PB_URL } = require("./pb-launcher");
 const { printReceipt, getPrinterStatus, testPrint, listPrinters } = require("./printer");
 const { startStaticServer } = require("./static-server");
@@ -20,6 +21,7 @@ let tray = null;
 let pbProcess = null;
 let syncInterval = null;
 let syncConfig = null;
+let pbDataDir = null;
 
 function getResourcePath(...segments) {
   if (isDev) return path.join(__dirname, "..", ...segments);
@@ -349,6 +351,96 @@ async function doBootstrap() {
 
 ipcMain.handle("sync:bootstrap", () => doBootstrap());
 
+// Seed the default owner login (admin@pos.local / admin12345) whenever the local users
+// collection is empty — on first boot and after a Clear & Re-sync wipe — so there's always a
+// fallback login even before the store team syncs from the cloud.
+async function seedDefaultUser() {
+  try {
+    const listRes = await fetch(PB_URL + "/api/collections/users/records?perPage=1");
+    const listData = await listRes.json();
+    if (!listData.items || listData.items.length === 0) {
+      const createRes = await fetch(PB_URL + "/api/collections/users/records", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: "admin@pos.local",
+          password: "admin12345",
+          passwordConfirm: "admin12345",
+          name: "Admin",
+          role: "owner",
+        }),
+      });
+      if (createRes.ok) console.log("[Main] Created default POS user: admin@pos.local");
+      else console.log("[Main] User creation failed:", await createRes.text());
+    }
+  } catch (e) {
+    console.log("[Main] User seed error:", e.message);
+  }
+}
+
+// Stop the embedded PB and wait for the process to fully exit — Windows only releases the
+// data-dir file locks on exit, so a wipe must wait for this before deleting the folder.
+function stopPocketBase() {
+  return new Promise((resolve) => {
+    if (!pbProcess) return resolve();
+    const p = pbProcess;
+    pbProcess = null;
+    let done = false;
+    const finish = () => { if (!done) { done = true; resolve(); } };
+    p.once("close", finish);
+    try { p.kill(); } catch (_) { finish(); }
+    setTimeout(finish, 5000); // fallback if 'close' never fires
+  });
+}
+
+// Owner action (Settings → Central Sync → Clear & Re-sync): wipe the local database and rebuild
+// it from the cloud. Push any unsynced sales up first, stop PB, delete the data dir, relaunch
+// (migrations re-run), re-seed the default owner, then re-bootstrap catalog + store team. The
+// renderer signs out + returns to login afterwards.
+ipcMain.handle("sync:reset-resync", async () => {
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: "warning",
+    buttons: ["Cancel", "Clear & Re-sync"],
+    defaultId: 0,
+    cancelId: 0,
+    title: "Clear local data",
+    message: "Clear ALL local data and re-sync from the cloud?",
+    detail:
+      "This wipes this terminal's local database — products, customers, team logins, and local sales/shift history — then rebuilds it from the cloud. Any unsynced sales are pushed up first. You will be signed out.",
+  });
+  if (response !== 1) return { ok: false, cancelled: true };
+
+  try {
+    mainWindow?.webContents.send("sync:status", { status: "syncing", message: "Pushing unsynced sales…" });
+    try { await doSync(); } catch (_) { /* best effort — offline is fine */ }
+
+    mainWindow?.webContents.send("sync:status", { status: "syncing", message: "Clearing local database…" });
+    await stopPocketBase();
+    if (pbDataDir) {
+      try { fs.rmSync(pbDataDir, { recursive: true, force: true }); }
+      catch (e) { console.error("[Main] wipe failed:", e.message); }
+    }
+
+    const { proc, ready } = launchPocketBase(pbDataDir);
+    pbProcess = proc;
+    await ready();
+    await seedDefaultUser();
+
+    mainWindow?.webContents.send("sync:status", { status: "syncing", message: "Re-syncing from cloud…" });
+    const result = await doBootstrap();
+
+    mainWindow?.webContents.send("sync:status", {
+      status: "idle",
+      lastSync: new Date().toISOString(),
+      message: result?.ok ? `Re-synced ${result.products} products, ${result.users} users` : "Local database cleared",
+    });
+    return { ok: true, ...(result || {}) };
+  } catch (err) {
+    mainWindow?.webContents.send("sync:status", { status: "error", message: err.message });
+    return { ok: false, error: err.message };
+  }
+});
+
 // ── Licensing: .lic gate + activation ────────────────────────────────────────
 // The terminal must present a valid, machine-locked .lic to run. The license carries the
 // sync token + ingest URL, so activation also configures sync + runs first-run bootstrap.
@@ -473,42 +565,16 @@ ipcMain.handle("sync:force", async () => {
 
 app.whenReady().then(async () => {
   // Launch PocketBase with data dir in user's app data (writable)
-  const dataDir = isDev
+  pbDataDir = isDev
     ? path.join(__dirname, "..", "pb", "pb_data")
     : path.join(app.getPath("userData"), "pb_data");
-  const { proc, ready } = launchPocketBase(dataDir);
+  const { proc, ready } = launchPocketBase(pbDataDir);
   pbProcess = proc;
 
   try {
     await ready();
     console.log("[Main] PocketBase is ready");
-
-    // Seed default POS user on first launch
-    try {
-      // Check if any user exists
-      const listRes = await fetch(PB_URL + "/api/collections/users/records?perPage=1");
-      const listData = await listRes.json();
-      if (!listData.items || listData.items.length === 0) {
-        const createRes = await fetch(PB_URL + "/api/collections/users/records", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: "admin@pos.local",
-            password: "admin12345",
-            passwordConfirm: "admin12345",
-            name: "Admin",
-            role: "owner",
-          }),
-        });
-        if (createRes.ok) {
-          console.log("[Main] Created default POS user: admin@pos.local");
-        } else {
-          console.log("[Main] User creation failed:", await createRes.text());
-        }
-      }
-    } catch (e) {
-      console.log("[Main] User seed error:", e.message);
-    }
+    await seedDefaultUser();
   } catch (err) {
     console.error("[Main] PocketBase failed to start:", err.message);
     dialog.showErrorBox("PocketBase Error", "Could not start local database.");
