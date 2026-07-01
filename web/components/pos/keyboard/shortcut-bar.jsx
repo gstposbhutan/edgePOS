@@ -1,8 +1,46 @@
 /**
- * Bottom status bar showing the canonical Pelbu keyboard map.
- * `stub: true` marks keys whose feature ships in a later phase — they are
- * dimmed and badged so operators can see the full intended layout today.
+ * Bottom keyboard-map bar. Every entry is now a real, touch-sized button: tapping it
+ * re-dispatches the exact keydown its physical shortcut fires, so the existing
+ * document-level key handlers on each screen run unchanged (single source of truth —
+ * no per-screen wiring). `stub: true` marks keys whose feature ships later — dimmed,
+ * badged and non-interactive.
  */
+
+// Map a display label ('F10', 'Ctrl+D', 'Ctrl+⇧X', 'Del', 'Esc', …) to a KeyboardEvent
+// init. Returns null for informational labels ('Any key', '↑↓') that aren't a single
+// dispatchable key, so those render as plain (non-clickable) hints.
+const NAMED_KEYS = { del: 'Delete', delete: 'Delete', esc: 'Escape', escape: 'Escape', enter: 'Enter', tab: 'Tab', space: ' ' }
+
+export function keyEventInit(label) {
+  const init = { bubbles: true, cancelable: true }
+  let key = null
+  for (let part of String(label).split('+')) {
+    part = part.trim()
+    if (!part) continue
+    if (/^(ctrl|control)$/i.test(part)) { init.ctrlKey = true; continue }
+    if (/^alt$/i.test(part))            { init.altKey = true;  continue }
+    if (/^shift$/i.test(part))          { init.shiftKey = true; continue }
+    if (part.startsWith('⇧'))           { init.shiftKey = true; part = part.slice(1) }
+    const low = part.toLowerCase()
+    if (NAMED_KEYS[low])            key = NAMED_KEYS[low]
+    else if (/^f\d{1,2}$/i.test(part)) key = part.toUpperCase()   // F1..F12
+    else if (part.length === 1)        key = part.toLowerCase()   // letters — handlers lowercase or match both cases
+  }
+  if (!key) return null
+  init.key = key
+  return init
+}
+
+function triggerShortcut(label) {
+  const init = keyEventInit(label)
+  if (!init) return
+  // A focused text field makes the screen handlers bail (they ignore keys while typing);
+  // drop that focus so the click behaves like a real shortcut press.
+  const el = typeof document !== 'undefined' ? document.activeElement : null
+  if (el && ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName)) el.blur?.()
+  document.dispatchEvent(new KeyboardEvent('keydown', init))
+}
+
 export function ShortcutBar({ shortcuts = [] }) {
   const defaultShortcuts = [
     { key: 'F1',        label: 'Help' },
@@ -26,17 +64,31 @@ export function ShortcutBar({ shortcuts = [] }) {
   const items = shortcuts.length > 0 ? shortcuts : defaultShortcuts
 
   return (
-    <div className="border-t border-border bg-muted/30 px-4 py-1.5 flex items-center gap-3 overflow-x-auto shrink-0">
-      {items.map(s => (
-        <div key={s.key} className={`flex items-center gap-1 shrink-0 ${s.stub ? 'opacity-40' : ''}`}>
-          <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 bg-background border border-border rounded text-foreground">
-            {s.key}
-          </span>
-          <span className="text-[10px] text-muted-foreground">
-            {s.label}{s.stub ? ' ◌' : ''}
-          </span>
-        </div>
-      ))}
+    <div className="border-t border-border bg-muted/30 px-3 py-2 flex flex-wrap items-center gap-2 shrink-0">
+      {items.map(s => {
+        const clickable = !s.stub && keyEventInit(s.key) !== null
+        return (
+          <button
+            key={s.key}
+            type="button"
+            disabled={!clickable}
+            onClick={clickable ? () => triggerShortcut(s.key) : undefined}
+            title={clickable ? `${s.key} — ${s.label}` : s.label}
+            className={`flex items-center gap-2 rounded-lg border px-3 py-2 min-h-[52px] select-none transition
+              ${clickable
+                ? 'border-border bg-background hover:bg-accent hover:border-primary/50 active:scale-95 cursor-pointer'
+                : 'border-transparent bg-transparent cursor-default'}
+              ${s.stub ? 'opacity-40' : ''}`}
+          >
+            <span className="text-sm font-mono font-bold px-2 py-1 rounded bg-muted text-foreground border border-border whitespace-nowrap">
+              {s.key}
+            </span>
+            <span className="text-sm font-medium text-foreground whitespace-nowrap">
+              {s.label}{s.stub ? ' ◌' : ''}
+            </span>
+          </button>
+        )
+      })}
     </div>
   )
 }
