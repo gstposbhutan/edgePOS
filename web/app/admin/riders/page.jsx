@@ -82,10 +82,15 @@ export default function AdminRidersPage() {
   const [modalOpen, setModalOpen] = useState(false)
 
   async function loadRiders() {
-    const res = await fetch('/api/admin/riders')
-    const data = await res.json()
-    if (data.riders) setRiders(data.riders)
-    setLoading(false)
+    try {
+      const res = await fetch('/api/admin/riders')
+      const data = await res.json()
+      if (data.riders) setRiders(data.riders)
+    } catch {
+      // leave the list empty; the page still renders with the Add Rider action
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => { if (user) loadRiders() }, [user])

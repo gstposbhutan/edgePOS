@@ -6,6 +6,7 @@ export async function PATCH(request, { params }) {
   try {
     const ctx = await getAuthContext()
     if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (ctx.role !== 'SUPER_ADMIN') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const { id } = await params
     const body = await request.json()
@@ -15,11 +16,11 @@ export async function PATCH(request, { params }) {
     if (typeof body.is_active === 'boolean') updates.is_active = body.is_active
     if (typeof body.is_available === 'boolean') updates.is_available = body.is_available
 
+    // Riders are a platform-wide pool (no entity_id column) — scope by id only.
     const { data: rider, error } = await supabase
       .from('riders')
       .update(updates)
       .eq('id', id)
-      .eq('entity_id', ctx.entityId)
       .select('id, name, is_active, is_available')
       .single()
 

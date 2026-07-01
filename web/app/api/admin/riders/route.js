@@ -7,12 +7,14 @@ export async function GET(request) {
   try {
     const ctx = await getAuthContext()
     if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (ctx.role !== 'SUPER_ADMIN') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
+    // Riders are a platform-wide pool managed by the super-admin (the table has no
+    // entity_id column — they are not tenant-scoped).
     const supabase = ctx.supabase
     const { data: riders, error } = await supabase
       .from('riders')
       .select('id, name, whatsapp_no, is_active, is_available, current_order_id, created_at')
-      .eq('entity_id', ctx.entityId)
       .order('created_at', { ascending: false })
 
     if (error) throw error
@@ -27,6 +29,7 @@ export async function POST(request) {
   try {
     const ctx = await getAuthContext()
     if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (ctx.role !== 'SUPER_ADMIN') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const { name, whatsapp_no, pin } = await request.json()
 
@@ -66,7 +69,6 @@ export async function POST(request) {
         auth_user_id:  authData.user.id,
         auth_email:    tempEmail,
         auth_password: tempPassword,
-        entity_id:     ctx.entityId,
         is_active:     true,
         is_available:  true,
       })
