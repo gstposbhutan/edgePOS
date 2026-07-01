@@ -22,6 +22,7 @@ let pbProcess = null;
 let syncInterval = null;
 let syncConfig = null;
 let pbDataDir = null;
+let lastSyncAt = null; // ISO time of the last successful push/pull — drives the renderer sync nudge
 
 function getResourcePath(...segments) {
   if (isDev) return path.join(__dirname, "..", ...segments);
@@ -180,7 +181,7 @@ async function doSync() {
     const khataTxns = await fetchAll("khata_transactions", "is_synced = false");
 
     if (!orders.length && !movements.length && !khataTxns.length) {
-      mainWindow?.webContents.send("sync:status", { status: "idle", lastSync: new Date().toISOString(), message: "Up to date" });
+      mainWindow?.webContents.send("sync:status", { status: "idle", lastSync: (lastSyncAt = new Date().toISOString()), message: "Up to date" });
       return;
     }
 
@@ -227,7 +228,7 @@ async function doSync() {
 
     mainWindow?.webContents.send("sync:status", {
       status: "idle",
-      lastSync: new Date().toISOString(),
+      lastSync: (lastSyncAt = new Date().toISOString()),
       message: `Synced ${orders.length} orders, ${movements.length} movements, ${khataTxns.length} ledger`,
     });
   } catch (err) {
@@ -339,7 +340,7 @@ async function doBootstrap() {
 
     mainWindow?.webContents.send("sync:status", {
       status: "idle",
-      lastSync: new Date().toISOString(),
+      lastSync: (lastSyncAt = new Date().toISOString()),
       message: `Bootstrapped ${products} products, ${catMap.size} categories, ${khata} accounts, ${users} users`,
     });
     return { ok: true, products, categories: catMap.size, khata, users };
@@ -449,7 +450,7 @@ ipcMain.handle("sync:reset-resync", async () => {
 
     mainWindow?.webContents.send("sync:status", {
       status: "idle",
-      lastSync: new Date().toISOString(),
+      lastSync: (lastSyncAt = new Date().toISOString()),
       message: result?.ok ? `Re-synced ${result.products} products, ${result.users} users` : "Local database cleared",
     });
     return { ok: true, ...(result || {}) };
@@ -553,6 +554,7 @@ ipcMain.handle("sync:get-status", () => {
   return {
     running: !!syncInterval,
     config: syncConfig,
+    lastSyncAt,
   };
 });
 

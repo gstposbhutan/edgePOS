@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { QueryProvider } from "@/providers/query-provider";
 import { ThemeProvider } from "@/providers/theme-provider";
 import { UpdateBanner } from "@/components/update-banner";
+import { SyncNudge } from "@/components/sync-nudge";
 
 export const metadata: Metadata = {
   title: "Pelbu POS",
@@ -21,6 +22,7 @@ export default function RootLayout({
         <ThemeProvider>
           <QueryProvider>
             <UpdateBanner />
+            <SyncNudge />
             {children}
           </QueryProvider>
         </ThemeProvider>

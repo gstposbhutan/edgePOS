@@ -51,8 +51,6 @@ import { useTheme } from "next-themes";
 import {
   LogOut,
   Settings,
-  Package,
-  ClipboardList,
   Users,
   Wallet,
   Wifi,
@@ -66,7 +64,6 @@ import {
   Sun,
   Moon,
   FilePlus,
-  Truck,
   Hash,
   CalendarClock,
   Tags,
@@ -864,36 +861,9 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
 
         <div className="flex items-center gap-0.5">
           <div className="hidden md:flex items-center gap-0.5">
-            {isManager && (
-            <Link href="/products">
-              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
-                <Package className="h-4 w-4 mr-1.5" />
-                Products
-              </Button>
-            </Link>
-            )}
-            {isManager && (
-            <Link href="/inventory">
-              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
-                <Package className="h-4 w-4 mr-1.5" />
-                Inventory
-              </Button>
-            </Link>
-            )}
-            {isManager && (
-            <Link href="/purchases">
-              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
-                <Truck className="h-4 w-4 mr-1.5" />
-                Purchasing
-              </Button>
-            </Link>
-            )}
-            <Link href="/orders">
-              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
-                <ClipboardList className="h-4 w-4 mr-1.5" />
-                Orders
-              </Button>
-            </Link>
+            {/* Desktop is strictly the POS register — catalog/inventory/purchasing/order-history
+                live in the web back-office. Only counter/till functions remain here: customer +
+                khata (cashier) and cash-in/out (manager/owner). */}
             <Link href="/customers">
               <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
                 <Users className="h-4 w-4 mr-1.5" />
