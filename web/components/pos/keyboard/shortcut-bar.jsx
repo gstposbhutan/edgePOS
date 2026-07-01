@@ -64,7 +64,7 @@ export function ShortcutBar({ shortcuts = [] }) {
   const items = shortcuts.length > 0 ? shortcuts : defaultShortcuts
 
   return (
-    <div className="border-t border-border bg-muted/30 px-3 py-2 flex flex-wrap items-center gap-2 shrink-0">
+    <div className="border-t border-border bg-muted/30 px-3 py-2 grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2 shrink-0">
       {items.map(s => {
         const clickable = !s.stub && keyEventInit(s.key) !== null
         return (
@@ -74,16 +74,16 @@ export function ShortcutBar({ shortcuts = [] }) {
             disabled={!clickable}
             onClick={clickable ? () => triggerShortcut(s.key) : undefined}
             title={clickable ? `${s.key} — ${s.label}` : s.label}
-            className={`flex items-center gap-2 rounded-lg border px-3 py-2 min-h-[52px] select-none transition
+            className={`w-full flex items-center gap-2 rounded-lg border px-3 py-2 min-h-[52px] select-none transition
               ${clickable
                 ? 'border-border bg-background hover:bg-accent hover:border-primary/50 active:scale-95 cursor-pointer'
                 : 'border-transparent bg-transparent cursor-default'}
               ${s.stub ? 'opacity-40' : ''}`}
           >
-            <span className="text-sm font-mono font-bold px-2 py-1 rounded bg-muted text-foreground border border-border whitespace-nowrap">
+            <span className="inline-flex items-center justify-center min-w-[3.5rem] text-sm font-mono font-bold px-2 py-1 rounded bg-muted text-foreground border border-border whitespace-nowrap">
               {s.key}
             </span>
-            <span className="text-sm font-medium text-foreground whitespace-nowrap">
+            <span className="text-sm font-medium text-foreground whitespace-nowrap overflow-hidden text-ellipsis">
               {s.label}{s.stub ? ' ◌' : ''}
             </span>
           </button>
