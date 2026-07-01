@@ -80,19 +80,19 @@ export function ListingFooter({ itemCount, subtotal, gstTotal, grandTotal }: Lis
           <span className="text-lg font-bold text-primary">Total: Nu. {grandTotal.toFixed(2)}</span>
         </div>
       )}
-      <div className="px-3 py-2 flex flex-wrap items-center gap-2">
+      <div className="px-3 py-2 grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-2">
         {SHORTCUTS.map((s) => (
           <button
             key={s.key}
             type="button"
             onClick={() => triggerShortcut(s.key)}
             title={`${s.key} — ${s.label}`}
-            className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 min-h-[52px] select-none transition hover:bg-accent hover:border-primary/50 active:scale-95 cursor-pointer"
+            className="w-full flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 min-h-[52px] select-none transition hover:bg-accent hover:border-primary/50 active:scale-95 cursor-pointer"
           >
-            <span className="text-sm font-mono font-bold px-2 py-1 rounded bg-muted text-foreground border border-border whitespace-nowrap">
+            <span className="inline-flex items-center justify-center min-w-[3.5rem] text-sm font-mono font-bold px-2 py-1 rounded bg-muted text-foreground border border-border whitespace-nowrap">
               {s.key}
             </span>
-            <span className="text-sm font-medium text-foreground whitespace-nowrap">{s.label}</span>
+            <span className="text-sm font-medium text-foreground whitespace-nowrap overflow-hidden text-ellipsis">{s.label}</span>
           </button>
         ))}
       </div>
