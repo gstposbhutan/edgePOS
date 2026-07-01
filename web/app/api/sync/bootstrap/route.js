@@ -53,7 +53,12 @@ export async function GET(request) {
         product_categories(categories(name))
       `)
       .eq('created_by', entityId)
-      .eq('is_active', true),
+      .eq('is_active', true)
+      // Terminals are the retailer POS with no concept of Model-B sealed packages — never push
+      // PACKAGE / package-only products, whose current_stock is a sealed-unit count the terminal
+      // would mis-sell as a plain SKU.
+      .eq('product_type', 'SINGLE')
+      .eq('sold_as_package_only', false),
     supabase
       .from('categories')
       .select('id, name')
