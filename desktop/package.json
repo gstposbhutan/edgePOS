@@ -1,6 +1,6 @@
 {
   "name": "pos-terminal",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "private": true,
   "main": "electron/main.js",
   "author": "Pelbu <hello@pelbu.com>",
@@ -117,7 +117,8 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": true
     }
   }
 }
