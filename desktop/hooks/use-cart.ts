@@ -20,6 +20,7 @@ export interface CartItem {
   discount: number;
   gst_5: number;
   total: number;
+  salesperson_id?: string | null;
   expand?: { product?: Product };
 }
 
@@ -126,7 +127,7 @@ export function useCart(priceListMode: PriceListMode = "RETAIL") {
   };
 
   const addItemMutation = useMutation({
-    mutationFn: async ({ product, weight, mode }: { product: Product; weight?: number; mode?: PriceListMode }): Promise<CartItem> => {
+    mutationFn: async ({ product, weight, mode, salespersonId }: { product: Product; weight?: number; mode?: PriceListMode; salespersonId?: string | null }): Promise<CartItem> => {
       if (!cart) throw new Error("No active cart");
       // Per-line rate: the product-search rate toggle passes a tier for THIS line; else the default.
       const unitPrice = priceFor(product, mode ?? priceListMode);
@@ -137,7 +138,12 @@ export function useCart(priceListMode: PriceListMode = "RETAIL") {
       if (!isWeighed) {
         // Check cache for existing item (reflects latest server state via refetch)
         const current = queryClient.getQueryData<CartItem[]>(["cart-items", cartId]) ?? [];
-        const existing = current.find((i) => i.product === product.id);
+        // Merge only when product + salesperson + RATE match. Rate in the key means the same SKU added
+        // at two tiers (wholesale line + retail line) stays as two separate lines in one invoice (#4);
+        // salesperson keeps per-staff lines distinct (#3).
+        const existing = current.find(
+          (i) => i.product === product.id && (i.salesperson_id ?? null) === (salespersonId ?? null) && Number(i.unit_price) === Number(unitPrice)
+        );
         if (existing) {
           // Hard cap: never increment past current_stock. If the line is already at
           // (or over) the cap, hold it there and let the cashier know. Untracked
@@ -159,6 +165,7 @@ export function useCart(priceListMode: PriceListMode = "RETAIL") {
       return pb.collection("cart_items").create({
         cart: cart.id, product: product.id, name: product.name, sku: product.sku,
         quantity, unit_price: unitPrice, discount: 0, gst_5: gstAmount, total,
+        salesperson_id: salespersonId ?? null,
       }, PB_REQ) as unknown as CartItem;
     },
     onSuccess: () => refetchItems(),
@@ -166,9 +173,9 @@ export function useCart(priceListMode: PriceListMode = "RETAIL") {
 
   // `weight` is only used for sold_by_weight products (the measured amount in product.unit);
   // omit it for normal items, which add/increment by 1.
-  const addItem = async (product: Product, weight?: number, mode?: PriceListMode): Promise<OpResult> => {
+  const addItem = async (product: Product, weight?: number, mode?: PriceListMode, salespersonId?: string | null): Promise<OpResult> => {
     try {
-      await addItemMutation.mutateAsync({ product, weight, mode });
+      await addItemMutation.mutateAsync({ product, weight, mode, salespersonId });
       return { success: true };
     } catch (err) {
       return { success: false, error: errMsg(err) };

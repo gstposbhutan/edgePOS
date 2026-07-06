@@ -65,20 +65,15 @@ export default function KeyboardPosPage() {
   const [showCustomerPanel, setShowCustomerPanel] = useState(false)
   const [showInvoiceSearch, setShowInvoiceSearch] = useState(false)
   const [showSalesPerson, setShowSalesPerson] = useState(false)
-  const [salesPersonId, setSalesPersonId] = useState(null)        // attributed salesperson (F8); null = unattributed
+  const [salesPersonId, setSalesPersonId] = useState(null)        // active salesperson (F8) — tags NEW lines; null = unattributed
   const [salesPersonName, setSalesPersonName] = useState(null)
+  const [salespeopleById, setSalespeopleById] = useState({})      // id → name, to label each cart line's salesperson
   const [showQuotation, setShowQuotation] = useState(false)
   const [showComp, setShowComp] = useState(false)
   const [showExchange, setShowExchange] = useState(false)
   const [showMarket, setShowMarket] = useState(false)
   const [showDelivery, setShowDelivery] = useState(false)
   const [deliveryAddress, setDeliveryAddress] = useState(null)    // attached to the next sale (Alt+D)
-  const [priceListMode, setPriceListMode] = useState(() => {              // RETAIL | WHOLESALE | DISTRIBUTOR (persisted)
-    try {
-      const saved = localStorage.getItem('pos_price_list')
-      return ['RETAIL', 'WHOLESALE', 'DISTRIBUTOR'].includes(saved) ? saved : 'RETAIL'
-    } catch { return 'RETAIL' }
-  })
   const [selectedCustomer, setSelectedCustomer] = useState(null)        // full khata account for header display
   const [nextInvoiceNo, setNextInvoiceNo] = useState(null)              // live preview of the next order no
   const [serverTime, setServerTime] = useState(null)                    // internet-sourced clock
@@ -101,6 +96,14 @@ export default function KeyboardPosPage() {
     closedOkRef.current = true
     return res
   }
+
+  // Load the sales-attributable team once, to label each cart line's salesperson (per-line #3).
+  useEffect(() => {
+    fetch('/api/pos/salespeople')
+      .then(r => r.ok ? r.json() : { salespeople: [] })
+      .then(d => setSalespeopleById(Object.fromEntries((d.salespeople || []).map(s => [s.id, s.full_name || s.sub_role]))))
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     async function load() {
@@ -147,7 +150,7 @@ export default function KeyboardPosPage() {
     addItem, updateQty, removeItem, clearCart, setCustomerIdentity, applyDiscount, applyBillDiscount,
     repriceCart,
     holdCart, switchCart, cancelCart,
-  } = useCart(entity?.id, user?.id, priceListMode, (name, avail) => showToast(`Only ${avail} in stock`))
+  } = useCart(entity?.id, user?.id, 'RETAIL', (name, avail) => showToast(`Only ${avail} in stock`))
 
   const { accounts, lookupAccount, createAccount } = useKhata(entity?.id)
 
@@ -173,7 +176,6 @@ export default function KeyboardPosPage() {
         return
       }
       if (e.key === 'F6')  { e.preventDefault(); setShowCustomerPanel(true); return }                          // Customer Select
-      if (e.key === 'F7')  { e.preventDefault(); cyclePriceList(); return }                                      // Price List (cycle Retail→Wholesale→Distributor)
       if (e.key === 'F8')  { e.preventDefault(); setShowSalesPerson(true); return }                        // Sales Person
       if (e.key === 'F9')  { e.preventDefault(); editRowRef.current?.(selectedRow); return }                  // Change Qty
       if (e.key === 'F10') { e.preventDefault(); if (items.length > 0) setPaymentOpen(true); return }         // Tender
@@ -197,7 +199,6 @@ export default function KeyboardPosPage() {
       // --- Alt modifiers (all stubs) ---
       if (e.altKey && !e.ctrlKey) {
         const k = e.key.toLowerCase()
-        if (k === 'a') { e.preventDefault(); cyclePriceList(); return }                                          // Price List (cycle)
         if (k === 'm') { e.preventDefault(); if (items.length > 0) setShowMarket(true); else showToast('Add items first'); return }   // Post to Market
         if (k === 'q') { e.preventDefault(); if (items.length > 0) setShowQuotation(true); else showToast('Add items first'); return }   // Quotation
         if (k === 'd') { e.preventDefault(); setShowDelivery(true); return }                                                    // Delivery Address
@@ -237,25 +238,12 @@ export default function KeyboardPosPage() {
     // checkoutErr must be a dep: handleNewTransaction (F2) reads it to block
     // clearing on a stock error. Without it, the out-of-stock branch (no item
     // added → items unchanged → effect not re-run) leaves a stale closure.
-  }, [searchOpen, paymentOpen, helpOpen, showCustomerPanel, showDiscount, showBillDiscount, showInvoiceSearch, showSalesPerson, showQuotation, showComp, showExchange, showMarket, showDelivery, showHandover, showReceipt, items, selectedRow, carts, activeIndex, subRole, checkoutErr, priceListMode])
+  }, [searchOpen, paymentOpen, helpOpen, showCustomerPanel, showDiscount, showBillDiscount, showInvoiceSearch, showSalesPerson, showQuotation, showComp, showExchange, showMarket, showDelivery, showHandover, showReceipt, items, selectedRow, carts, activeIndex, subRole, checkoutErr])
 
   function showToast(msg) {
     setToastMsg(msg)
     if (toastTimer.current) clearTimeout(toastTimer.current)
     toastTimer.current = setTimeout(() => setToastMsg(null), 2600)
-  }
-
-  // Cycle the active price list (F7 / Alt+A), persist it, and re-price the
-  // current cart to the new tier. Bare 'A' is intentionally NOT bound — it
-  // stays type-to-search so products beginning with "a" remain searchable.
-  function cyclePriceList() {
-    const order = ['RETAIL', 'WHOLESALE', 'DISTRIBUTOR']
-    const next = order[(order.indexOf(priceListMode) + 1) % order.length]
-    setPriceListMode(next)
-    try { localStorage.setItem('pos_price_list', next) } catch {}
-    // Rate is now per-line (chosen in the product-search rate toggle); F7 only sets the DEFAULT
-    // tier for new adds — it no longer reprices existing lines.
-    showToast(`Default rate: ${next.charAt(0)}${next.slice(1).toLowerCase()}`)
   }
 
   // Alt+Q — save the cart as a draft quotation (SALES_ORDER/DRAFT): no payment,
@@ -322,6 +310,9 @@ export default function KeyboardPosPage() {
 
   function handleProductAdd(product, qty = 1, mode) {
     const batchQty = product.available_stock ?? Infinity
+    // Per-line salesperson: tag the new line with the active salesperson (F8). Different active
+    // salesperson → a separate line (see dedup in use-cart).
+    product = { ...product, salesperson_id: salesPersonId ?? null }
 
     if (product.batch_id && qty > batchQty) {
       if (batchQty > 0) {
@@ -496,16 +487,6 @@ export default function KeyboardPosPage() {
           >
             Inv: {nextInvoiceNo ?? '—'}
           </button>
-          <span
-            title={`Active price list: ${priceListMode} — F7 / Alt+A to cycle`}
-            className={`hidden md:inline text-[10px] font-semibold uppercase tracking-wide border px-2 py-0.5 rounded-full shrink-0 ${
-              priceListMode === 'RETAIL' ? 'text-muted-foreground border-border bg-muted/30'
-                : priceListMode === 'WHOLESALE' ? 'text-gold border-gold/30 bg-gold/10'
-                : 'text-emerald-600 border-emerald-500/30 bg-emerald-500/10'
-            }`}
-          >
-            {priceListMode === 'DISTRIBUTOR' ? 'DISTR.' : priceListMode === 'WHOLESALE' ? 'WSALE' : 'RETAIL'}
-          </span>
           <button
             onClick={() => setShowSalesPerson(true)}
             title="Sales person (F8)"
@@ -682,6 +663,7 @@ export default function KeyboardPosPage() {
         selectedRow={selectedRow}
         onSelectRow={setSelectedRow}
         onEditRequest={editRowRef}
+        salespeopleById={salespeopleById}
       />
 
       {items.length > 0 && (
@@ -702,7 +684,6 @@ export default function KeyboardPosPage() {
         initialQuery={searchQuery}
         entityId={entity?.id}
         onAdd={handleProductAdd}
-        defaultMode={priceListMode}
         onClose={() => { setSearchOpen(false); setSearchQuery('') }}
       />
 
@@ -820,7 +801,7 @@ export default function KeyboardPosPage() {
         <SalespersonPickerModal
           selectedId={salesPersonId}
           onClose={() => setShowSalesPerson(false)}
-          onSelect={(id, name) => { setSalesPersonId(id); setSalesPersonName(name); setShowSalesPerson(false); showToast(`Salesperson: ${name}`) }}
+          onSelect={(id, name) => { setSalesPersonId(id); setSalesPersonName(name); setShowSalesPerson(false); showToast(`Salesperson for new items: ${name}`) }}
         />
       )}
 

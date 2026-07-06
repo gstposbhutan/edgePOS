@@ -114,11 +114,15 @@ export function useCart(entityId, createdBy, priceListMode = 'RETAIL', onStockCa
     const unitPrice = priceFor(product, modeOverride || priceListMode)
     const batchId   = product.batch_id ?? null
 
-    // Dedup: same product + same batch = merge quantity
+    // Dedup: merge only when product + batch + salesperson + RATE all match. Rate is part of the
+    // key so the same SKU added at two tiers (e.g. one wholesale line + one retail line) stays as
+    // two separate lines in the same invoice; salesperson likewise keeps per-staff lines distinct.
     const existing = items.find(i =>
       i.product_id === product.id &&
       !i.package_id &&
-      (i.batch_id ?? null) === (batchId ?? null)
+      (i.batch_id ?? null) === (batchId ?? null) &&
+      (i.salesperson_id ?? null) === (product.salesperson_id ?? null) &&
+      Number(i.unit_price) === Number(unitPrice)
     )
 
     if (existing) return updateQty(existing.id, existing.quantity + 1)

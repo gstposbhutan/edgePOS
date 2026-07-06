@@ -78,6 +78,7 @@ export async function POST(request) {
         sku:        product.sku ?? null,
         quantity:   1,
         unit_price: unitPrice,
+        salesperson_id: product.salesperson_id ?? null,
         discount:   0,
         gst_5:      gst5,
         total,

@@ -15,7 +15,6 @@ import { useCustomers } from "@/hooks/use-customers";
 import type { Customer } from "@/hooks/use-customers";
 import { getPB } from "@/lib/pb-client";
 import { peekNextOrderNo } from "@/lib/invoice-header";
-import { priceFor, PRICE_LIST_LABEL, PRICE_LIST_ORDER, parsePriceListMode } from "@/lib/price-list";
 import type { PriceListMode } from "@/lib/price-list";
 import { LAYOUT_PRESETS, SCREEN_LG, CART_WIDTH } from "@/lib/constants";
 import { ProductGrid } from "@/components/pos/product-grid";
@@ -66,7 +65,6 @@ import {
   FilePlus,
   Hash,
   CalendarClock,
-  Tags,
   List,
   LayoutGrid,
 } from "lucide-react";
@@ -102,9 +100,6 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
     lowStockCount, outOfStockCount,
   } = useProducts();
   // Declared above useCart() so newly-added lines price at the active tier.
-  const [priceListMode, setPriceListMode] = useState<PriceListMode>(() =>
-    parsePriceListMode(typeof window !== "undefined" ? localStorage.getItem("pos_price_list") : null)
-  );
 
   const {
     items, loading: cartLoading,
@@ -113,7 +108,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
     subtotalExTax, gstTotalExempt, grandTotalExempt,
     addItem, updateQty, applyDiscount, applyBillDiscount, overridePrice, removeItem, clearCart,
     setCustomer: setCartCustomer,
-  } = useCart(priceListMode);
+  } = useCart("RETAIL");
   const { customers, createCustomer } = useCustomers();
   const { settings } = useSettings();
   const { activeShift, openShift, closeShift, getReconciliation, loading: shiftLoading } = useShifts();
@@ -151,6 +146,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
   const [showInvoiceSearch, setShowInvoiceSearch] = useState(false);
   const [showSalesperson, setShowSalesperson] = useState(false);
   const [selectedSalesperson, setSelectedSalesperson] = useState<TeamUser | null>(null);
+  const [salespeopleById, setSalespeopleById] = useState<Record<string, string>>({}); // id → name, labels each cart line's salesperson (#3)
   const [showComplimentary, setShowComplimentary] = useState(false);
   const [showExchange, setShowExchange] = useState(false);
   const [showPostMarket, setShowPostMarket] = useState(false);
@@ -174,6 +170,14 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
       if (saved === "grid" || saved === "listing") setInputMode(saved);
     } catch { /* no localStorage — keep the default */ }
   }, []);
+
+  // Load the local sales team once, to label each cart line's salesperson (per-line #3).
+  useEffect(() => {
+    pb.collection("users")
+      .getFullList<{ id: string; name?: string; email?: string }>({ sort: "name", requestKey: null })
+      .then((us) => setSalespeopleById(Object.fromEntries(us.map((u) => [u.id, u.name || u.email || "Salesperson"]))))
+      .catch(() => { /* offline / no users — labels just fall back to "Salesperson" */ });
+  }, [pb]);
   const changeInputMode = useCallback((mode: "listing" | "grid") => {
     setInputMode(mode);
     try { localStorage.setItem("pos_input_mode", mode); } catch { /* ignore */ }
@@ -339,14 +343,14 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
           setWeighProduct(product);
           return;
         }
-        const result = await addItem(product);
+        const result = await addItem(product, undefined, undefined, selectedSalesperson?.id ?? null);
         if (result.success) toast.success(`Added ${product.name}`);
         else toast.error(result.error || "Failed to add item");
       } else {
         toast.error(`Product not found for barcode: ${barcode}`);
       }
     },
-    [findByBarcode, addItem]
+    [findByBarcode, addItem, selectedSalesperson]
   );
 
   const handleAddProduct = useCallback(
@@ -359,12 +363,12 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
         setWeighProduct(product);
         return;
       }
-      const result = await addItem(product, undefined, mode);
+      const result = await addItem(product, undefined, mode, selectedSalesperson?.id ?? null);
       if (result.success) {
         undoStack.push(() => { removeItem(product.id); });
       }
     },
-    [addItem, removeItem, undoStack]
+    [addItem, removeItem, undoStack, selectedSalesperson]
   );
 
   // Confirm a weighed item: add it at quantity = weight, unit_price = per-unit rate, and
@@ -374,7 +378,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
       const product = weighProduct;
       if (!product) return;
       setWeighProduct(null);
-      const result = await addItem(product, weight);
+      const result = await addItem(product, weight, undefined, selectedSalesperson?.id ?? null);
       if (!result.success) {
         toast.error(result.error || "Failed to add item");
         return;
@@ -393,7 +397,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
         }, loadLabelConfig(), 1);
       }
     },
-    [weighProduct, addItem]
+    [weighProduct, addItem, selectedSalesperson]
   );
 
   const handleVoidLast = useCallback(async () => {
@@ -453,18 +457,6 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
     },
     [setCartCustomer]
   );
-
-  // Cycle Retail → Wholesale → Distributor (F7 / Alt+A, or click the badge).
-  // Persists per terminal and reprices the existing cart via overridePrice
-  // (preserves per-line discount), reading fresh tier rates from the products list.
-  const cyclePriceList = useCallback(async () => {
-    const next = PRICE_LIST_ORDER[(PRICE_LIST_ORDER.indexOf(priceListMode) + 1) % PRICE_LIST_ORDER.length];
-    setPriceListMode(next);
-    if (typeof window !== "undefined") localStorage.setItem("pos_price_list", next);
-    // Rate is now per-line (chosen in the product-search rate toggle); F7 only sets the DEFAULT
-    // tier the search opens on for new adds — it no longer reprices existing lines.
-    toast.success(`Default rate: ${PRICE_LIST_LABEL[next]}`);
-  }, [priceListMode]);
 
   // Complimentary (Ctrl+C, manager): 100% discount on every line — cart zeroes
   // and the cashier tenders the resulting 0-total sale (F10).
@@ -597,7 +589,6 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
     handleUndo,
     applyDiscount,
     applyBillDiscount,
-    cyclePriceList,
     isManager,
     setShowSalesperson,
     setShowComplimentary,
@@ -751,15 +742,6 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
           >
             <Hash className="h-3 w-3" />
             {nextInvoiceNo || "—"}
-          </Badge>
-          <Badge
-            variant={priceListMode === "RETAIL" ? "outline" : "default"}
-            className="text-[10px] gap-1 cursor-pointer select-none"
-            title="Price list — click to cycle (F7 / Alt+A)"
-            onClick={cyclePriceList}
-          >
-            <Tags className="h-3 w-3" />
-            {PRICE_LIST_LABEL[priceListMode]}
           </Badge>
           {(isOwner || isManager) && (
             <div
@@ -929,6 +911,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
             onUpdateQty={(itemId, qty) => updateQty(itemId, qty)}
             onRemoveItem={removeItem}
             onEditRequest={editRowRef}
+            salespeopleById={salespeopleById}
           />
           <ListingFooter
             itemCount={totalItemsCount}
@@ -1027,7 +1010,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
       <ProductSearchModal
         open={showSearch}
         initialQuery={searchSeed}
-        priceListMode={priceListMode}
+        priceListMode="RETAIL"
         onAdd={(product, mode) => {
           // Move the listing selection to the appended line (weighed goods open the
           // weight modal first, but the cart still grows by one row on confirm).
