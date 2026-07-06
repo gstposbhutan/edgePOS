@@ -208,6 +208,9 @@ export function useCheckout(input: CheckoutInput) {
 
         onSuccess?.({ ...orderPayload, id: orderId, created_at: createdAt }, orderId);
         toast.success(`Order ${orderNo} confirmed`);
+        // Near-live sync: nudge a debounced push so the sale reaches the cloud in seconds
+        // instead of waiting for the interval. No-op in a plain browser.
+        (window as unknown as { electronAPI?: { sync?: { schedule?: () => void } } }).electronAPI?.sync?.schedule?.();
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Checkout failed";
         console.error("Checkout error:", err);
