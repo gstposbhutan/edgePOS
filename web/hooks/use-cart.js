@@ -33,6 +33,7 @@ export function useCart(entityId, createdBy, priceListMode = 'RETAIL', onStockCa
   const customer   = activeCart
     ? { whatsapp: activeCart.customer_whatsapp, buyerHash: activeCart.buyer_hash }
     : null
+  const rawBillDiscount = Math.max(0, parseFloat(activeCart?.bill_discount ?? 0) || 0)
 
   useEffect(() => {
     if (!entityId) return
@@ -307,16 +308,40 @@ export function useCart(entityId, createdBy, priceListMode = 'RETAIL', onStockCa
     ))
   }, [cartId, activeIndex])
 
+  // Invoice/bill-level discount: a single pre-GST amount off the net subtotal (NOT distributed
+  // across lines). Stored on the cart via the set_bill_discount action.
+  const applyBillDiscount = useCallback(async (amount) => {
+    if (!cartId) return
+    const billDiscount = Math.max(0, parseFloat(amount) || 0)
+    try {
+      await fetch('/api/pos/cart', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set_bill_discount', cartId, billDiscount }),
+      })
+    } catch { /* silently fail */ }
+    setCarts(prev => prev.map((c, i) => (i === activeIndex ? { ...c, bill_discount: billDiscount } : c)))
+  }, [cartId, activeIndex])
+
   const subtotal        = items.reduce((s, i) => s + parseFloat(i.unit_price) * i.quantity, 0)
   const discountTotal   = items.reduce((s, i) => s + parseFloat(i.discount ?? 0) * i.quantity, 0)
-  const taxableSubtotal = subtotal - discountTotal
-  const gstTotal        = items.reduce((s, i) => s + parseFloat(i.gst_5), 0)
-  const grandTotal      = items.reduce((s, i) => s + parseFloat(i.total), 0)
+  // Clamp the bill discount so the net can't go negative.
+  const billDiscount    = Math.min(rawBillDiscount, Math.max(0, subtotal - discountTotal))
+  const taxableSubtotal = Math.max(0, subtotal - discountTotal - billDiscount)
+  // No bill discount → keep the canonical per-line-then-sum (matches desktop + the stored line
+  // gst_5/total exactly). With a bill discount → GST is computed on the discounted invoice net.
+  const gstTotal   = billDiscount > 0
+    ? parseFloat((taxableSubtotal * 0.05).toFixed(2))
+    : parseFloat(items.reduce((s, i) => s + parseFloat(i.gst_5), 0).toFixed(2))
+  const grandTotal = billDiscount > 0
+    ? parseFloat((taxableSubtotal + gstTotal).toFixed(2))
+    : parseFloat(items.reduce((s, i) => s + parseFloat(i.total), 0).toFixed(2))
 
   return {
     cartId, items, customer, loading,
     subtotal:        parseFloat(subtotal.toFixed(2)),
     discountTotal:   parseFloat(discountTotal.toFixed(2)),
+    billDiscount:    parseFloat(billDiscount.toFixed(2)),
     taxableSubtotal: parseFloat(taxableSubtotal.toFixed(2)),
     gstTotal:        parseFloat(gstTotal.toFixed(2)),
     grandTotal:      parseFloat(grandTotal.toFixed(2)),
@@ -325,6 +350,6 @@ export function useCart(entityId, createdBy, priceListMode = 'RETAIL', onStockCa
     holdCart,
     switchCart,
     cancelCart,
-    addItem, updateQty, applyDiscount, overridePrice, repriceCart, removeItem, clearCart, setCustomerIdentity,
+    addItem, updateQty, applyDiscount, overridePrice, repriceCart, removeItem, clearCart, setCustomerIdentity, applyBillDiscount,
   }
 }

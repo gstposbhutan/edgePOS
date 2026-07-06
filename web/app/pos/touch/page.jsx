@@ -106,9 +106,9 @@ export default function PosPage() {
 
   const {
     cartId, items, customer, loading: cartLoading,
-    subtotal, discountTotal, taxableSubtotal, gstTotal, grandTotal,
+    subtotal, discountTotal, taxableSubtotal, gstTotal, grandTotal, billDiscount,
     carts, activeIndex,
-    addItem, updateQty, applyDiscount, overridePrice, removeItem, clearCart, setCustomerIdentity,
+    addItem, updateQty, applyDiscount, overridePrice, removeItem, clearCart, setCustomerIdentity, applyBillDiscount,
     holdCart, switchCart, cancelCart,
   } = useCart(entity?.id, user?.id, 'RETAIL', (name, avail) => showToast(`Only ${avail} in stock`))
 
@@ -283,6 +283,7 @@ export default function PosPage() {
           subtotal,
           gstTotal,
           grandTotal,
+          billDiscount,
           paymentMethod,
           paymentRef: journalNo?.trim() || null,
           customerWhatsapp: customer?.whatsapp ?? null,
@@ -468,6 +469,8 @@ export default function PosPage() {
             taxableSubtotal={taxableSubtotal}
             gstTotal={gstTotal}
             grandTotal={grandTotal}
+            billDiscount={billDiscount}
+            onApplyBillDiscount={applyBillDiscount}
             customer={customer}
             paymentMethod={paymentMethod}
             userSubRole={subRole}
