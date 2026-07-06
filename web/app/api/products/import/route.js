@@ -56,7 +56,7 @@ export async function POST(request) {
             name:            row.name,
             sku,
             barcode:         row.barcode,
-            hsn_code:        row.hsn_code,
+            hsn_code:        row.hsn_code || '',   // column is NOT NULL; HSN is optional in the template
             unit:            row.unit,
             category:        row.category,
             condition:       row.condition,

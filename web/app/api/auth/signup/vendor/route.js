@@ -100,10 +100,12 @@ export async function POST(request) {
 
     // 4. RETAILER owners link to owner_stores for the multi-store selector (N/A for wholesaler/distributor)
     if (role === 'RETAILER') {
-      await supabase
-        .from('owner_stores')
-        .insert({ owner_id: authData.user.id, entity_id: entity.id, is_primary: true })
-        .catch(() => {}) // non-fatal if owner_stores table not ready
+      // Non-fatal: a Supabase query builder has no .catch(), so guard with try/catch instead.
+      try {
+        await supabase
+          .from('owner_stores')
+          .insert({ owner_id: authData.user.id, entity_id: entity.id, is_primary: true })
+      } catch { /* owner_stores optional / not ready */ }
     }
 
     // 5. Establish session via httpOnly cookie (BFF pattern)

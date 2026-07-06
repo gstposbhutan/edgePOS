@@ -7,7 +7,7 @@ export async function GET() {
     const ctx = await getAuthContext()
     if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { supabase } = ctx
+    const { supabase, entityId } = ctx
 
     const [productsResult, categoriesResult] = await Promise.all([
       supabase
@@ -17,6 +17,8 @@ export async function GET() {
           current_stock, image_url, is_active, sold_by_weight, created_at,
           product_categories(category_id, categories(id, name))
         `)
+        // Scope to the caller's own shop — a store only manages its own catalog (multi-tenant).
+        .eq('created_by', entityId)
         .order('name'),
       supabase
         .from('categories')
