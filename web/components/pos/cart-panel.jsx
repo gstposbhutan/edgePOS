@@ -5,6 +5,7 @@ import { Minus, Plus, Trash2, ShoppingCart, CreditCard, Tag, Pencil, X, PlusCirc
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { BillDiscountModal } from "@/components/pos/keyboard/bill-discount-modal"
 
 const PAYMENT_METHODS = [
   { id: 'ONLINE', label: 'Online',  activeClass: 'bg-blue-600 text-white border-transparent' },
@@ -37,12 +38,14 @@ const PAYMENT_METHODS = [
  */
 export function CartPanel({
   items, subtotal, discountTotal, taxableSubtotal, gstTotal, grandTotal,
+  billDiscount = 0, onApplyBillDiscount,
   customer, paymentMethod, userSubRole = 'CASHIER', khataAccount,
   onUpdateQty, onRemoveItem, onApplyDiscount, onOverridePrice,
   onSelectPayment, journalNo, onJournalNoChange, onCheckout, checkoutLoading,
   // Multi-cart props
   carts = [], activeIndex = 0, onHoldCart, onSwitchCart, onCancelCart,
 }) {
+  const [showBillDisc, setShowBillDisc] = useState(false)
   const hasItems    = items.length > 0
   const canCheckout = hasItems && !!paymentMethod && (paymentMethod !== 'ONLINE' || (journalNo || '').trim().length > 0)
   const canDiscount = ['MANAGER', 'OWNER', 'ADMIN'].includes(userSubRole)
@@ -134,6 +137,12 @@ export function CartPanel({
                 <span>− Nu. {discountTotal.toFixed(2)}</span>
               </div>
             )}
+            {billDiscount > 0 && (
+              <div className="flex justify-between text-emerald-600">
+                <span>Invoice discount</span>
+                <span>− Nu. {billDiscount.toFixed(2)}</span>
+              </div>
+            )}
             <div className="flex justify-between text-muted-foreground">
               <span>Taxable amount</span>
               <span>Nu. {taxableSubtotal.toFixed(2)}</span>
@@ -147,6 +156,23 @@ export function CartPanel({
               <span className="text-primary">Nu. {grandTotal.toFixed(2)}</span>
             </div>
           </div>
+
+          {canDiscount && onApplyBillDiscount && hasItems && (
+            <button
+              type="button"
+              onClick={() => setShowBillDisc(true)}
+              className="text-xs text-primary hover:underline text-left"
+            >
+              {billDiscount > 0 ? 'Edit invoice discount' : 'Add invoice discount (before GST)'}
+            </button>
+          )}
+          {showBillDisc && (
+            <BillDiscountModal
+              items={items}
+              onClose={() => setShowBillDisc(false)}
+              onApply={(amt) => { onApplyBillDiscount?.(amt); setShowBillDisc(false) }}
+            />
+          )}
 
           {/* Payment method */}
           <div className="space-y-1.5">

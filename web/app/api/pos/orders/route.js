@@ -8,7 +8,7 @@ export async function POST(request) {
 
   const body = await request.json()
   const {
-    items, subtotal, gstTotal, grandTotal,
+    items, subtotal, gstTotal, grandTotal, billDiscount,
     paymentMethod, paymentChannel, paymentRef, customerWhatsapp, buyerHash,
     cartId, invoiceDate,
     salespersonId, quotation, deliveryAddress,
@@ -63,6 +63,7 @@ export async function POST(request) {
         subtotal,
         gst_total:      gstTotal,
         grand_total:    grandTotal,
+        bill_discount:  billDiscount ?? 0,
         digital_signature: digitalSignature,
         cart_id:        cartId ?? null,
         salesperson_id: salespersonId ?? null,
@@ -121,6 +122,7 @@ export async function POST(request) {
       subtotal,
       gst_total:      gstTotal,
       grand_total:    grandTotal,
+      bill_discount:  billDiscount ?? 0,
       payment_method:  paymentMethod,
       payment_channel: paymentChannel ?? null,
       payment_ref:     paymentRef ?? null,

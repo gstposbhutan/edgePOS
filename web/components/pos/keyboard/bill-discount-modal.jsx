@@ -24,22 +24,17 @@ export function BillDiscountModal({ items, onApply, onClose }) {
   if (!items || items.length === 0) return null
 
   const numVal = parseFloat(value) || 0
-  const billSubtotal = items.reduce((s, it) => s + parseFloat(it.unit_price) * it.quantity, 0)
+  // Taxable base = subtotal AFTER per-line discounts; the bill discount comes off this, pre-GST.
+  const billSubtotal = items.reduce((s, it) => s + Math.max(0, parseFloat(it.unit_price) - parseFloat(it.discount ?? 0)) * it.quantity, 0)
 
-  let billDiscount = 0
-  if (type === 'PERCENTAGE') {
-    billDiscount = billSubtotal * (Math.min(numVal, 100) / 100)
-  } else {
-    const perUnit = items.reduce((s, it) => s + Math.min(numVal, parseFloat(it.unit_price)) * it.quantity, 0)
-    billDiscount = perUnit
-  }
+  // A single bill-level amount — NOT distributed to lines: % of the taxable base, or a flat lump sum.
+  let billDiscount = type === 'PERCENTAGE'
+    ? billSubtotal * (Math.min(numVal, 100) / 100)
+    : Math.min(numVal, billSubtotal)
+  billDiscount = parseFloat(billDiscount.toFixed(2))
 
   function handleApply() {
-    if (numVal <= 0) {
-      onApply({ type: 'FLAT', value: 0 })
-      return
-    }
-    onApply({ type, value: numVal })
+    onApply(numVal <= 0 ? 0 : billDiscount)
   }
 
   function handleKeyDown(e) {
@@ -56,7 +51,7 @@ export function BillDiscountModal({ items, onApply, onClose }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="bg-background border border-border rounded-xl shadow-lg w-full max-w-xs mx-4">
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <h3 className="text-sm font-semibold">Bill Discount (all lines)</h3>
+          <h3 className="text-sm font-semibold">Invoice Discount (before GST)</h3>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
             <X className="h-4 w-4" />
           </button>
@@ -73,13 +68,13 @@ export function BillDiscountModal({ items, onApply, onClose }) {
               <Percent className="h-3.5 w-3.5" /> Percentage (%)
             </button>
             <button onClick={() => { setType('FLAT'); setValue('') }} className={btn(type === 'FLAT')}>
-              <Tag className="h-3.5 w-3.5" /> Flat / unit (Nu.)
+              <Tag className="h-3.5 w-3.5" /> Flat amount (Nu.)
             </button>
           </div>
 
           <div>
             <label className="text-xs text-muted-foreground">
-              {type === 'FLAT' ? 'Discount per unit, all lines (Nu.)' : 'Discount (%)'}
+              {type === 'FLAT' ? 'Discount amount off the bill (Nu.)' : 'Discount (%)'}
             </label>
             <Input
               ref={inputRef}
@@ -104,7 +99,7 @@ export function BillDiscountModal({ items, onApply, onClose }) {
 
         <div className="flex gap-2 px-4 py-3 border-t border-border">
           <Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
-          <Button className="flex-1" onClick={handleApply}>Apply to all</Button>
+          <Button className="flex-1" onClick={handleApply}>Apply</Button>
         </div>
       </div>
     </div>

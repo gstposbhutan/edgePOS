@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/supabase/server'
 
 const CART_SELECT = `
-  id, customer_whatsapp, buyer_hash, created_at,
+  id, customer_whatsapp, buyer_hash, bill_discount, created_at,
   cart_items (
     *,
     batch:batch_id (id, batch_number, expires_at, mrp, selling_price, available_qty:quantity),
@@ -99,6 +99,19 @@ export async function POST(request) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ cart: { ...newCart, customer_whatsapp: null, buyer_hash: null, cart_items: newCart.cart_items ?? [] } })
+  }
+
+  // Set the invoice/bill-level discount (pre-GST, applied to the net subtotal — NOT distributed
+  // across line items). A single amount stored on the cart, snapshotted onto the order at checkout.
+  if (action === 'set_bill_discount') {
+    const { cartId } = body
+    const billDiscount = Math.max(0, parseFloat(body.billDiscount ?? 0) || 0)
+    const { error } = await supabase
+      .from('carts')
+      .update({ bill_discount: billDiscount })
+      .eq('id', cartId)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ success: true, bill_discount: billDiscount })
   }
 
   // Abandon cart

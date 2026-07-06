@@ -142,9 +142,9 @@ export default function KeyboardPosPage() {
 
   const {
     cartId, items, customer,
-    subtotal, gstTotal, grandTotal,
+    subtotal, gstTotal, grandTotal, billDiscount, taxableSubtotal,
     carts, activeIndex,
-    addItem, updateQty, removeItem, clearCart, setCustomerIdentity, applyDiscount,
+    addItem, updateQty, removeItem, clearCart, setCustomerIdentity, applyDiscount, applyBillDiscount,
     repriceCart,
     holdCart, switchCart, cancelCart,
   } = useCart(entity?.id, user?.id, priceListMode, (name, avail) => showToast(`Only ${avail} in stock`))
@@ -394,6 +394,7 @@ export default function KeyboardPosPage() {
           subtotal,
           gstTotal,
           grandTotal,
+          billDiscount,
           paymentMethod: method,
           paymentRef: journalNo || null,
           customerWhatsapp: customer?.whatsapp ?? null,
@@ -685,6 +686,9 @@ export default function KeyboardPosPage() {
       {items.length > 0 && (
         <div className="border-t border-border px-4 py-2 flex items-center justify-end gap-6 text-sm tabular-nums shrink-0 bg-muted/10">
           <span className="text-muted-foreground">Subtotal: <strong>Nu. {subtotal.toFixed(2)}</strong></span>
+          {billDiscount > 0 && (
+            <span className="text-emerald-600">Invoice disc: <strong>−Nu. {billDiscount.toFixed(2)}</strong></span>
+          )}
           <span className="text-muted-foreground">GST (5%): <strong>Nu. {gstTotal.toFixed(2)}</strong></span>
           <span className="text-lg font-bold text-primary">Total: Nu. {grandTotal.toFixed(2)}</span>
         </div>
@@ -781,8 +785,8 @@ export default function KeyboardPosPage() {
         <BillDiscountModal
           items={items}
           onClose={() => setShowBillDiscount(false)}
-          onApply={(discount) => {
-            items.forEach(it => applyDiscount(it.id, discount))
+          onApply={(amount) => {
+            applyBillDiscount(amount)
             setShowBillDiscount(false)
           }}
         />
