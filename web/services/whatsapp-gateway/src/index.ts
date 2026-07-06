@@ -27,6 +27,30 @@ const WA_PHONE_ID = process.env.WHATSAPP_PHONE_NUMBER_ID || '';
 const WA_VERIFY   = process.env.WHATSAPP_VERIFY_TOKEN || '';
 const WA_API      = 'https://graph.facebook.com/v21.0';
 
+// ─── Twilio WhatsApp (preferred provider when configured) ───────────────────
+const TW_SID   = process.env.TWILIO_ACCOUNT_SID || '';
+const TW_TOKEN = process.env.TWILIO_AUTH_TOKEN || '';
+const TW_FROM  = process.env.TWILIO_WHATSAPP_FROM || '';   // e.g. "whatsapp:+14155238886" (sandbox) or your sender
+const twilioConfigured = () => !!(TW_SID && TW_TOKEN && TW_FROM);
+
+async function sendViaTwilio(phone: string, body: string, mediaUrl?: string): Promise<any> {
+  const digits = String(phone).replace(/[^\d]/g, '');
+  const to = `whatsapp:+${digits}`;
+  const params = new URLSearchParams({ From: TW_FROM, To: to, Body: body });
+  if (mediaUrl) params.append('MediaUrl', mediaUrl);
+  const resp = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TW_SID}/Messages.json`, {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Basic ' + Buffer.from(`${TW_SID}:${TW_TOKEN}`).toString('base64'),
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: params.toString(),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) console.warn('[twilio] send failed:', (data as any)?.message || resp.status);
+  return data;
+}
+
 // Supabase client for updating whatsapp_status on orders and alerts
 const supabase = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY
   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
@@ -100,6 +124,12 @@ app.post('/api/send-otp', async (req, res) => {
 
     const formattedPhone = phone.replace(/^\+/, '');
 
+    // Twilio takes priority when configured.
+    if (twilioConfigured()) {
+      await sendViaTwilio(phone, `Your Pelbu verification code is: ${otp}\n\nValid for 5 minutes. Do not share this code.`);
+      return res.json({ success: true, provider: 'twilio' });
+    }
+
     if (WA_TOKEN && WA_PHONE_ID) {
       const data = await sendTemplateMessage(formattedPhone, 'auth_otp', [
         {
@@ -140,7 +170,21 @@ app.post('/api/send-receipt', async (req, res) => {
     }
 
     const phone = (phoneNumber ?? buyerWhatsapp).replace(/^\+/, '');
-    const storeName = entityName || 'NEXUS BHUTAN';
+    const storeName = entityName || 'Pelbu';
+
+    if (twilioConfigured()) {
+      const summary =
+        `Receipt from *${storeName}*\n` +
+        `Invoice: ${orderNo || invoiceId}\n` +
+        `Total: Nu. ${parseFloat(grandTotal || 0).toFixed(2)}\n` +
+        `GST (5%): Nu. ${parseFloat(gstTotal || 0).toFixed(2)}\n\n` +
+        `Thank you for your purchase!`;
+      await sendViaTwilio(phone, summary, pdfUrl || undefined);
+      if (supabase && invoiceId) {
+        await supabase.from('orders').update({ whatsapp_status: 'SENT' }).eq('id', invoiceId);
+      }
+      return res.json({ success: true, provider: 'twilio' });
+    }
 
     if (WA_TOKEN && WA_PHONE_ID) {
       // Try template first, fall back to text
@@ -198,7 +242,18 @@ app.post('/api/send-stock-alert', async (req, res) => {
     }
 
     const phone = retailerPhone.replace(/^\+/, '');
-    const store = entityName || 'NEXUS BHUTAN';
+    const store = entityName || 'Pelbu';
+
+    if (twilioConfigured()) {
+      const message =
+        `⚠️ *Low Stock Alert* — ${store}\n\n` +
+        `Product: ${productName}\n` +
+        `Current Stock: ${currentStock}\n` +
+        (reorderLevel ? `Reorder Level: ${reorderLevel}\n` : '') +
+        `\nRestock soon to avoid stockouts.`;
+      await sendViaTwilio(phone, message);
+      return res.json({ success: true, provider: 'twilio' });
+    }
 
     if (WA_TOKEN && WA_PHONE_ID) {
       const message =
