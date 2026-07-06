@@ -379,11 +379,8 @@ export default function KeyboardPosPage() {
   }
 
   async function processPayment({ method, received, journalNo }) {
-    if (subRole === 'CASHIER' && !shift) {
-      setCheckoutErr('Start a shift before processing sales')
-      return
-    }
-
+    // Shifts are optional — a cashier can sell without an open shift (opening a shift for cash
+    // reconciliation is opt-in, not a gate on checkout).
     try {
       // Order no + digital signature are issued server-side (next_pos_order_no RPC +
       // sha256 over orderNo:grandTotal:tpn). Admin-only invoice date override (Phase 2).
