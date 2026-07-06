@@ -490,13 +490,6 @@ export default function KeyboardPosPage() {
           >
             Inv: {nextInvoiceNo ?? '—'}
           </button>
-          <button
-            onClick={() => { if (!items.length || !items[selectedRow]) { showToast('Select a product line first'); return } setShowSalesPerson(true) }}
-            title="Assign salesperson to the selected product line (F8)"
-            className="hidden md:inline text-[10px] font-medium border border-border bg-muted/30 px-2 py-0.5 rounded-full shrink-0 hover:bg-muted"
-          >
-            + Salesperson (F8)
-          </button>
           <div className="relative shrink-0">
             <button
               onClick={() => isAdmin && setShowDateOverride(v => !v)}
