@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Loader2 } from "lucide-react"
+import { Loader2, Sparkles, ImagePlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
@@ -12,7 +12,7 @@ const EMPTY_FORM = {
   name: '', sku: '', hsn_code: '', unit: 'pcs',
   wholesale_price: '', mrp: '', selling_price: '',
   current_stock: '0', image_url: '', reorder_point: '10',
-  sold_by_weight: false,
+  sold_by_weight: false, video_url: '', specifications: {},
 }
 
 /**
@@ -34,6 +34,8 @@ export function ProductForm({ open, product, categories, saving, onSave, onClose
   const [selectedCats, setSelectedCats] = useState([])
   const [error,        setError]        = useState(null)
   const [uploading,    setUploading]    = useState(false)
+  const [specTemplate, setSpecTemplate] = useState([])   // [{key,label,type,options}] for product.category
+  const [aiBusy,       setAiBusy]       = useState(null)  // 'enrich' | 'image' | null
 
   // Populate form when editing
   useEffect(() => {
@@ -50,6 +52,8 @@ export function ProductForm({ open, product, categories, saving, onSave, onClose
         image_url:       product.image_url ?? '',
         reorder_point:   String(product.reorder_point ?? '10'),
         sold_by_weight:  product.sold_by_weight ?? false,
+        video_url:       product.video_url ?? '',
+        specifications:  product.specifications && typeof product.specifications === 'object' ? product.specifications : {},
       })
       setSelectedCats(
         (product.product_categories ?? []).map(pc => pc.category_id)
@@ -63,6 +67,45 @@ export function ProductForm({ open, product, categories, saving, onSave, onClose
 
   function set(field, value) {
     setForm(prev => ({ ...prev, [field]: value }))
+  }
+
+  function setSpec(key, value) {
+    setForm(prev => ({ ...prev, specifications: { ...prev.specifications, [key]: value } }))
+  }
+
+  // Load the admin-defined custom-property template for this product's category.
+  useEffect(() => {
+    const cat = product?.category
+    if (!open || !cat) { setSpecTemplate([]); return }
+    fetch(`/api/property-templates?category=${encodeURIComponent(cat)}`)
+      .then(r => r.ok ? r.json() : { properties: [] })
+      .then(d => setSpecTemplate(Array.isArray(d.properties) ? d.properties : []))
+      .catch(() => setSpecTemplate([]))
+  }, [open, product?.category])
+
+  // AI: enrich metadata for the (existing) product, then reflect the returned fields in the form.
+  async function runEnrich() {
+    if (!product?.id) return
+    setAiBusy('enrich'); setError(null)
+    try {
+      const res = await fetch(`/api/products/${product.id}/enrich`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Enrichment failed')
+      const p = data.product || {}
+      setForm(prev => ({ ...prev, hsn_code: p.hsn_code || prev.hsn_code, specifications: p.specifications || prev.specifications }))
+    } catch (err) { setError(err.message) } finally { setAiBusy(null) }
+  }
+
+  // AI: generate a default catalog image and set it.
+  async function runGenerateImage() {
+    if (!product?.id) return
+    setAiBusy('image'); setError(null)
+    try {
+      const res = await fetch(`/api/products/${product.id}/generate-image`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Image generation failed')
+      if (data.product?.image_url) set('image_url', data.product.image_url)
+    } catch (err) { setError(err.message) } finally { setAiBusy(null) }
   }
 
   function toggleCat(id) {
@@ -304,6 +347,47 @@ export function ProductForm({ open, product, categories, saving, onSave, onClose
               onChange={e => set('image_url', e.target.value)}
             />
           </div>
+
+          {/* AI assist — existing products only (enrich/generate persist server-side) */}
+          {isEdit && (
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={runEnrich} disabled={!!aiBusy}>
+                {aiBusy === 'enrich' ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1.5" />} Enrich with AI
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={runGenerateImage} disabled={!!aiBusy}>
+                {aiBusy === 'image' ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <ImagePlus className="h-4 w-4 mr-1.5" />} Generate image
+              </Button>
+            </div>
+          )}
+
+          {/* Video link */}
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-foreground">Video link <span className="text-muted-foreground">(YouTube / Instagram / TikTok, optional)</span></label>
+            <Input placeholder="https://youtu.be/…" value={form.video_url} onChange={e => set('video_url', e.target.value)} />
+          </div>
+
+          {/* Custom properties for this product's category (admin-managed template) */}
+          {specTemplate.length > 0 && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">{product?.category} properties</label>
+              <div className="grid grid-cols-2 gap-2">
+                {specTemplate.map(p => (
+                  <div key={p.key} className="space-y-1">
+                    <label className="text-xs text-muted-foreground">{p.label}</label>
+                    {p.type === 'select' && Array.isArray(p.options) ? (
+                      <select value={form.specifications?.[p.key] ?? ''} onChange={e => setSpec(p.key, e.target.value)}
+                        className="w-full h-9 rounded-lg border border-input bg-transparent px-2 text-sm">
+                        <option value="">—</option>
+                        {p.options.map(o => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    ) : (
+                      <Input type={p.type === 'number' ? 'number' : 'text'} value={form.specifications?.[p.key] ?? ''} onChange={e => setSpec(p.key, e.target.value)} />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Categories */}
           {categories.length > 0 && (
