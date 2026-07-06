@@ -13,7 +13,7 @@ import { Loader2, Save } from 'lucide-react'
  * bio are optional and only matter for businesses that list a public storefront.
  */
 export function EntityProfileForm() {
-  const [form, setForm] = useState({ name: '', whatsapp_no: '', tpn_gstin: '', shop_slug: '', marketplace_bio: '' })
+  const [form, setForm] = useState({ name: '', whatsapp_no: '', tpn_gstin: '', shop_slug: '', marketplace_bio: '', delivery_mode: 'DELIVERY' })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState(null)
@@ -29,6 +29,7 @@ export function EntityProfileForm() {
           tpn_gstin: data.entity.tpn_gstin || '',
           shop_slug: data.entity.shop_slug || '',
           marketplace_bio: data.entity.marketplace_bio || '',
+          delivery_mode: data.entity.delivery_mode || 'DELIVERY',
         })
       }
       setLoading(false)
@@ -129,6 +130,22 @@ export function EntityProfileForm() {
                 className="flex w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-sm shadow-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                 placeholder="Tell customers about your business..."
               />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">Fulfilment</label>
+              <select
+                value={form.delivery_mode}
+                onChange={(e) => setForm(f => ({ ...f, delivery_mode: e.target.value }))}
+                className="flex w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-sm shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              >
+                <option value="DELIVERY">Delivery — a rider is dispatched for each order</option>
+                <option value="PICKUP">Pickup only — buyer collects, no rider (catalog-style)</option>
+                <option value="NONE">Catalog only — no delivery arranged</option>
+              </select>
+              <p className="text-xs text-muted-foreground">
+                Choose <strong>Pickup only</strong> if you list items customers collect in person (e.g. used goods) — checkout skips the rider flow.
+              </p>
             </div>
 
             {message && (

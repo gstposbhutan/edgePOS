@@ -148,6 +148,32 @@ export default function ShopPage() {
 
       {/* Main Content */}
       <main className="px-4 py-4 space-y-6 max-w-6xl mx-auto">
+        {/* Marketing hero — shown to logged-out visitors. Browsing is open; buying needs an account. */}
+        {!user && (
+          <section className="rounded-2xl border border-border bg-gradient-to-br from-obsidian to-slate-900 text-white p-6 sm:p-8 overflow-hidden">
+            <div className="max-w-2xl space-y-3">
+              <p className="text-xs font-semibold tracking-widest text-gold uppercase">Pelbu Marketplace</p>
+              <h1 className="text-2xl sm:text-3xl font-serif font-bold">Shop local Bhutanese stores online</h1>
+              <p className="text-sm text-slate-300">
+                Browse products from stores across Bhutan — free, no account needed. Sign in with your WhatsApp number to add items to your cart and order.
+              </p>
+              <div className="flex flex-wrap items-center gap-3 pt-1">
+                <Link href="/login?redirect=/shop">
+                  <Button className="h-10 bg-gold text-obsidian hover:bg-gold/90">
+                    <Phone className="h-4 w-4 mr-2" /> Sign in / Sign up to buy
+                  </Button>
+                </Link>
+                <span className="text-xs text-slate-400">Free to browse · Sign up in seconds with WhatsApp</span>
+              </div>
+              <div className="flex flex-wrap gap-x-6 gap-y-1 pt-3 text-xs text-slate-400">
+                <span>1 · Browse stores &amp; products</span>
+                <span>2 · Sign in with WhatsApp</span>
+                <span>3 · Order &amp; collect or get it delivered</span>
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* Featured Stores */}
         {stores.length > 0 && (
           <section>
