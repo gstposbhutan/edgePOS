@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Search, X } from "lucide-react";
 import { useProducts, type Product } from "@/hooks/use-products";
-import { priceFor, type PriceListMode } from "@/lib/price-list";
+import { priceFor, PRICE_LIST_ORDER, PRICE_LIST_LABEL, type PriceListMode } from "@/lib/price-list";
 
 interface ProductSearchModalProps {
   open: boolean;
@@ -12,7 +12,7 @@ interface ProductSearchModalProps {
   /** Active price list — the result row shows the matching tier rate. */
   priceListMode: PriceListMode;
   /** Add a product to the cart (page routes weighed goods through the weight modal). */
-  onAdd: (product: Product) => void;
+  onAdd: (product: Product, mode?: PriceListMode) => void;
   /** Hand a scanned barcode to the page's scan handler (reuses the grid path). */
   onScan: (barcode: string) => void;
   onClose: () => void;
@@ -40,6 +40,7 @@ export function ProductSearchModal({
   const [query, setQuery] = useState(initialQuery);
   const [debounced, setDebounced] = useState(initialQuery);
   const [selected, setSelected] = useState(0);
+  const [rateMode, setRateMode] = useState<PriceListMode>(priceListMode);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Reset + focus whenever the modal opens with a (possibly new) seed char.
@@ -48,6 +49,7 @@ export function ProductSearchModal({
       setQuery(initialQuery);
       setDebounced(initialQuery);
       setSelected(0);
+      setRateMode(priceListMode);
       setTimeout(() => inputRef.current?.focus(), 30);
     }
   }, [open, initialQuery]);
@@ -74,7 +76,7 @@ export function ProductSearchModal({
   useEffect(() => { setSelected(0); }, [debounced]);
 
   function handleAdd(product: Product) {
-    onAdd(product);
+    onAdd(product, rateMode);
     onClose();
   }
 
@@ -174,7 +176,7 @@ export function ProductSearchModal({
             <tbody>
               {results.map((product, i) => {
                 const isOutOfStock = product.current_stock <= 0;
-                const rate = priceFor(product, priceListMode);
+                const rate = priceFor(product, rateMode);
                 return (
                   <tr
                     key={product.id}
@@ -220,6 +222,19 @@ export function ProductSearchModal({
       </div>
 
       <div className="border-t border-border px-4 py-3 flex items-center gap-4 bg-muted/20 text-xs text-muted-foreground">
+        <div className="flex items-center gap-1">
+          <span className="mr-1">Rate:</span>
+          {PRICE_LIST_ORDER.map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setRateMode(m)}
+              className={`px-2 py-1 rounded font-medium ${rateMode === m ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted/80"}`}
+            >
+              {PRICE_LIST_LABEL[m]}
+            </button>
+          ))}
+        </div>
         <span>↑↓ navigate</span>
         <span>F1–F9 add directly</span>
         <span>Enter add selected</span>

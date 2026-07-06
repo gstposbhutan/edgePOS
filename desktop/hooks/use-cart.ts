@@ -126,9 +126,10 @@ export function useCart(priceListMode: PriceListMode = "RETAIL") {
   };
 
   const addItemMutation = useMutation({
-    mutationFn: async ({ product, weight }: { product: Product; weight?: number }): Promise<CartItem> => {
+    mutationFn: async ({ product, weight, mode }: { product: Product; weight?: number; mode?: PriceListMode }): Promise<CartItem> => {
       if (!cart) throw new Error("No active cart");
-      const unitPrice = priceFor(product, priceListMode);
+      // Per-line rate: the product-search rate toggle passes a tier for THIS line; else the default.
+      const unitPrice = priceFor(product, mode ?? priceListMode);
       // Weighed goods: `weight` is the measured quantity (in product.unit) and unitPrice is
       // the per-unit rate → total = weight × rate. Each weighing is a distinct line, so we
       // don't merge with an existing row (unlike discrete items, which increment qty).
@@ -165,9 +166,9 @@ export function useCart(priceListMode: PriceListMode = "RETAIL") {
 
   // `weight` is only used for sold_by_weight products (the measured amount in product.unit);
   // omit it for normal items, which add/increment by 1.
-  const addItem = async (product: Product, weight?: number): Promise<OpResult> => {
+  const addItem = async (product: Product, weight?: number, mode?: PriceListMode): Promise<OpResult> => {
     try {
-      await addItemMutation.mutateAsync({ product, weight });
+      await addItemMutation.mutateAsync({ product, weight, mode });
       return { success: true };
     } catch (err) {
       return { success: false, error: errMsg(err) };

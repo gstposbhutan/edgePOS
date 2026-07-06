@@ -350,7 +350,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
   );
 
   const handleAddProduct = useCallback(
-    async (product: any) => {
+    async (product: any, mode?: PriceListMode) => {
       if (product.current_stock <= 0) {
         toast.error("Product is out of stock");
         return;
@@ -359,7 +359,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
         setWeighProduct(product);
         return;
       }
-      const result = await addItem(product);
+      const result = await addItem(product, undefined, mode);
       if (result.success) {
         undoStack.push(() => { removeItem(product.id); });
       }
@@ -461,18 +461,10 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
     const next = PRICE_LIST_ORDER[(PRICE_LIST_ORDER.indexOf(priceListMode) + 1) % PRICE_LIST_ORDER.length];
     setPriceListMode(next);
     if (typeof window !== "undefined") localStorage.setItem("pos_price_list", next);
-    let changed = 0;
-    for (const item of items) {
-      const prod = products.find((p) => p.id === item.product);
-      if (!prod) continue;
-      const newPrice = priceFor(prod, next);
-      if (Number.isFinite(newPrice) && Math.abs(newPrice - item.unit_price) > 0.001) {
-        await overridePrice(item.id, newPrice);
-        changed++;
-      }
-    }
-    toast.success(`Price list: ${PRICE_LIST_LABEL[next]}${changed ? ` · ${changed} line(s) repriced` : ""}`);
-  }, [priceListMode, items, products, overridePrice]);
+    // Rate is now per-line (chosen in the product-search rate toggle); F7 only sets the DEFAULT
+    // tier the search opens on for new adds — it no longer reprices existing lines.
+    toast.success(`Default rate: ${PRICE_LIST_LABEL[next]}`);
+  }, [priceListMode]);
 
   // Complimentary (Ctrl+C, manager): 100% discount on every line — cart zeroes
   // and the cashier tenders the resulting 0-total sale (F10).
@@ -1036,11 +1028,11 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
         open={showSearch}
         initialQuery={searchSeed}
         priceListMode={priceListMode}
-        onAdd={(product) => {
+        onAdd={(product, mode) => {
           // Move the listing selection to the appended line (weighed goods open the
           // weight modal first, but the cart still grows by one row on confirm).
           setSelectedRow(items.length);
-          handleAddProduct(product);
+          handleAddProduct(product, mode);
         }}
         onScan={handleScan}
         onClose={() => { setShowSearch(false); setSearchSeed(""); }}
