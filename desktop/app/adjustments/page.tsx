@@ -6,6 +6,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { useRequireRole } from "@/hooks/use-require-role";
 import { useShifts } from "@/hooks/use-shifts";
 import { useCashAdjustments } from "@/hooks/use-cash-adjustments";
+import { usePlatform } from "@/hooks/use-platform";
+import { useSettings } from "@/hooks/use-settings";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -33,6 +35,7 @@ import {
   ArrowDownToLine,
   ArrowUpToLine,
   Wallet,
+  Unlock,
   TrendingUp,
   TrendingDown,
   Scale,
@@ -46,6 +49,14 @@ import { toast } from "sonner";
 export default function AdjustmentsPage() {
   const { user } = useAuth();
   useRequireRole(["owner", "manager"] as const);
+  const { api } = usePlatform();
+  const { settings } = useSettings();
+  const handleOpenDrawer = async () => {
+    if (!api) return;
+    const r = await api.printer.openDrawer(settings || {});
+    if (r.success) toast.success("Drawer opened");
+    else toast.error(r.error || "Could not open drawer");
+  };
   const { activeShift } = useShifts();
   const {
     adjustments,
@@ -113,10 +124,16 @@ export default function AdjustmentsPage() {
             <p className="text-xs text-muted-foreground">Shift cash movement ledger</p>
           </div>
         </div>
-        <Button onClick={() => setShowAdd(true)} disabled={!activeShift}>
-          <Plus className="h-4 w-4 mr-1.5" />
-          Add Adjustment
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={handleOpenDrawer}>
+            <Unlock className="h-4 w-4 mr-1.5" />
+            Open Drawer
+          </Button>
+          <Button onClick={() => setShowAdd(true)} disabled={!activeShift}>
+            <Plus className="h-4 w-4 mr-1.5" />
+            Add Adjustment
+          </Button>
+        </div>
       </header>
 
       {/* Summary Cards */}

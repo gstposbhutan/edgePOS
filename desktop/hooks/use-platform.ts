@@ -8,6 +8,7 @@ export interface ElectronAPI {
     getStatus: (settings: any) => Promise<{ connected: boolean; name: string }>;
     print: (order: any, settings: any) => Promise<{ success: boolean; error?: string }>;
     test: (settings: any) => Promise<{ success: boolean; error?: string }>;
+    openDrawer: (settings: any) => Promise<{ success: boolean; error?: string }>;
   };
   app: {
     getVersion: () => Promise<string>;

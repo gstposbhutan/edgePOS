@@ -45,6 +45,7 @@ export default function SettingsPage() {
     printer_paper_width: 80,
     printer_auto_print: false,
     printer_copies: 1,
+    printer_open_drawer: false,
   });
   // Per-terminal label settings (localStorage) — lazy init so it reads once, client-side.
   const [labelCfg, setLabelCfg] = useState<LabelConfig>(() => loadLabelConfig());
@@ -66,6 +67,7 @@ export default function SettingsPage() {
         printer_paper_width: settings.printer_paper_width || 80,
         printer_auto_print: !!settings.printer_auto_print,
         printer_copies: settings.printer_copies || 1,
+        printer_open_drawer: !!settings.printer_open_drawer,
       });
     }
   }, [settings]);
@@ -112,6 +114,13 @@ export default function SettingsPage() {
     const result = await api.printer.test({ ...settings, ...printerForm });
     if (result.success) toast.success("Test print sent");
     else toast.error(result.error);
+  };
+
+  const handleTestDrawer = async () => {
+    if (!api) return;
+    const result = await api.printer.openDrawer({ ...settings, ...printerForm });
+    if (result.success) toast.success("Drawer kick sent");
+    else toast.error(result.error || "Could not open drawer");
   };
 
   const setLbl = (patch: Partial<LabelConfig>) =>
@@ -387,9 +396,25 @@ export default function SettingsPage() {
                 Auto-print receipt after each sale
               </label>
 
-              <div className="flex gap-2">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-primary"
+                  checked={printerForm.printer_open_drawer}
+                  onChange={(e) => setPrinterForm({ ...printerForm, printer_open_drawer: e.target.checked })}
+                />
+                Open cash drawer on cash sales
+              </label>
+              <p className="text-[10px] text-muted-foreground -mt-2">
+                Drawer must be connected to the receipt printer (RJ11). Windows only. Use Test Drawer to confirm.
+              </p>
+
+              <div className="flex gap-2 flex-wrap">
                 <Button variant="outline" size="sm" onClick={handleTestPrinter}>
                   Test Print
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleTestDrawer}>
+                  Test Drawer
                 </Button>
                 <Button size="sm" onClick={handleSavePrinter}>
                   <Save className="h-4 w-4 mr-1" /> Save printer

@@ -18,6 +18,7 @@ export interface Settings {
   printer_paper_width: number;
   printer_auto_print: boolean;
   printer_copies: number;
+  printer_open_drawer: boolean;
 }
 
 async function fetchSettings(): Promise<Settings> {
@@ -38,6 +39,7 @@ async function fetchSettings(): Promise<Settings> {
     printer_paper_width: 80,
     printer_auto_print: false,
     printer_copies: 1,
+    printer_open_drawer: false,
   }, PB_REQ);
   return defaultSettings as unknown as Settings;
 }

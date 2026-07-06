@@ -3,6 +3,7 @@ const path = require("path");
 const fs = require("fs");
 const { launchPocketBase, PB_URL } = require("./pb-launcher");
 const { printReceipt, getPrinterStatus, testPrint, listPrinters } = require("./printer");
+const { kickDrawer } = require("./drawer");
 const { startStaticServer } = require("./static-server");
 const { verifyLicense } = require("./license");
 const { checkLicense, saveLicense } = require("./license-store");
@@ -112,6 +113,9 @@ ipcMain.handle("printer:test", async (_, settings) => {
     return { success: false, error: err.message };
   }
 });
+
+// Pop the cash drawer (raw ESC/POS kick to the receipt printer). Windows-only; no-op elsewhere.
+ipcMain.handle("printer:kick-drawer", async (_, settings) => kickDrawer(mainWindow, settings));
 
 ipcMain.handle("app:get-version", () => app.getVersion());
 

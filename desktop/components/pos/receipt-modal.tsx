@@ -32,6 +32,7 @@ export function ReceiptModal({ open, onClose, onNewSale, order, settings }: Rece
   // Guard so auto-print fires once per opened order — re-renders and the 8s
   // auto-close timer must not trigger a second silent print.
   const autoPrintedRef = useRef<string | null>(null);
+  const drawerKickedRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (isElectron && api) {
@@ -52,6 +53,22 @@ export function ReceiptModal({ open, onClose, onNewSale, order, settings }: Rece
     autoPrintedRef.current = orderKey;
     api.printer.print(order, settings).then((result: { success: boolean; error?: string }) => {
       if (!result.success) toast.error(result.error || "Auto-print failed");
+    });
+  }, [open, order, isElectron, api, settings]);
+
+  // Pop the cash drawer on CASH sales (opt-in), once per opened order.
+  useEffect(() => {
+    if (!open || !order) {
+      if (!open) drawerKickedRef.current = null;
+      return;
+    }
+    if (!isElectron || !api || !settings?.printer_open_drawer) return;
+    if (String(order.payment_method || "").toUpperCase() !== "CASH") return;
+    const orderKey = order.id || order.order_no;
+    if (drawerKickedRef.current === orderKey) return;
+    drawerKickedRef.current = orderKey;
+    api.printer.openDrawer(settings).then((result: { success: boolean; error?: string }) => {
+      if (!result.success) toast.error(result.error || "Could not open cash drawer");
     });
   }, [open, order, isElectron, api, settings]);
 
