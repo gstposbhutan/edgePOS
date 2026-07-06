@@ -18,6 +18,7 @@ import { StartShiftModal }    from "@/components/pos/shift/start-shift-modal"
 import { EndShiftModal }      from "@/components/pos/shift/end-shift-modal"
 import { CashAdjustmentModal } from "@/components/pos/cash-adjustment-modal"
 import { ZReportModal }       from "@/components/pos/z-report-modal"
+import { SalespersonPickerModal } from "@/components/pos/keyboard/salesperson-picker-modal"
 import { useCart }         from "@/hooks/use-cart"
 import { useProducts }     from "@/hooks/use-products"
 import { useKhata }        from "@/hooks/use-khata"
@@ -35,6 +36,8 @@ export default function PosPage() {
   const [paymentMethod,     setPaymentMethod]     = useState(null)
   const [journalNo,        setJournalNo]         = useState('')
   const [showCustomerModal, setShowCustomerModal] = useState(false)
+  const [salespeopleById,   setSalespeopleById]   = useState({})     // id → name, per-line salesperson labels (#3)
+  const [salespersonItemId, setSalespersonItemId] = useState(null)   // cart line awaiting a salesperson pick
   const [checkoutLoading,   setCheckoutLoading]   = useState(false)
   const [checkoutError,     setCheckoutError]     = useState(null)
   const [stockShortfalls,   setStockShortfalls]   = useState([])
@@ -109,11 +112,35 @@ export default function PosPage() {
     subtotal, discountTotal, taxableSubtotal, gstTotal, grandTotal, billDiscount,
     carts, activeIndex,
     addItem, updateQty, applyDiscount, overridePrice, removeItem, clearCart, setCustomerIdentity, applyBillDiscount,
+    setLineSalesperson,
     holdCart, switchCart, cancelCart,
   } = useCart(entity?.id, user?.id, 'RETAIL', (name, avail) => showToast(`Only ${avail} in stock`))
 
   const { products, loading: productsLoading, search } = useProducts(entity?.id)
   const { lookupAccount, createAccount } = useKhata(entity?.id)
+
+  // Per-line rate tier: re-price a cart line at the chosen tier (retail default). Mirrors the
+  // keyboard product-search toggle — the tier applies to that line only.
+  function rateFor(product, mode) {
+    const n = v => parseFloat(v ?? 0) || 0
+    if (mode === 'WHOLESALE')   return n(product.wholesale_price)   || n(product.mrp)
+    if (mode === 'DISTRIBUTOR') return n(product.distributor_price) || n(product.wholesale_price) || n(product.mrp)
+    return n(product.selling_price) || n(product.mrp) || n(product.wholesale_price)
+  }
+  function handleSetRate(itemId, mode) {
+    const line = items.find(i => i.id === itemId)
+    const product = products.find(p => p.id === line?.product_id)
+    if (!product) return
+    overridePrice(itemId, rateFor(product, mode))
+  }
+
+  // Load the sales team once, to label each cart line's salesperson.
+  useEffect(() => {
+    fetch('/api/pos/salespeople')
+      .then(r => r.ok ? r.json() : { salespeople: [] })
+      .then(d => setSalespeopleById(Object.fromEntries((d.salespeople || []).map(s => [s.id, s.full_name || s.sub_role]))))
+      .catch(() => {})
+  }, [])
 
   // ── Stock availability check ───────────────────────────────────────────────
   async function checkStockAvailability() {
@@ -479,6 +506,9 @@ export default function PosPage() {
             onRemoveItem={removeItem}
             onApplyDiscount={applyDiscount}
             onOverridePrice={overridePrice}
+            onSetRate={handleSetRate}
+            onPickSalesperson={(itemId) => setSalespersonItemId(itemId)}
+            salespeopleById={salespeopleById}
             onSelectPayment={(m) => { setPaymentMethod(m); setJournalNo('') }}
             journalNo={journalNo}
             onJournalNoChange={setJournalNo}
@@ -565,6 +595,18 @@ export default function PosPage() {
 
       {showZReport && (
         <ZReportModal onClose={() => setShowZReport(false)} />
+      )}
+
+      {salespersonItemId && (
+        <SalespersonPickerModal
+          selectedId={items.find(i => i.id === salespersonItemId)?.salesperson_id ?? null}
+          onClose={() => setSalespersonItemId(null)}
+          onSelect={(id, name) => {
+            setSalespeopleById(prev => ({ ...prev, [id]: name }))
+            setLineSalesperson(salespersonItemId, id)
+            setSalespersonItemId(null)
+          }}
+        />
       )}
 
       {toastMsg && (
