@@ -75,7 +75,33 @@ export function ProductDetailModal({ product, store, onClose, onAddToCart }) {
               <span className="text-3xl font-bold text-primary">Nu. {price.toFixed(2)}</span>
               <span className="text-muted-foreground">/{product.unit || "pcs"}</span>
             </div>
+            {/* Condition + brand + subcategory chips */}
+            <div className="flex flex-wrap items-center gap-2 mt-3">
+              {product.condition && (
+                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                  {product.condition}
+                </span>
+              )}
+              {product.brand && (
+                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-muted text-foreground border border-border">
+                  {product.brand}
+                </span>
+              )}
+              {(product.subcategory || product.category) && (
+                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground border border-border">
+                  {product.subcategory || product.category}
+                </span>
+              )}
+            </div>
           </div>
+
+          {/* Description */}
+          {product.description && (
+            <p className="text-sm text-muted-foreground leading-relaxed">{product.description}</p>
+          )}
+
+          {/* Video (YouTube embeds inline; other platforms link out) */}
+          <ProductVideo url={product.video_url} />
 
           {/* Store Info */}
           {store && (
@@ -178,12 +204,21 @@ export function ProductDetailModal({ product, store, onClose, onAddToCart }) {
                 <p className="text-xs text-muted-foreground mb-2">Specifications</p>
                 <div className="space-y-1">
                   {Object.entries(product.specifications).map(([key, value]) => (
-                    <div key={key} className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">{key}:</span>
-                      <span className="font-medium">{value}</span>
+                    <div key={key} className="flex justify-between gap-4 text-sm">
+                      <span className="text-muted-foreground">{humanizeKey(key)}</span>
+                      <span className="font-medium text-right">{String(value)}</span>
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* Tags */}
+            {Array.isArray(product.tags) && product.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {product.tags.map((t) => (
+                  <span key={t} className="px-2 py-0.5 rounded-full text-[11px] bg-muted text-muted-foreground border border-border">#{t}</span>
+                ))}
               </div>
             )}
           </div>
@@ -201,5 +236,48 @@ export function ProductDetailModal({ product, store, onClose, onAddToCart }) {
         </div>
       </div>
     </div>
+  )
+}
+
+// Turn a snake_case/camelCase spec key into a readable label ("screen_size" → "Screen size").
+function humanizeKey(key) {
+  const s = String(key).replace(/[_-]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').trim()
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
+// Parse a video URL → a YouTube embed (inline iframe) or a link-out for other platforms.
+function parseVideo(url) {
+  if (!url) return null
+  const u = url.trim()
+  const yt = u.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{6,})/)
+  if (yt) return { kind: 'youtube', embed: `https://www.youtube.com/embed/${yt[1]}` }
+  let platform = 'video'
+  if (/instagram\.com/.test(u)) platform = 'Instagram'
+  else if (/tiktok\.com/.test(u)) platform = 'TikTok'
+  else if (/facebook\.com|fb\.watch/.test(u)) platform = 'Facebook'
+  return { kind: 'link', url: u, platform }
+}
+
+function ProductVideo({ url }) {
+  const v = parseVideo(url)
+  if (!v) return null
+  if (v.kind === 'youtube') {
+    return (
+      <div className="aspect-video w-full overflow-hidden rounded-xl border border-border">
+        <iframe
+          src={v.embed}
+          title="Product video"
+          className="h-full w-full"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+        />
+      </div>
+    )
+  }
+  return (
+    <a href={v.url} target="_blank" rel="noopener noreferrer"
+       className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border border-border bg-muted/50 text-sm font-medium hover:bg-muted">
+      ▶ Watch on {v.platform}
+    </a>
   )
 }

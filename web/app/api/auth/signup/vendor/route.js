@@ -70,6 +70,14 @@ export async function POST(request) {
         entity_id: entity.id,
         permissions: OWNER_PERMISSIONS,
       },
+      // app_metadata is the trusted set copied into the JWT — auth_entity_id() and role/permission
+      // gates read it, so the entity claim MUST live here (not just user_metadata).
+      app_metadata: {
+        role,
+        sub_role: 'OWNER',
+        entity_id: entity.id,
+        permissions: OWNER_PERMISSIONS,
+      },
     })
 
     if (authErr) {
