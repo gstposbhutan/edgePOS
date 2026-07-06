@@ -106,11 +106,12 @@ export function useCart(entityId, createdBy, priceListMode = 'RETAIL', onStockCa
     }
   }, [carts, activeIndex])
 
-  const addItem = useCallback(async (product) => {
+  const addItem = useCallback(async (product, modeOverride) => {
     if (!cartId) return
 
-    // Apply the active price list so the server inserts the tier price.
-    const unitPrice = priceFor(product, priceListMode)
+    // Per-line rate: the product-search rate toggle passes a tier for THIS line; fall back to the
+    // invoice default when unspecified. The server stores this tier price as the line unit_price.
+    const unitPrice = priceFor(product, modeOverride || priceListMode)
     const batchId   = product.batch_id ?? null
 
     // Dedup: same product + same batch = merge quantity
