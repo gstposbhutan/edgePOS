@@ -148,7 +148,7 @@ export default function KeyboardPosPage() {
     subtotal, gstTotal, grandTotal, billDiscount, taxableSubtotal,
     carts, activeIndex,
     addItem, updateQty, removeItem, clearCart, setCustomerIdentity, applyDiscount, applyBillDiscount,
-    repriceCart,
+    repriceCart, setLineSalesperson,
     holdCart, switchCart, cancelCart,
   } = useCart(entity?.id, user?.id, 'RETAIL', (name, avail) => showToast(`Only ${avail} in stock`))
 
@@ -176,7 +176,12 @@ export default function KeyboardPosPage() {
         return
       }
       if (e.key === 'F6')  { e.preventDefault(); setShowCustomerPanel(true); return }                          // Customer Select
-      if (e.key === 'F8')  { e.preventDefault(); setShowSalesPerson(true); return }                        // Sales Person
+      if (e.key === 'F8')  {                                                                                  // Salesperson for the SELECTED line
+        e.preventDefault()
+        if (!items.length || !items[selectedRow]) { showToast('Select a product line first'); return }
+        setShowSalesPerson(true)
+        return
+      }
       if (e.key === 'F9')  { e.preventDefault(); editRowRef.current?.(selectedRow); return }                  // Change Qty
       if (e.key === 'F10') { e.preventDefault(); if (items.length > 0) setPaymentOpen(true); return }         // Tender
 
@@ -310,9 +315,7 @@ export default function KeyboardPosPage() {
 
   function handleProductAdd(product, qty = 1, mode) {
     const batchQty = product.available_stock ?? Infinity
-    // Per-line salesperson: tag the new line with the active salesperson (F8). Different active
-    // salesperson → a separate line (see dedup in use-cart).
-    product = { ...product, salesperson_id: salesPersonId ?? null }
+    // Lines start with no salesperson; the cashier assigns one per line via F8 (per-product #3).
 
     if (product.batch_id && qty > batchQty) {
       if (batchQty > 0) {
@@ -488,11 +491,11 @@ export default function KeyboardPosPage() {
             Inv: {nextInvoiceNo ?? '—'}
           </button>
           <button
-            onClick={() => setShowSalesPerson(true)}
-            title="Sales person (F8)"
-            className="hidden md:inline text-[10px] font-medium border border-border bg-muted/30 px-2 py-0.5 rounded-full shrink-0 truncate max-w-[120px] hover:bg-muted"
+            onClick={() => { if (!items.length || !items[selectedRow]) { showToast('Select a product line first'); return } setShowSalesPerson(true) }}
+            title="Assign salesperson to the selected product line (F8)"
+            className="hidden md:inline text-[10px] font-medium border border-border bg-muted/30 px-2 py-0.5 rounded-full shrink-0 hover:bg-muted"
           >
-            {salesPersonName ?? 'Salesperson'}
+            + Salesperson (F8)
           </button>
           <div className="relative shrink-0">
             <button
@@ -799,9 +802,16 @@ export default function KeyboardPosPage() {
 
       {showSalesPerson && (
         <SalespersonPickerModal
-          selectedId={salesPersonId}
+          selectedId={items[selectedRow]?.salesperson_id ?? null}
           onClose={() => setShowSalesPerson(false)}
-          onSelect={(id, name) => { setSalesPersonId(id); setSalesPersonName(name); setShowSalesPerson(false); showToast(`Salesperson for new items: ${name}`) }}
+          onSelect={(id, name) => {
+            const line = items[selectedRow]
+            setShowSalesPerson(false)
+            if (!line) return
+            setSalespeopleById(prev => ({ ...prev, [id]: name }))   // so the line label resolves immediately
+            setLineSalesperson(line.id, id)
+            showToast(`${line.name}: ${name}`)
+          }}
         />
       )}
 

@@ -217,6 +217,27 @@ export function useCart(entityId, createdBy, priceListMode = 'RETAIL', onStockCa
     } catch { /* silently fail */ }
   }, [items, activeIndex])
 
+  // Assign (or clear) the salesperson for a single cart line — per-line attribution (#3).
+  const setLineSalesperson = useCallback(async (itemId, salespersonId) => {
+    try {
+      const res = await fetch('/api/pos/cart/items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set_salesperson', itemId, salespersonId: salespersonId ?? null }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.item) {
+          setCarts(prev => prev.map((c, i) =>
+            i === activeIndex
+              ? { ...c, cart_items: c.cart_items.map(ci => ci.id === itemId ? data.item : ci) }
+              : c
+          ))
+        }
+      }
+    } catch { /* silently fail */ }
+  }, [activeIndex])
+
   const overridePrice = useCallback(async (itemId, newUnitPrice) => {
     try {
       const res = await fetch('/api/pos/cart/items', {
@@ -355,6 +376,6 @@ export function useCart(entityId, createdBy, priceListMode = 'RETAIL', onStockCa
     holdCart,
     switchCart,
     cancelCart,
-    addItem, updateQty, applyDiscount, overridePrice, repriceCart, removeItem, clearCart, setCustomerIdentity, applyBillDiscount,
+    addItem, updateQty, applyDiscount, overridePrice, repriceCart, removeItem, clearCart, setCustomerIdentity, applyBillDiscount, setLineSalesperson,
   }
 }

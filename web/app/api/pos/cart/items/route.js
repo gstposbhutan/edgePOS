@@ -176,6 +176,19 @@ export async function POST(request) {
     return NextResponse.json({ item: data })
   }
 
+  // Assign / clear a single line's salesperson (per-line attribution #3).
+  if (action === 'set_salesperson') {
+    const { itemId, salespersonId } = body
+    const { data, error } = await supabase
+      .from('cart_items')
+      .update({ salesperson_id: salespersonId ?? null })
+      .eq('id', itemId)
+      .select(ITEM_SELECT)
+      .single()
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ item: data })
+  }
+
   // Remove item
   if (action === 'remove') {
     const { itemId } = body

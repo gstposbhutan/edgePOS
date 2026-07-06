@@ -24,18 +24,21 @@ test.describe('Per-line salesperson + rate', () => {
     return modal
   }
 
-  test('#3 F8 salesperson tags the added line with a label', async ({ page }) => {
+  test('#3 F8 assigns a salesperson to the selected product line', async ({ page }) => {
+    // Add a product first — the new line becomes the selected row.
+    const modal = await openSearch(page, 'Druk')
+    await modal.locator('table tbody tr').first().click()
+    await expect(modal).not.toBeVisible()
+    const firstRow = page.locator('table tbody tr').first()
+    await expect(firstRow).toBeVisible()
+
+    // F8 assigns a salesperson to THAT selected line (per-product, not invoice-level).
     await page.keyboard.press('F8')
     await expect(page.getByText('Select Sales Person')).toBeVisible()
     await page.locator('[data-testid="salesperson-option"]').filter({ hasText: 'Cashier' }).click({ force: true })
     await expect(page.getByText('Select Sales Person')).not.toBeVisible()
 
-    const modal = await openSearch(page, 'Druk')
-    await modal.locator('table tbody tr').first().click()
-    await expect(modal).not.toBeVisible()
-
-    const firstRow = page.locator('table tbody tr').first()
-    await expect(firstRow).toBeVisible()
+    // The line now carries that salesperson's label.
     await expect(firstRow.getByText('Cashier')).toBeVisible()
     console.log('SALESPERSON_PER_LINE_OK')
   })
