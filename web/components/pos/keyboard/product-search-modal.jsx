@@ -24,13 +24,25 @@ function mapBatch(b) {
   }
 }
 
-export function ProductSearchModal({ open, initialQuery = '', entityId, onAdd, onClose }) {
+const RATE_MODES = ['RETAIL', 'WHOLESALE', 'DISTRIBUTOR']
+const RATE_LABEL = { RETAIL: 'Retail', WHOLESALE: 'Wholesale', DISTRIBUTOR: 'Distributor' }
+// Per-line rate: price a product at the chosen tier. Mirrors use-cart's priceFor so the displayed
+// price matches what the line will actually be added at.
+function rateFor(p, mode) {
+  const num = v => parseFloat(v ?? 0) || 0
+  if (mode === 'WHOLESALE')   return num(p.wholesale_price)   || num(p.mrp)
+  if (mode === 'DISTRIBUTOR') return num(p.distributor_price) || num(p.wholesale_price) || num(p.mrp)
+  return num(p.selling_price) || num(p.mrp) || num(p.wholesale_price)
+}
+
+export function ProductSearchModal({ open, initialQuery = '', entityId, onAdd, onClose, defaultMode = 'RETAIL' }) {
   const [query,    setQuery]    = useState(initialQuery)
   const [results,  setResults]  = useState([])
   const [selected, setSelected] = useState(0)
   const [loading,  setLoading]  = useState(false)
   const [qty,      setQty]      = useState('1')
   const [unit,     setUnit]     = useState(0)
+  const [rateMode, setRateMode] = useState(defaultMode)
 
   const inputRef = useRef(null)
   const barcodeBuffer = useRef('')
@@ -43,6 +55,7 @@ export function ProductSearchModal({ open, initialQuery = '', entityId, onAdd, o
       setSelected(0)
       setQty('1')
       setUnit(0)
+      setRateMode(defaultMode)
       setTimeout(() => inputRef.current?.focus(), 30)
     }
   }, [open, initialQuery])
@@ -93,7 +106,7 @@ export function ProductSearchModal({ open, initialQuery = '', entityId, onAdd, o
 
   function handleAdd(product) {
     const quantity = Math.max(1, parseInt(qty, 10) || 1)
-    onAdd(product, quantity)
+    onAdd(product, quantity, rateMode)
     onClose()
   }
 
@@ -200,9 +213,9 @@ export function ProductSearchModal({ open, initialQuery = '', entityId, onAdd, o
                   </td>
                   <td className="px-4 py-3 text-right font-bold text-foreground tabular-nums">{product.available_stock}</td>
                   <td className="px-4 py-3 text-right">
-                    <p className="font-semibold text-primary">Nu. {parseFloat(product.selling_price ?? product.mrp).toFixed(2)}</p>
-                    {product.selling_price && product.mrp && parseFloat(product.selling_price) < parseFloat(product.mrp) && (
-                      <p className="text-[10px] text-muted-foreground line-through">Nu. {parseFloat(product.mrp).toFixed(2)}</p>
+                    <p className="font-semibold text-primary">Nu. {rateFor(product, rateMode).toFixed(2)}</p>
+                    {rateMode !== 'RETAIL' && (
+                      <p className="text-[10px] text-muted-foreground">{RATE_LABEL[rateMode]}</p>
                     )}
                   </td>
                 </tr>
@@ -223,6 +236,19 @@ export function ProductSearchModal({ open, initialQuery = '', entityId, onAdd, o
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (results[selected]) handleAdd(results[selected]) } }}
             className="w-16 px-2 py-1 text-sm border border-input rounded bg-background text-center"
           />
+        </div>
+        <div className="flex items-center gap-1">
+          <label className="text-xs text-muted-foreground mr-1">Rate:</label>
+          {RATE_MODES.map(m => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setRateMode(m)}
+              className={`px-2 py-1 rounded text-xs font-medium ${rateMode === m ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
+            >
+              {RATE_LABEL[m]}
+            </button>
+          ))}
         </div>
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
           <span>↑↓ navigate</span>

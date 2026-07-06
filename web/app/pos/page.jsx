@@ -253,8 +253,9 @@ export default function KeyboardPosPage() {
     const next = order[(order.indexOf(priceListMode) + 1) % order.length]
     setPriceListMode(next)
     try { localStorage.setItem('pos_price_list', next) } catch {}
-    repriceCart(next)
-    showToast(`Price list: ${next.charAt(0)}${next.slice(1).toLowerCase()}`)
+    // Rate is now per-line (chosen in the product-search rate toggle); F7 only sets the DEFAULT
+    // tier for new adds — it no longer reprices existing lines.
+    showToast(`Default rate: ${next.charAt(0)}${next.slice(1).toLowerCase()}`)
   }
 
   // Alt+Q — save the cart as a draft quotation (SALES_ORDER/DRAFT): no payment,
@@ -319,12 +320,12 @@ export default function KeyboardPosPage() {
     router.push('/pos/touch')
   }
 
-  function handleProductAdd(product, qty = 1) {
+  function handleProductAdd(product, qty = 1, mode) {
     const batchQty = product.available_stock ?? Infinity
 
     if (product.batch_id && qty > batchQty) {
       if (batchQty > 0) {
-        addItem({ ...product, quantity: batchQty })
+        addItem({ ...product, quantity: batchQty }, mode)
         setSelectedRow(items.length)
         setCheckoutErr(
           `Only ${batchQty} units available in batch "${product.batch_number || product.batch_id.slice(0, 8)}". ` +
@@ -334,7 +335,7 @@ export default function KeyboardPosPage() {
         setCheckoutErr(`Batch "${product.batch_number || product.batch_id.slice(0, 8)}" is out of stock.`)
       }
     } else {
-      addItem({ ...product, quantity: qty })
+      addItem({ ...product, quantity: qty }, mode)
       setSelectedRow(items.length)
     }
   }
@@ -701,6 +702,7 @@ export default function KeyboardPosPage() {
         initialQuery={searchQuery}
         entityId={entity?.id}
         onAdd={handleProductAdd}
+        defaultMode={priceListMode}
         onClose={() => { setSearchOpen(false); setSearchQuery('') }}
       />
 
