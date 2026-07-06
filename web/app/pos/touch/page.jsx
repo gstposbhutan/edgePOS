@@ -155,11 +155,7 @@ export default function PosPage() {
 
   // ── Checkout flow ──────────────────────────────────────────────────────────
   async function handleCheckout() {
-    // Shift gate: cashiers must have an active shift
-    if (subRole === 'CASHIER' && !shift) {
-      setCheckoutError('Start a shift before processing sales')
-      return
-    }
+    // Shifts are optional — no shift gate (opening a shift for cash reconciliation is opt-in).
 
     // ONLINE: journal number is required
     if (paymentMethod === 'ONLINE' && !(journalNo || '').trim()) {
