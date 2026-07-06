@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { PosHeader }       from "@/components/pos/pos-header"
 import { ProductPanel }    from "@/components/pos/product-panel"
+import { WeightEntryModal } from "@/components/pos/weight-entry-modal"
 import { CartPanel }       from "@/components/pos/cart-panel"
 import { CustomerIdModal }  from "@/components/pos/customer-id-modal"
 import { CustomerOtpModal } from "@/components/pos/customer-otp-modal"
@@ -38,6 +39,13 @@ export default function PosPage() {
   const [showCustomerModal, setShowCustomerModal] = useState(false)
   const [salespeopleById,   setSalespeopleById]   = useState({})     // id → name, per-line salesperson labels (#3)
   const [salespersonItemId, setSalespersonItemId] = useState(null)   // cart line awaiting a salesperson pick
+  const [weighProduct,      setWeighProduct]      = useState(null)    // sold_by_weight product awaiting a weight
+
+  // Weighed goods go through the weigh modal; everything else adds directly.
+  function handleAddItem(product) {
+    if (product?.sold_by_weight) { setWeighProduct(product); return }
+    addItem(product)
+  }
   const [checkoutLoading,   setCheckoutLoading]   = useState(false)
   const [checkoutError,     setCheckoutError]     = useState(null)
   const [stockShortfalls,   setStockShortfalls]   = useState([])
@@ -466,7 +474,7 @@ export default function PosPage() {
                 active={cameraActive}
                 onProductRecognized={(product) => {
                   const match = products.find(p => p.id === product.productId)
-                  if (match) addItem(match)
+                  if (match) handleAddItem(match)
                 }}
               />
             </div>
@@ -478,7 +486,7 @@ export default function PosPage() {
               products={products}
               loading={productsLoading}
               onSearch={search}
-              onAddItem={addItem}
+              onAddItem={handleAddItem}
             />
           </div>
         </div>
@@ -595,6 +603,16 @@ export default function PosPage() {
 
       {showZReport && (
         <ZReportModal onClose={() => setShowZReport(false)} />
+      )}
+
+      {weighProduct && (
+        <WeightEntryModal
+          key={weighProduct.id}
+          open
+          product={weighProduct}
+          onConfirm={(w) => { addItem(weighProduct, undefined, w); setWeighProduct(null) }}
+          onClose={() => setWeighProduct(null)}
+        />
       )}
 
       {salespersonItemId && (

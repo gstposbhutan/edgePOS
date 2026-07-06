@@ -17,6 +17,7 @@ function mapBatch(b) {
     selling_price:   b.selling_price ?? b.products.selling_price ?? b.mrp,
     wholesale_price: b.products.wholesale_price,
     distributor_price: b.products.distributor_price,
+    sold_by_weight:  b.products.sold_by_weight,
     available_stock: b.quantity,
     batch_id:        b.id,
     batch_number:    b.batch_number,

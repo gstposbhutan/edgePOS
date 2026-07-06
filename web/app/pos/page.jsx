@@ -12,6 +12,7 @@ import { BillDiscountModal }  from "@/components/pos/keyboard/bill-discount-moda
 import { CustomerPanelModal } from "@/components/pos/keyboard/customer-panel-modal"
 import { InvoiceSearchModal } from "@/components/pos/keyboard/invoice-search-modal"
 import { SalespersonPickerModal } from "@/components/pos/keyboard/salesperson-picker-modal"
+import { WeightEntryModal } from "@/components/pos/weight-entry-modal"
 import { QuotationConfirmModal } from "@/components/pos/keyboard/quotation-confirm-modal"
 import { ComplimentaryConfirmModal } from "@/components/pos/keyboard/complimentary-confirm-modal"
 import { ExchangeModal } from "@/components/pos/keyboard/exchange-modal"
@@ -68,6 +69,7 @@ export default function KeyboardPosPage() {
   const [salesPersonId, setSalesPersonId] = useState(null)        // active salesperson (F8) — tags NEW lines; null = unattributed
   const [salesPersonName, setSalesPersonName] = useState(null)
   const [salespeopleById, setSalespeopleById] = useState({})      // id → name, to label each cart line's salesperson
+  const [weighProduct, setWeighProduct] = useState(null)          // sold_by_weight product awaiting a weight
   const [showQuotation, setShowQuotation] = useState(false)
   const [showComp, setShowComp] = useState(false)
   const [showExchange, setShowExchange] = useState(false)
@@ -316,6 +318,9 @@ export default function KeyboardPosPage() {
   function handleProductAdd(product, qty = 1, mode) {
     const batchQty = product.available_stock ?? Infinity
     // Lines start with no salesperson; the cashier assigns one per line via F8 (per-product #3).
+
+    // Weighed goods: route through the weigh modal (enter the measured amount) instead of qty 1.
+    if (product.sold_by_weight) { setWeighProduct(product); return }
 
     if (product.batch_id && qty > batchQty) {
       if (batchQty > 0) {
@@ -805,6 +810,16 @@ export default function KeyboardPosPage() {
             setLineSalesperson(line.id, id)
             showToast(`${line.name}: ${name}`)
           }}
+        />
+      )}
+
+      {weighProduct && (
+        <WeightEntryModal
+          key={weighProduct.id}
+          open
+          product={weighProduct}
+          onConfirm={(w) => { addItem(weighProduct, undefined, w); setWeighProduct(null); setSelectedRow(items.length) }}
+          onClose={() => setWeighProduct(null)}
         />
       )}
 

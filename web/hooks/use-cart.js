@@ -106,7 +106,7 @@ export function useCart(entityId, createdBy, priceListMode = 'RETAIL', onStockCa
     }
   }, [carts, activeIndex])
 
-  const addItem = useCallback(async (product, modeOverride) => {
+  const addItem = useCallback(async (product, modeOverride, weight) => {
     if (!cartId) return
 
     // Per-line rate: the product-search rate toggle passes a tier for THIS line; fall back to the
@@ -114,24 +114,29 @@ export function useCart(entityId, createdBy, priceListMode = 'RETAIL', onStockCa
     const unitPrice = priceFor(product, modeOverride || priceListMode)
     const batchId   = product.batch_id ?? null
 
-    // Dedup: merge only when product + batch + salesperson + RATE all match. Rate is part of the
-    // key so the same SKU added at two tiers (e.g. one wholesale line + one retail line) stays as
-    // two separate lines in the same invoice; salesperson likewise keeps per-staff lines distinct.
-    const existing = items.find(i =>
-      i.product_id === product.id &&
-      !i.package_id &&
-      (i.batch_id ?? null) === (batchId ?? null) &&
-      (i.salesperson_id ?? null) === (product.salesperson_id ?? null) &&
-      Number(i.unit_price) === Number(unitPrice)
-    )
+    // Weighed goods: `weight` is the measured quantity (in product.unit); each weighing is its own
+    // line (no merge), and the line quantity is that fractional weight.
+    const isWeighed = weight != null && weight > 0
 
-    if (existing) return updateQty(existing.id, existing.quantity + 1)
+    if (!isWeighed) {
+      // Dedup: merge only when product + batch + salesperson + RATE all match. Rate is part of the
+      // key so the same SKU added at two tiers (e.g. one wholesale line + one retail line) stays as
+      // two separate lines; salesperson likewise keeps per-staff lines distinct.
+      const existing = items.find(i =>
+        i.product_id === product.id &&
+        !i.package_id &&
+        (i.batch_id ?? null) === (batchId ?? null) &&
+        (i.salesperson_id ?? null) === (product.salesperson_id ?? null) &&
+        Number(i.unit_price) === Number(unitPrice)
+      )
+      if (existing) return updateQty(existing.id, existing.quantity + 1)
+    }
 
     try {
       const res = await fetch('/api/pos/cart/items', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'add', cartId, product: { ...product, unitPrice } }),
+        body: JSON.stringify({ action: 'add', cartId, product: { ...product, unitPrice, quantity: isWeighed ? weight : (product.quantity ?? 1) } }),
       })
       if (res.ok) {
         const data = await res.json()

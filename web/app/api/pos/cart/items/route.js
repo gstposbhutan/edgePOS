@@ -59,13 +59,12 @@ export async function POST(request) {
     const batchId   = product.batch_id ?? null
     const packageId = product.package_def_id ?? null
 
-    // Dedup check handled by the hook — just insert. A new line is always qty 1,
-    // so there's nothing to cap on add: a fully-out-of-stock product (tracked 0)
-    // is still added as 1 and caught by the checkout stock gate, same as before.
-    // Real over-stock entry comes through update_qty, which is clamped below.
+    // Weighed goods pass a fractional quantity (the measured weight in the product's unit);
+    // discrete items default to 1 (further adds increment via update_qty).
+    const qty = Math.max(0.001, parseFloat(product.quantity ?? 1) || 1)
     const taxable = Math.max(0, unitPrice - 0)
-    const gst5  = parseFloat((taxable * 0.05 * 1).toFixed(2))
-    const total = parseFloat(((taxable * 1.05) * 1).toFixed(2))
+    const gst5  = parseFloat((taxable * 0.05 * qty).toFixed(2))
+    const total = parseFloat(((taxable * 1.05) * qty).toFixed(2))
 
     const { data, error } = await supabase
       .from('cart_items')
@@ -76,7 +75,7 @@ export async function POST(request) {
         batch_id:   batchId,
         name:       product.name,
         sku:        product.sku ?? null,
-        quantity:   1,
+        quantity:   qty,
         unit_price: unitPrice,
         salesperson_id: product.salesperson_id ?? null,
         discount:   0,
