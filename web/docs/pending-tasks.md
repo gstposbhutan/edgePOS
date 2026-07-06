@@ -32,8 +32,8 @@ This file records what's **not** yet done. Detailed designs live in the per-area
   was shared in plaintext during setup.
 
 ## B. Licensing & provisioning hardening — `provisioning-and-licensing-plan.md`
-- 🟠 **Single-instance lock** — add `app.requestSingleInstanceLock()` in `desktop/electron/main.js`;
-  without it a 2nd instance clashes on the userData/cache dir (Chromium "cache Access denied").
+- ✅ **Single-instance lock** — DONE (desktop v1.1.1): `app.requestSingleInstanceLock()` in
+  `desktop/electron/main.js`; loser quits before booting PB/windows, winner focuses on `second-instance`.
 - 🟠 **Authenticode signing** — installer is test-signed via the bundled `signtool`; ship with a real
   code-signing cert so SmartScreen/Defender don't block first run.
 - 🟢 **Desktop online revocation** — `GET /api/license/status` exists; wire a periodic online
