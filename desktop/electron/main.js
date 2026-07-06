@@ -651,7 +651,25 @@ ipcMain.handle("sync:schedule", () => { scheduleSync(); return true; });
 
 // ── App Lifecycle ───────────────────────────────────────────────────────────
 
+// Single-instance lock: a 2nd launch (e.g. the shopkeeper double-clicking the icon again) must NOT
+// boot a second PocketBase — it would clash on the :8090 port + the userData dir (Chromium "cache
+// Access denied"). The loser quits immediately; the winner surfaces its existing window instead.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    const win = mainWindow || activationWindow;
+    if (win && !win.isDestroyed()) {
+      if (win.isMinimized()) win.restore();
+      win.show();
+      win.focus();
+    }
+  });
+}
+
 app.whenReady().then(async () => {
+  if (!gotSingleInstanceLock) return; // second instance is already quitting — don't boot PB/windows
   // Launch PocketBase with data dir in user's app data (writable)
   pbDataDir = isDev
     ? path.join(__dirname, "..", "pb", "pb_data")
