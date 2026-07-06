@@ -22,28 +22,42 @@ export function calcItemTotals(input: CartItemInput, gstRate: number = DEFAULT_G
 
 export function calcCartTotals(
   items: { unitPrice: number; discount: number; quantity: number }[],
-  gstRate: number = DEFAULT_GST_RATE
+  gstRate: number = DEFAULT_GST_RATE,
+  billDiscount: number = 0
 ) {
   const subtotal = items.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
   const discountTotal = items.reduce((s, i) => s + i.discount * i.quantity, 0);
-  const taxableSubtotal = subtotal - discountTotal;
-  // P2-5: per-line-then-sum (canonical; matches the web cart's useCart). GST and grand
-  // total are the SUM of the per-line rounded amounts (via calcItemTotals), so the
-  // stored gst_total equals Σ items.gst_5 to the cent — not an aggregate re-rounding
-  // that could drift from the line items by a ngultrum.
-  let gstTotal = 0;
-  let grandTotal = 0;
-  for (const i of items) {
-    const t = calcItemTotals(i, gstRate);
-    gstTotal += t.gstAmount;
-    grandTotal += t.total;
+  // Invoice/bill-level discount: a single pre-GST amount off the net subtotal (NOT distributed
+  // across lines). Clamped so the net can't go negative.
+  const bd = Math.min(Math.max(0, billDiscount), Math.max(0, subtotal - discountTotal));
+  const taxableSubtotal = Math.max(0, subtotal - discountTotal - bd);
+  const rate = gstRate / 100;
+  let gstTotal: number;
+  let grandTotal: number;
+  if (bd > 0) {
+    // Bill discount present → GST on the discounted invoice net (matches the web cart).
+    gstTotal = parseFloat((taxableSubtotal * rate).toFixed(2));
+    grandTotal = parseFloat((taxableSubtotal + gstTotal).toFixed(2));
+  } else {
+    // No bill discount → canonical per-line-then-sum (P2-5): gst_total == Σ items.gst_5 to the
+    // cent, no aggregate re-rounding drift.
+    let g = 0;
+    let t = 0;
+    for (const i of items) {
+      const it = calcItemTotals(i, gstRate);
+      g += it.gstAmount;
+      t += it.total;
+    }
+    gstTotal = parseFloat(g.toFixed(2));
+    grandTotal = parseFloat(t.toFixed(2));
   }
   return {
     subtotal: parseFloat(subtotal.toFixed(2)),
     discountTotal: parseFloat(discountTotal.toFixed(2)),
+    billDiscount: parseFloat(bd.toFixed(2)),
     taxableSubtotal: parseFloat(taxableSubtotal.toFixed(2)),
-    gstTotal: parseFloat(gstTotal.toFixed(2)),
-    grandTotal: parseFloat(grandTotal.toFixed(2)),
+    gstTotal,
+    grandTotal,
   };
 }
 

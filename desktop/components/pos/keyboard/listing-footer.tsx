@@ -3,6 +3,7 @@
 interface ListingFooterProps {
   itemCount: number;
   subtotal: number;
+  billDiscount?: number;
   gstTotal: number;
   grandTotal: number;
 }
@@ -63,7 +64,7 @@ function triggerShortcut(label: string) {
  * Bottom strip for the keyboard (listing) layout: running totals on the left when the
  * cart has items, and the F-key legend as big tappable buttons. Matches the web footer.
  */
-export function ListingFooter({ itemCount, subtotal, gstTotal, grandTotal }: ListingFooterProps) {
+export function ListingFooter({ itemCount, subtotal, billDiscount = 0, gstTotal, grandTotal }: ListingFooterProps) {
   return (
     <div className="border-t border-border bg-muted/20 shrink-0">
       {itemCount > 0 && (
@@ -74,6 +75,11 @@ export function ListingFooter({ itemCount, subtotal, gstTotal, grandTotal }: Lis
           <span className="text-muted-foreground">
             Subtotal: <strong className="text-foreground">Nu. {subtotal.toFixed(2)}</strong>
           </span>
+          {billDiscount > 0 && (
+            <span className="text-emerald-600">
+              Invoice disc: <strong>−Nu. {billDiscount.toFixed(2)}</strong>
+            </span>
+          )}
           <span className="text-muted-foreground">
             GST (5%): <strong className="text-foreground">Nu. {gstTotal.toFixed(2)}</strong>
           </span>

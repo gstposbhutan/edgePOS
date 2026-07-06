@@ -33,6 +33,7 @@ interface CheckoutInput {
   invoiceDate?: string | null;
   isOwner?: boolean;
   salespersonId?: string | null;
+  billDiscount?: number;
   deliveryAddress?: string | null;
   complimentaryReason?: string | null;
 }
@@ -72,7 +73,7 @@ export function useCheckout(input: CheckoutInput) {
       tendered?: number,
       onSuccess?: (orderPayload: Record<string, unknown>, orderId: string) => void
     ) => {
-      const { pb, user, items, products, subtotal, gstTotal, grandTotal, taxExempt, grandTotalExempt, settings, selectedCustomer, clearCart, refreshProducts, clearUndoStack, invoiceDate, isOwner, salespersonId, deliveryAddress, complimentaryReason } = input;
+      const { pb, user, items, products, subtotal, gstTotal, grandTotal, billDiscount, taxExempt, grandTotalExempt, settings, selectedCustomer, clearCart, refreshProducts, clearUndoStack, invoiceDate, isOwner, salespersonId, deliveryAddress, complimentaryReason } = input;
 
       if (!user) return;
 
@@ -147,6 +148,7 @@ export function useCheckout(input: CheckoutInput) {
           subtotal,
           gst_total: effectiveGstTotal,
           grand_total: effectiveGrandTotal,
+          bill_discount: billDiscount ?? 0,
           payment_method: method,
           payment_channel: channel || "",
           payment_ref: ref || "",

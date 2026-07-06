@@ -125,6 +125,7 @@ function buildReceiptHtml(order, settings) {
   <div class="rule"></div>
   <table class="totals">
     <tr><td>Subtotal</td><td class="amt">${money(order.subtotal)}</td></tr>
+    ${Number(order.bill_discount) > 0 ? `<tr><td>Invoice discount</td><td class="amt">- ${money(order.bill_discount)}</td></tr>` : ""}
     ${gstTotal > 0 ? `<tr><td>GST</td><td class="amt">${money(order.gst_total)}</td></tr>` : ""}
     <tr class="grand"><td>TOTAL</td><td class="amt">${money(order.grand_total)}</td></tr>
     ${gstTotal === 0 ? `<tr><td colspan="2" class="center muted">Tax Exempt</td></tr>` : ""}
