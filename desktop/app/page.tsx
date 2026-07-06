@@ -108,10 +108,10 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
 
   const {
     items, loading: cartLoading,
-    subtotal, discountTotal, taxableSubtotal, gstTotal, grandTotal,
+    subtotal, discountTotal, taxableSubtotal, gstTotal, grandTotal, billDiscount,
     taxExempt, setTaxExempt,
     subtotalExTax, gstTotalExempt, grandTotalExempt,
-    addItem, updateQty, applyDiscount, overridePrice, removeItem, clearCart,
+    addItem, updateQty, applyDiscount, applyBillDiscount, overridePrice, removeItem, clearCart,
     setCustomer: setCartCustomer,
   } = useCart(priceListMode);
   const { customers, createCustomer } = useCustomers();
@@ -198,6 +198,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
     subtotal,
     gstTotal,
     grandTotal,
+    billDiscount,
     taxExempt,
     grandTotalExempt,
     settings,
@@ -603,6 +604,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
     handleVoidLast,
     handleUndo,
     applyDiscount,
+    applyBillDiscount,
     cyclePriceList,
     isManager,
     setShowSalesperson,
@@ -939,6 +941,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
           <ListingFooter
             itemCount={totalItemsCount}
             subtotal={subtotal}
+            billDiscount={billDiscount}
             gstTotal={taxExempt ? gstTotalExempt : gstTotal}
             grandTotal={taxExempt ? grandTotalExempt : grandTotal}
           />

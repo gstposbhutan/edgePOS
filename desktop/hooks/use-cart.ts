@@ -94,8 +94,14 @@ export function useCart(priceListMode: PriceListMode = "RETAIL") {
 
   const items = itemsQuery.data ?? [];
 
+  // Invoice/bill-level discount lives on the cart record — a single pre-GST amount off the net
+  // subtotal (after per-line discounts), NOT distributed across line items.
+  const billDiscount = Math.max(0, Number((cart as { bill_discount?: number } | null)?.bill_discount ?? 0) || 0);
+
   const totals = calcCartTotals(
-    items.map((i) => ({ unitPrice: i.unit_price, discount: i.discount, quantity: i.quantity }))
+    items.map((i) => ({ unitPrice: i.unit_price, discount: i.discount, quantity: i.quantity })),
+    undefined,
+    billDiscount,
   );
 
   const subtotalExTax = totals.taxableSubtotal;
@@ -104,6 +110,19 @@ export function useCart(priceListMode: PriceListMode = "RETAIL") {
 
   const refetchItems = () => {
     if (cartId) queryClient.invalidateQueries({ queryKey: ["cart-items", cartId] });
+  };
+
+  // Set the invoice/bill-level discount on the cart (pre-GST, off the net; not distributed).
+  const applyBillDiscount = async (amount: number) => {
+    if (!cartId) return { success: false, error: "No active cart" };
+    const bd = Math.max(0, Number(amount) || 0);
+    try {
+      await pb.collection("carts").update(cartId, { bill_discount: bd }, PB_REQ);
+      queryClient.invalidateQueries({ queryKey: ["cart"] });
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: errMsg(err) };
+    }
   };
 
   const addItemMutation = useMutation({
@@ -291,6 +310,7 @@ export function useCart(priceListMode: PriceListMode = "RETAIL") {
     addItem,
     updateQty,
     applyDiscount,
+    applyBillDiscount,
     overridePrice,
     removeItem,
     clearCart,

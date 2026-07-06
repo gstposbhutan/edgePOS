@@ -21,6 +21,7 @@ interface PosShortcutsInput {
   handleVoidLast: () => void;
   handleUndo: () => void;
   applyDiscount: (itemId: string, discount: number) => void;
+  applyBillDiscount: (amount: number) => void;
   cyclePriceList: () => void;
   isManager: boolean;
   setShowSalesperson: (v: boolean) => void;
@@ -49,22 +50,21 @@ export function usePosShortcuts(input: PosShortcutsInput) {
     // Grid-mode default: focus the in-grid search box. Listing mode overrides this
     // (input.onFocusSearch) to open the full-screen product-search modal.
     const focusSearch = () => input.onFocusSearch ? input.onFocusSearch() : document.getElementById("pos-search")?.focus();
-    // Ctrl+D — percentage bill discount applied to every line via the existing
-    // per-item applyDiscount (PERCENT converted to a per-unit flat amount).
+    // Ctrl+D — invoice/bill-level discount: a single pre-GST amount off the net bill (NOT
+    // distributed across lines). Enter a % of the taxable base; it's stored on the cart and GST
+    // is then computed on the discounted net.
     const billDiscount = () => {
       if (input.items.length === 0) {
         toast("Cart is empty — add items first");
         return;
       }
-      const raw = window.prompt("Bill discount (%) — applies to all lines:");
+      const raw = window.prompt("Invoice discount (%) off the bill, before GST:");
       if (raw === null) return;
       const pct = Math.min(100, Math.max(0, parseFloat(raw) || 0));
-      if (pct <= 0) return;
-      input.items.forEach((it) => {
-        const perUnit = parseFloat(((it.unit_price * pct) / 100).toFixed(2));
-        input.applyDiscount(it.id, perUnit);
-      });
-      toast.success(`Bill discount ${pct}% applied to ${input.items.length} item(s)`);
+      const taxable = input.items.reduce((s, it) => s + Math.max(0, it.unit_price - (it.discount || 0)) * it.quantity, 0);
+      const amount = parseFloat(((taxable * pct) / 100).toFixed(2));
+      input.applyBillDiscount(amount);
+      toast.success(pct > 0 ? `Invoice discount ${pct}% (Nu. ${amount.toFixed(2)}) applied` : "Invoice discount cleared");
     };
 
     // --- Function keys (canonical Pelbu map) ---
