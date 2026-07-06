@@ -217,6 +217,19 @@ async function doSync() {
       throw new Error(`ingest ${res.status}: ${text.slice(0, 200)}`);
     }
 
+    // Orders the cloud REJECTED (signature mismatch) must NOT be marked synced — else the sale is
+    // silently lost (dropped cloud-side + never retried). Keep them local + unsynced for retry (a
+    // re-bootstrap provisions the TPN so a valid order then verifies). Rare once the TPN is
+    // provisioned; this is the durability backstop against silent loss.
+    let rejectedOrderNos = new Set();
+    try {
+      const data = await res.json();
+      rejectedOrderNos = new Set((data && data.result && data.result.ordersRejected) || []);
+    } catch (_) { /* no/invalid body — fall back to marking all, as before */ }
+    if (rejectedOrderNos.size > 0) {
+      console.warn(`[Sync] ${rejectedOrderNos.size} order(s) rejected on ingest (signature) — kept local for retry`);
+    }
+
     // Mark the pushed transactional rows synced. The cloud batch is idempotent, so
     // re-pushing after a failed mark is harmless.
     const markSynced = async (collection, rows) => {
@@ -228,7 +241,7 @@ async function doSync() {
         }).catch(() => {});
       }
     };
-    await markSynced("orders", orders);
+    await markSynced("orders", orders.filter((o) => !rejectedOrderNos.has(o.order_no)));
     await markSynced("inventory_movements", movements);
     await markSynced("khata_transactions", khataTxns);
 

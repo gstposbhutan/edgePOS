@@ -60,21 +60,6 @@ services:
     networks:
       - default
 
-  sync-worker:
-    container_name: sync-worker
-    build:
-      context: .
-      dockerfile: services/sync-worker/Dockerfile
-    env_file:
-      - path: ./services/sync-worker/.env
-        required: false
-    restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-    networks:
-      - default
-
   # ----------------------------------------------------------- Supabase tier
   db:
     container_name: supabase-db

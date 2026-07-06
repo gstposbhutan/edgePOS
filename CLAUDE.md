@@ -33,7 +33,7 @@ This project uses Turborepo for efficient code sharing between high-performance 
 │   │   └── /ui                   # Design System: Shadcn + Royal Bhutan aesthetic
 │   ├── /services
 │   │   ├── /whatsapp-gateway     # Meta Cloud API microservice
-│   │   ├── /sync-worker          # PouchDB-to-Supabase background sync
+│   │   │   # (sync-worker removed — see note below; terminal↔cloud sync is the HTTP ingest path)
 │   │   └── /logistics-bridge     # Webhook handlers for delivery integrations
 │   ├── /prisma                   # Prisma schema
 │   ├── /supabase                 # Supabase migrations and RLS policies
@@ -276,6 +276,8 @@ if (transaction_type === 'B2B') {
 - [x] GST 5% engine (per-line, tax-exclusive) shared across web + desktop
 - [x] Offline POS terminal (Electron + embedded PocketBase): cart, checkout, shifts, cash registers, audit log
 - [x] Terminal → cloud sync (push to /api/sync/ingest, reconciled by business keys in @nexus-bhutan/sync-core)
+  - **The DESKTOP terminal is the offline-first app** (embedded PocketBase/SQLite rides out outages). Sync = PocketBase → HTTP `/api/sync/ingest` → Supabase; **near-live** (debounced push after each sale + 15-min periodic re-pull; interval fallback). Cloud→terminal provisioning via `/api/sync/bootstrap` (now also provisions the terminal's TPN so order signatures verify).
+  - **PouchDB is redundant here and was removed.** Per its docs PouchDB is an offline-first store that replicates to *CouchDB-family* servers — but this stack is PocketBase (offline) + Supabase/Postgres (cloud), neither of which PouchDB speaks to. The `pouchdb` deps + the stub `services/sync-worker` (a "PouchDB→Supabase" pipe that only ever `console.log`'d) were leftovers from an abandoned design; deleted.
 - [x] Retailer licensing: machine-locked .lic gate + activation window + revocation endpoint
 - [x] Cloud → terminal provisioning bootstrap (/api/sync/bootstrap + doBootstrap)
 - [x] Weighed-goods checkout + Code128/EAN-13 barcode label maker
