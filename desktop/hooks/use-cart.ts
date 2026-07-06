@@ -258,6 +258,23 @@ export function useCart(priceListMode: PriceListMode = "RETAIL") {
     }
   };
 
+  // Assign (or clear) the salesperson for a single cart line — per-line attribution (#3).
+  const setLineSalespersonMutation = useMutation({
+    mutationFn: async ({ itemId, salespersonId }: { itemId: string; salespersonId: string | null }) => {
+      await pb.collection("cart_items").update(itemId, { salesperson_id: salespersonId ?? null }, PB_REQ);
+    },
+    onSuccess: () => refetchItems(),
+  });
+
+  const setLineSalesperson = async (itemId: string, salespersonId: string | null): Promise<OpResult> => {
+    try {
+      await setLineSalespersonMutation.mutateAsync({ itemId, salespersonId });
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: errMsg(err) };
+    }
+  };
+
   const overridePriceMutation = useMutation({
     mutationFn: async ({ itemId, newUnitPrice }: { itemId: string; newUnitPrice: number }) => {
       const current = queryClient.getQueryData<CartItem[]>(["cart-items", cartId]) ?? [];
@@ -319,6 +336,7 @@ export function useCart(priceListMode: PriceListMode = "RETAIL") {
     updateQty,
     applyDiscount,
     applyBillDiscount,
+    setLineSalesperson,
     overridePrice,
     removeItem,
     clearCart,

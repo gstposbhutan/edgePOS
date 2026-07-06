@@ -26,7 +26,7 @@ import { BarcodeScanner } from "@/components/pos/barcode-scanner";
 import { PaymentModal } from "@/components/pos/payment-modal";
 import { CustomerModal } from "@/components/pos/customer-modal";
 import { InvoiceSearchModal } from "@/components/pos/invoice-search-modal";
-import { SalespersonPickerModal, type TeamUser } from "@/components/pos/salesperson-picker-modal";
+import { SalespersonPickerModal } from "@/components/pos/salesperson-picker-modal";
 import { ComplimentaryConfirmModal } from "@/components/pos/complimentary-confirm-modal";
 import { QuotationConfirmModal } from "@/components/pos/quotation-confirm-modal";
 import { PostMarketModal } from "@/components/pos/post-market-modal";
@@ -107,6 +107,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
     taxExempt, setTaxExempt,
     subtotalExTax, gstTotalExempt, grandTotalExempt,
     addItem, updateQty, applyDiscount, applyBillDiscount, overridePrice, removeItem, clearCart,
+    setLineSalesperson,
     setCustomer: setCartCustomer,
   } = useCart("RETAIL");
   const { customers, createCustomer } = useCustomers();
@@ -145,7 +146,6 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
   const [dateOverride, setDateOverride] = useState<string | null>(null);
   const [showInvoiceSearch, setShowInvoiceSearch] = useState(false);
   const [showSalesperson, setShowSalesperson] = useState(false);
-  const [selectedSalesperson, setSelectedSalesperson] = useState<TeamUser | null>(null);
   const [salespeopleById, setSalespeopleById] = useState<Record<string, string>>({}); // id → name, labels each cart line's salesperson (#3)
   const [showComplimentary, setShowComplimentary] = useState(false);
   const [showExchange, setShowExchange] = useState(false);
@@ -212,7 +212,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
     clearUndoStack: () => undoStack.clear(),
     invoiceDate: dateOverride,
     isOwner,
-    salespersonId: selectedSalesperson?.id ?? null,
+    salespersonId: null, // salesperson is per-line now (carried in each item's salesperson_id snapshot)
     deliveryAddress,
     complimentaryReason,
   });
@@ -343,14 +343,14 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
           setWeighProduct(product);
           return;
         }
-        const result = await addItem(product, undefined, undefined, selectedSalesperson?.id ?? null);
+        const result = await addItem(product);
         if (result.success) toast.success(`Added ${product.name}`);
         else toast.error(result.error || "Failed to add item");
       } else {
         toast.error(`Product not found for barcode: ${barcode}`);
       }
     },
-    [findByBarcode, addItem, selectedSalesperson]
+    [findByBarcode, addItem]
   );
 
   const handleAddProduct = useCallback(
@@ -363,12 +363,12 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
         setWeighProduct(product);
         return;
       }
-      const result = await addItem(product, undefined, mode, selectedSalesperson?.id ?? null);
+      const result = await addItem(product, undefined, mode);
       if (result.success) {
         undoStack.push(() => { removeItem(product.id); });
       }
     },
-    [addItem, removeItem, undoStack, selectedSalesperson]
+    [addItem, removeItem, undoStack]
   );
 
   // Confirm a weighed item: add it at quantity = weight, unit_price = per-unit rate, and
@@ -378,7 +378,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
       const product = weighProduct;
       if (!product) return;
       setWeighProduct(null);
-      const result = await addItem(product, weight, undefined, selectedSalesperson?.id ?? null);
+      const result = await addItem(product, weight);
       if (!result.success) {
         toast.error(result.error || "Failed to add item");
         return;
@@ -397,7 +397,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
         }, loadLabelConfig(), 1);
       }
     },
-    [weighProduct, addItem, selectedSalesperson]
+    [weighProduct, addItem]
   );
 
   const handleVoidLast = useCallback(async () => {
@@ -1054,7 +1054,14 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
 
       {showInvoiceSearch && <InvoiceSearchModal onClose={() => setShowInvoiceSearch(false)} />}
 
-      <SalespersonPickerModal open={showSalesperson} onClose={() => setShowSalesperson(false)} onSelect={setSelectedSalesperson} />
+      <SalespersonPickerModal open={showSalesperson} onClose={() => setShowSalesperson(false)} onSelect={(u) => {
+        setShowSalesperson(false);
+        const line = items[selectedRow];
+        if (!line) { toast.error("Select a product line first"); return; }
+        setSalespeopleById((prev) => ({ ...prev, [u.id]: u.name || u.email || "Salesperson" }));
+        setLineSalesperson(line.id, u.id);
+        toast.success(`${line.name}: ${u.name || u.email || "Salesperson"}`);
+      }} />
       <ComplimentaryConfirmModal open={showComplimentary} onClose={() => setShowComplimentary(false)} onConfirm={handleComplimentary} itemCount={items.length} grandTotal={taxExempt ? grandTotalExempt : grandTotal} />
       <QuotationConfirmModal open={showQuotation} onClose={() => setShowQuotation(false)} onConfirm={handleSaveQuotation} itemCount={items.length} grandTotal={taxExempt ? grandTotalExempt : grandTotal} saving={quotationSaving} />
       <PostMarketModal open={showPostMarket} onClose={() => setShowPostMarket(false)} onConfirm={handlePostMarket} productNames={Array.from(new Set(items.map((i) => i.name)))} />
