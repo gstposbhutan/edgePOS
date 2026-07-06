@@ -18,13 +18,14 @@ export async function PATCH(request, { params }) {
     patch.credit_limit = body.credit_limit != null && body.credit_limit !== '' ? Number(body.credit_limit) : null
   }
   if (body.is_active !== undefined) patch.is_active = !!body.is_active
+  if (body.is_featured !== undefined) patch.is_featured = !!body.is_featured   // promote to the public catalog
   if (Object.keys(patch).length === 0) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
 
   const { data, error } = await ctx.supabase
     .from('entities')
     .update(patch)
     .eq('id', id)
-    .select('id, name, role, tpn_gstin, whatsapp_no, address, credit_limit, is_active')
+    .select('id, name, role, tpn_gstin, whatsapp_no, address, credit_limit, is_active, is_featured')
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (!data) return NextResponse.json({ error: 'Entity not found' }, { status: 404 })

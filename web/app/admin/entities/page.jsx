@@ -42,6 +42,16 @@ export default function AdminEntitiesPage() {
     load()
   }
 
+  // Promote / demote a shop in the public marketplace catalog (featured = visible to shoppers).
+  async function toggleFeatured(e) {
+    await fetch(`/api/admin/entities/${e.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_featured: !e.is_featured }),
+    })
+    load()
+  }
+
   if (!ready) {
     return <div className="flex items-center justify-center h-64"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
   }
@@ -69,15 +79,25 @@ export default function AdminEntitiesPage() {
                   <div key={e.id} className="border border-border rounded-xl p-3 space-y-1">
                     <div className="flex items-start justify-between gap-2">
                       <p className="font-semibold text-sm">{e.name}</p>
-                      <Badge variant="outline" className={e.is_active ? 'text-emerald-600 border-emerald-500/30 bg-emerald-500/10 text-xs' : 'text-xs text-muted-foreground'}>
-                        {e.is_active ? 'Active' : 'Suspended'}
-                      </Badge>
+                      <div className="flex flex-col items-end gap-1">
+                        <Badge variant="outline" className={e.is_active ? 'text-emerald-600 border-emerald-500/30 bg-emerald-500/10 text-xs' : 'text-xs text-muted-foreground'}>
+                          {e.is_active ? 'Active' : 'Suspended'}
+                        </Badge>
+                        {e.role === 'RETAILER' && e.is_featured && (
+                          <Badge variant="outline" className="text-gold border-gold/30 bg-gold/10 text-xs">★ Featured</Badge>
+                        )}
+                      </div>
                     </div>
                     {e.tpn_gstin && <p className="text-xs text-muted-foreground">TPN: {e.tpn_gstin}</p>}
                     {e.whatsapp_no && <p className="text-xs text-muted-foreground">{e.whatsapp_no}</p>}
                     <Button size="sm" variant="outline" className="w-full mt-1" onClick={() => toggleActive(e)}>
                       {e.is_active ? 'Suspend' : 'Reactivate'}
                     </Button>
+                    {e.role === 'RETAILER' && (
+                      <Button size="sm" variant="outline" className="w-full" onClick={() => toggleFeatured(e)}>
+                        {e.is_featured ? 'Remove from marketplace' : 'Feature on marketplace'}
+                      </Button>
+                    )}
                   </div>
                 ))}
               </div>
