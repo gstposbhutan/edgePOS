@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     getStatus: (settings) => ipcRenderer.invoke("printer:get-status", settings),
     print: (order, settings) => ipcRenderer.invoke("printer:print", order, settings),
     test: (settings) => ipcRenderer.invoke("printer:test", settings),
+    openDrawer: (settings) => ipcRenderer.invoke("printer:kick-drawer", settings),
   },
 
   // App info
