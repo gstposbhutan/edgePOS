@@ -19,6 +19,7 @@ export interface ElectronAPI {
     start: (config: any) => Promise<boolean>;
     stop: () => Promise<boolean>;
     forceSync: () => Promise<boolean>;
+    schedule: () => Promise<boolean>;
     bootstrap: () => Promise<{ ok: boolean; products?: number; categories?: number; khata?: number; users?: number; error?: string }>;
     resetResync: () => Promise<{ ok: boolean; cancelled?: boolean; products?: number; users?: number; error?: string }>;
   };

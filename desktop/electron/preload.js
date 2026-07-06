@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     start: (config) => ipcRenderer.invoke("sync:start", config),
     stop: () => ipcRenderer.invoke("sync:stop"),
     forceSync: () => ipcRenderer.invoke("sync:force"),
+    schedule: () => ipcRenderer.invoke("sync:schedule"),
     bootstrap: () => ipcRenderer.invoke("sync:bootstrap"),
     resetResync: () => ipcRenderer.invoke("sync:reset-resync"),
   },

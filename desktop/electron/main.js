@@ -21,6 +21,8 @@ let activationWindow = null;
 let tray = null;
 let pbProcess = null;
 let syncInterval = null;
+let bootstrapInterval = null;
+let syncDebounce = null;
 let syncConfig = null;
 let pbDataDir = null;
 let lastSyncAt = null; // ISO time of the last successful push/pull — drives the renderer sync nudge
@@ -342,6 +344,37 @@ async function doBootstrap() {
       if (r.ok) users++;
     }
 
+    // 5. Store profile → local settings singleton. CRITICAL: sync tpn_gstin so the terminal signs
+    //    orders with the SAME TPN the cloud recomputes the signature with — otherwise the ingest
+    //    rejects valid orders (signature mismatch). Also store name / cloud entity id for receipts
+    //    + sync stamping. PATCH preserves the shopkeeper's printer/receipt tweaks; create seeds a
+    //    complete row (mirrors hooks/use-settings defaults) if none exists yet.
+    if (data.entity) {
+      const e = data.entity;
+      const existing = await findOne("settings", "id != ''"); // settings is a singleton
+      if (existing) {
+        const patch = { tpn_gstin: e.tpn_gstin || "", store_entity_id: e.id || "" };
+        if (e.name) patch.store_name = e.name;
+        await updateRec("settings", existing.id, patch);
+      } else {
+        await createRec("settings", {
+          store_name: e.name || "My Store",
+          store_address: "",
+          tpn_gstin: e.tpn_gstin || "",
+          phone: e.whatsapp_no || "",
+          receipt_header: "",
+          receipt_footer: "Thank you for your business!",
+          gst_rate: 5,
+          store_entity_id: e.id || "",
+          printer_device_name: "",
+          printer_paper_width: 80,
+          printer_auto_print: false,
+          printer_copies: 1,
+          printer_open_drawer: false,
+        });
+      }
+    }
+
     mainWindow?.webContents.send("sync:status", {
       status: "idle",
       lastSync: (lastSyncAt = new Date().toISOString()),
@@ -571,12 +604,20 @@ ipcMain.handle("sync:start", (_, config) => {
   // cloud-side changes — new products, price updates, password resets — reach the
   // terminal without re-activation. Best-effort; never blocks the push cycle.
   doBootstrap().catch(() => {});
+  // Periodic re-pull so cloud-side catalog/price/team changes propagate to the terminal without a
+  // restart (near-live pull). Longer cadence than the push — the bootstrap is bulkier.
+  if (bootstrapInterval) clearInterval(bootstrapInterval);
+  bootstrapInterval = setInterval(() => doBootstrap().catch(() => {}), 15 * 60 * 1000);
   return true;
 });
 
 ipcMain.handle("sync:stop", () => {
   if (syncInterval) clearInterval(syncInterval);
+  if (bootstrapInterval) clearInterval(bootstrapInterval);
+  if (syncDebounce) clearTimeout(syncDebounce);
   syncInterval = null;
+  bootstrapInterval = null;
+  syncDebounce = null;
   return true;
 });
 
@@ -584,6 +625,16 @@ ipcMain.handle("sync:force", async () => {
   await doSync();
   return true;
 });
+
+// Near-live push: coalesce rapid local writes (e.g. back-to-back sales) into a single debounced
+// push a couple of seconds later, so a sale reaches the cloud in ~seconds instead of waiting for
+// the interval. The interval remains the fallback for anything missed.
+function scheduleSync(delayMs = 1500) {
+  if (!syncConfig) return;
+  if (syncDebounce) clearTimeout(syncDebounce);
+  syncDebounce = setTimeout(() => { syncDebounce = null; doSync().catch(() => {}); }, delayMs);
+}
+ipcMain.handle("sync:schedule", () => { scheduleSync(); return true; });
 
 // ── App Lifecycle ───────────────────────────────────────────────────────────
 
