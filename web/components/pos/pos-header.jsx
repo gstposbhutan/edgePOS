@@ -4,7 +4,6 @@ import { useState } from "react"
 import { LogOut, RefreshCw, Wifi, Package, BookOpen, ClipboardList, Wallet, ShoppingBag, Keyboard, ChevronDown, Store, LayoutDashboard, ShoppingCart, Landmark, MonitorDown, Banknote, ReceiptText, History } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Logo } from "@/components/ui/logo"
 import { FaceAuthBadge } from "./face-auth-badge"
 import { ShiftStatusBadge } from "./shift/shift-status-badge"
 import { HandoverModal } from "./handover-modal"
@@ -45,10 +44,8 @@ export function PosHeader({ storeName, cashierName, customer, syncing, onEnrollF
 
   return (
     <header className="glassmorphism border-b border-border px-4 py-3 flex items-center justify-between gap-4 shrink-0">
-      {/* Left — branding + store selector */}
+      {/* Left — store selector (logo lives in the sidebar now) */}
       <div className="flex items-center gap-3">
-        <Logo variant="icon" className="h-8 w-8 rounded-lg shrink-0" />
-
         {hasMultipleStores ? (
           <div className="relative hidden sm:block">
             <button
