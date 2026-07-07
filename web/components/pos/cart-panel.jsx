@@ -45,7 +45,7 @@ export function CartPanel({
   // Per-line rate tier + salesperson (#3/#4 touch parity)
   onSetRate, onPickSalesperson, salespeopleById = {},
   // Multi-cart props
-  carts = [], activeIndex = 0, onHoldCart, onSwitchCart, onCancelCart,
+  carts = [], activeIndex = 0, onHoldCart, onSwitchCart, onCancelCart, onSaveDraft,
 }) {
   const [showBillDisc, setShowBillDisc] = useState(false)
   const hasItems    = items.length > 0
@@ -268,6 +268,17 @@ export function CartPanel({
               : `Charge Nu. ${grandTotal.toFixed(2)}`
             }
           </Button>
+
+          {onSaveDraft && (
+            <Button
+              variant="outline"
+              onClick={onSaveDraft}
+              disabled={!hasItems || checkoutLoading}
+              className="w-full h-9 text-sm"
+            >
+              Save as order / quotation
+            </Button>
+          )}
 
           {!(customer?.whatsapp || customer?.buyerHash) && (
             <p className="text-xs text-amber-600 text-center">

@@ -8,6 +8,7 @@ import { WeightEntryModal } from "@/components/pos/weight-entry-modal"
 import { CartPanel }       from "@/components/pos/cart-panel"
 import { CustomerIdModal }  from "@/components/pos/customer-id-modal"
 import { CustomerOtpModal } from "@/components/pos/customer-otp-modal"
+import { QuotationConfirmModal } from "@/components/pos/keyboard/quotation-confirm-modal"
 import { StockGateModal }  from "@/components/pos/stock-gate-modal"
 import { CreateAccountModal } from "@/components/pos/khata/create-account-modal"
 import { CameraCanvas }      from "@/components/pos/camera/camera-canvas"
@@ -57,6 +58,7 @@ export default function PosPage() {
   const [ownerOverride,     setOwnerOverride]     = useState(false)
   const [showRestock,       setShowRestock]       = useState(false)
   const [showCreditOtp,     setShowCreditOtp]     = useState(false)
+  const [showQuotation,     setShowQuotation]     = useState(false)
   const [showStartShift,    setShowStartShift]    = useState(false)
   const [showEndShift,      setShowEndShift]      = useState(false)
   const [showCashAdj,       setShowCashAdj]       = useState(false)
@@ -285,6 +287,45 @@ export default function PosPage() {
     const shortfalls = await checkStockAvailability()
     setStockShortfalls(shortfalls)
     if (shortfalls.length === 0) await processCheckout()
+  }
+
+  // Save the cart as a DRAFT sell-side document (Sales Order or Quotation) — no payment,
+  // no stock move. Mirrors the keyboard POS "Save as draft" (Alt+Q).
+  async function saveDraft(isQuotation) {
+    if (!cartId || items.length === 0) return
+    setCheckoutLoading(true); setCheckoutError(null)
+    try {
+      const res = await fetch('/api/pos/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: items.map(item => ({
+            product_id: item.product_id, package_id: item.package_id ?? null,
+            batch_id: item.batch_id ?? null,
+            package_name: item.package_id ? item.name : null,
+            package_type: item.package_def?.package_type ?? null,
+            sku: item.sku, name: item.name, quantity: item.quantity,
+            unit_price: item.unit_price, discount: item.discount ?? 0,
+            discount_type: item.discount_type || 'FLAT', discount_value: item.discount_value ?? 0,
+            gst_5: item.gst_5, total: item.total,
+          })),
+          subtotal, gstTotal, grandTotal, billDiscount,
+          customerWhatsapp: customer?.whatsapp ?? null,
+          buyerHash: customer?.buyerHash ?? null,
+          cartId, quotation: true, isQuotation: !!isQuotation,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Save failed')
+      setShowQuotation(false)
+      await clearCart()
+      setPaymentMethod(null); setJournalNo('')
+      router.push(`/pos/order/${data.order.id}`)
+    } catch (err) {
+      setCheckoutError(err.message); setShowQuotation(false)
+    } finally {
+      setCheckoutLoading(false)
+    }
   }
 
   async function processCheckout() {
@@ -521,6 +562,7 @@ export default function PosPage() {
             journalNo={journalNo}
             onJournalNoChange={setJournalNo}
             onCheckout={handleCheckout}
+            onSaveDraft={() => setShowQuotation(true)}
             checkoutLoading={checkoutLoading}
             carts={carts}
             activeIndex={activeIndex}
@@ -549,6 +591,15 @@ export default function PosPage() {
         onVerified={handleCreditOtpVerified}
         onClose={() => setShowCreditOtp(false)}
       />
+
+      {showQuotation && (
+        <QuotationConfirmModal
+          itemCount={items.length}
+          grandTotal={grandTotal}
+          onConfirm={saveDraft}
+          onClose={() => setShowQuotation(false)}
+        />
+      )}
 
       <StockGateModal
         open={stockShortfalls.length > 0}

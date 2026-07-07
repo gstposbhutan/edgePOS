@@ -89,18 +89,28 @@ export async function PATCH(request, { params }) {
       return NextResponse.json({ error: `Cannot transition from ${order.status} to ${newStatus}` }, { status: 400 })
     }
 
+    // Cancelling a PO requires a reason (audit trail: supplier out of stock, better price, etc.)
+    if (newStatus === 'CANCELLED' && !reason?.trim()) {
+      return NextResponse.json({ error: 'A cancellation reason is required' }, { status: 400 })
+    }
+
     const updates = { status: newStatus }
-    if (newStatus === 'CANCELLED') updates.cancelled_at = new Date().toISOString()
+    if (newStatus === 'CANCELLED') {
+      updates.cancelled_at = new Date().toISOString()
+      updates.cancellation_reason = reason.trim()
+    }
 
     await supabase.from('orders').update(updates).eq('id', id)
 
     if (reason) {
-      await supabase.from('order_status_log').insert({
-        order_id:  id,
-        from_status: order.status,
-        to_status:   newStatus,
-        reason,
-      }).catch(() => {})
+      try {
+        await supabase.from('order_status_log').insert({
+          order_id:  id,
+          from_status: order.status,
+          to_status:   newStatus,
+          reason,
+        })
+      } catch { /* status-log is best-effort */ }
     }
 
     return NextResponse.json({ success: true, status: newStatus })

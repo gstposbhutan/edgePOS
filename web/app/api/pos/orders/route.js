@@ -11,7 +11,7 @@ export async function POST(request) {
     items, subtotal, gstTotal, grandTotal, billDiscount,
     paymentMethod, paymentChannel, paymentRef, customerWhatsapp, buyerHash,
     cartId, invoiceDate,
-    salespersonId, quotation, deliveryAddress,
+    salespersonId, quotation, isQuotation, deliveryAddress,
   } = body
 
   const supabase = ctx.supabase
@@ -47,8 +47,9 @@ export async function POST(request) {
     .update(`${orderNo}:${grandTotal}:${entity?.tpn_gstin ?? ''}`)
     .digest('hex')
 
-  // Phase 4 — Quotation (Alt+Q): a DRAFT SALES_ORDER. No payment and no stock
-  // move — stock is only deducted by the CONFIRM update below, which we skip.
+  // Sell-side draft (Alt+Q): a DRAFT SALES_ORDER — either a committed Sales Order or a
+  // non-binding Quotation (is_quotation). No payment and no stock move — stock is only
+  // deducted when it's fulfilled into a Sales Invoice, which we skip here.
   if (quotation) {
     const { data: quote, error: quoteError } = await supabase
       .from('orders')
@@ -56,6 +57,7 @@ export async function POST(request) {
         order_type:     'SALES_ORDER',
         order_no:       orderNo,
         status:         'DRAFT',
+        is_quotation:   !!isQuotation,
         seller_id:      ctx.entityId,
         buyer_whatsapp: customerWhatsapp ?? null,
         buyer_hash:     buyerHash ?? null,

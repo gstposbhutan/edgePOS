@@ -111,7 +111,7 @@ function OrdersPage() {
               <>
                 <span>/</span>
                 <span className="text-foreground font-medium">
-                  {salesTab === 'SO' ? 'Sales Orders' : salesTab === 'SI' ? 'Invoices' : salesTab === 'MKT' ? 'Marketplace' : 'WhatsApp'}
+                  {salesTab === 'SO' ? 'Sales Orders' : salesTab === 'SI' ? 'Invoices' : 'Marketplace'}
                 </span>
               </>
             )}
@@ -124,7 +124,7 @@ function OrdersPage() {
           <RefreshCw className="h-4 w-4" />
         </Button>
         {['MANAGER', 'OWNER', 'ADMIN'].includes(subRole) && (
-          <Button size="sm" onClick={() => router.push('/salesorder')} className="gap-1.5">
+          <Button size="sm" onClick={() => router.push('/pos')} className="gap-1.5">
             <Plus className="h-4 w-4" /> New Order
           </Button>
         )}
@@ -160,7 +160,6 @@ function OrdersPage() {
               ['SO',  'Sales Orders',  FileText],
               ['SI',  'Invoices',      Receipt],
               ['MKT', 'Marketplace',   Store],
-              ['WA',  'WhatsApp',      MessageCircle],
             ].map(([key, label, Icon]) => (
               <button key={key} onClick={() => setSalesTab(key)}
                 className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors shrink-0 ${

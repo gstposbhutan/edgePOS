@@ -1,10 +1,9 @@
 "use client"
 
 import { useState } from "react"
-import { LogOut, RefreshCw, Wifi, Package, BookOpen, ClipboardList, Wallet, ShoppingBag, Keyboard, ChevronDown, Store, LayoutDashboard, ShoppingCart, Landmark, MonitorDown, Banknote, ReceiptText, History } from "lucide-react"
+import { LogOut, RefreshCw, Wifi, ShoppingBag, Keyboard, ChevronDown, Store, Banknote, ReceiptText } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Logo } from "@/components/ui/logo"
 import { FaceAuthBadge } from "./face-auth-badge"
 import { ShiftStatusBadge } from "./shift/shift-status-badge"
 import { HandoverModal } from "./handover-modal"
@@ -45,10 +44,8 @@ export function PosHeader({ storeName, cashierName, customer, syncing, onEnrollF
 
   return (
     <header className="glassmorphism border-b border-border px-4 py-3 flex items-center justify-between gap-4 shrink-0">
-      {/* Left — branding + store selector */}
+      {/* Left — store selector (logo lives in the sidebar now) */}
       <div className="flex items-center gap-3">
-        <Logo variant="icon" className="h-8 w-8 rounded-lg shrink-0" />
-
         {hasMultipleStores ? (
           <div className="relative hidden sm:block">
             <button
@@ -127,45 +124,7 @@ export function PosHeader({ storeName, cashierName, customer, syncing, onEnrollF
           </Badge>
         )}
 
-        {userSubRole === 'OWNER' && (
-          <Button variant="ghost" size="icon-sm" onClick={() => router.push('/admin/stores')} title="Manage Stores">
-            <LayoutDashboard className="h-4 w-4" />
-          </Button>
-        )}
-
-        {userSubRole === 'OWNER' && (
-          <Button variant="ghost" size="icon-sm" onClick={() => router.push('/downloads')} title="Desktop App & Updates">
-            <MonitorDown className="h-4 w-4" />
-          </Button>
-        )}
-
-        <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/orders')} title="Orders">
-          <ClipboardList className="h-4 w-4" />
-        </Button>
-
-        {userSubRole !== 'CASHIER' && (
-          <>
-            <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/purchases')} title="Purchases">
-              <ShoppingCart className="h-4 w-4" />
-            </Button>
-
-            <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/products')} title="Products">
-              <BookOpen className="h-4 w-4" />
-            </Button>
-
-            <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/inventory')} title="Inventory">
-              <Package className="h-4 w-4" />
-            </Button>
-
-            <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/khata')} title="Khata (Credit)">
-              <Wallet className="h-4 w-4" />
-            </Button>
-
-            <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/registers')} title="Cash Registers">
-              <Landmark className="h-4 w-4" />
-            </Button>
-          </>
-        )}
+        {/* Page navigation lives in the sidebar now — the top bar keeps register actions only. */}
 
         {['MANAGER', 'OWNER'].includes(userSubRole) && (
           <Button variant="ghost" size="icon-sm" onClick={onRestock} title="Restock from Wholesaler" data-testid="restock-btn">
@@ -194,9 +153,6 @@ export function PosHeader({ storeName, cashierName, customer, syncing, onEnrollF
                 <ReceiptText className="h-4 w-4" />
               </Button>
             )}
-            <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/shifts')} title="Shift history">
-              <History className="h-4 w-4" />
-            </Button>
           </>
         )}
 
