@@ -14,8 +14,8 @@ function LoginForm() {
   const searchParams = useSearchParams()
   const redirect = searchParams.get('redirect')
   const needPhoneParam = searchParams.get('needphone')
-  // Customers arrive from the marketplace; staff from consoles.
-  const [tab, setTab] = useState(needPhoneParam || (redirect && redirect.startsWith('/shop')) ? 'customer' : 'staff')
+  // Customer is the default/primary audience; staff switch to their tab explicitly.
+  const [tab, setTab] = useState('customer')
 
   // Staff (email + password)
   const [email, setEmail] = useState('')
@@ -107,13 +107,13 @@ function LoginForm() {
         </CardHeader>
         <CardContent>
           <div className="flex rounded-lg bg-muted/50 p-1 mb-6">
-            <button type="button" onClick={() => { setTab('staff'); setError(null) }}
-              className={`flex-1 flex items-center justify-center gap-2 rounded-md py-2 text-sm font-medium transition-all ${tab === 'staff' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
-              <KeyRound className="h-4 w-4" /> Staff
-            </button>
             <button type="button" onClick={() => { setTab('customer'); setError(null) }}
               className={`flex-1 flex items-center justify-center gap-2 rounded-md py-2 text-sm font-medium transition-all ${tab === 'customer' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
               <Mail className="h-4 w-4" /> Customer
+            </button>
+            <button type="button" onClick={() => { setTab('staff'); setError(null) }}
+              className={`flex-1 flex items-center justify-center gap-2 rounded-md py-2 text-sm font-medium transition-all ${tab === 'staff' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+              <KeyRound className="h-4 w-4" /> Staff
             </button>
           </div>
 
