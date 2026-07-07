@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { getUser } from '@/lib/auth'
+import { MarketingNav } from '@/components/marketing/marketing-nav'
 
 // Browsing the marketplace is public (unauthenticated). Only the buyer actions — checkout and
 // order history — require a login/signup; those subpaths are gated here, everything else is open.
@@ -24,5 +25,10 @@ export default function ShopLayout({ children }) {
     checkAuth()
   }, [pathname, router])
 
-  return children
+  return (
+    <>
+      <MarketingNav />
+      {children}
+    </>
+  )
 }

@@ -48,7 +48,7 @@ function ShopOrdersPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b border-border">
+      <header className="sticky top-14 z-30 bg-background/95 backdrop-blur border-b border-border">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
           <Link href="/shop">
             <Button variant="ghost" size="icon" className="h-10 w-10">

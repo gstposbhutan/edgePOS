@@ -1,14 +1,68 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Logo } from '@/components/ui/logo'
 import { Button } from '@/components/ui/button'
 import { NAV } from '@/lib/marketing/content'
-import { Menu, X } from 'lucide-react'
+import { getUser, getRoleClaims } from '@/lib/auth'
+import { Menu, X, LayoutDashboard } from 'lucide-react'
+
+// Where each role's "home" lives (mirrors proxy.js ROLE_HOME).
+const ROLE_HOME = {
+  SUPER_ADMIN: '/admin',
+  DISTRIBUTOR: '/distributor',
+  WHOLESALER: '/wholesaler',
+  RETAILER: '/pos',
+  RIDER: '/rider',
+  CUSTOMER: '/shop',
+}
 
 export function MarketingNav() {
   const [open, setOpen] = useState(false)
+  // undefined = still checking, null = logged out, object = logged in
+  const [account, setAccount] = useState(undefined)
+
+  useEffect(() => {
+    let alive = true
+    getUser().then(user => {
+      if (!alive) return
+      if (!user) { setAccount(null); return }
+      const { role } = getRoleClaims(user) || {}
+      setAccount({
+        href: ROLE_HOME[role] || '/shop',
+        label: role === 'CUSTOMER' ? 'My account' : 'Dashboard',
+      })
+    }).catch(() => alive && setAccount(null))
+    return () => { alive = false }
+  }, [])
+
+  // Right-hand actions, shared by desktop + mobile.
+  function Actions({ stacked = false }) {
+    const wrap = stacked ? 'flex gap-2' : 'flex items-center gap-2'
+    if (account === undefined) return <div className="h-9 w-24" aria-hidden />   // reserve space, no flash
+    if (account) {
+      return (
+        <div className={wrap}>
+          <Link href={account.href} className={stacked ? 'flex-1' : ''}>
+            <Button size={stacked ? 'default' : 'sm'} className={stacked ? 'w-full' : ''}>
+              <LayoutDashboard className="h-4 w-4" /> {account.label}
+            </Button>
+          </Link>
+        </div>
+      )
+    }
+    return (
+      <div className={wrap}>
+        <Link href="/login" className={stacked ? 'flex-1' : ''}>
+          <Button variant={stacked ? 'outline' : 'ghost'} size={stacked ? 'default' : 'sm'} className={stacked ? 'w-full' : ''}>Log in</Button>
+        </Link>
+        <Link href="/sell" className={stacked ? 'flex-1' : ''}>
+          <Button size={stacked ? 'default' : 'sm'} className={stacked ? 'w-full' : ''}>Get started</Button>
+        </Link>
+      </div>
+    )
+  }
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
@@ -29,9 +83,8 @@ export function MarketingNav() {
           ))}
         </div>
 
-        <div className="hidden items-center gap-2 md:flex">
-          <Link href="/login"><Button variant="ghost" size="sm">Log in</Button></Link>
-          <Link href="/sell"><Button size="sm">Get started</Button></Link>
+        <div className="hidden md:flex">
+          <Actions />
         </div>
 
         <button
@@ -56,13 +109,8 @@ export function MarketingNav() {
                 {item.label}
               </Link>
             ))}
-            <div className="mt-2 flex gap-2">
-              <Link href="/login" className="flex-1" onClick={() => setOpen(false)}>
-                <Button variant="outline" className="w-full">Log in</Button>
-              </Link>
-              <Link href="/sell" className="flex-1" onClick={() => setOpen(false)}>
-                <Button className="w-full">Get started</Button>
-              </Link>
+            <div className="mt-2" onClick={() => setOpen(false)}>
+              <Actions stacked />
             </div>
           </div>
         </div>

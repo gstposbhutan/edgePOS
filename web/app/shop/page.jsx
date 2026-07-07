@@ -2,12 +2,11 @@
 
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { Search, ShoppingBag, Store, Phone, Home, LogOut, ClipboardList, User, Bell, BellOff } from "lucide-react"
+import { Search, ShoppingBag, Store, Home, LogOut, ClipboardList, User, Bell, BellOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import Image from "next/image"
 import Link from "next/link"
-import { Logo } from "@/components/ui/logo"
 import { ProductDetailModal } from "@/components/shop/product-detail-modal"
 import { CartDrawer } from "@/components/shop/cart-drawer"
 import { useCart } from "@/lib/cart-context"
@@ -89,13 +88,9 @@ export default function ShopPage() {
   return (
     <div className="min-h-screen bg-background pb-20">
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border">
-        <div className="px-4 py-3">
+      <header className="sticky top-14 z-30 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border">
+        <div className="px-4 py-3 max-w-6xl mx-auto">
           <div className="flex items-center gap-3">
-            <Link href="/" className="shrink-0">
-              <Logo variant="icon" className="h-10 w-10 rounded-lg" />
-            </Link>
-
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -163,14 +158,7 @@ export default function ShopPage() {
                 )}
               </div>
               </div>
-            ) : (
-              <Link href="/login">
-                <Button size="default" className="h-10">
-                  <Phone className="h-4 w-4 mr-2" />
-                  Login
-                </Button>
-              </Link>
-            )}
+            ) : null}
           </div>
         </div>
       </header>
@@ -184,19 +172,19 @@ export default function ShopPage() {
               <p className="text-xs font-semibold tracking-widest text-gold uppercase">Pelbu Marketplace</p>
               <h1 className="text-2xl sm:text-3xl font-serif font-bold">Shop local Bhutanese stores online</h1>
               <p className="text-sm text-slate-300">
-                Browse products from stores across Bhutan — free, no account needed. Sign in with your WhatsApp number to add items to your cart and order.
+                Browse products from stores across Bhutan — free, no account needed. Sign in to add items to your cart and order.
               </p>
               <div className="flex flex-wrap items-center gap-3 pt-1">
                 <Link href="/login?redirect=/shop">
                   <Button className="h-10 bg-gold text-obsidian hover:bg-gold/90">
-                    <Phone className="h-4 w-4 mr-2" /> Sign in / Sign up to buy
+                    <ShoppingBag className="h-4 w-4 mr-2" /> Sign in / Sign up to buy
                   </Button>
                 </Link>
-                <span className="text-xs text-slate-400">Free to browse · Sign up in seconds with WhatsApp</span>
+                <span className="text-xs text-slate-400">Free to browse · Sign up in seconds</span>
               </div>
               <div className="flex flex-wrap gap-x-6 gap-y-1 pt-3 text-xs text-slate-400">
                 <span>1 · Browse stores &amp; products</span>
-                <span>2 · Sign in with WhatsApp</span>
+                <span>2 · Sign in with email or social</span>
                 <span>3 · Order &amp; collect or get it delivered</span>
               </div>
             </div>
