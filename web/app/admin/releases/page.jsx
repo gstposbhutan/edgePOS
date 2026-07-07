@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Fragment } from 'react'
 import { Plus, Trash2, Upload, Eye, EyeOff, Loader2, Download, Star } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -150,7 +150,8 @@ export default function ReleasesPage() {
             ) : releases.length === 0 ? (
               <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No releases yet</td></tr>
             ) : releases.map(r => (
-              <tr key={r.id} className="border-t border-border">
+              <Fragment key={r.id}>
+              <tr className="border-t border-border">
                 <td className="px-4 py-2 font-mono font-semibold">
                   {r.version} {r.mandatory && <Star className="inline h-3 w-3 text-amber-500" title="Mandatory" />}
                 </td>
@@ -180,6 +181,15 @@ export default function ReleasesPage() {
                   </button>
                 </td>
               </tr>
+              {r.notes && (
+                <tr>
+                  <td />
+                  <td colSpan={4} className="px-4 pb-2.5 pt-0 text-xs text-muted-foreground whitespace-pre-wrap align-top">
+                    {r.notes}
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
           </tbody>
         </table>
