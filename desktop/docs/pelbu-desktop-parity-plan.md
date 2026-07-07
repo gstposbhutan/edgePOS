@@ -316,8 +316,12 @@ offline→cloud sync path, which **cannot be verified in the headless dev box**
 Electron app against a sync target.
 
 ## Related web follow-ups (not desktop, but adjacent)
-- Pre-existing **CREDIT purchase-invoice confirm** fails ("No active khata
-  account") — the restock trigger needs a supplier khata before the confirm
-  route creates it. CASH confirms fine.
-- **Legacy phone-only consumer khata accounts** need `debtor_email` backfill so
-  email lookup resolves them (13 such accounts at handoff).
+- ✅ **FIXED (migration 100)** — CREDIT purchase-invoice confirm no longer fails.
+  `khata_debit_on_confirm` is a sell-side/wholesale-buy debit and now skips
+  `PURCHASE_ORDER`/`PURCHASE_INVOICE` (the supplier khata is owned by the
+  purchases confirm route). Verified: CREDIT PI confirms, batch created,
+  supplier khata debited.
+- ✅ **DONE (migration 101)** — legacy phone-only consumer khata backfilled with
+  `debtor_email` via phone → customer entity → auth email (7/13 resolved; the
+  remaining 6 have no linked email and stay phone-resolvable / need manual
+  association).
