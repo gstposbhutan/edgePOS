@@ -8,7 +8,7 @@ export async function GET(request) {
   const { entityId, supabase } = ctx
   const { data: entity, error } = await supabase
     .from('entities')
-    .select('id, name, whatsapp_no, tpn_gstin, shop_slug, marketplace_bio, marketplace_logo_url, delivery_mode')
+    .select('id, name, whatsapp_no, tpn_gstin, shop_slug, marketplace_bio, marketplace_logo_url, delivery_mode, email_notifications_enabled')
     .eq('id', entityId)
     .single()
 
@@ -33,6 +33,7 @@ export async function PATCH(request) {
   if (body.delivery_mode !== undefined && ['DELIVERY', 'PICKUP', 'NONE'].includes(body.delivery_mode)) {
     allowed.delivery_mode = body.delivery_mode
   }
+  if (body.email_notifications_enabled !== undefined) allowed.email_notifications_enabled = !!body.email_notifications_enabled
 
   if (Object.keys(allowed).length === 0) {
     return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
@@ -42,7 +43,7 @@ export async function PATCH(request) {
     .from('entities')
     .update(allowed)
     .eq('id', entityId)
-    .select('id, name, whatsapp_no, tpn_gstin, shop_slug, marketplace_bio, delivery_mode')
+    .select('id, name, whatsapp_no, tpn_gstin, shop_slug, marketplace_bio, delivery_mode, email_notifications_enabled')
     .single()
 
   if (error) {

@@ -13,6 +13,7 @@ import { CustomerPanelModal } from "@/components/pos/keyboard/customer-panel-mod
 import { InvoiceSearchModal } from "@/components/pos/keyboard/invoice-search-modal"
 import { SalespersonPickerModal } from "@/components/pos/keyboard/salesperson-picker-modal"
 import { WeightEntryModal } from "@/components/pos/weight-entry-modal"
+import { NotificationBell } from "@/components/notifications/notification-bell"
 import { QuotationConfirmModal } from "@/components/pos/keyboard/quotation-confirm-modal"
 import { ComplimentaryConfirmModal } from "@/components/pos/keyboard/complimentary-confirm-modal"
 import { ExchangeModal } from "@/components/pos/keyboard/exchange-modal"
@@ -552,6 +553,7 @@ export default function KeyboardPosPage() {
               <MonitorDown className="h-4 w-4" />
             </Button>
           )}
+          <NotificationBell />
           <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/orders')} title="Orders [O]">
             <ClipboardList className="h-4 w-4" />
           </Button>

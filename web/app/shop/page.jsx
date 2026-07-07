@@ -12,6 +12,7 @@ import { ProductDetailModal } from "@/components/shop/product-detail-modal"
 import { CartDrawer } from "@/components/shop/cart-drawer"
 import { useCart } from "@/lib/cart-context"
 import { getUser, signOut } from "@/lib/auth"
+import { NotificationBell } from "@/components/notifications/notification-bell"
 
 export default function ShopPage() {
   const router = useRouter()
@@ -104,6 +105,8 @@ export default function ShopPage() {
             </Button>
 
             {user ? (
+              <div className="flex items-center gap-1">
+              <NotificationBell />
               <div className="relative" ref={menuRef}>
                 <Button
                   variant="ghost"
@@ -133,6 +136,7 @@ export default function ShopPage() {
                     </button>
                   </div>
                 )}
+              </div>
               </div>
             ) : (
               <Link href="/login">

@@ -16,7 +16,9 @@ export function isRealEmail(e) {
   if (!e || typeof e !== 'string') return false
   const s = e.trim().toLowerCase()
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) return false
-  return !/(@example\.com$|@nexus\.bt$|@temp\.|\.local$|^noreply@)/.test(s)
+  // Exclude placeholders: WhatsApp temp (@example.com), staff seeds (@nexus.bt), and the meaningful-
+  // but-fake phone-based customer addresses (@customer.pelbu.bt).
+  return !/(@example\.com$|@nexus\.bt$|@customer\.pelbu\.bt$|@temp\.|\.local$|^noreply@)/.test(s)
 }
 
 /** Fire-and-forget email; silently skips when unconfigured or the address isn't real. */
@@ -40,6 +42,36 @@ export async function sendEmail(to, subject, text, html) {
   } catch (err) {
     console.error('[email/notify] send failed:', err.message)
     return { ok: false, error: err.message }
+  }
+}
+
+/** Resolve an entity's contact email (owner for shops; the customer themselves for customers). */
+export async function entityContactEmail(supabase, entityId) {
+  try {
+    if (!entityId) return null
+    const { data: profs } = await supabase
+      .from('user_profiles').select('id, sub_role').eq('entity_id', entityId).limit(5)
+    const chosen = (profs || []).find(p => p.sub_role === 'OWNER') || (profs || [])[0]
+    const authId = chosen?.id || entityId   // customers: entity id === auth id
+    const { data } = await supabase.auth.admin.getUserById(authId)
+    return data?.user?.email || null
+  } catch { return null }
+}
+
+/**
+ * Deliver a notification to an entity: ALWAYS write it in-app, and email it only if that entity has
+ * opted in (email_notifications_enabled) and has a real address. Auth emails don't use this.
+ */
+export async function notifyEntity(supabase, entityId, { type, title, body = null, link = null }) {
+  if (!entityId) return
+  try {
+    await supabase.from('notifications').insert({ entity_id: entityId, type, title, body, link })
+    const { data: ent } = await supabase.from('entities').select('email_notifications_enabled').eq('id', entityId).maybeSingle()
+    if (!ent?.email_notifications_enabled) return
+    const email = await entityContactEmail(supabase, entityId)
+    if (email && isRealEmail(email)) await sendEmail(email, title, body || title)
+  } catch (err) {
+    console.error('[notifyEntity]', err.message)
   }
 }
 

@@ -13,7 +13,7 @@ import { Loader2, Save } from 'lucide-react'
  * bio are optional and only matter for businesses that list a public storefront.
  */
 export function EntityProfileForm() {
-  const [form, setForm] = useState({ name: '', whatsapp_no: '', tpn_gstin: '', shop_slug: '', marketplace_bio: '', delivery_mode: 'DELIVERY' })
+  const [form, setForm] = useState({ name: '', whatsapp_no: '', tpn_gstin: '', shop_slug: '', marketplace_bio: '', delivery_mode: 'DELIVERY', email_notifications_enabled: false })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState(null)
@@ -30,6 +30,7 @@ export function EntityProfileForm() {
           shop_slug: data.entity.shop_slug || '',
           marketplace_bio: data.entity.marketplace_bio || '',
           delivery_mode: data.entity.delivery_mode || 'DELIVERY',
+          email_notifications_enabled: !!data.entity.email_notifications_enabled,
         })
       }
       setLoading(false)
@@ -146,6 +147,20 @@ export function EntityProfileForm() {
               <p className="text-xs text-muted-foreground">
                 Choose <strong>Pickup only</strong> if you list items customers collect in person (e.g. used goods) — checkout skips the rider flow.
               </p>
+            </div>
+
+            <div className="flex items-start gap-2 pt-2 border-t border-border">
+              <input
+                id="email_notifs"
+                type="checkbox"
+                checked={form.email_notifications_enabled}
+                onChange={(e) => setForm(f => ({ ...f, email_notifications_enabled: e.target.checked }))}
+                className="mt-1"
+              />
+              <label htmlFor="email_notifs" className="text-sm cursor-pointer">
+                <span className="font-medium text-foreground">Email me notifications</span>
+                <span className="block text-xs text-muted-foreground">Off by default — you always get them in-app (the bell). Turn on to also receive order &amp; low-stock alerts by email.</span>
+              </label>
             </div>
 
             {message && (

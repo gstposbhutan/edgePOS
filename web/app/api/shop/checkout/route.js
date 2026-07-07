@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/supabase/server'
 import { createHash, randomBytes } from 'node:crypto'
-import { sendEmail, entityOwnerEmail, isRealEmail } from '@/lib/email/notify'
+import { notifyEntity } from '@/lib/email/notify'
 
 async function assignRider(supabase, orderId, order) {
   try {
@@ -236,42 +236,38 @@ export async function POST(request) {
           }),
         }).catch(() => {})
 
-        // Email notifications (fire-and-forget): vendor gets a new-order alert, the customer gets a
-        // receipt if they have a real email (WhatsApp-only customers have placeholder addresses).
-        const vendorEmail = await entityOwnerEmail(supabase, cart.entity_id)
-        if (vendorEmail) {
-          sendEmail(
-            vendorEmail,
-            `New ${isDelivery ? 'delivery' : 'pickup'} order ${order.order_no} — Nu. ${grandTotal.toFixed(2)}`,
-            `You have a new order on Pelbu.\n\nOrder: ${order.order_no}\nItems: ${cart.items.length}\nTotal: Nu. ${grandTotal.toFixed(2)} (incl. 5% GST)\nFulfilment: ${isDelivery ? 'Delivery' : 'Pickup'}\n\nManage it in your Pelbu console.`,
-          )
+        // Notifications: always in-app; emailed only if the recipient opted in (email off by default).
+        await notifyEntity(supabase, cart.entity_id, {
+          type: 'ORDER',
+          title: `New ${isDelivery ? 'delivery' : 'pickup'} order ${order.order_no} — Nu. ${grandTotal.toFixed(2)}`,
+          body: `${cart.items.length} item(s) · Nu. ${grandTotal.toFixed(2)} incl. 5% GST · ${isDelivery ? 'Delivery' : 'Pickup'}`,
+          link: `/pos/orders/${order.id}`,
+        })
 
-          // Low-stock alert: any ordered product now at/below its reorder point (stock was just
-          // decremented by the confirm trigger).
-          const pids = [...new Set(cart.items.map(i => i.product_id).filter(Boolean))]
-          if (pids.length) {
-            const { data: prods } = await supabase
-              .from('products')
-              .select('name, current_stock, reorder_point')
-              .in('id', pids)
-            const low = (prods || []).filter(p => Number(p.current_stock) <= Number(p.reorder_point ?? 0))
-            if (low.length) {
-              sendEmail(
-                vendorEmail,
-                `⚠️ Low stock on ${low.length} item${low.length === 1 ? '' : 's'} — ${vendor.name}`,
-                `These items are at or below their reorder point after order ${order.order_no}:\n\n` +
-                  low.map(p => `• ${p.name} — ${p.current_stock} left (reorder at ${p.reorder_point ?? 0})`).join('\n') +
-                  `\n\nRestock soon to avoid stockouts.`,
-              )
-            }
+        // Low-stock: any ordered product now at/below its reorder point (stock just decremented).
+        const pids = [...new Set(cart.items.map(i => i.product_id).filter(Boolean))]
+        if (pids.length) {
+          const { data: prods } = await supabase
+            .from('products').select('name, current_stock, reorder_point').in('id', pids)
+          const low = (prods || []).filter(p => Number(p.current_stock) <= Number(p.reorder_point ?? 0))
+          if (low.length) {
+            await notifyEntity(supabase, cart.entity_id, {
+              type: 'LOW_STOCK',
+              title: `Low stock on ${low.length} item${low.length === 1 ? '' : 's'}`,
+              body: low.map(p => `• ${p.name} — ${p.current_stock} left (reorder at ${p.reorder_point ?? 0})`).join('\n'),
+              link: '/pos/products',
+            })
           }
         }
-        if (isRealEmail(user?.email)) {
-          sendEmail(
-            user.email,
-            `Your Pelbu order ${order.order_no}`,
-            `Thank you for your order from ${vendor.name}.\n\nOrder: ${order.order_no}\nTotal: Nu. ${grandTotal.toFixed(2)} (incl. 5% GST)\nFulfilment: ${isDelivery ? 'Delivery' : 'Pickup — collect at store'}\n\nWe'll notify you as it progresses.`,
-          )
+
+        // Customer receipt (in-app; emailed only if the customer opted in + has a real address).
+        if (buyerId) {
+          await notifyEntity(supabase, buyerId, {
+            type: 'RECEIPT',
+            title: `Order ${order.order_no} placed`,
+            body: `${vendor.name} · Nu. ${grandTotal.toFixed(2)} incl. 5% GST · ${isDelivery ? 'Delivery' : 'Pickup — collect at store'}`,
+            link: '/shop/orders',
+          })
         }
 
       } catch (err) {
