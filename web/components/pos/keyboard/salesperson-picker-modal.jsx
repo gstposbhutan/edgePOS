@@ -43,6 +43,7 @@ export function SalespersonPickerModal({ selectedId, onSelect, onClose }) {
           ) : people.map(p => (
             <button
               key={p.id}
+              data-testid="salesperson-option"
               onClick={() => onSelect(p.id, p.full_name || p.sub_role)}
               className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center justify-between transition-colors ${p.id === selectedId ? 'bg-primary/10' : 'hover:bg-muted/50'}`}
             >

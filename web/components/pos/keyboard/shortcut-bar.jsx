@@ -49,7 +49,6 @@ export function ShortcutBar({ shortcuts = [] }) {
     { key: 'F4',        label: 'New Cart' },
     { key: 'F5',        label: 'Prev Cart' },
     { key: 'F6',        label: 'Customer' },
-    { key: 'F7',        label: 'Price List' },
     { key: 'F8',        label: 'Sales Person' },
     { key: 'F9',        label: 'Change Qty' },
     { key: 'F10',       label: 'Tender' },

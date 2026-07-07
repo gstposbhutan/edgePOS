@@ -81,6 +81,19 @@ module.exports = defineConfig({
       use: { ...devices['Desktop Chrome'], storageState: 'e2e/storage/pocketbase-auth.json' },
       dependencies: ['auth-setup'],
     },
+    // Catalog-vendor flow (Silver Pines): the spec logs in / stays anonymous per-describe,
+    // so no project-level storageState.
+    {
+      name: 'catalog',
+      testMatch: /catalog-.*\.spec\.js/,
+      use: { ...devices['Desktop Chrome'] },
+    },
+    // Email-notification permission model — each test logs in as the role it exercises.
+    {
+      name: 'email-pref',
+      testMatch: /email-pref-.*\.spec\.js/,
+      use: { ...devices['Desktop Chrome'] },
+    },
   ],
   webServer: {
     command: 'npm run dev',

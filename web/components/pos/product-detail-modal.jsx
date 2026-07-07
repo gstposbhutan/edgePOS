@@ -68,7 +68,26 @@ export function ProductDetailModal({ open, product, onAddToCart, onClose, readOn
               {product.barcode && <span>Barcode: {product.barcode}</span>}
               {product.unit && <span>Unit: {product.unit}</span>}
             </div>
+            {(product.condition || product.brand) && (
+              <div className="flex flex-wrap items-center gap-2 mt-2">
+                {product.condition && <Badge variant="outline" className="text-emerald-600 border-emerald-500/30 bg-emerald-500/10">{product.condition}</Badge>}
+                {product.brand && <Badge variant="secondary">{product.brand}</Badge>}
+              </div>
+            )}
           </div>
+
+          {/* Description */}
+          {product.description && (
+            <p className="text-sm text-muted-foreground leading-relaxed">{product.description}</p>
+          )}
+
+          {/* Video link */}
+          {product.video_url && (
+            <a href={product.video_url} target="_blank" rel="noopener noreferrer"
+               className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline">
+              ▶ Watch product video
+            </a>
+          )}
 
           {/* Category information */}
           {(product.category || product.subcategory || product.hsn_chapter) && (
@@ -206,11 +225,21 @@ export function ProductDetailModal({ open, product, onAddToCart, onClose, readOn
               <p className="text-xs font-medium text-muted-foreground mb-2">Specifications</p>
               <div className="space-y-1 text-sm">
                 {Object.entries(product.specifications).map(([key, value]) => (
-                  <div key={key}>
-                    <span className="text-muted-foreground">{key}:</span> {String(value)}
+                  <div key={key} className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">{humanizeKey(key)}</span>
+                    <span className="font-medium text-right">{String(value)}</span>
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Tags */}
+          {Array.isArray(product.tags) && product.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {product.tags.map((t) => (
+                <span key={t} className="px-2 py-0.5 rounded-full text-[11px] bg-muted text-muted-foreground border border-border">#{t}</span>
+              ))}
             </div>
           )}
 
@@ -243,4 +272,10 @@ export function ProductDetailModal({ open, product, onAddToCart, onClose, readOn
       </DialogContent>
     </Dialog>
   )
+}
+
+// "screen_size" → "Screen size"
+function humanizeKey(key) {
+  const s = String(key).replace(/[_-]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').trim()
+  return s.charAt(0).toUpperCase() + s.slice(1)
 }

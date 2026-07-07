@@ -43,6 +43,13 @@ export async function PATCH(request, { params }) {
     return NextResponse.json({ error: 'Team member not found' }, { status: 404 })
   }
 
+  // Owner toggles a team member's email notifications (per-user pref) — no role change.
+  if (body.email_notifications_enabled !== undefined && body.sub_role === undefined) {
+    const { error } = await supabase.from('user_profiles').update({ email_notifications_enabled: !!body.email_notifications_enabled }).eq('id', id)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
   const newSubRole = body.sub_role
   if (!['OWNER', 'MANAGER', 'CASHIER', 'STAFF'].includes(newSubRole)) {
     return NextResponse.json({ error: 'Invalid sub_role' }, { status: 400 })

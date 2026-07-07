@@ -17,7 +17,7 @@ export async function GET(request) {
   const { entityId, supabase } = ctx
   const { data: profiles, error } = await supabase
     .from('user_profiles')
-    .select('id, full_name, sub_role, permissions, created_at')
+    .select('id, full_name, sub_role, permissions, email_notifications_enabled, created_at')
     .eq('entity_id', entityId)
     .order('created_at', { ascending: true })
 
@@ -98,7 +98,7 @@ export async function POST(request) {
       full_name: full_name.trim(),
       permissions,
     })
-    .select('id, full_name, sub_role, permissions, created_at')
+    .select('id, full_name, sub_role, permissions, email_notifications_enabled, created_at')
     .single()
 
   if (profileErr) {

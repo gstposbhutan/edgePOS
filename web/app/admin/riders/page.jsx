@@ -5,7 +5,7 @@ import { useAdminAuth } from '@/hooks/use-admin-auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { UserPlus, Bike, ToggleLeft, ToggleRight, X, Loader2 } from 'lucide-react'
+import { UserPlus, Bike, ToggleLeft, ToggleRight, X, Loader2, Bell, BellOff } from 'lucide-react'
 
 function AddRiderModal({ open, onClose, onAdded }) {
   const [name,    setName]    = useState('')
@@ -104,6 +104,15 @@ export default function AdminRidersPage() {
     setRiders(prev => prev.map(r => r.id === rider.id ? { ...r, is_active: !r.is_active } : r))
   }
 
+  async function toggleEmail(rider) {
+    setRiders(prev => prev.map(r => r.id === rider.id ? { ...r, email_notifications_enabled: !r.email_notifications_enabled } : r))
+    await fetch(`/api/admin/riders/${rider.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email_notifications_enabled: !rider.email_notifications_enabled }),
+    })
+  }
+
   if (authLoading || loading) {
     return <div className="flex items-center justify-center h-64"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
   }
@@ -159,16 +168,25 @@ export default function AdminRidersPage() {
                     </Badge>
                   </td>
                   <td className="px-4 py-3">
-                    <button
-                      onClick={() => toggleActive(rider)}
-                      className={`transition-colors ${rider.is_active ? 'text-emerald-600 hover:text-tibetan' : 'text-muted-foreground hover:text-emerald-600'}`}
-                      title={rider.is_active ? 'Deactivate' : 'Activate'}
-                    >
-                      {rider.is_active
-                        ? <ToggleRight className="h-5 w-5" />
-                        : <ToggleLeft className="h-5 w-5" />
-                      }
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => toggleEmail(rider)}
+                        className={`transition-colors ${rider.email_notifications_enabled ? 'text-primary' : 'text-muted-foreground hover:text-primary'}`}
+                        title={rider.email_notifications_enabled ? 'Email notifications ON — click to disable' : 'Email notifications OFF — click to enable'}
+                      >
+                        {rider.email_notifications_enabled ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+                      </button>
+                      <button
+                        onClick={() => toggleActive(rider)}
+                        className={`transition-colors ${rider.is_active ? 'text-emerald-600 hover:text-tibetan' : 'text-muted-foreground hover:text-emerald-600'}`}
+                        title={rider.is_active ? 'Deactivate' : 'Activate'}
+                      >
+                        {rider.is_active
+                          ? <ToggleRight className="h-5 w-5" />
+                          : <ToggleLeft className="h-5 w-5" />
+                        }
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

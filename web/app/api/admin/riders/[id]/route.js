@@ -15,13 +15,14 @@ export async function PATCH(request, { params }) {
     const updates = {}
     if (typeof body.is_active === 'boolean') updates.is_active = body.is_active
     if (typeof body.is_available === 'boolean') updates.is_available = body.is_available
+    if (typeof body.email_notifications_enabled === 'boolean') updates.email_notifications_enabled = body.email_notifications_enabled
 
     // Riders are a platform-wide pool (no entity_id column) — scope by id only.
     const { data: rider, error } = await supabase
       .from('riders')
       .update(updates)
       .eq('id', id)
-      .select('id, name, is_active, is_available')
+      .select('id, name, is_active, is_available, email_notifications_enabled')
       .single()
 
     if (error) throw error

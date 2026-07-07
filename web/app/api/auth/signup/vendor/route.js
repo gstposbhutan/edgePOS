@@ -70,6 +70,14 @@ export async function POST(request) {
         entity_id: entity.id,
         permissions: OWNER_PERMISSIONS,
       },
+      // app_metadata is the trusted set copied into the JWT — auth_entity_id() and role/permission
+      // gates read it, so the entity claim MUST live here (not just user_metadata).
+      app_metadata: {
+        role,
+        sub_role: 'OWNER',
+        entity_id: entity.id,
+        permissions: OWNER_PERMISSIONS,
+      },
     })
 
     if (authErr) {
@@ -100,10 +108,12 @@ export async function POST(request) {
 
     // 4. RETAILER owners link to owner_stores for the multi-store selector (N/A for wholesaler/distributor)
     if (role === 'RETAILER') {
-      await supabase
-        .from('owner_stores')
-        .insert({ owner_id: authData.user.id, entity_id: entity.id, is_primary: true })
-        .catch(() => {}) // non-fatal if owner_stores table not ready
+      // Non-fatal: a Supabase query builder has no .catch(), so guard with try/catch instead.
+      try {
+        await supabase
+          .from('owner_stores')
+          .insert({ owner_id: authData.user.id, entity_id: entity.id, is_primary: true })
+      } catch { /* owner_stores optional / not ready */ }
     }
 
     // 5. Establish session via httpOnly cookie (BFF pattern)

@@ -41,11 +41,8 @@ export default function CheckoutPage() {
   }
 
   async function handlePlaceOrder() {
-    if (!deliveryAddress.trim()) {
-      setError("Please enter a delivery address")
-      return
-    }
-
+    // Address is required only when a vendor delivers — the server validates per delivery_mode, so
+    // pickup-only orders can be placed with no address. (Clear error comes back if one is needed.)
     setLoading(true)
     setError(null)
 
@@ -142,7 +139,7 @@ export default function CheckoutPage() {
         <div className="max-w-2xl mx-auto">
           <Button
             onClick={handlePlaceOrder}
-            disabled={loading || !deliveryAddress.trim()}
+            disabled={loading}
             className="w-full h-12 text-base"
             size="lg"
           >

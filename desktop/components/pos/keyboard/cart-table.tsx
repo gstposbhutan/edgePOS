@@ -18,6 +18,8 @@ interface CartTableProps {
    * on a row (Enter / F9). Set in an effect so we never mutate the ref during render.
    */
   onEditRequest?: MutableRefObject<((index: number) => void) | null>;
+  /** id → name for the sales team, to label each line's salesperson (per-line #3). */
+  salespeopleById?: Record<string, string>;
 }
 
 /**
@@ -38,6 +40,7 @@ export function CartTable({
   onUpdateQty,
   onRemoveItem,
   onEditRequest,
+  salespeopleById = {},
 }: CartTableProps) {
   const [editingRow, setEditingRow] = useState<number | null>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
@@ -171,6 +174,11 @@ export function CartTable({
                   <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">
                     {subParts.length ? subParts.join(" · ") : "—"}
                   </p>
+                  {item.salesperson_id && (
+                    <p className="text-[10px] font-medium text-gold">
+                      👤 {salespeopleById[item.salesperson_id] || "Salesperson"}
+                    </p>
+                  )}
                 </td>
                 <td className="px-4 py-2.5 text-right tabular-nums text-xs font-bold">
                   {stock != null ? stock : "—"}

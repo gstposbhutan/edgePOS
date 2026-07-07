@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { Search, ShoppingBag, Store, Phone, Home, LogOut, ClipboardList, User } from "lucide-react"
+import { Search, ShoppingBag, Store, Phone, Home, LogOut, ClipboardList, User, Bell, BellOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import Image from "next/image"
@@ -12,6 +12,7 @@ import { ProductDetailModal } from "@/components/shop/product-detail-modal"
 import { CartDrawer } from "@/components/shop/cart-drawer"
 import { useCart } from "@/lib/cart-context"
 import { getUser, signOut } from "@/lib/auth"
+import { NotificationBell } from "@/components/notifications/notification-bell"
 
 export default function ShopPage() {
   const router = useRouter()
@@ -37,6 +38,7 @@ export default function ShopPage() {
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState(null)
   const [selectedProduct, setSelectedProduct] = useState(null)
+  const [emailPref, setEmailPref] = useState(false)
 
   useEffect(() => {
     loadShopContent()
@@ -63,6 +65,21 @@ export default function ShopPage() {
   async function checkAuth() {
     const currentUser = await getUser()
     setUser(currentUser || null)
+    if (currentUser) {
+      try {
+        const res = await fetch('/api/admin/settings')
+        if (res.ok) { const j = await res.json(); setEmailPref(!!j.entity?.email_notifications_enabled) }
+      } catch { /* ignore */ }
+    }
+  }
+
+  async function toggleEmailPref() {
+    const next = !emailPref
+    setEmailPref(next)
+    await fetch('/api/admin/settings', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email_notifications_enabled: next }),
+    })
   }
 
   const filteredProducts = products.filter(p =>
@@ -104,6 +121,8 @@ export default function ShopPage() {
             </Button>
 
             {user ? (
+              <div className="flex items-center gap-1">
+              <NotificationBell />
               <div className="relative" ref={menuRef}>
                 <Button
                   variant="ghost"
@@ -123,6 +142,15 @@ export default function ShopPage() {
                       <ClipboardList className="h-4 w-4 text-muted-foreground" />
                       My Orders
                     </Link>
+                    <button
+                      onClick={toggleEmailPref}
+                      className="w-full flex items-center gap-2.5 px-4 py-3 text-sm hover:bg-muted/50 transition-colors"
+                    >
+                      {emailPref
+                        ? <Bell className="h-4 w-4 text-primary" />
+                        : <BellOff className="h-4 w-4 text-muted-foreground" />}
+                      Email alerts: {emailPref ? 'On' : 'Off'}
+                    </button>
                     <div className="border-t border-border" />
                     <button
                       onClick={handleSignOut}
@@ -133,6 +161,7 @@ export default function ShopPage() {
                     </button>
                   </div>
                 )}
+              </div>
               </div>
             ) : (
               <Link href="/login">
@@ -148,6 +177,32 @@ export default function ShopPage() {
 
       {/* Main Content */}
       <main className="px-4 py-4 space-y-6 max-w-6xl mx-auto">
+        {/* Marketing hero — shown to logged-out visitors. Browsing is open; buying needs an account. */}
+        {!user && (
+          <section className="rounded-2xl border border-border bg-gradient-to-br from-obsidian to-slate-900 text-white p-6 sm:p-8 overflow-hidden">
+            <div className="max-w-2xl space-y-3">
+              <p className="text-xs font-semibold tracking-widest text-gold uppercase">Pelbu Marketplace</p>
+              <h1 className="text-2xl sm:text-3xl font-serif font-bold">Shop local Bhutanese stores online</h1>
+              <p className="text-sm text-slate-300">
+                Browse products from stores across Bhutan — free, no account needed. Sign in with your WhatsApp number to add items to your cart and order.
+              </p>
+              <div className="flex flex-wrap items-center gap-3 pt-1">
+                <Link href="/login?redirect=/shop">
+                  <Button className="h-10 bg-gold text-obsidian hover:bg-gold/90">
+                    <Phone className="h-4 w-4 mr-2" /> Sign in / Sign up to buy
+                  </Button>
+                </Link>
+                <span className="text-xs text-slate-400">Free to browse · Sign up in seconds with WhatsApp</span>
+              </div>
+              <div className="flex flex-wrap gap-x-6 gap-y-1 pt-3 text-xs text-slate-400">
+                <span>1 · Browse stores &amp; products</span>
+                <span>2 · Sign in with WhatsApp</span>
+                <span>3 · Order &amp; collect or get it delivered</span>
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* Featured Stores */}
         {stores.length > 0 && (
           <section>

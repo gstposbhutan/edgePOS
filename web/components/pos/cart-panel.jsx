@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Minus, Plus, Trash2, ShoppingCart, CreditCard, Tag, Pencil, X, PlusCircle } from "lucide-react"
+import { Minus, Plus, Trash2, ShoppingCart, CreditCard, Tag, Pencil, X, PlusCircle, Coins, UserPlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -42,6 +42,8 @@ export function CartPanel({
   customer, paymentMethod, userSubRole = 'CASHIER', khataAccount,
   onUpdateQty, onRemoveItem, onApplyDiscount, onOverridePrice,
   onSelectPayment, journalNo, onJournalNoChange, onCheckout, checkoutLoading,
+  // Per-line rate tier + salesperson (#3/#4 touch parity)
+  onSetRate, onPickSalesperson, salespeopleById = {},
   // Multi-cart props
   carts = [], activeIndex = 0, onHoldCart, onSwitchCart, onCancelCart,
 }) {
@@ -117,6 +119,9 @@ export function CartPanel({
               onRemove={()      => onRemoveItem(item.id)}
               onApplyDiscount={amt  => onApplyDiscount(item.id, amt)}
               onOverridePrice={price => onOverridePrice(item.id, price)}
+              onSetRate={onSetRate ? (mode => onSetRate(item.id, mode)) : undefined}
+              onPickSalesperson={onPickSalesperson ? (() => onPickSalesperson(item.id)) : undefined}
+              salespersonName={item.salesperson_id ? (salespeopleById[item.salesperson_id] || 'Salesperson') : null}
             />
           ))
         )}
@@ -284,7 +289,13 @@ const PKG_TYPE_COLORS = {
   PALLET: 'text-emerald-600',
 }
 
-function CartItem({ item, canDiscount, onUpdateQty, onRemove, onApplyDiscount, onOverridePrice }) {
+const RATE_TIERS = [
+  { mode: 'RETAIL', label: 'Retail' },
+  { mode: 'WHOLESALE', label: 'Wholesale' },
+  { mode: 'DISTRIBUTOR', label: 'Distributor' },
+]
+
+function CartItem({ item, canDiscount, onUpdateQty, onRemove, onApplyDiscount, onOverridePrice, onSetRate, onPickSalesperson, salespersonName }) {
   const [editMode,        setEditMode]        = useState(null)
   const [inputValue,      setInputValue]      = useState('')
   const [discountType,    setDiscountType]    = useState('FLAT')
@@ -356,6 +367,9 @@ function CartItem({ item, canDiscount, onUpdateQty, onRemove, onApplyDiscount, o
               </button>
             )}
           </div>
+          {salespersonName && (
+            <p className="text-[10px] font-medium text-gold mt-0.5">👤 {salespersonName}</p>
+          )}
         </div>
         <button onClick={onRemove} className="text-muted-foreground hover:text-tibetan transition-colors mt-0.5">
           <Trash2 className="h-3.5 w-3.5" />
@@ -363,7 +377,21 @@ function CartItem({ item, canDiscount, onUpdateQty, onRemove, onApplyDiscount, o
       </div>
 
       {/* Inline edit row */}
-      {editMode && (
+      {/* Rate tier selector (per line) */}
+      {editMode === 'rate' && (
+        <div className="flex gap-1">
+          {RATE_TIERS.map(t => (
+            <button
+              key={t.mode}
+              onClick={() => { onSetRate?.(t.mode); setEditMode(null) }}
+              className="flex-1 text-[10px] px-2 py-1 rounded font-medium bg-muted text-muted-foreground hover:bg-primary hover:text-primary-foreground transition-colors"
+            >{t.label}</button>
+          ))}
+          <button onClick={() => setEditMode(null)} className="text-muted-foreground hover:text-foreground px-1"><X className="h-3.5 w-3.5" /></button>
+        </div>
+      )}
+
+      {editMode && editMode !== 'rate' && (
         <div className="flex flex-col gap-1.5">
           {editMode === 'discount' && (
             <div className="flex gap-1">
@@ -425,6 +453,22 @@ function CartItem({ item, canDiscount, onUpdateQty, onRemove, onApplyDiscount, o
             <Plus className="h-3 w-3" />
           </button>
         </div>
+
+        {/* Per-line rate tier + salesperson (available to all cashiers) */}
+        {!editMode && (onSetRate || onPickSalesperson) && (
+          <div className="flex gap-1 ml-1">
+            {onSetRate && (
+              <button onClick={() => setEditMode('rate')} title="Rate tier (Retail / Wholesale / Distributor)" className="text-muted-foreground hover:text-primary transition-colors">
+                <Coins className="h-3.5 w-3.5" />
+              </button>
+            )}
+            {onPickSalesperson && (
+              <button onClick={onPickSalesperson} title="Assign salesperson" className="text-muted-foreground hover:text-primary transition-colors">
+                <UserPlus className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Manager actions */}
         {canDiscount && !editMode && (

@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Plus, Search, RefreshCw, Pencil, ToggleLeft, ToggleRight, Package, Boxes } from "lucide-react"
+import { ArrowLeft, Plus, Search, RefreshCw, Pencil, ToggleLeft, ToggleRight, Package, Boxes, Upload, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { ProductForm }   from "@/components/pos/products/product-form"
+import { ProductImportModal } from "@/components/pos/products/product-import-modal"
 import { PackageForm }   from "@/components/pos/products/package-form"
 import { ProductDetailModal } from "@/components/pos/product-detail-modal"
 import { useProductCatalog } from "@/hooks/use-product-catalog"
@@ -22,6 +23,21 @@ export default function ProductsPage() {
   const [activeTab,     setActiveTab]     = useState('Products')
   const [search,        setSearch]        = useState('')
   const [showForm,      setShowForm]      = useState(false)
+  const [showImport,    setShowImport]    = useState(false)
+  const [aiAll,         setAiAll]         = useState(null)   // { done, total } while bulk-enriching
+
+  // Enrich every not-yet-enriched product in this shop's catalog via the AI engine.
+  async function enrichAll() {
+    const targets = products.filter(p => !p.ai_enriched)
+    if (!targets.length) return
+    setAiAll({ done: 0, total: targets.length })
+    for (let i = 0; i < targets.length; i++) {
+      try { await fetch(`/api/products/${targets[i].id}/enrich`, { method: 'POST' }) } catch { /* skip */ }
+      setAiAll({ done: i + 1, total: targets.length })
+    }
+    setAiAll(null)
+    refresh()
+  }
   const [editProduct,   setEditProduct]   = useState(null)
   const [showPkgForm,   setShowPkgForm]   = useState(false)
   const [editPackage,   setEditPackage]   = useState(null)
@@ -134,9 +150,17 @@ export default function ProductsPage() {
           <RefreshCw className="h-4 w-4" />
         </Button>
         {canManage && activeTab === 'Products' && (
-          <Button onClick={openAdd} className="bg-primary hover:bg-primary/90" size="sm">
-            <Plus className="h-4 w-4 mr-1" /> Add Product
-          </Button>
+          <>
+            <Button onClick={enrichAll} variant="outline" size="sm" disabled={!!aiAll}>
+              <Sparkles className="h-4 w-4 mr-1" /> {aiAll ? `Enriching ${aiAll.done}/${aiAll.total}…` : 'Enrich all'}
+            </Button>
+            <Button onClick={() => setShowImport(true)} variant="outline" size="sm">
+              <Upload className="h-4 w-4 mr-1" /> Import
+            </Button>
+            <Button onClick={openAdd} className="bg-primary hover:bg-primary/90" size="sm">
+              <Plus className="h-4 w-4 mr-1" /> Add Product
+            </Button>
+          </>
         )}
         {canManage && activeTab === 'Packages' && (
           <Button onClick={() => { setEditPackage(null); setShowPkgForm(true) }} className="bg-primary hover:bg-primary/90" size="sm">
@@ -263,6 +287,12 @@ export default function ProductsPage() {
         saving={saving}
         onSave={(formData, catIds) => editProduct ? updateProduct(editProduct.id, formData, catIds) : createProduct(formData, catIds)}
         onClose={closeForm}
+      />
+
+      <ProductImportModal
+        open={showImport}
+        onClose={() => setShowImport(false)}
+        onImported={refresh}
       />
 
       {/* Package form modal */}

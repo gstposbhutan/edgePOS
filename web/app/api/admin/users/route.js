@@ -25,7 +25,7 @@ export async function GET() {
 
   const { data: profiles, error } = await ctx.supabase
     .from('user_profiles')
-    .select('id, full_name, role, sub_role, entity_id, created_at')
+    .select('id, full_name, role, sub_role, entity_id, created_at, email_notifications_enabled')
     .order('created_at', { ascending: false })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 

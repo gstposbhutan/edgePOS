@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { getUser, getRoleClaims } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { UserPlus, Trash2, Loader2, KeyRound } from 'lucide-react'
+import { UserPlus, Trash2, Loader2, KeyRound, Bell, BellOff } from 'lucide-react'
 import { CreateTeamMemberModal } from '@/components/admin/create-team-member-modal'
 
 const SUB_ROLE_STYLES = {
@@ -68,6 +68,15 @@ export function TeamManager({ title }) {
     const data = await res.json()
     if (!res.ok) { alert(data.error); return }
     alert('Password reset. It syncs to the terminal on its next launch.')
+  }
+
+  async function toggleMemberEmail(memberId, current) {
+    const res = await fetch(`/api/admin/team/${memberId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email_notifications_enabled: !current }),
+    })
+    if (!res.ok) { const d = await res.json(); alert(d.error); return }
+    setTeam(prev => prev.map(m => m.id === memberId ? { ...m, email_notifications_enabled: !current } : m))
   }
 
   async function handleChangeRole(memberId, newSubRole) {
@@ -149,6 +158,13 @@ export function TeamManager({ title }) {
                     <td className="px-4 py-3 text-right">
                       {member.sub_role !== 'OWNER' && (
                         <>
+                          <button
+                            onClick={() => toggleMemberEmail(member.id, member.email_notifications_enabled)}
+                            className={`transition-colors mr-3 ${member.email_notifications_enabled ? 'text-primary' : 'text-muted-foreground hover:text-primary'}`}
+                            title={member.email_notifications_enabled ? 'Email notifications ON — click to disable' : 'Email notifications OFF — click to enable'}
+                          >
+                            {member.email_notifications_enabled ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+                          </button>
                           <button
                             onClick={() => handleResetPassword(member.id)}
                             className="text-muted-foreground hover:text-primary transition-colors mr-3"

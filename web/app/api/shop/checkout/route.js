@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/supabase/server'
 import { createHash, randomBytes } from 'node:crypto'
+import { notifyEntity } from '@/lib/email/notify'
 
 async function assignRider(supabase, orderId, order) {
   try {
@@ -69,10 +70,8 @@ export async function POST(request) {
 
     const body = await request.json()
     const { delivery_address, delivery_lat, delivery_lng } = body
-
-    if (!delivery_address?.trim()) {
-      return NextResponse.json({ error: 'Delivery address is required' }, { status: 400 })
-    }
+    // Address requirement is deferred until we know each vendor's delivery_mode — pickup-only
+    // vendors don't need one (checked after the carts + their vendors are loaded, below).
 
     // Get customer's entity record (id = auth user id per migration 041)
     const { data: customerEntity } = await supabase
@@ -86,7 +85,7 @@ export async function POST(request) {
     // Fetch all active carts with items
     const { data: carts, error: cartsError } = await supabase
       .from('carts')
-      .select('id, entity_id, entities!inner(id, name, tpn_gstin, whatsapp_no)')
+      .select('id, entity_id, entities!inner(id, name, tpn_gstin, whatsapp_no, delivery_mode)')
       .eq('customer_whatsapp', customerPhone)
       .eq('status', 'ACTIVE')
 
@@ -108,6 +107,13 @@ export async function POST(request) {
     const nonEmptyCarts = cartsWithItems.filter(c => c.items.length > 0)
     if (!nonEmptyCarts.length) {
       return NextResponse.json({ error: 'All carts are empty' }, { status: 400 })
+    }
+
+    // A delivery address is only required when at least one vendor actually ships (DELIVERY mode).
+    // Pickup-only / catalog vendors don't collect an address — the buyer collects in person.
+    const anyDelivery = nonEmptyCarts.some(c => (c.entities?.delivery_mode || 'DELIVERY') === 'DELIVERY')
+    if (anyDelivery && !delivery_address?.trim()) {
+      return NextResponse.json({ error: 'Delivery address is required' }, { status: 400 })
     }
 
     const year = new Date().getFullYear()
@@ -133,6 +139,8 @@ export async function POST(request) {
 
     for (const cart of nonEmptyCarts) {
       const vendor = cart.entities
+      const fulfilmentMode = (vendor?.delivery_mode || 'DELIVERY') === 'DELIVERY' ? 'DELIVERY' : 'PICKUP'
+      const isDelivery = fulfilmentMode === 'DELIVERY'
 
       try {
         // Recalculate totals server-side — never trust client values
@@ -168,9 +176,10 @@ export async function POST(request) {
             gst_total: gstTotal,
             grand_total: grandTotal,
             payment_method: 'CREDIT',
-            delivery_address,
-            delivery_lat: delivery_lat ?? null,
-            delivery_lng: delivery_lng ?? null,
+            fulfilment_mode: fulfilmentMode,
+            delivery_address: isDelivery ? delivery_address : 'Pickup — collect at store',
+            delivery_lat: isDelivery ? (delivery_lat ?? null) : null,
+            delivery_lng: isDelivery ? (delivery_lng ?? null) : null,
             payment_token: paymentToken,
             payment_token_expires_at: paymentTokenExpiresAt,
             digital_signature: signature,
@@ -197,11 +206,14 @@ export async function POST(request) {
           }))
         )
 
-        // Auto-assign available rider (fire-and-forget)
-        assignRider(supabase, order.id, {
-          order_no:       order.order_no,
-          seller_whatsapp: vendor.whatsapp_no,
-        })
+        // Auto-assign an available rider only when this vendor delivers. Pickup-only vendors
+        // skip the rider flow entirely — the buyer collects the order in person.
+        if (isDelivery) {
+          assignRider(supabase, order.id, {
+            order_no:       order.order_no,
+            seller_whatsapp: vendor.whatsapp_no,
+          })
+        }
 
         createdOrders.push({
           id: order.id,
@@ -223,6 +235,40 @@ export async function POST(request) {
             customerPhone,
           }),
         }).catch(() => {})
+
+        // Notifications: always in-app; emailed only if the recipient opted in (email off by default).
+        await notifyEntity(supabase, cart.entity_id, {
+          type: 'ORDER',
+          title: `New ${isDelivery ? 'delivery' : 'pickup'} order ${order.order_no} — Nu. ${grandTotal.toFixed(2)}`,
+          body: `${cart.items.length} item(s) · Nu. ${grandTotal.toFixed(2)} incl. 5% GST · ${isDelivery ? 'Delivery' : 'Pickup'}`,
+          link: `/pos/orders/${order.id}`,
+        })
+
+        // Low-stock: any ordered product now at/below its reorder point (stock just decremented).
+        const pids = [...new Set(cart.items.map(i => i.product_id).filter(Boolean))]
+        if (pids.length) {
+          const { data: prods } = await supabase
+            .from('products').select('name, current_stock, reorder_point').in('id', pids)
+          const low = (prods || []).filter(p => Number(p.current_stock) <= Number(p.reorder_point ?? 0))
+          if (low.length) {
+            await notifyEntity(supabase, cart.entity_id, {
+              type: 'LOW_STOCK',
+              title: `Low stock on ${low.length} item${low.length === 1 ? '' : 's'}`,
+              body: low.map(p => `• ${p.name} — ${p.current_stock} left (reorder at ${p.reorder_point ?? 0})`).join('\n'),
+              link: '/pos/products',
+            })
+          }
+        }
+
+        // Customer receipt (in-app; emailed only if the customer opted in + has a real address).
+        if (buyerId) {
+          await notifyEntity(supabase, buyerId, {
+            type: 'RECEIPT',
+            title: `Order ${order.order_no} placed`,
+            body: `${vendor.name} · Nu. ${grandTotal.toFixed(2)} incl. 5% GST · ${isDelivery ? 'Delivery' : 'Pickup — collect at store'}`,
+            link: '/shop/orders',
+          })
+        }
 
       } catch (err) {
         console.error(`[checkout] Failed to create order for vendor ${vendor.name}:`, err.message)

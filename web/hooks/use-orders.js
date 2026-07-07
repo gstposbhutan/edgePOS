@@ -51,11 +51,12 @@ export function useOrders(entityId) {
    * Cancel an order (full cancellation).
    * Stock restored by DB trigger if order was CONFIRMED.
    */
-  const cancelOrder = useCallback(async (orderId, reason, actorId, actorRole) => {
+  const cancelOrder = useCallback(async (orderId, reason, actorId, actorRole, items) => {
     const res = await fetch(`/api/pos/orders/${orderId}/cancel`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason, actor_id: actorId, actor_role: actorRole }),
+      // `items` (optional) → partial cancellation: [{ id, quantity }] of the lines to return to stock.
+      body: JSON.stringify({ reason, actor_id: actorId, actor_role: actorRole, items }),
     })
     const data = await res.json()
     if (!res.ok) return { error: data.error }

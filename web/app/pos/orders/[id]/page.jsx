@@ -609,6 +609,7 @@ export default function OrderDetailPage() {
       <CancelModal
         open={showCancel}
         order={order}
+        items={items}
         subRole={subRole}
         userId={user?.id}
         onCancel={async (...args) => { const r = await cancelOrder(...args); await loadDetail(); return r }}

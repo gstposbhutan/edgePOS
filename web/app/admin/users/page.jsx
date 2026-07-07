@@ -6,7 +6,7 @@ import { getUser, getRoleClaims } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { UserCog, Plus, X, Loader2 } from 'lucide-react'
+import { UserCog, Plus, X, Loader2, Bell, BellOff } from 'lucide-react'
 
 const SUB_ROLES = ['OWNER', 'MANAGER', 'CASHIER', 'STAFF']
 
@@ -41,6 +41,14 @@ export default function AdminUsersPage() {
     load()
   }
 
+  async function toggleEmail(u) {
+    setUsers(prev => prev.map(x => x.id === u.id ? { ...x, email_notifications_enabled: !u.email_notifications_enabled } : x))
+    await fetch(`/api/admin/users/${u.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email_notifications_enabled: !u.email_notifications_enabled }),
+    })
+  }
+
   if (!ready) {
     return <div className="flex items-center justify-center h-64"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
   }
@@ -67,6 +75,13 @@ export default function AdminUsersPage() {
               </div>
               {u.banned && <Badge variant="outline" className="text-xs text-muted-foreground">Suspended</Badge>}
               <Badge variant="outline" className="text-xs">{u.sub_role || u.role}</Badge>
+              <button
+                onClick={() => toggleEmail(u)}
+                className={`transition-colors ${u.email_notifications_enabled ? 'text-primary' : 'text-muted-foreground hover:text-primary'}`}
+                title={u.email_notifications_enabled ? 'Email notifications ON — click to disable' : 'Email notifications OFF — click to enable'}
+              >
+                {u.email_notifications_enabled ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+              </button>
               <Button size="sm" variant="outline" onClick={() => toggleSuspend(u)}>{u.banned ? 'Reactivate' : 'Suspend'}</Button>
             </div>
           ))}

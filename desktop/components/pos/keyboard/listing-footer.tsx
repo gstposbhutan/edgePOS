@@ -17,7 +17,6 @@ const SHORTCUTS: { key: string; label: string }[] = [
   { key: "F4", label: "Hold" },
   { key: "F5", label: "Recall" },
   { key: "F6", label: "Customer" },
-  { key: "F7", label: "Price List" },
   { key: "F8", label: "Salesperson" },
   { key: "F9", label: "Change Qty" },
   { key: "F10", label: "Tender" },

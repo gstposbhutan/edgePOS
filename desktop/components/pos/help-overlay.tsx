@@ -22,7 +22,6 @@ const GROUPS: { title: string; stub?: boolean; shortcuts: { key: string; action:
       { key: "F4", action: "New cart (hold current)" },
       { key: "F5", action: "Recall held cart" },
       { key: "F6", action: "Customer select" },
-      { key: "F7 / Alt+A", action: "Price list (Retail / Wholesale / Distributor)" },
       { key: "F9", action: "Change qty (line +/-)" },
       { key: "F10", action: "Tender / checkout" },
       { key: "Ctrl+A", action: "Add product (focus search)" },

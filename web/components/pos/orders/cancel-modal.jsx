@@ -16,23 +16,41 @@ const CANCELLABLE_BY = {
 }
 
 /**
- * @param {{ open, order, subRole, userId, onCancel, onClose }} props
+ * @param {{ open, order, items?, subRole, userId, onCancel, onClose }} props
+ * `items` — the order's line items; enables partial (per-quantity) cancellation.
  */
-export function CancelModal({ open, order, subRole, userId, onCancel, onClose }) {
+export function CancelModal({ open, order, items = [], subRole, userId, onCancel, onClose }) {
   const [reason,  setReason]  = useState('')
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState(null)
+  const [scope,   setScope]   = useState('FULL')          // FULL | PARTIAL
+  const [qtys,    setQtys]    = useState({})              // order_item id → qty to cancel
 
   const allowed   = CANCELLABLE_BY[subRole] ?? []
   const canCancel = allowed.includes('*') || allowed.includes(order?.status)
+  const activeItems = (items || []).filter(i => i.status === 'ACTIVE' && i.product_id)
+
+  function setQty(id, v, max) {
+    const n = Math.max(0, Math.min(parseInt(v, 10) || 0, max))
+    setQtys(q => ({ ...q, [id]: n }))
+  }
 
   async function handleSubmit(e) {
     e.preventDefault()
     if (!reason.trim()) return setError('Reason is required')
+
+    let partialItems
+    if (scope === 'PARTIAL') {
+      partialItems = activeItems
+        .map(i => ({ id: i.id, quantity: qtys[i.id] || 0 }))
+        .filter(x => x.quantity > 0)
+      if (!partialItems.length) return setError('Select at least one item quantity to cancel')
+    }
+
     setLoading(true)
-    const { error: err } = await onCancel(order.id, reason.trim(), userId, subRole)
+    const { error: err } = await onCancel(order.id, reason.trim(), userId, subRole, partialItems)
     if (err) setError(err)
-    else { setReason(''); onClose() }
+    else { setReason(''); setQtys({}); setScope('FULL'); onClose() }
     setLoading(false)
   }
 
@@ -60,8 +78,45 @@ export function CancelModal({ open, order, subRole, userId, onCancel, onClose })
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4 mt-2">
             <div className="p-3 bg-tibetan/10 border border-tibetan/20 rounded-lg text-xs text-tibetan">
-              ⚠ Stock will be restored automatically if payment was confirmed.
+              ⚠ Cancelled quantities are returned to available stock automatically.
             </div>
+
+            {activeItems.length > 0 && (
+              <div className="space-y-2">
+                <div className="inline-flex rounded-lg border border-border p-0.5 text-xs">
+                  <button type="button" onClick={() => setScope('FULL')}
+                    className={`px-3 py-1 rounded-md font-medium ${scope === 'FULL' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}>
+                    Whole order
+                  </button>
+                  <button type="button" onClick={() => setScope('PARTIAL')}
+                    className={`px-3 py-1 rounded-md font-medium ${scope === 'PARTIAL' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}>
+                    Selected items
+                  </button>
+                </div>
+
+                {scope === 'PARTIAL' && (
+                  <div className="space-y-1.5 max-h-56 overflow-y-auto rounded-lg border border-border p-2">
+                    {activeItems.map(i => (
+                      <div key={i.id} className="flex items-center gap-2 text-sm">
+                        <div className="flex-1 min-w-0">
+                          <p className="truncate">{i.name}</p>
+                          <p className="text-[11px] text-muted-foreground">Ordered {i.quantity} · Nu. {parseFloat(i.unit_price).toFixed(2)}</p>
+                        </div>
+                        <span className="text-[11px] text-muted-foreground">Cancel</span>
+                        <Input
+                          type="number" min={0} max={i.quantity}
+                          value={qtys[i.id] ?? 0}
+                          onChange={e => setQty(i.id, e.target.value, i.quantity)}
+                          className="w-16 h-8 text-center"
+                        />
+                        <span className="text-[11px] text-muted-foreground">/ {i.quantity}</span>
+                      </div>
+                    ))}
+                    <p className="text-[11px] text-muted-foreground pt-1">Cancelling every item cancels the whole order.</p>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-foreground">Reason for cancellation <span className="text-tibetan">*</span></label>
@@ -79,7 +134,7 @@ export function CancelModal({ open, order, subRole, userId, onCancel, onClose })
             <div className="flex gap-2">
               <Button type="button" variant="outline" onClick={onClose} className="flex-1">Keep Order</Button>
               <Button type="submit" disabled={loading} className="flex-1 bg-tibetan hover:bg-tibetan/90 text-white">
-                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Cancel Order'}
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : (scope === 'PARTIAL' ? 'Cancel Items' : 'Cancel Order')}
               </Button>
             </div>
           </form>

@@ -15,7 +15,6 @@ import { useCustomers } from "@/hooks/use-customers";
 import type { Customer } from "@/hooks/use-customers";
 import { getPB } from "@/lib/pb-client";
 import { peekNextOrderNo } from "@/lib/invoice-header";
-import { priceFor, PRICE_LIST_LABEL, PRICE_LIST_ORDER, parsePriceListMode } from "@/lib/price-list";
 import type { PriceListMode } from "@/lib/price-list";
 import { LAYOUT_PRESETS, SCREEN_LG, CART_WIDTH } from "@/lib/constants";
 import { ProductGrid } from "@/components/pos/product-grid";
@@ -27,7 +26,7 @@ import { BarcodeScanner } from "@/components/pos/barcode-scanner";
 import { PaymentModal } from "@/components/pos/payment-modal";
 import { CustomerModal } from "@/components/pos/customer-modal";
 import { InvoiceSearchModal } from "@/components/pos/invoice-search-modal";
-import { SalespersonPickerModal, type TeamUser } from "@/components/pos/salesperson-picker-modal";
+import { SalespersonPickerModal } from "@/components/pos/salesperson-picker-modal";
 import { ComplimentaryConfirmModal } from "@/components/pos/complimentary-confirm-modal";
 import { QuotationConfirmModal } from "@/components/pos/quotation-confirm-modal";
 import { PostMarketModal } from "@/components/pos/post-market-modal";
@@ -66,7 +65,6 @@ import {
   FilePlus,
   Hash,
   CalendarClock,
-  Tags,
   List,
   LayoutGrid,
 } from "lucide-react";
@@ -102,9 +100,6 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
     lowStockCount, outOfStockCount,
   } = useProducts();
   // Declared above useCart() so newly-added lines price at the active tier.
-  const [priceListMode, setPriceListMode] = useState<PriceListMode>(() =>
-    parsePriceListMode(typeof window !== "undefined" ? localStorage.getItem("pos_price_list") : null)
-  );
 
   const {
     items, loading: cartLoading,
@@ -112,8 +107,9 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
     taxExempt, setTaxExempt,
     subtotalExTax, gstTotalExempt, grandTotalExempt,
     addItem, updateQty, applyDiscount, applyBillDiscount, overridePrice, removeItem, clearCart,
+    setLineSalesperson,
     setCustomer: setCartCustomer,
-  } = useCart(priceListMode);
+  } = useCart("RETAIL");
   const { customers, createCustomer } = useCustomers();
   const { settings } = useSettings();
   const { activeShift, openShift, closeShift, getReconciliation, loading: shiftLoading } = useShifts();
@@ -150,7 +146,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
   const [dateOverride, setDateOverride] = useState<string | null>(null);
   const [showInvoiceSearch, setShowInvoiceSearch] = useState(false);
   const [showSalesperson, setShowSalesperson] = useState(false);
-  const [selectedSalesperson, setSelectedSalesperson] = useState<TeamUser | null>(null);
+  const [salespeopleById, setSalespeopleById] = useState<Record<string, string>>({}); // id → name, labels each cart line's salesperson (#3)
   const [showComplimentary, setShowComplimentary] = useState(false);
   const [showExchange, setShowExchange] = useState(false);
   const [showPostMarket, setShowPostMarket] = useState(false);
@@ -174,6 +170,14 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
       if (saved === "grid" || saved === "listing") setInputMode(saved);
     } catch { /* no localStorage — keep the default */ }
   }, []);
+
+  // Load the local sales team once, to label each cart line's salesperson (per-line #3).
+  useEffect(() => {
+    pb.collection("users")
+      .getFullList<{ id: string; name?: string; email?: string }>({ sort: "name", requestKey: null })
+      .then((us) => setSalespeopleById(Object.fromEntries(us.map((u) => [u.id, u.name || u.email || "Salesperson"]))))
+      .catch(() => { /* offline / no users — labels just fall back to "Salesperson" */ });
+  }, [pb]);
   const changeInputMode = useCallback((mode: "listing" | "grid") => {
     setInputMode(mode);
     try { localStorage.setItem("pos_input_mode", mode); } catch { /* ignore */ }
@@ -208,7 +212,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
     clearUndoStack: () => undoStack.clear(),
     invoiceDate: dateOverride,
     isOwner,
-    salespersonId: selectedSalesperson?.id ?? null,
+    salespersonId: null, // salesperson is per-line now (carried in each item's salesperson_id snapshot)
     deliveryAddress,
     complimentaryReason,
   });
@@ -454,18 +458,6 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
     [setCartCustomer]
   );
 
-  // Cycle Retail → Wholesale → Distributor (F7 / Alt+A, or click the badge).
-  // Persists per terminal and reprices the existing cart via overridePrice
-  // (preserves per-line discount), reading fresh tier rates from the products list.
-  const cyclePriceList = useCallback(async () => {
-    const next = PRICE_LIST_ORDER[(PRICE_LIST_ORDER.indexOf(priceListMode) + 1) % PRICE_LIST_ORDER.length];
-    setPriceListMode(next);
-    if (typeof window !== "undefined") localStorage.setItem("pos_price_list", next);
-    // Rate is now per-line (chosen in the product-search rate toggle); F7 only sets the DEFAULT
-    // tier the search opens on for new adds — it no longer reprices existing lines.
-    toast.success(`Default rate: ${PRICE_LIST_LABEL[next]}`);
-  }, [priceListMode]);
-
   // Complimentary (Ctrl+C, manager): 100% discount on every line — cart zeroes
   // and the cashier tenders the resulting 0-total sale (F10).
   const handleComplimentary = useCallback(async (reason: string) => {
@@ -597,7 +589,6 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
     handleUndo,
     applyDiscount,
     applyBillDiscount,
-    cyclePriceList,
     isManager,
     setShowSalesperson,
     setShowComplimentary,
@@ -751,15 +742,6 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
           >
             <Hash className="h-3 w-3" />
             {nextInvoiceNo || "—"}
-          </Badge>
-          <Badge
-            variant={priceListMode === "RETAIL" ? "outline" : "default"}
-            className="text-[10px] gap-1 cursor-pointer select-none"
-            title="Price list — click to cycle (F7 / Alt+A)"
-            onClick={cyclePriceList}
-          >
-            <Tags className="h-3 w-3" />
-            {PRICE_LIST_LABEL[priceListMode]}
           </Badge>
           {(isOwner || isManager) && (
             <div
@@ -929,6 +911,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
             onUpdateQty={(itemId, qty) => updateQty(itemId, qty)}
             onRemoveItem={removeItem}
             onEditRequest={editRowRef}
+            salespeopleById={salespeopleById}
           />
           <ListingFooter
             itemCount={totalItemsCount}
@@ -1027,7 +1010,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
       <ProductSearchModal
         open={showSearch}
         initialQuery={searchSeed}
-        priceListMode={priceListMode}
+        priceListMode="RETAIL"
         onAdd={(product, mode) => {
           // Move the listing selection to the appended line (weighed goods open the
           // weight modal first, but the cart still grows by one row on confirm).
@@ -1071,7 +1054,14 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
 
       {showInvoiceSearch && <InvoiceSearchModal onClose={() => setShowInvoiceSearch(false)} />}
 
-      <SalespersonPickerModal open={showSalesperson} onClose={() => setShowSalesperson(false)} onSelect={setSelectedSalesperson} />
+      <SalespersonPickerModal open={showSalesperson} onClose={() => setShowSalesperson(false)} onSelect={(u) => {
+        setShowSalesperson(false);
+        const line = items[selectedRow];
+        if (!line) { toast.error("Select a product line first"); return; }
+        setSalespeopleById((prev) => ({ ...prev, [u.id]: u.name || u.email || "Salesperson" }));
+        setLineSalesperson(line.id, u.id);
+        toast.success(`${line.name}: ${u.name || u.email || "Salesperson"}`);
+      }} />
       <ComplimentaryConfirmModal open={showComplimentary} onClose={() => setShowComplimentary(false)} onConfirm={handleComplimentary} itemCount={items.length} grandTotal={taxExempt ? grandTotalExempt : grandTotal} />
       <QuotationConfirmModal open={showQuotation} onClose={() => setShowQuotation(false)} onConfirm={handleSaveQuotation} itemCount={items.length} grandTotal={taxExempt ? grandTotalExempt : grandTotal} saving={quotationSaving} />
       <PostMarketModal open={showPostMarket} onClose={() => setShowPostMarket(false)} onConfirm={handlePostMarket} productNames={Array.from(new Set(items.map((i) => i.name)))} />

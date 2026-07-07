@@ -103,7 +103,7 @@ function ProductCard({ product, onClick }) {
       data-product-id={product.id}
       data-product-name={product.name}
       className={`
-        group relative flex flex-col gap-2 p-3 rounded-xl border text-left
+        group relative flex flex-row items-stretch gap-3 p-2.5 rounded-xl border text-left
         transition-all duration-150 active:scale-95
         ${outOfStock
           ? 'opacity-40 cursor-not-allowed border-border bg-muted/30'
@@ -111,8 +111,8 @@ function ProductCard({ product, onClick }) {
         }
       `}
     >
-      {/* Product image / placeholder */}
-      <div className="h-14 w-full rounded-lg bg-muted flex items-center justify-center overflow-hidden relative">
+      {/* Product image / placeholder — left side (cards are wider than tall) */}
+      <div className="h-16 w-16 shrink-0 rounded-lg bg-muted flex items-center justify-center overflow-hidden relative">
         {product.image_url
           ? <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />
           : <Package className="h-6 w-6 text-muted-foreground/50" />
@@ -125,33 +125,33 @@ function ProductCard({ product, onClick }) {
         )}
       </div>
 
-      {/* Name */}
-      <p className="text-xs font-medium text-foreground leading-tight line-clamp-2">
-        {product.name}
-      </p>
+      {/* Content — right side */}
+      <div className="flex-1 min-w-0 flex flex-col">
+        <p className="text-xs font-medium text-foreground leading-tight line-clamp-2">
+          {product.name}
+        </p>
 
-      {/* Price + stock */}
-      <div className="flex items-center justify-between mt-auto">
-        <span className="text-sm font-bold text-primary">
-          Nu. {price.toFixed(2)}
-        </span>
-        {lowStock && !outOfStock && (
-          <AlertTriangle className="h-3 w-3 text-amber-500" />
-        )}
-        {outOfStock && (
-          <Badge variant="destructive" className="text-[10px] px-1 py-0">Out</Badge>
-        )}
+        <div className="flex items-center justify-between mt-auto pt-1">
+          <span className="text-sm font-bold text-primary">
+            Nu. {price.toFixed(2)}
+          </span>
+          {lowStock && !outOfStock && (
+            <AlertTriangle className="h-3 w-3 text-amber-500" />
+          )}
+          {outOfStock && (
+            <Badge variant="destructive" className="text-[10px] px-1 py-0">Out</Badge>
+          )}
+        </div>
+
+        <p className="text-[10px] text-muted-foreground">
+          {outOfStock
+            ? 'Out of stock'
+            : isPackage
+              ? `${stock} ${product.package_type === 'PALLET' ? 'pallets' : 'pkgs'} available`
+              : `${stock} ${product.unit ?? 'pcs'} left`
+          }
+        </p>
       </div>
-
-      {/* Stock count */}
-      <p className="text-[10px] text-muted-foreground">
-        {outOfStock
-          ? 'Out of stock'
-          : isPackage
-            ? `${stock} ${product.package_type === 'PALLET' ? 'pallets' : 'pkgs'} available`
-            : `${stock} ${product.unit ?? 'pcs'} left`
-        }
-      </p>
     </button>
   )
 }

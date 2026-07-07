@@ -148,6 +148,7 @@ export async function POST(request) {
       name:       item.name,
       quantity:   item.quantity,
       unit_price: item.unit_price,
+      salesperson_id: item.salesperson_id ?? salespersonId ?? null,
       discount:       item.discount ?? 0,
       discount_type:  item.discount_type || 'FLAT',
       discount_value: item.discount_value ?? 0,

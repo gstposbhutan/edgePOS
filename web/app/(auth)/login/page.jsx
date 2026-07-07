@@ -2,392 +2,286 @@
 
 import { Suspense, useState, useRef, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Eye, EyeOff, Loader2, Phone, MessageCircle, Mail } from "lucide-react"
+import { Eye, EyeOff, Loader2, Mail, Phone, KeyRound } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Logo } from "@/components/ui/logo"
-import { signIn, signInWithWhatsApp, sendWhatsAppOtp, ROLE_HOME, getRoleClaims } from "@/lib/auth"
+import { signIn, sendEmailOtp, completeSignup, setCustomerPhone, ROLE_HOME, getRoleClaims } from "@/lib/auth"
 
 function LoginForm() {
-  const router       = useRouter()
+  const router = useRouter()
   const searchParams = useSearchParams()
-  const redirect     = searchParams.get('redirect')
+  const redirect = searchParams.get('redirect')
+  const needPhoneParam = searchParams.get('needphone')
+  // Customer is the default/primary audience; staff switch to their tab explicitly.
+  const [tab, setTab] = useState('customer')
 
-  // Tab state
-  const [tab, setTab] = useState('email') // 'email' | 'whatsapp'
-
-  // Email login state
-  const [email,    setEmail]    = useState('')
+  // Staff (email + password)
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [showPwd,  setShowPwd]  = useState(false)
+  const [showPwd, setShowPwd] = useState(false)
 
-  // WhatsApp OTP state
-  const [waPhone,    setWaPhone]    = useState('')
-  const [waOtp,      setWaOtp]      = useState('')
-  const [otpSent,    setOtpSent]    = useState(false)
-  const [otpTimer,   setOtpTimer]   = useState(0)
-  const otpInputs    = useRef([])
-  const [otpMessage, setOtpMessage] = useState(null) // For mock OTP display
+  // Customer: sign in with password, or sign up (email OTP → password + phone)
+  const [custMode, setCustMode] = useState('signin') // 'signin' | 'signup'
+  const [custEmail, setCustEmail] = useState('')
+  const [custPassword, setCustPassword] = useState('')
+  const [code, setCode] = useState('')
+  const [otpSent, setOtpSent] = useState(false)
+  const [otpTimer, setOtpTimer] = useState(0)
+  const [otpMessage, setOtpMessage] = useState(null)
+  const codeInputs = useRef([])
+  // Phone capture step — only for social sign-ups (providers don't return a phone).
+  const [phoneStep, setPhoneStep] = useState(!!needPhoneParam)
+  const [phone, setPhone] = useState('')
 
-  // Shared state
-  const [loading,  setLoading]  = useState(false)
-  const [error,    setError]    = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
 
-  // OTP resend countdown
   useEffect(() => {
     if (otpTimer <= 0) return
-    const tick = setTimeout(() => setOtpTimer(t => t - 1), 1000)
-    return () => clearTimeout(tick)
+    const t = setTimeout(() => setOtpTimer(x => x - 1), 1000)
+    return () => clearTimeout(t)
   }, [otpTimer])
 
-  /** Email/password login */
-  async function handleEmailSubmit(e) {
-    e.preventDefault()
-    setError(null)
-    setLoading(true)
+  const custDestination = redirect || '/shop'
 
+  async function handleStaffSubmit(e) {
+    e.preventDefault()
+    setError(null); setLoading(true)
     const { user, error: authError } = await signIn(email, password)
-
-    if (authError) {
-      setError(authError)
-      setLoading(false)
-      return
-    }
-
+    if (authError) { setError(authError); setLoading(false); return }
     const { role } = getRoleClaims(user)
-    const destination = redirect || ROLE_HOME[role] || '/pos'
-    router.push(destination)
+    router.push(redirect || ROLE_HOME[role] || '/pos')
   }
 
-  /** Send WhatsApp OTP */
-  async function handleSendOtp(e) {
-    e.preventDefault()
-    setError(null)
-    setOtpMessage(null)
-
-    const cleaned = waPhone.replace(/\s/g, '')
-    if (!/^\+?[0-9]{8,15}$/.test(cleaned)) {
-      setError('Enter a valid phone number (e.g. +97517123456)')
-      return
-    }
-
+  async function handleSendCode(e) {
+    e?.preventDefault()
+    setError(null); setOtpMessage(null)
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(custEmail.trim())) { setError('Enter a valid email address'); return }
     setLoading(true)
-    const phone = cleaned.startsWith('+') ? cleaned : `+${cleaned}`
-    const response = await fetch('/api/auth/whatsapp/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone }),
-    })
-    const data = await response.json()
+    const { success, otp, error: err } = await sendEmailOtp(custEmail.trim())
     setLoading(false)
-
-    if (!response.ok) {
-      setError(data.error)
-      return
-    }
-
-    setOtpSent(true)
-    setOtpTimer(60) // 60-second cooldown before resend
-
-    // Show OTP in mock/dev mode for easy testing
-    if (data.mock || data.dev) {
-      setWaOtp(data.otp) // Auto-fill the OTP
-      setOtpMessage(data.mock
-        ? `Demo OTP: ${data.otp}`
-        : `Gateway down - Use OTP: ${data.otp}`
-      )
-    } else {
-      setWaOtp('')
-    }
+    if (!success) { setError(err); return }
+    setOtpSent(true); setOtpTimer(60)
+    if (otp) { setCode(otp); setOtpMessage(`Demo code: ${otp}`) } else { setCode('') }
   }
 
-  /** Verify WhatsApp OTP and sign in */
-  async function handleVerifyOtp(e) {
+  // Returning customer: email + password.
+  async function handleCustSignin(e) {
+    e.preventDefault()
+    setError(null); setLoading(true)
+    const { user, error: err } = await signIn(custEmail.trim(), custPassword)
+    setLoading(false)
+    if (err) { setError(err); return }
+    router.push(custDestination)
+  }
+
+  // New customer: verify the email code + set password & phone → account created + signed in.
+  async function handleCompleteSignup(e) {
     e.preventDefault()
     setError(null)
-
-    if (waOtp.length !== 6) {
-      setError('Enter the 6-digit code')
-      return
+    if (code.length !== 6) { setError('Enter the 6-digit code'); return }
+    if (custPassword.length < 8 || !/[A-Za-z]/.test(custPassword) || !/\d/.test(custPassword)) {
+      setError('Password must be at least 8 characters with a letter and a number'); return
     }
-
+    const cp = phone.replace(/\s/g, '')
+    if (!/^\+?[0-9]{8,15}$/.test(cp)) { setError('Enter a valid phone number'); return }
     setLoading(true)
-    const cleaned = waPhone.replace(/\s/g, '')
-    const phone = cleaned.startsWith('+') ? cleaned : `+${cleaned}`
+    const { error: err } = await completeSignup(custEmail.trim(), code, custPassword, cp)
+    setLoading(false)
+    if (err) { setError(err); return }
+    router.push(custDestination)
+  }
 
-    const { user, error: authError } = await signInWithWhatsApp(phone, waOtp)
+  async function handleSetPhone(e) {
+    e.preventDefault()
+    setError(null)
+    const clean = phone.replace(/\s/g, '')
+    if (!/^\+?[0-9]{8,15}$/.test(clean)) { setError('Enter a valid phone number (e.g. +97517123456)'); return }
+    setLoading(true)
+    const { success, error: err } = await setCustomerPhone(clean)
+    setLoading(false)
+    if (!success) { setError(err); return }
+    router.push(custDestination)
+  }
 
-    if (authError) {
-      setError(authError)
-      setLoading(false)
-      return
-    }
-
-    const { role } = getRoleClaims(user)
-    const destination = redirect || ROLE_HOME[role] || '/pos'
-    router.push(destination)
+  function startOAuth(provider) {
+    window.location.href = `/api/auth/oauth/${provider}?redirect=${encodeURIComponent(custDestination)}`
   }
 
   return (
     <div className="w-full max-w-sm mx-4">
-      {/* Logo */}
       <div className="flex flex-col items-center mb-8">
         <Logo variant="stacked" className="h-28 w-auto mb-2" />
         <p className="text-sm text-muted-foreground mt-1">4K Edge-AI POS System</p>
       </div>
 
-      {/* Login card */}
       <Card className="glassmorphism">
         <CardHeader>
           <CardTitle className="text-lg font-serif">Sign In</CardTitle>
-          <CardDescription>Choose your preferred sign-in method</CardDescription>
+          <CardDescription>{tab === 'staff' ? 'Staff & business accounts' : 'Shop as a customer'}</CardDescription>
         </CardHeader>
         <CardContent>
-          {/* Tab selector */}
           <div className="flex rounded-lg bg-muted/50 p-1 mb-6">
-            <button
-              type="button"
-              onClick={() => { setTab('email'); setError(null) }}
-              className={`flex-1 flex items-center justify-center gap-2 rounded-md py-2 text-sm font-medium transition-all ${
-                tab === 'email'
-                  ? 'bg-background shadow text-foreground'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <Mail className="h-4 w-4" />
-              Email
+            <button type="button" onClick={() => { setTab('customer'); setError(null) }}
+              className={`flex-1 flex items-center justify-center gap-2 rounded-md py-2 text-sm font-medium transition-all ${tab === 'customer' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+              <Mail className="h-4 w-4" /> Customer
             </button>
-            <button
-              type="button"
-              onClick={() => { setTab('whatsapp'); setError(null) }}
-              className={`flex-1 flex items-center justify-center gap-2 rounded-md py-2 text-sm font-medium transition-all ${
-                tab === 'whatsapp'
-                  ? 'bg-background shadow text-foreground'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <Phone className="h-4 w-4" />
-              WhatsApp
+            <button type="button" onClick={() => { setTab('staff'); setError(null) }}
+              className={`flex-1 flex items-center justify-center gap-2 rounded-md py-2 text-sm font-medium transition-all ${tab === 'staff' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+              <KeyRound className="h-4 w-4" /> Staff
             </button>
           </div>
 
-          {/* Email form */}
-          {tab === 'email' && (
-            <form onSubmit={handleEmailSubmit} className="space-y-4">
+          {/* Staff: email + password */}
+          {tab === 'staff' && (
+            <form onSubmit={handleStaffSubmit} className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-foreground">Email</label>
-                <Input
-                  type="email"
-                  placeholder="you@business.bt"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  autoComplete="email"
-                />
+                <Input type="email" placeholder="you@business.bt" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email" />
               </div>
-
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-foreground">Password</label>
                 <div className="relative">
-                  <Input
-                    type={showPwd ? 'text' : 'password'}
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    autoComplete="current-password"
-                    className="pr-10"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPwd(!showPwd)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                    tabIndex={-1}
-                  >
+                  <Input type={showPwd ? 'text' : 'password'} placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password" className="pr-10" />
+                  <button type="button" onClick={() => setShowPwd(!showPwd)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" tabIndex={-1}>
                     {showPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
               </div>
-
-              {error && (
-                <div data-testid="login-error-alert" className="p-3 bg-tibetan/10 border border-tibetan/30 rounded-lg">
-                  <p data-testid="login-error-message" className="text-xs text-tibetan">{error}</p>
-                </div>
-              )}
-
+              {error && <div data-testid="login-error-alert" className="p-3 bg-tibetan/10 border border-tibetan/30 rounded-lg"><p className="text-xs text-tibetan">{error}</p></div>}
               <Button type="submit" disabled={loading} className="w-full bg-primary hover:bg-primary/90">
-                {loading
-                  ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Signing in...</>
-                  : 'Sign In'
-                }
+                {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Signing in...</> : 'Sign In'}
               </Button>
-
               <p className="text-center text-xs text-muted-foreground">
-                Forgot your password?{' '}
-                <a href="/login/reset" className="text-primary hover:underline underline-offset-4">
-                  Reset via Email or WhatsApp
-                </a>
+                Forgot your password? <a href="/login/reset" className="text-primary hover:underline underline-offset-4">Reset via email</a>
               </p>
             </form>
           )}
 
-          {/* WhatsApp OTP form */}
-          {tab === 'whatsapp' && !otpSent && (
-            <form onSubmit={handleSendOtp} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-foreground">WhatsApp Number</label>
-                <div className="relative">
-                  <Phone className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    type="tel"
-                    placeholder="+975 17 123 456"
-                    value={waPhone}
-                    onChange={(e) => setWaPhone(e.target.value)}
-                    className="pl-9"
-                    autoFocus
-                    required
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  We'll send a 6-digit verification code to your WhatsApp
-                </p>
+          {/* Customer: email OTP → phone */}
+          {tab === 'customer' && !phoneStep && (
+            <div className="space-y-4">
+              {/* Social — email comes from the provider; phone is collected after (they don't return it) */}
+              <div className="grid grid-cols-2 gap-2">
+                <Button type="button" variant="outline" onClick={() => startOAuth('google')}>Google</Button>
+                <Button type="button" variant="outline" onClick={() => startOAuth('facebook')}>Facebook</Button>
               </div>
+              <div className="flex items-center gap-3 text-xs text-muted-foreground"><div className="h-px flex-1 bg-border" /> or <div className="h-px flex-1 bg-border" /></div>
 
-              {error && (
-                <div data-testid="login-error-alert" className="p-3 bg-tibetan/10 border border-tibetan/30 rounded-lg">
-                  <p data-testid="login-error-message" className="text-xs text-tibetan">{error}</p>
-                </div>
+              {/* Returning customer: email + password */}
+              {custMode === 'signin' && (
+                <form onSubmit={handleCustSignin} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-foreground">Email</label>
+                    <Input type="email" placeholder="you@example.com" value={custEmail} onChange={e => setCustEmail(e.target.value)} autoFocus required />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-foreground">Password</label>
+                    <Input type="password" placeholder="••••••••" value={custPassword} onChange={e => setCustPassword(e.target.value)} required />
+                  </div>
+                  {error && <div data-testid="login-error-alert" className="p-3 bg-tibetan/10 border border-tibetan/30 rounded-lg"><p className="text-xs text-tibetan">{error}</p></div>}
+                  <Button type="submit" disabled={loading} className="w-full bg-primary hover:bg-primary/90">
+                    {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Signing in…</> : 'Sign In'}
+                  </Button>
+                  <p className="text-center text-xs text-muted-foreground">
+                    New to Pelbu? <button type="button" onClick={() => { setCustMode('signup'); setOtpSent(false); setError(null) }} className="text-primary hover:underline">Create an account</button>
+                  </p>
+                </form>
               )}
 
-              <Button type="submit" disabled={loading} className="w-full bg-emerald-600 hover:bg-emerald-700">
-                {loading
-                  ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending code...</>
-                  : <><MessageCircle className="mr-2 h-4 w-4" /> Send Verification Code</>
-                }
-              </Button>
-            </form>
+              {/* New customer, step 1: verify email */}
+              {custMode === 'signup' && !otpSent && (
+                <form onSubmit={handleSendCode} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-foreground">Email</label>
+                    <Input type="email" placeholder="you@example.com" value={custEmail} onChange={e => setCustEmail(e.target.value)} autoFocus required />
+                    <p className="text-xs text-muted-foreground">We'll email you a 6-digit code to verify it.</p>
+                  </div>
+                  {error && <div data-testid="login-error-alert" className="p-3 bg-tibetan/10 border border-tibetan/30 rounded-lg"><p className="text-xs text-tibetan">{error}</p></div>}
+                  <Button type="submit" disabled={loading} className="w-full bg-primary hover:bg-primary/90">
+                    {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending…</> : 'Email me a code'}
+                  </Button>
+                  <p className="text-center text-xs text-muted-foreground">
+                    Have an account? <button type="button" onClick={() => { setCustMode('signin'); setError(null) }} className="text-primary hover:underline">Sign in</button>
+                  </p>
+                </form>
+              )}
+
+              {/* New customer, step 2: code + password + phone */}
+              {custMode === 'signup' && otpSent && (
+                <form onSubmit={handleCompleteSignup} className="space-y-4">
+                  <p className="text-sm text-muted-foreground text-center">Code sent to <span className="font-medium text-foreground">{custEmail}</span></p>
+                  {otpMessage && <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-center"><p className="text-sm font-medium text-emerald-600">{otpMessage}</p></div>}
+                  <div className="flex gap-2 justify-center" data-testid="otp-input-row">
+                    {[0, 1, 2, 3, 4, 5].map(i => (
+                      <Input key={i} ref={el => codeInputs.current[i] = el} type="text" inputMode="numeric" maxLength={1}
+                        value={code[i] ?? ''}
+                        onChange={e => {
+                          const v = e.target.value.replace(/\D/g, '')
+                          const n = code.split(''); n[i] = v
+                          const j = n.join('').slice(0, 6); setCode(j)
+                          if (v && i < 5) codeInputs.current[i + 1]?.focus()
+                        }}
+                        onKeyDown={e => { if (e.key === 'Backspace' && !code[i] && i > 0) codeInputs.current[i - 1]?.focus() }}
+                        onPaste={e => { e.preventDefault(); const p = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6); setCode(p); codeInputs.current[Math.min(p.length, 5)]?.focus() }}
+                        className="w-11 h-12 text-center text-lg font-mono" autoFocus={i === 0} />
+                    ))}
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-foreground">Create a password</label>
+                    <Input type="password" placeholder="Min 8 chars, a letter & a number" value={custPassword} onChange={e => setCustPassword(e.target.value)} required />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-foreground">Phone number</label>
+                    <div className="relative">
+                      <Phone className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input type="tel" placeholder="+975 17 123 456" value={phone} onChange={e => setPhone(e.target.value)} className="pl-9" required />
+                    </div>
+                  </div>
+                  {error && <div data-testid="login-error-alert" className="p-3 bg-tibetan/10 border border-tibetan/30 rounded-lg"><p className="text-xs text-tibetan">{error}</p></div>}
+                  <Button type="submit" disabled={loading || code.length !== 6} className="w-full bg-primary hover:bg-primary/90">
+                    {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creating account…</> : 'Create account'}
+                  </Button>
+                  <div className="flex items-center justify-between text-xs">
+                    <button type="button" onClick={() => { setOtpSent(false); setCode(''); setError(null) }} className="text-muted-foreground hover:text-foreground">Change email</button>
+                    <button type="button" onClick={otpTimer <= 0 ? handleSendCode : undefined} disabled={otpTimer > 0} className={otpTimer > 0 ? 'text-muted-foreground cursor-not-allowed' : 'text-primary hover:underline'}>
+                      {otpTimer > 0 ? `Resend in ${otpTimer}s` : 'Resend code'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
           )}
 
-          {/* OTP verification form */}
-          {tab === 'whatsapp' && otpSent && (
-            <form onSubmit={handleVerifyOtp} className="space-y-4">
+          {/* Phone capture (mandatory) */}
+          {tab === 'customer' && phoneStep && (
+            <form onSubmit={handleSetPhone} className="space-y-4">
               <div className="text-center space-y-1">
-                <p className="text-sm text-muted-foreground">
-                  Code sent to <span className="font-medium text-foreground">{waPhone}</span>
-                </p>
+                <p className="text-sm font-medium text-foreground">One more step</p>
+                <p className="text-xs text-muted-foreground">Add your phone number so shops can reach you about orders.</p>
               </div>
-
-              {otpMessage && (
-                <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-center">
-                  <p className="text-sm font-medium text-emerald-600">{otpMessage}</p>
-                  <p className="text-xs text-emerald-600/70 mt-1">Auto-filled for your convenience</p>
-                </div>
-              )}
-
               <div className="space-y-1.5">
-                <label className="text-sm font-medium text-foreground text-center block">
-                  Enter 6-digit code
-                </label>
-                <div data-testid="otp-input-row" className="flex gap-2 justify-center">
-                  {[0, 1, 2, 3, 4, 5].map(i => (
-                    <Input
-                      key={i}
-                      ref={el => otpInputs.current[i] = el}
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={1}
-                      value={waOtp[i] ?? ''}
-                      onChange={(e) => {
-                        const val = e.target.value.replace(/\D/g, '')
-                        const newOtp = waOtp.split('')
-                        newOtp[i] = val
-                        const joined = newOtp.join('').slice(0, 6)
-                        setWaOtp(joined)
-                        // Auto-advance to next input
-                        if (val && i < 5) {
-                          otpInputs.current[i + 1]?.focus()
-                        }
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Backspace' && !waOtp[i] && i > 0) {
-                          otpInputs.current[i - 1]?.focus()
-                        }
-                      }}
-                      onPaste={(e) => {
-                        e.preventDefault()
-                        const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
-                        setWaOtp(pasted)
-                        const nextIdx = Math.min(pasted.length, 5)
-                        otpInputs.current[nextIdx]?.focus()
-                      }}
-                      className="w-11 h-12 text-center text-lg font-mono"
-                      autoFocus={i === 0}
-                    />
-                  ))}
+                <label className="text-sm font-medium text-foreground">Phone number</label>
+                <div className="relative">
+                  <Phone className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input type="tel" placeholder="+975 17 123 456" value={phone} onChange={e => setPhone(e.target.value)} className="pl-9" autoFocus required />
                 </div>
               </div>
-
-              {error && (
-                <div data-testid="login-error-alert" className="p-3 bg-tibetan/10 border border-tibetan/30 rounded-lg">
-                  <p data-testid="login-error-message" className="text-xs text-tibetan">{error}</p>
-                </div>
-              )}
-
-              <Button
-                type="submit"
-                disabled={loading || waOtp.length !== 6}
-                className="w-full bg-primary hover:bg-primary/90"
-              >
-                {loading
-                  ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verifying...</>
-                  : 'Verify & Sign In'
-                }
+              {error && <div data-testid="login-error-alert" className="p-3 bg-tibetan/10 border border-tibetan/30 rounded-lg"><p className="text-xs text-tibetan">{error}</p></div>}
+              <Button type="submit" disabled={loading} className="w-full bg-primary hover:bg-primary/90">
+                {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…</> : 'Continue'}
               </Button>
-
-              <div className="flex items-center justify-between text-xs">
-                <button
-                  type="button"
-                  onClick={() => { setOtpSent(false); setWaOtp(''); setError(null) }}
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  Change number
-                </button>
-                <button
-                  type="button"
-                  onClick={otpTimer <= 0 ? handleSendOtp : undefined}
-                  disabled={otpTimer > 0}
-                  className={otpTimer > 0
-                    ? 'text-muted-foreground cursor-not-allowed'
-                    : 'text-primary hover:underline underline-offset-4'
-                  }
-                >
-                  {otpTimer > 0 ? `Resend in ${otpTimer}s` : 'Resend code'}
-                </button>
-              </div>
             </form>
           )}
         </CardContent>
       </Card>
 
-      {/* Footer */}
-      <p className="text-center text-xs text-muted-foreground mt-6">
-        © 2026 Pelbu · GST 2026 Compliant
-      </p>
-
+      <p className="text-center text-xs text-muted-foreground mt-6">© 2026 Pelbu · GST 2026 Compliant</p>
       <div className="text-center text-xs text-muted-foreground mt-2 space-y-1">
-        <p>
-          New retailer?{' '}
-          <a href="/signup/retailer" className="text-primary hover:underline underline-offset-4">
-            Create a retail account
-          </a>
-        </p>
-        <p>
-          Wholesaler?{' '}
-          <a href="/signup/wholesaler" className="text-primary hover:underline underline-offset-4">
-            Create a wholesale account
-          </a>
-        </p>
+        <p>New retailer? <a href="/signup/retailer" className="text-primary hover:underline underline-offset-4">Create a retail account</a></p>
+        <p>Wholesaler? <a href="/signup/wholesaler" className="text-primary hover:underline underline-offset-4">Create a wholesale account</a></p>
       </div>
     </div>
   )

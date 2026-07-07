@@ -10,6 +10,11 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: 'images.unsplash.com',
       },
+      // Product images live on the CDN (img.pelbu.com by default; override via IMAGE_CDN_URL).
+      {
+        protocol: 'https',
+        hostname: (() => { try { return new URL(process.env.IMAGE_CDN_URL || 'https://img.pelbu.com').hostname } catch { return 'img.pelbu.com' } })(),
+      },
     ],
   },
 
