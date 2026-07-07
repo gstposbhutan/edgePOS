@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { ArrowLeft, Search, RefreshCw, ShoppingBag, MessageCircle, Plus, Store, FileText, Receipt, ShoppingCart } from "lucide-react"
+import { ArrowLeft, Search, RefreshCw, ShoppingBag, MessageCircle, Plus, Store, FileText, Receipt } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { OrderStatusBadge } from "@/components/pos/orders/order-status-badge"
@@ -149,14 +149,6 @@ function OrdersPage() {
           >
             <ShoppingBag className="h-3.5 w-3.5" /> POS Orders
           </button>
-          {['MANAGER', 'OWNER', 'ADMIN'].includes(subRole) && (
-            <button
-              onClick={() => router.push('/pos/purchases')}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-muted text-muted-foreground transition-colors hover:bg-muted/80"
-            >
-              <ShoppingCart className="h-3.5 w-3.5" /> Purchases
-            </button>
-          )}
         </div>
       )}
 
