@@ -2,7 +2,10 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 
 // Routes that don't require authentication
-const PUBLIC_ROUTES = ['/login', '/signup', '/offline', '/shop', '/rider/login']
+const PUBLIC_ROUTES = ['/login', '/signup', '/offline', '/shop', '/rider/login',
+  // Public marketing site (root home, feature pages, vendor onboarding, company)
+  '/', '/features', '/sell', '/about', '/contact',
+  '/marketing']   // static AI-generated marketing imagery under public/marketing
 
 // Role → home route mapping
 const ROLE_HOME = {
