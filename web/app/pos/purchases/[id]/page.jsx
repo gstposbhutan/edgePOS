@@ -93,9 +93,11 @@ export default function PurchaseDetailPage() {
   }
 
   async function handleCancel() {
-    if (!confirm('Cancel this purchase order?')) return
+    const reason = prompt('Reason for cancelling this purchase order? (e.g. supplier out of stock, better price found)')
+    if (reason === null) return
+    if (!reason.trim()) { setActionError('A cancellation reason is required'); return }
     setActionError(null)
-    try { await updateStatus(params.id, 'CANCELLED'); fetchDetail(params.id) }
+    try { await updateStatus(params.id, 'CANCELLED', reason.trim()); fetchDetail(params.id) }
     catch (err) { setActionError(err.message) }
   }
 

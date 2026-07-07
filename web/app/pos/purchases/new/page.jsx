@@ -201,6 +201,10 @@ export default function NewPurchaseOrderPage() {
     if (qty < 1) { removeItem(pid); return }
     setItems(prev => prev.map(i => i.product_id === pid ? { ...i, quantity: qty } : i))
   }
+  function updateCost(pid, cost) {
+    const c = Math.max(0, parseFloat(cost) || 0)
+    setItems(prev => prev.map(i => i.product_id === pid ? { ...i, unit_cost: c } : i))
+  }
 
   const subtotal   = items.reduce((s, i) => s + i.unit_cost * i.quantity, 0)
   const grandTotal = parseFloat(subtotal.toFixed(2))
@@ -404,7 +408,15 @@ export default function NewPurchaseOrderPage() {
                             </div>
                           )}
                         </td>
-                        <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">Nu. {item.unit_cost.toFixed(2)}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums">
+                          <span className="text-[10px] text-muted-foreground mr-0.5">Nu.</span>
+                          <input
+                            type="number" min="0" step="0.01" value={item.unit_cost}
+                            onClick={e => e.stopPropagation()}
+                            onChange={e => updateCost(item.product_id, e.target.value)}
+                            className="w-20 px-1 py-0.5 text-sm text-right border border-border rounded bg-background outline-none focus:border-primary"
+                          />
+                        </td>
                         <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-primary">Nu. {total}</td>
                         <td className="px-2 py-2"><button onClick={e=>{e.stopPropagation();removeItem(item.product_id)}} className="text-muted-foreground hover:text-tibetan transition-colors"><Trash2 className="h-4 w-4"/></button></td>
                       </tr>
