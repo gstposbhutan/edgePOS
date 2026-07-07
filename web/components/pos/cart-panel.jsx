@@ -248,7 +248,7 @@ export function CartPanel({
                 </>
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  Customer will verify via WhatsApp OTP at checkout.
+                  Customer will verify via email OTP at checkout.
                 </p>
               )}
             </div>

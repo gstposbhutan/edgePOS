@@ -9,18 +9,22 @@ export async function GET(request) {
 
     const { entityId, supabase } = ctx
     const { searchParams } = new URL(request.url)
+    const email = (searchParams.get('email') || '').trim().toLowerCase()
     const phone = searchParams.get('phone')
 
-    if (!phone) return NextResponse.json({ error: 'phone required' }, { status: 400 })
+    if (!email && !phone) return NextResponse.json({ error: 'email or phone required' }, { status: 400 })
 
-    const { data, error } = await supabase
+    // Credit identity is email-first (WhatsApp dropped); phone still resolves legacy accounts.
+    let query = supabase
       .from('khata_accounts')
       .select('*')
       .eq('creditor_entity_id', entityId)
-      .eq('debtor_phone', phone)
       .eq('party_type', 'CONSUMER')
       .in('status', ['ACTIVE', 'FROZEN'])
       .limit(1)
+    query = email ? query.eq('debtor_email', email) : query.eq('debtor_phone', phone)
+
+    const { data, error } = await query
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 

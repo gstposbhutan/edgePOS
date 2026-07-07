@@ -261,3 +261,63 @@ verify at implementation, or use timestamp-prefixed names to force them last.
 - Per-unit discount + bill-discount infra (P4 Complimentary reuses it).
 - `inventory_movements` with `RETURN` type (P4 Exchange).
 - Roles `owner/manager/cashier` (P2 admin-override + P4 manager-gate).
+
+---
+
+## P5 — Sell-side fold parity (2026-07-07 handoff)
+
+The web side folded sales orders into the POS and moved credit + purchasing;
+this section captures what the **desktop** still needs vs. what it already has.
+
+**Context (web changes this cycle, on `main` via PR #40 + `067ab06`):**
+- Sell-side folded into the POS: one "Save as draft" action saves either a
+  **Sales Order** (committed) or a **Quotation** (non-binding). Both are
+  `order_type='SALES_ORDER', status='DRAFT'`, distinguished by a new
+  `orders.is_quotation` boolean (cloud migration **098**).
+- Credit identity moved from phone → **email + email OTP** (cloud migration
+  **099** `khata_accounts.debtor_email`; check-only `/api/auth/email-otp/check`).
+- Buy-side (Purchase Order/Invoice, PI discounts) is **web-only**.
+
+**✅ Already at parity on desktop (verified in code 2026-07-07):**
+- Salesperson (F8 + `SalespersonPickerModal`, per-line `salesperson_id`),
+  price-rate tiers (`lib/price-list` `PriceListMode`), per-line + bill discount
+  — all present in **both** the keyboard listing and the touch card grid.
+- Quotation save (Alt+Q → `QuotationConfirmModal` → `use-checkout.ts saveQuotation`
+  → PB `orders` `order_type='SALES_ORDER', status='DRAFT'`).
+
+**✅ DONE (2026-07-07, build-verified) — Sales Order vs Quotation distinction:**
+1. ✅ **PB migration** `pb/pb_migrations/016_order_is_quotation.js` — adds
+   `is_quotation` (bool, default false) to the `orders` collection.
+2. ✅ **`components/pos/quotation-confirm-modal.tsx`** — two actions
+   (*Sales Order* / *Quotation*), `onConfirm(isQuotation)`.
+3. ✅ **`hooks/use-checkout.ts` `saveQuotation(isQuotation, onSuccess?)`** — sets
+   `is_quotation` on the created PB order; toast reflects order vs quotation.
+4. ✅ **`app/page.tsx` `handleSaveQuotation(isQuotation)`** — threads the flag.
+5. ✅ **Sync mapping** — `electron/main.js` push payload + `sync-core`
+   `register-order-sync.ts` (`TerminalOrder.is_quotation` → orders upsert row);
+   cloud ingest passes it through. Cloud column exists (migration 098).
+
+Verified: desktop `tsc --noEmit` + `npm run build` green; web build green.
+**⚠️ Still runtime-unverified** (headless box can't run embedded PocketBase):
+migration `016` running on terminal startup + the actual offline→cloud sync of
+`is_quotation`. Confirm on a real terminal build.
+
+**N/A on desktop (offline POS-only register):**
+- Credit **email OTP** — the terminal is offline and can't send/verify an OTP;
+  credit stays customer-selection based (`debtor_phone`) on the terminal. If
+  cloud khata is re-keyed to `debtor_email`, confirm the sync reconciliation
+  still matches terminal credit sales (they key by phone) — otherwise backfill
+  `debtor_email` on cloud khata so both keys resolve.
+- Purchase Order / Purchase Invoice + PI discounts — web back-office only.
+
+**⚠️ Runtime verification:** items 1 + 5 touch the PocketBase schema and the
+offline→cloud sync path, which **cannot be verified in the headless dev box**
+(no embedded PocketBase runtime). Do this in a session that can build + run the
+Electron app against a sync target.
+
+## Related web follow-ups (not desktop, but adjacent)
+- Pre-existing **CREDIT purchase-invoice confirm** fails ("No active khata
+  account") — the restock trigger needs a supplier khata before the confirm
+  route creates it. CASH confirms fine.
+- **Legacy phone-only consumer khata accounts** need `debtor_email` backfill so
+  email lookup resolves them (13 such accounts at handoff).

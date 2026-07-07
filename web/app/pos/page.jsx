@@ -356,19 +356,17 @@ export default function KeyboardPosPage() {
     await processPayment({ method, received, journalNo })
   }
 
-  async function handleCreditOtpVerified(phone) {
+  // Credit identity is keyed by email now (WhatsApp dropped).
+  async function handleCreditOtpVerified(email) {
     setCreditOtpOpen(false)
-    await setCustomerIdentity({ whatsapp: phone, buyerHash: null })
 
-    let { account } = await lookupAccount(phone)
+    let { account } = await lookupAccount({ email })
     if (!account) {
-      const res = await fetch(`/api/pos/entities?phone=${encodeURIComponent(phone)}`)
-      const entityData = res.ok ? await res.json() : null
-
       const { account: newAccount } = await createAccount({
         party_type:   'CONSUMER',
-        debtor_phone: phone,
-        debtor_name:  entityData?.entity?.name ?? `Customer ${phone.slice(-4)}`,
+        debtor_email: email,
+        debtor_phone: customer?.whatsapp || null,
+        debtor_name:  customer?.name ?? `Customer ${(customer?.whatsapp || email).slice(-4)}`,
         credit_limit: 1000,
       })
       account = newAccount

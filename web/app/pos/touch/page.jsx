@@ -205,7 +205,7 @@ export default function PosPage() {
       return
     }
 
-    // CREDIT: must verify customer identity via WhatsApp OTP every time
+    // CREDIT: must verify customer identity via email OTP every time
     if (paymentMethod === 'CREDIT') {
       if (!customer?.whatsapp) { setShowCustomerModal(true); return }
       setShowCreditOtp(true)
@@ -216,28 +216,20 @@ export default function PosPage() {
     await initiateCheckout()
   }
 
-  // Called when customer completes OTP verification for CREDIT payment
-  async function handleCreditOtpVerified(phone) {
+  // Called when the customer completes EMAIL OTP verification for CREDIT payment.
+  // Credit identity is keyed by email (WhatsApp dropped).
+  async function handleCreditOtpVerified(email) {
     setShowCreditOtp(false)
-    await setCustomerIdentity({ whatsapp: phone, buyerHash: null })
 
-    // Khata lookup — auto-create if new customer
-    let { account } = await lookupAccount(phone)
+    // Khata lookup by email — auto-create if new customer
+    let { account } = await lookupAccount({ email })
 
     if (!account) {
-      // Resolve customer name from their entity record (created during OTP signup)
-      let customerName = `Customer ${phone.slice(-4)}`
-      try {
-        const entRes = await fetch(`/api/pos/entities?phone=${encodeURIComponent(phone)}`)
-        if (entRes.ok) {
-          const { entity } = await entRes.json()
-          if (entity?.name) customerName = entity.name
-        }
-      } catch {}
-
+      const customerName = customer?.name || `Customer ${(customer?.whatsapp || '').slice(-4)}`
       const { account: newAccount, error: createErr } = await createAccount({
         party_type:   'CONSUMER',
-        debtor_phone: phone,
+        debtor_email: email,
+        debtor_phone: customer?.whatsapp || null,
         debtor_name:  customerName,
         credit_limit: 1000, // default limit — manager can adjust later
       })

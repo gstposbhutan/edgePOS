@@ -57,6 +57,7 @@ export interface TerminalOrder {
   register_id?: string | null    // LOCAL register id → remapped to cloud id
   order_type?: string
   status?: string
+  is_quotation?: boolean
   items?: unknown
   subtotal?: number
   gst_total?: number
@@ -210,6 +211,7 @@ export async function syncOrders(
       origin: 'TERMINAL_SYNC',              // gates the cloud confirm triggers (Migration 074)
       order_type: o.order_type ?? 'POS_SALE',
       status: o.status ?? 'CONFIRMED',
+      is_quotation: o.is_quotation ?? false,
       items: o.items ?? [],
       subtotal: o.subtotal ?? 0,
       gst_total: o.gst_total ?? 0,
