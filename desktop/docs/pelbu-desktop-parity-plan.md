@@ -285,18 +285,22 @@ this section captures what the **desktop** still needs vs. what it already has.
 - Quotation save (Alt+Q → `QuotationConfirmModal` → `use-checkout.ts saveQuotation`
   → PB `orders` `order_type='SALES_ORDER', status='DRAFT'`).
 
-**🟠 The one gap — Sales Order vs Quotation distinction:**
-1. **PB migration** (`pb/pb_migrations/0NN_order_is_quotation.js`): add
+**✅ DONE (2026-07-07, build-verified) — Sales Order vs Quotation distinction:**
+1. ✅ **PB migration** `pb/pb_migrations/016_order_is_quotation.js` — adds
    `is_quotation` (bool, default false) to the `orders` collection.
-2. **`components/pos/quotation-confirm-modal.tsx`**: offer two actions —
-   *Sales Order* and *Quotation* — calling `onConfirm(isQuotation)` (mirror the
-   web modal `components/pos/keyboard/quotation-confirm-modal.jsx`).
-3. **`hooks/use-checkout.ts` `saveQuotation`**: accept `isQuotation` and set
-   `is_quotation` on the created PB order.
-4. **`app/page.tsx` `handleSaveQuotation`**: thread the flag through.
-5. **Sync mapping**: ensure `doSync` / cloud `/api/sync/ingest` carry
-   `is_quotation` (cloud column already exists via migration 098) — else the
-   distinction is silently dropped on reconcile.
+2. ✅ **`components/pos/quotation-confirm-modal.tsx`** — two actions
+   (*Sales Order* / *Quotation*), `onConfirm(isQuotation)`.
+3. ✅ **`hooks/use-checkout.ts` `saveQuotation(isQuotation, onSuccess?)`** — sets
+   `is_quotation` on the created PB order; toast reflects order vs quotation.
+4. ✅ **`app/page.tsx` `handleSaveQuotation(isQuotation)`** — threads the flag.
+5. ✅ **Sync mapping** — `electron/main.js` push payload + `sync-core`
+   `register-order-sync.ts` (`TerminalOrder.is_quotation` → orders upsert row);
+   cloud ingest passes it through. Cloud column exists (migration 098).
+
+Verified: desktop `tsc --noEmit` + `npm run build` green; web build green.
+**⚠️ Still runtime-unverified** (headless box can't run embedded PocketBase):
+migration `016` running on terminal startup + the actual offline→cloud sync of
+`is_quotation`. Confirm on a real terminal build.
 
 **N/A on desktop (offline POS-only register):**
 - Credit **email OTP** — the terminal is offline and can't send/verify an OTP;

@@ -467,9 +467,9 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
     toast.success("Complimentary applied — press F10 to tender");
   }, [items, applyDiscount]);
 
-  const handleSaveQuotation = useCallback(async () => {
+  const handleSaveQuotation = useCallback(async (isQuotation: boolean) => {
     setQuotationSaving(true);
-    await saveQuotation();
+    await saveQuotation(isQuotation);
     setQuotationSaving(false);
     setShowQuotation(false);
   }, [saveQuotation]);

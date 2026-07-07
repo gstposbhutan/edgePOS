@@ -227,7 +227,7 @@ export function useCheckout(input: CheckoutInput) {
   // signature but takes NO payment and moves NO stock. The cashier can convert
   // it to a real sale later (conversion flow is a follow-up, as on web).
   const saveQuotation = useCallback(
-    async (onSuccess?: (orderNo: string) => void) => {
+    async (isQuotation = false, onSuccess?: (orderNo: string) => void) => {
       const { pb, user, items, subtotal, gstTotal, grandTotal, taxExempt, grandTotalExempt, settings, selectedCustomer, clearCart, refreshProducts, clearUndoStack, salespersonId, deliveryAddress } = input;
       if (!user) return;
       if (items.length === 0) { toast.error("Cart is empty"); return; }
@@ -244,6 +244,7 @@ export function useCheckout(input: CheckoutInput) {
           order_type: "SALES_ORDER",
           order_no: orderNo,
           status: "DRAFT",
+          is_quotation: isQuotation,
           items: items.map((i) => ({
             id: i.id,
             product: i.product,
@@ -271,7 +272,7 @@ export function useCheckout(input: CheckoutInput) {
         await clearCart();
         await refreshProducts();
         clearUndoStack();
-        toast.success(`Quotation ${orderNo} saved (draft)`);
+        toast.success(`${isQuotation ? "Quotation" : "Sales order"} ${orderNo} saved (draft)`);
         onSuccess?.(orderNo);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Quotation failed";
