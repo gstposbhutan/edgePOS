@@ -1,22 +1,22 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { Phone, MessageCircle, Loader2, ShieldCheck } from "lucide-react"
+import { Mail, Loader2, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 
 /**
- * Customer WhatsApp OTP verification modal — required for CREDIT payment.
- * Sends an OTP to the customer's WhatsApp and verifies it before checkout proceeds.
- * The customer does NOT get logged in — this is identity verification only.
- * The verified phone is passed back to the POS via onVerified(phone).
+ * Customer email OTP verification modal — required for CREDIT payment.
+ * Sends an OTP to the customer's email and verifies it (check-only, no login) before
+ * checkout proceeds. The verified email is passed back to the POS via onVerified(email)
+ * and used to resolve the customer's khata account.
  *
- * @param {{ open: boolean, onVerified: (phone: string) => void, onClose: () => void }} props
+ * @param {{ open: boolean, initialEmail?: string, onVerified: (email: string) => void, onClose: () => void }} props
  */
-export function CustomerOtpModal({ open, onVerified, onClose }) {
-  const [step,       setStep]       = useState('phone') // 'phone' | 'otp'
-  const [phone,      setPhone]      = useState('')
+export function CustomerOtpModal({ open, initialEmail = '', onVerified, onClose }) {
+  const [step,       setStep]       = useState('email') // 'email' | 'otp'
+  const [email,      setEmail]      = useState('')
   const [otp,        setOtp]        = useState('')
   const [otpTimer,   setOtpTimer]   = useState(0)
   const [loading,    setLoading]    = useState(false)
@@ -24,15 +24,13 @@ export function CustomerOtpModal({ open, onVerified, onClose }) {
   const [otpMessage, setOtpMessage] = useState(null)
   const otpInputs = useRef([])
 
-  // Reset on open
   useEffect(() => {
     if (open) {
-      setStep('phone'); setPhone(''); setOtp('')
+      setStep('email'); setEmail(initialEmail || ''); setOtp('')
       setOtpTimer(0); setError(null); setOtpMessage(null)
     }
-  }, [open])
+  }, [open, initialEmail])
 
-  // OTP countdown
   useEffect(() => {
     if (otpTimer <= 0) return
     const tick = setTimeout(() => setOtpTimer(t => t - 1), 1000)
@@ -42,45 +40,35 @@ export function CustomerOtpModal({ open, onVerified, onClose }) {
   async function handleSendOtp(e) {
     e?.preventDefault()
     setError(null)
-    const cleaned = phone.replace(/\s/g, '')
-    if (!/^\+?[0-9]{8,15}$/.test(cleaned)) {
-      setError('Enter a valid WhatsApp number (e.g. +97517123456)')
+    const em = email.trim().toLowerCase()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) {
+      setError('Enter a valid email address')
       return
     }
-    const normalised = cleaned.startsWith('+') ? cleaned : `+${cleaned}`
     setLoading(true)
-    const res = await fetch('/api/auth/whatsapp/send', {
+    const res = await fetch('/api/auth/email-otp/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: normalised }),
+      body: JSON.stringify({ email: em }),
     })
     const data = await res.json()
     setLoading(false)
     if (!res.ok) { setError(data.error); return }
     setStep('otp')
     setOtpTimer(60)
-    if (data.mock || data.dev) {
-      setOtp(data.otp)
-      setOtpMessage(`Demo OTP: ${data.otp}`)
-    } else {
-      setOtpMessage(null)
-    }
+    if (data.otp) { setOtp(data.otp); setOtpMessage(`Demo OTP: ${data.otp}`) }
+    else setOtpMessage(null)
   }
 
   async function handleVerifyOtp(e) {
     e?.preventDefault()
     if (otp.length !== 6) { setError('Enter the 6-digit code'); return }
-    setLoading(true)
-    setError(null)
-    const normalised = phone.replace(/\s/g, '')
-    const normPhone  = normalised.startsWith('+') ? normalised : `+${normalised}`
-
-    // We only need to verify the OTP — we don't need a full session for the customer.
-    // Call the verify endpoint in check-only mode using the mock/OTP path.
-    const res = await fetch('/api/auth/whatsapp/verify', {
+    setLoading(true); setError(null)
+    const em = email.trim().toLowerCase()
+    const res = await fetch('/api/auth/email-otp/check', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: normPhone, otp }),
+      body: JSON.stringify({ email: em, otp }),
     })
     const data = await res.json()
     setLoading(false)
@@ -88,8 +76,7 @@ export function CustomerOtpModal({ open, onVerified, onClose }) {
       setError(data.error || 'Invalid OTP. Please try again.')
       return
     }
-    // OTP verified — pass phone back to POS, don't navigate
-    onVerified(normPhone)
+    onVerified(em)
   }
 
   return (
@@ -101,21 +88,21 @@ export function CustomerOtpModal({ open, onVerified, onClose }) {
             Verify Customer Identity
           </DialogTitle>
           <DialogDescription>
-            Credit payment requires customer WhatsApp verification. A one-time code will be sent to the customer's phone.
+            Credit payment requires customer email verification. A one-time code will be sent to the customer&apos;s email.
           </DialogDescription>
         </DialogHeader>
 
-        {step === 'phone' && (
+        {step === 'email' && (
           <form onSubmit={handleSendOtp} className="space-y-4 mt-2">
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Customer WhatsApp Number</label>
+              <label className="text-sm font-medium">Customer Email</label>
               <div className="relative">
-                <Phone className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Mail className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  type="tel"
-                  placeholder="+975 17 123 456"
-                  value={phone}
-                  onChange={e => setPhone(e.target.value)}
+                  type="email"
+                  placeholder="customer@example.com"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
                   className="pl-9"
                   autoFocus
                   required
@@ -128,7 +115,7 @@ export function CustomerOtpModal({ open, onVerified, onClose }) {
               <Button type="submit" disabled={loading} className="flex-1 bg-emerald-600 hover:bg-emerald-700">
                 {loading
                   ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending...</>
-                  : <><MessageCircle className="mr-2 h-4 w-4" /> Send OTP</>
+                  : <><Mail className="mr-2 h-4 w-4" /> Send OTP</>
                 }
               </Button>
             </div>
@@ -138,7 +125,7 @@ export function CustomerOtpModal({ open, onVerified, onClose }) {
         {step === 'otp' && (
           <form onSubmit={handleVerifyOtp} className="space-y-4 mt-2">
             <p className="text-sm text-muted-foreground">
-              Code sent to <span className="font-medium text-foreground">{phone}</span>
+              Code sent to <span className="font-medium text-foreground">{email}</span>
             </p>
 
             {otpMessage && (
@@ -196,9 +183,9 @@ export function CustomerOtpModal({ open, onVerified, onClose }) {
             </Button>
 
             <div className="flex items-center justify-between text-xs">
-              <button type="button" onClick={() => { setStep('phone'); setOtp(''); setError(null) }}
+              <button type="button" onClick={() => { setStep('email'); setOtp(''); setError(null) }}
                 className="text-muted-foreground hover:text-foreground">
-                Change number
+                Change email
               </button>
               <button
                 type="button"

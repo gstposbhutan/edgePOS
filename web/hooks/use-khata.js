@@ -144,8 +144,14 @@ export function useKhata(entityId) {
    * @param {string} phone
    * @returns {Promise<{ account: object|null, error: string|null }>}
    */
-  async function lookupAccount(phone) {
-    const res = await fetch(`/api/pos/khata/lookup?phone=${encodeURIComponent(phone)}`)
+  // Credit identity is email-first (WhatsApp dropped). Pass { email } (preferred) or { phone }
+  // for legacy accounts. A bare string is treated as an email.
+  async function lookupAccount(id) {
+    const q = typeof id === 'string'
+      ? `email=${encodeURIComponent(id)}`
+      : id?.email ? `email=${encodeURIComponent(id.email)}`
+      : id?.phone ? `phone=${encodeURIComponent(id.phone)}` : ''
+    const res = await fetch(`/api/pos/khata/lookup?${q}`)
     const data = await res.json()
     if (!res.ok) return { account: null, error: data.error }
     return { account: data.account ?? null, error: null }
