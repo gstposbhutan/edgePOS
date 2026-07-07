@@ -31,6 +31,7 @@ export default function PurchaseDetailPage() {
   const [confirmed,     setConfirmed]     = useState(null)
   const [payMethod,     setPayMethod]     = useState('CREDIT')
   const [suppRef,       setSuppRef]       = useState('')
+  const [billDiscount,  setBillDiscount]  = useState('')
   const [selectedLine,  setSelectedLine]  = useState(0)
   const printRef = useRef(null)
 
@@ -71,6 +72,7 @@ export default function PurchaseDetailPage() {
         order_item_id:    item.id,
         product_name:     item.name,
         original_quantity: item.quantity,
+        discount:         '',
         sub_batches: [{
           quantity:        item.quantity,
           unit_cost:       item.unit_cost || item.unit_price || '',
@@ -108,6 +110,7 @@ export default function PurchaseDetailPage() {
       const invoice = await convertToInvoice(params.id, {
         items: convertLines.map(l => ({
           order_item_id: l.order_item_id,
+          discount: parseFloat(l.discount) || 0,
           sub_batches: l.sub_batches.map(sb => ({
             quantity:        parseInt(sb.quantity, 10) || 1,
             unit_cost:       sb.unit_cost     ? parseFloat(sb.unit_cost)     : undefined,
@@ -121,6 +124,7 @@ export default function PurchaseDetailPage() {
         })),
         payment_method: payMethod,
         supplier_ref:   suppRef || undefined,
+        bill_discount:  parseFloat(billDiscount) || 0,
       })
       router.push(`/pos/purchases/${invoice.id}`)
     } catch (err) {
@@ -395,6 +399,8 @@ export default function PurchaseDetailPage() {
           setPayMethod={setPayMethod}
           suppRef={suppRef}
           setSuppRef={setSuppRef}
+          billDiscount={billDiscount}
+          setBillDiscount={setBillDiscount}
           converting={converting}
           actionError={actionError}
           selectedLine={selectedLine}
@@ -447,6 +453,7 @@ export default function PurchaseDetailPage() {
 function PurchaseInvoiceOverlay({
   order, items, convertLines, setConvertLines,
   payMethod, setPayMethod, suppRef, setSuppRef,
+  billDiscount, setBillDiscount,
   converting, actionError, selectedLine, setSelectedLine,
   onSubmit, onClose,
 }) {
@@ -473,11 +480,14 @@ function PurchaseInvoiceOverlay({
   )
   const canSubmit = !converting && allQtyMatch
 
-  const grandTotal = convertLines.reduce((sum, l) =>
+  const grossTotal = convertLines.reduce((sum, l) =>
     sum + l.sub_batches.reduce((s, sb) =>
       s + (parseFloat(sb.unit_cost) || 0) * (parseInt(sb.quantity, 10) || 0), 0
     ), 0
   )
+  const lineDiscountTotal = convertLines.reduce((s, l) => s + (parseFloat(l.discount) || 0), 0)
+  const billDisc = parseFloat(billDiscount) || 0
+  const grandTotal = Math.max(0, grossTotal - lineDiscountTotal - billDisc)
 
   return (
     <div data-testid="convert-to-invoice-overlay" className="fixed inset-0 z-50 flex flex-col bg-background select-none">
@@ -521,6 +531,20 @@ function PurchaseInvoiceOverlay({
             <input data-testid="convert-supplier-ref" value={suppRef} onChange={e => setSuppRef(e.target.value)}
               placeholder="e.g. INV-888"
               className="w-full h-8 px-2 text-sm border border-input rounded bg-background" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">Bill Discount (Nu.)</label>
+            <input type="number" min="0" step="0.01" value={billDiscount} onChange={e => setBillDiscount(e.target.value)}
+              placeholder="0.00"
+              className="w-full h-8 px-2 text-sm border border-input rounded bg-background" />
+          </div>
+
+          {/* Totals */}
+          <div className="border-t border-border pt-2 text-xs space-y-1 tabular-nums">
+            <div className="flex justify-between text-muted-foreground"><span>Cost</span><span>Nu. {grossTotal.toFixed(2)}</span></div>
+            {lineDiscountTotal > 0 && <div className="flex justify-between text-muted-foreground"><span>Line discounts</span><span>− Nu. {lineDiscountTotal.toFixed(2)}</span></div>}
+            {billDisc > 0 && <div className="flex justify-between text-muted-foreground"><span>Bill discount</span><span>− Nu. {billDisc.toFixed(2)}</span></div>}
+            <div className="flex justify-between font-semibold text-foreground"><span>Payable</span><span>Nu. {grandTotal.toFixed(2)}</span></div>
           </div>
 
           <div className="border-t border-border pt-3 space-y-1">
@@ -599,6 +623,14 @@ function PurchaseInvoiceOverlay({
                       <span className={`text-xs font-semibold tabular-nums ${mismatch ? 'text-amber-600' : 'text-emerald-600'}`}>
                         {totalReceived} / {line.original_quantity} units
                       </span>
+                      <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                        <label className="text-[10px] text-muted-foreground">Disc Nu.</label>
+                        <input
+                          type="number" min="0" step="0.01" value={line.discount} placeholder="0"
+                          onChange={e => setConvertLines(prev => prev.map((l, li) => li !== lineIdx ? l : { ...l, discount: e.target.value }))}
+                          className="w-16 h-7 px-1.5 text-xs text-right border border-input rounded bg-background"
+                        />
+                      </div>
                       <button type="button" onClick={e => { e.stopPropagation(); addSB() }}
                         className="text-xs text-primary hover:underline font-medium px-2 py-0.5 rounded border border-primary/30 hover:bg-primary/5">
                         + Batch

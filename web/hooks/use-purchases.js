@@ -64,12 +64,12 @@ export function usePurchases() {
     return data
   }, [])
 
-  const convertToInvoice = useCallback(async (poId, { items, payment_method, supplier_ref }) => {
+  const convertToInvoice = useCallback(async (poId, { items, payment_method, supplier_ref, bill_discount }) => {
     setError(null)
     const res = await fetch(`/api/purchases/${poId}/convert`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items, payment_method, supplier_ref }),
+      body: JSON.stringify({ items, payment_method, supplier_ref, bill_discount }),
     })
     const data = await res.json()
     if (!res.ok) throw new Error(data.error)

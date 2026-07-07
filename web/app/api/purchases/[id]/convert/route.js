@@ -24,7 +24,7 @@ export async function POST(request, { params }) {
     if (po.status === 'CANCELLED') return NextResponse.json({ error: 'Cannot convert a cancelled PO' }, { status: 400 })
 
     const body = await request.json()
-    const { items, payment_method, supplier_ref } = body
+    const { items, payment_method, supplier_ref, bill_discount } = body
 
     if (!items?.length) return NextResponse.json({ error: 'At least one item is required' }, { status: 400 })
 
@@ -71,7 +71,8 @@ export async function POST(request, { params }) {
 
     // Build invoice items from the convert payload
     const invoiceItems = []
-    let subtotal = 0
+    let grossSubtotal = 0      // pre-discount cost total
+    let totalLineDiscount = 0  // sum of per-line discounts
 
     for (const line of items) {
       const poItem = poItemMap[line.order_item_id]
@@ -107,6 +108,14 @@ export async function POST(request, { params }) {
         }, { status: 400 })
       }
 
+      // Per-line discount (flat Nu.) from the supplier's invoice, capped at the line's gross value.
+      // Spread evenly per unit so batches are stocked at net landed cost.
+      const grossLineTotal = subBatches.reduce((s, sb) =>
+        s + parseFloat(sb.unit_cost ?? poItem.unit_cost ?? poItem.unit_price ?? 0) * parseInt(sb.quantity || 0, 10), 0)
+      const lineDiscount    = Math.min(Math.max(0, parseFloat(line.discount || 0)), grossLineTotal)
+      const perUnitDiscount = totalReceived > 0 ? lineDiscount / totalReceived : 0
+      totalLineDiscount += lineDiscount
+
       for (const sb of subBatches) {
         const qty = parseInt(sb.quantity || 0, 10)
         if (qty < 1) {
@@ -114,18 +123,19 @@ export async function POST(request, { params }) {
             error: `Each batch quantity must be at least 1 (found 0 for "${poItem.name}")`
           }, { status: 400 })
         }
-        const unitCost = parseFloat(sb.unit_cost ?? poItem.unit_cost ?? poItem.unit_price ?? 0)
-        const total    = unitCost * qty
-        subtotal      += total
+        const grossUnit = parseFloat(sb.unit_cost ?? poItem.unit_cost ?? poItem.unit_price ?? 0)
+        const netUnit   = Math.max(0, parseFloat((grossUnit - perUnitDiscount).toFixed(4)))
+        const total     = parseFloat((netUnit * qty).toFixed(2))
+        grossSubtotal  += grossUnit * qty
 
         invoiceItems.push({
           product_id:      poItem.product_id,
           sku:             poItem.sku,
           name:            poItem.name,
           quantity:        qty,
-          unit_price:      unitCost,
-          unit_cost:       unitCost,
-          discount:        0,
+          unit_price:      netUnit,
+          unit_cost:       netUnit,
+          discount:        parseFloat((perUnitDiscount * qty).toFixed(2)),
           gst_5:           0,
           total,
           status:          'ACTIVE',
@@ -137,7 +147,10 @@ export async function POST(request, { params }) {
       }
     }
 
-    const grandTotal = parseFloat(subtotal.toFixed(2))
+    // Bill-level discount (flat Nu.) off the whole invoice, capped at the post-line-discount total.
+    const netSubtotal  = parseFloat((grossSubtotal - totalLineDiscount).toFixed(2))
+    const billDiscount = Math.min(Math.max(0, parseFloat(bill_discount || 0)), Math.max(0, netSubtotal))
+    const grandTotal   = parseFloat((netSubtotal - billDiscount).toFixed(2))
 
     // Generate PI number: PI-YYYY-XXXXX
     const year = new Date().getFullYear()
@@ -166,7 +179,8 @@ export async function POST(request, { params }) {
         supplier_ref:      supplier_ref?.trim() || po.supplier_ref,
         payment_method:    payment_method || po.payment_method,
         items:             invoiceItems,
-        subtotal:          grandTotal,
+        subtotal:          parseFloat(grossSubtotal.toFixed(2)),
+        bill_discount:     billDiscount,
         gst_total:         0,
         grand_total:       grandTotal,
         created_by:        userId,
