@@ -75,6 +75,36 @@ export async function signOut() {
   await fetch('/api/auth/logout', { method: 'POST' })
 }
 
+/** Customer email OTP: send a 6-digit code to the email. Returns { success, otp? (mock), error }. */
+export async function sendEmailOtp(email) {
+  const res = await fetch('/api/auth/email-otp/send', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }),
+  })
+  const data = await res.json()
+  if (!res.ok) return { success: false, error: data.error }
+  return { success: true, otp: data.otp ?? null, error: null }
+}
+
+/** Customer email OTP: verify the code, provision + sign in. Returns { user, needsPhone, error }. */
+export async function signInWithEmailOtp(email, otp) {
+  const res = await fetch('/api/auth/email-otp/verify', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, otp }),
+  })
+  const data = await res.json()
+  if (!res.ok || !data.success) return { user: null, needsPhone: false, error: data.error || 'Verification failed' }
+  const user = await getUser()
+  return { user, needsPhone: !!data.needs_phone, error: null }
+}
+
+/** Set the signed-in customer's (mandatory) phone number. */
+export async function setCustomerPhone(phone) {
+  const res = await fetch('/api/auth/customer-phone', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }),
+  })
+  const data = await res.json()
+  return res.ok ? { success: true, error: null } : { success: false, error: data.error }
+}
+
 /**
  * Get the current session (client-side) via BFF.
  * @returns {Promise<object|null>}
