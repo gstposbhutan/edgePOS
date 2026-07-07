@@ -14,13 +14,43 @@
   (`noreply@app.pelbu.com`, domain-authenticated `app.pelbu.com`).
 - WhatsApp gateway gained a **Twilio** provider (env-gated, parked pending creds); `MOCK_WHATSAPP` for OTP testing.
 
+### 2026-07-07 session (merged to `main`, PRs #40–#43)
+- **Public marketing site** — `/` home + `/features` hub & 4 deep-dives + `/sell`/`/about`/`/contact`/`/terms`,
+  shared nav/footer, AI-generated imagery (`public/marketing`), **attributed to Innovates Bhutan**
+  (team/contact/company from innovates.bt); contact form → their inbox. Marketplace shares the header;
+  nav is auth-aware.
+- **Sell-side fold** — the POS is the single sell-side entry; `/salesorder` retired. Alt+Q "Save as draft"
+  → **Sales Order** or **Quotation** (`orders.is_quotation`, migration 098) on **keyboard + touch**.
+  POS complete-sale stays the Sales Invoice.
+- **Buy-side** — PO cancel-with-reason, editable PO line cost, and **per-line + bill discounts on the
+  Purchase Invoice** (net landed cost → stock valuation; net → khata). PO carries no batch info; batch +
+  cost captured at receipt (PI); one PO → many partial PIs.
+- **Credit identity → email** — consumer khata keyed by `debtor_email` (migration 099), check-only
+  `/api/auth/email-otp/check`, `CustomerOtpModal` verifies by email, both POS credit flows resolve khata
+  by email. Fixed CREDIT purchase-invoice confirm (migration 100) + legacy khata email backfill (migration 101).
+- **Desktop v1.2.0** — Sales Order vs Quotation parity (PB migration 016 `is_quotation` + sync mapping);
+  `desktop/CHANGELOG.md` added. (Salesperson/rate-tiers/discounts already at parity.)
+- Nav: Orders & Purchases as separate left-nav items; redundant POS header logos removed; touch top-bar
+  trimmed to actions; **WhatsApp sales sub-tab removed** (WhatsApp parked); rider login-home fixed.
+
 ## New follow-ups from this work
+- 🟠 **Desktop `is_quotation` runtime-verify** — migration 016 on terminal startup + live offline→cloud
+  sync of the flag need a real Electron/PocketBase build before publishing v1.2.0. See
+  `desktop/docs/pelbu-desktop-parity-plan.md` (P5).
 - 🟠 **Production WhatsApp sender** — register a Twilio WhatsApp sender + approved templates (gateway ready).
 - 🟠 **Point `pelbu.com` DNS at the box**, then set `SITE_URL`/`API_EXTERNAL_URL` to the real domain
-  (email links + OTP redirects still use the `nip.io` staging host).
+  (email links + OTP redirects still use the `nip.io` staging host). Also activates Google/Facebook OAuth.
+- 🟢 **Legacy khata email** — 6 of 13 consumer khata accounts had no linkable email (migration 101 did 7);
+  they stay phone-resolvable and need manual `debtor_email` association.
+- 🟢 **Marketing:** confirm `bhutaninnovates@gmail.com` (search-sourced) is the right contact; add a
+  Privacy Policy page (the Terms references one); set `CONTACT_TO` for the contact form.
 - 🟢 Web-side barcode-label printing (label maker is desktop-only today).
 - 🟢 POS-counter low-stock alert trigger (low-stock email currently fires only on marketplace checkout).
 - 🟢 Delete the full-access SendGrid key (keep the restricted `mail.send` key); add a DMARC record.
+
+### ✅ Cleared this session
+- Web weighed-goods touch parity, marketplace + AI enrichment + SendGrid email (all shipped earlier and
+  now live on `main`). CREDIT purchase-invoice confirm bug — **fixed** (migration 100).
 
 ---
 _Original 2026-06-09 handoff below._
