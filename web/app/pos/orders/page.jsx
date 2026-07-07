@@ -124,7 +124,7 @@ function OrdersPage() {
           <RefreshCw className="h-4 w-4" />
         </Button>
         {['MANAGER', 'OWNER', 'ADMIN'].includes(subRole) && (
-          <Button size="sm" onClick={() => router.push('/salesorder')} className="gap-1.5">
+          <Button size="sm" onClick={() => router.push('/pos')} className="gap-1.5">
             <Plus className="h-4 w-4" /> New Order
           </Button>
         )}

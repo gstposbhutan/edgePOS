@@ -253,9 +253,10 @@ export default function KeyboardPosPage() {
     toastTimer.current = setTimeout(() => setToastMsg(null), 2600)
   }
 
-  // Alt+Q — save the cart as a draft quotation (SALES_ORDER/DRAFT): no payment,
-  // no stock move. Clears the cart on success like a completed sale.
-  async function saveQuotation() {
+  // Alt+Q — save the cart as a DRAFT sell-side document (SALES_ORDER/DRAFT): a Sales Order
+  // (committed) or a Quotation (non-binding). No payment, no stock move. Clears the cart
+  // on success like a completed sale.
+  async function saveDraft(isQuotation) {
     if (items.length === 0) return
     try {
       const res = await fetch('/api/pos/orders', {
@@ -267,17 +268,18 @@ export default function KeyboardPosPage() {
           buyerHash: customer?.buyerHash ?? null,
           cartId,
           quotation: true,
+          isQuotation: !!isQuotation,
           salespersonId: salesPersonId ?? undefined,
           deliveryAddress: deliveryAddress || undefined,
         }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Quotation failed')
+      if (!res.ok) throw new Error(data.error || 'Save failed')
       setLastOrderNo(data.order.order_no)
       await clearCart()
       setSelectedRow(0)
       setShowQuotation(false)
-      showToast(`Quotation ${data.order.order_no} saved`)
+      showToast(`${isQuotation ? 'Quotation' : 'Sales order'} ${data.order.order_no} saved`)
     } catch (err) {
       setCheckoutErr(err.message)
       setShowQuotation(false)
