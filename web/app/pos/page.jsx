@@ -538,44 +538,8 @@ export default function KeyboardPosPage() {
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
-          {subRole === 'OWNER' && (
-            <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/stores')} title="Manage Stores">
-              <LayoutDashboard className="h-4 w-4" />
-            </Button>
-          )}
-          {subRole === 'OWNER' && (
-            <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/team')} title="Team">
-              <Users className="h-4 w-4" />
-            </Button>
-          )}
-          {subRole === 'OWNER' && (
-            <Button variant="ghost" size="icon-sm" onClick={() => router.push('/downloads')} title="Desktop App & Updates">
-              <MonitorDown className="h-4 w-4" />
-            </Button>
-          )}
+          {/* Top bar = ACTIONS only. Page navigation lives in the left sidebar (PosSidebar). */}
           <NotificationBell />
-          <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/orders')} title="Orders [O]">
-            <ClipboardList className="h-4 w-4" />
-          </Button>
-          {subRole !== 'CASHIER' && (
-            <>
-              <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/purchases')} title="Purchases">
-                <ShoppingCart className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/products')} title="Products">
-                <BookOpen className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/inventory')} title="Inventory">
-                <Package className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/khata')} title="Khata">
-                <Wallet className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos/registers')} title="Cash Registers">
-                <Landmark className="h-4 w-4" />
-              </Button>
-            </>
-          )}
           <Button
             variant="ghost"
             size="icon-sm"
@@ -592,9 +556,6 @@ export default function KeyboardPosPage() {
               </Button>
               <Button variant="ghost" size="icon-sm" title="Z-Report [Ctrl+Shift+Z]" onClick={() => setShowZReport(true)} className="text-muted-foreground hover:text-foreground">
                 <ClipboardList className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon-sm" title="Shift history" onClick={() => router.push('/pos/shifts')} className="text-muted-foreground hover:text-foreground">
-                <Clock className="h-4 w-4" />
               </Button>
             </div>
           )}
