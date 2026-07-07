@@ -177,5 +177,6 @@ export const ROLE_HOME = {
   DISTRIBUTOR:  '/distributor',
   WHOLESALER:   '/wholesaler',
   RETAILER:     '/pos',
+  RIDER:        '/rider',
   CUSTOMER:     '/shop',
 }
