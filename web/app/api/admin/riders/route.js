@@ -14,7 +14,7 @@ export async function GET(request) {
     const supabase = ctx.supabase
     const { data: riders, error } = await supabase
       .from('riders')
-      .select('id, name, whatsapp_no, is_active, is_available, current_order_id, created_at')
+      .select('id, name, whatsapp_no, is_active, is_available, current_order_id, created_at, email_notifications_enabled')
       .order('created_at', { ascending: false })
 
     if (error) throw error

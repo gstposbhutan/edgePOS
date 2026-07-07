@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { Search, ShoppingBag, Store, Phone, Home, LogOut, ClipboardList, User } from "lucide-react"
+import { Search, ShoppingBag, Store, Phone, Home, LogOut, ClipboardList, User, Bell, BellOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import Image from "next/image"
@@ -38,6 +38,7 @@ export default function ShopPage() {
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState(null)
   const [selectedProduct, setSelectedProduct] = useState(null)
+  const [emailPref, setEmailPref] = useState(false)
 
   useEffect(() => {
     loadShopContent()
@@ -64,6 +65,21 @@ export default function ShopPage() {
   async function checkAuth() {
     const currentUser = await getUser()
     setUser(currentUser || null)
+    if (currentUser) {
+      try {
+        const res = await fetch('/api/admin/settings')
+        if (res.ok) { const j = await res.json(); setEmailPref(!!j.entity?.email_notifications_enabled) }
+      } catch { /* ignore */ }
+    }
+  }
+
+  async function toggleEmailPref() {
+    const next = !emailPref
+    setEmailPref(next)
+    await fetch('/api/admin/settings', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email_notifications_enabled: next }),
+    })
   }
 
   const filteredProducts = products.filter(p =>
@@ -126,6 +142,15 @@ export default function ShopPage() {
                       <ClipboardList className="h-4 w-4 text-muted-foreground" />
                       My Orders
                     </Link>
+                    <button
+                      onClick={toggleEmailPref}
+                      className="w-full flex items-center gap-2.5 px-4 py-3 text-sm hover:bg-muted/50 transition-colors"
+                    >
+                      {emailPref
+                        ? <Bell className="h-4 w-4 text-primary" />
+                        : <BellOff className="h-4 w-4 text-muted-foreground" />}
+                      Email alerts: {emailPref ? 'On' : 'Off'}
+                    </button>
                     <div className="border-t border-border" />
                     <button
                       onClick={handleSignOut}

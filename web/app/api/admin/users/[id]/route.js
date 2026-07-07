@@ -26,6 +26,15 @@ export async function PATCH(request, { params }) {
     })
   }
 
+  // per-user email-notification opt-in (super-admin can toggle for any user)
+  if (body.email_notifications_enabled !== undefined) {
+    const { error } = await ctx.supabase
+      .from('user_profiles')
+      .update({ email_notifications_enabled: !!body.email_notifications_enabled })
+      .eq('id', id)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
   // suspend / reactivate via auth ban
   if (body.suspended !== undefined) {
     const { error } = await ctx.supabase.auth.admin.updateUserById(id, {

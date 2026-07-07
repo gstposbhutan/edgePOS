@@ -66,10 +66,14 @@ export async function notifyEntity(supabase, entityId, { type, title, body = nul
   if (!entityId) return
   try {
     await supabase.from('notifications').insert({ entity_id: entityId, type, title, body, link })
-    const { data: ent } = await supabase.from('entities').select('email_notifications_enabled').eq('id', entityId).maybeSingle()
-    if (!ent?.email_notifications_enabled) return
-    const email = await entityContactEmail(supabase, entityId)
-    if (email && isRealEmail(email)) await sendEmail(email, title, body || title)
+    // Email is per-user: send to each user of this entity who opted in (+ has a real address).
+    const { data: profs } = await supabase
+      .from('user_profiles').select('id').eq('entity_id', entityId).eq('email_notifications_enabled', true)
+    for (const p of (profs || [])) {
+      const { data } = await supabase.auth.admin.getUserById(p.id)
+      const email = data?.user?.email
+      if (email && isRealEmail(email)) await sendEmail(email, title, body || title)
+    }
   } catch (err) {
     console.error('[notifyEntity]', err.message)
   }

@@ -88,6 +88,12 @@ module.exports = defineConfig({
       testMatch: /catalog-.*\.spec\.js/,
       use: { ...devices['Desktop Chrome'] },
     },
+    // Email-notification permission model — each test logs in as the role it exercises.
+    {
+      name: 'email-pref',
+      testMatch: /email-pref-.*\.spec\.js/,
+      use: { ...devices['Desktop Chrome'] },
+    },
   ],
   webServer: {
     command: 'npm run dev',

@@ -52,16 +52,6 @@ export default function AdminEntitiesPage() {
     load()
   }
 
-  // Admin can enable/disable email notifications for any entity (in-app always stays on).
-  async function toggleEmailNotifs(e) {
-    await fetch(`/api/admin/entities/${e.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email_notifications_enabled: !e.email_notifications_enabled }),
-    })
-    load()
-  }
-
   if (!ready) {
     return <div className="flex items-center justify-center h-64"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
   }
@@ -102,9 +92,6 @@ export default function AdminEntitiesPage() {
                     {e.whatsapp_no && <p className="text-xs text-muted-foreground">{e.whatsapp_no}</p>}
                     <Button size="sm" variant="outline" className="w-full mt-1" onClick={() => toggleActive(e)}>
                       {e.is_active ? 'Suspend' : 'Reactivate'}
-                    </Button>
-                    <Button size="sm" variant="outline" className="w-full" onClick={() => toggleEmailNotifs(e)}>
-                      {e.email_notifications_enabled ? 'Disable email alerts' : 'Enable email alerts'}
                     </Button>
                     {e.role === 'RETAILER' && (
                       <Button size="sm" variant="outline" className="w-full" onClick={() => toggleFeatured(e)}>
