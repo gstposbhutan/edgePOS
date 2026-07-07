@@ -85,15 +85,16 @@ export async function sendEmailOtp(email) {
   return { success: true, otp: data.otp ?? null, error: null }
 }
 
-/** Customer email OTP: verify the code, provision + sign in. Returns { user, needsPhone, error }. */
-export async function signInWithEmailOtp(email, otp) {
+/** Customer sign-up completion: verify the email OTP + set password & phone, then sign in. */
+export async function completeSignup(email, otp, password, phone) {
   const res = await fetch('/api/auth/email-otp/verify', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, otp }),
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, otp, password, phone }),
   })
   const data = await res.json()
-  if (!res.ok || !data.success) return { user: null, needsPhone: false, error: data.error || 'Verification failed' }
+  if (!res.ok || !data.success) return { user: null, error: data.error || 'Sign-up failed' }
   const user = await getUser()
-  return { user, needsPhone: !!data.needs_phone, error: null }
+  return { user, error: null }
 }
 
 /** Set the signed-in customer's (mandatory) phone number. */

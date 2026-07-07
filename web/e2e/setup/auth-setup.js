@@ -18,6 +18,8 @@ test.describe('Auth Setup', () => {
   for (const { key, user, file } of roles) {
     test(`sign in as ${key} and save storage state`, async ({ page }) => {
       await page.goto('/login')
+      // Customer is the default tab now; staff sign in under the Staff tab.
+      await page.getByRole('button', { name: 'Staff' }).click()
       await page.getByPlaceholder('you@business.bt').waitFor({ state: 'visible' })
 
       await page.getByPlaceholder('you@business.bt').fill(user.email)
