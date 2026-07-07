@@ -20,7 +20,8 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Please enter a valid email' }, { status: 400 })
   }
 
-  const to = process.env.CONTACT_TO
+  // Delivered to the Innovates Bhutan inbox (override with CONTACT_TO).
+  const to = process.env.CONTACT_TO || 'bhutaninnovates@gmail.com'
   const subject = `Pelbu enquiry from ${name}`
   const text = [
     `Name: ${name}`,

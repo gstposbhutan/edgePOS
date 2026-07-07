@@ -1,4 +1,5 @@
 import { CtaBand } from '@/components/marketing/cta-band'
+import { COMPANY, TEAM } from '@/lib/marketing/content'
 import { MapPin, ShieldCheck, WifiOff, HeartHandshake } from 'lucide-react'
 
 export const metadata = {
@@ -65,6 +66,65 @@ export default function AboutPage() {
               </div>
               <h3 className="mt-4 text-lg font-semibold">{title}</h3>
               <p className="mt-2 text-sm text-muted-foreground">{body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Powered by Innovates Bhutan */}
+      <section className="mx-auto max-w-6xl px-4 pb-16">
+        <div className="rounded-3xl border border-border bg-card p-8 sm:p-12">
+          <span className="text-xs font-semibold uppercase tracking-wide text-primary">Powered by {COMPANY.name}</span>
+          <h2 className="mt-3 text-2xl font-bold tracking-tight">Built by Bhutan&apos;s IT enterprise</h2>
+          <p className="mt-3 max-w-3xl text-muted-foreground">{COMPANY.blurb}</p>
+          <div className="mt-8 grid grid-cols-2 gap-6 sm:grid-cols-4">
+            {COMPANY.stats.map(s => (
+              <div key={s.label}>
+                <div className="text-3xl font-bold tracking-tight text-primary">{s.value}</div>
+                <p className="mt-1 text-sm text-muted-foreground">{s.label}</p>
+              </div>
+            ))}
+          </div>
+          <a
+            href={COMPANY.website}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-8 inline-flex text-sm font-medium text-foreground hover:text-primary"
+          >
+            Visit {COMPANY.name} →
+          </a>
+        </div>
+      </section>
+
+      {/* Team */}
+      <section className="mx-auto max-w-6xl px-4 pb-16">
+        <div className="max-w-2xl">
+          <span className="text-xs font-semibold uppercase tracking-wide text-primary">Our team</span>
+          <h2 className="mt-3 text-3xl font-bold tracking-tight">The people behind Pelbu</h2>
+          <p className="mt-3 text-muted-foreground">
+            A passionate team of technology experts dedicated to transforming businesses across Bhutan.
+          </p>
+        </div>
+
+        {/* Founder */}
+        <div className="mt-8 flex items-center gap-5 rounded-2xl border border-border bg-card p-6">
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xl font-bold text-primary">
+            {TEAM.lead.name.split(' ').map(n => n[0]).join('')}
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold">{TEAM.lead.name}</h3>
+            <p className="text-sm font-medium text-primary">{TEAM.lead.role}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{TEAM.lead.bio}</p>
+          </div>
+        </div>
+
+        {/* Departments */}
+        <div className="mt-6 grid gap-6 sm:grid-cols-3">
+          {TEAM.groups.map(g => (
+            <div key={g.name} className="rounded-2xl border border-border bg-card p-6">
+              <h3 className="text-lg font-semibold">{g.name}</h3>
+              <p className="text-sm font-medium text-primary">{g.role}</p>
+              <p className="mt-2 text-sm text-muted-foreground">{g.body}</p>
             </div>
           ))}
         </div>

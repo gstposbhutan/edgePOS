@@ -4,11 +4,12 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Mail, MessageCircle, MapPin, Check, Loader2 } from 'lucide-react'
+import { COMPANY } from '@/lib/marketing/content'
 
 const CHANNELS = [
-  { icon: Mail, title: 'Email', body: 'support@pelbu.com', href: 'mailto:support@pelbu.com' },
-  { icon: MessageCircle, title: 'WhatsApp', body: 'Chat with our team', href: 'https://wa.me/97517000000' },
-  { icon: MapPin, title: 'Bhutan', body: 'Thimphu, Bhutan', href: null },
+  { icon: Mail, title: 'Email', body: COMPANY.email, href: `mailto:${COMPANY.email}` },
+  { icon: MessageCircle, title: 'WhatsApp', body: COMPANY.phone, href: COMPANY.whatsapp },
+  { icon: MapPin, title: 'Office', body: COMPANY.address, href: null },
 ]
 
 export default function ContactPage() {
@@ -63,6 +64,8 @@ export default function ContactPage() {
               )
             })}
           </div>
+
+          <p className="mt-4 text-sm text-muted-foreground">{COMPANY.support}</p>
         </div>
 
         {/* Right: form */}

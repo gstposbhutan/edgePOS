@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { Logo } from '@/components/ui/logo'
-import { PILLARS } from '@/lib/marketing/content'
+import { PILLARS, COMPANY } from '@/lib/marketing/content'
 
 const COLS = [
   {
@@ -17,6 +17,7 @@ const COLS = [
       { label: 'Sell on Pelbu', href: '/sell' },
       { label: 'Contact', href: '/contact' },
       { label: 'Marketplace', href: '/shop' },
+      { label: 'Terms of Service', href: '/terms' },
     ],
   },
   {
@@ -57,8 +58,14 @@ export function MarketingFooter() {
           ))}
         </div>
         <div className="mt-10 flex flex-col items-start justify-between gap-2 border-t border-border pt-6 text-xs text-muted-foreground sm:flex-row sm:items-center">
-          <p>© {2026} Pelbu. Made in Bhutan.</p>
-          <p>5% GST 2026 compliant · Offline-first · WhatsApp-ready</p>
+          <p>
+            © {2026} Pelbu. Built by{' '}
+            <a href={COMPANY.website} target="_blank" rel="noreferrer" className="font-medium text-foreground hover:text-primary">
+              {COMPANY.name}
+            </a>
+            .
+          </p>
+          <p>5% GST 2026 compliant · Offline-first · Made in Bhutan</p>
         </div>
       </div>
     </footer>

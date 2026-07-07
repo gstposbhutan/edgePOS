@@ -2,6 +2,39 @@
 // /sell, /about, /contact). Kept as plain data so pages/components stay presentational.
 // Imagery lives in /public/marketing (AI-generated via scripts/gen-marketing-images.js).
 
+// Pelbu is built and operated by Innovates Bhutan. Details sourced from innovates.bt.
+export const COMPANY = {
+  name: 'Innovates Bhutan',
+  tagline: 'Complete IT solutions for Bhutan businesses',
+  blurb: 'Pelbu is built and operated by Innovates Bhutan — Bhutan’s premier IT solutions provider since 2012, and the country’s largest Rancelab ERP implementation partner. From enterprise software to networking, security and custom development, Innovates Bhutan serves businesses across all 20 dzongkhags.',
+  stats: [
+    { value: '2012', label: 'Serving Bhutan since' },
+    { value: '300+', label: 'Active clients' },
+    { value: '500+', label: 'Projects delivered' },
+    { value: '99%', label: 'Client satisfaction' },
+  ],
+  email: 'bhutaninnovates@gmail.com',
+  phone: '+975 17268753',
+  whatsapp: 'https://wa.me/97517268753',
+  address: 'Express Highway, next to Green Kitchen, Thimphu, Bhutan',
+  support: '24/7 support · response within 2 hours · all 20 dzongkhags',
+  website: 'https://innovates.bt',
+}
+
+// Team from innovates.bt/company/team (one named lead + department groups).
+export const TEAM = {
+  lead: {
+    name: 'Manish Sharma',
+    role: 'Founder & CEO',
+    bio: 'Visionary leader with 12+ years of expertise in enterprise technology solutions. Pioneered Rancelab ERP implementations across Bhutan.',
+  },
+  groups: [
+    { name: 'Technical Team', role: 'ERP & software specialists', body: 'Certified professionals in ERP, custom software development and enterprise system architecture.' },
+    { name: 'Infrastructure Team', role: 'Network & security engineers', body: 'Specialists in CCTV, networking infrastructure and enterprise security systems.' },
+    { name: 'Support Team', role: 'Customer success managers', body: 'A dedicated team available 24/7 to keep your operations running smoothly.' },
+  ],
+}
+
 export const NAV = [
   { label: 'Features', href: '/features' },
   { label: 'Sell on Pelbu', href: '/sell' },
