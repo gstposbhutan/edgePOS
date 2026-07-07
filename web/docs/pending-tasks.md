@@ -1,6 +1,31 @@
 # NEXUS BHUTAN — Open / Pending Tasks (session handoff)
 
-**Last updated:** 2026-06-09
+**Last updated:** 2026-07-07
+
+## Shipped since (2026-06 → 2026-07, on `feat/web-pos-ui-overhaul`, web live)
+- POS-core batch (web + desktop): optional shifts, invoice discount pre-GST, per-line rate tier,
+  per-line salesperson, **web weighed-goods full parity**. Desktop parity released **v1.1.4**.
+- Consumer marketplace: public/unauthenticated `/shop` + marketing, **featured-only catalog**,
+  vendor onboarding (per-vendor `delivery_mode` rider bypass), self-serve **Excel product import**,
+  manager **order cancel (full/partial) + stock return**. See `features/marketplace-vendor.md`.
+- **AI product enrichment** (z.ai/GLM): metadata + default images + video + **admin HSN-category
+  property templates**. See `features/product-ai-enrichment.md`.
+- **Email via SendGrid**: GoTrue auth mail + order receipts + vendor order/low-stock alerts
+  (`noreply@app.pelbu.com`, domain-authenticated `app.pelbu.com`).
+- WhatsApp gateway gained a **Twilio** provider (env-gated, parked pending creds); `MOCK_WHATSAPP` for OTP testing.
+
+## New follow-ups from this work
+- 🟠 **Production WhatsApp sender** — register a Twilio WhatsApp sender + approved templates (gateway ready).
+- 🟠 **Point `pelbu.com` DNS at the box**, then set `SITE_URL`/`API_EXTERNAL_URL` to the real domain
+  (email links + OTP redirects still use the `nip.io` staging host).
+- 🟢 Web-side barcode-label printing (label maker is desktop-only today).
+- 🟢 POS-counter low-stock alert trigger (low-stock email currently fires only on marketplace checkout).
+- 🟢 Delete the full-access SendGrid key (keep the restricted `mail.send` key); add a DMARC record.
+
+---
+_Original 2026-06-09 handoff below._
+
+**Original last updated:** 2026-06-09
 **Baseline:** `origin/main` @ `ad938b0` (+ local hygiene commits since).
 
 This session shipped (all on `main`): Supabase migration consolidation, super-admin + per-role

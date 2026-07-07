@@ -282,21 +282,36 @@ if (transaction_type === 'B2B') {
 - [x] Cloud → terminal provisioning bootstrap (/api/sync/bootstrap + doBootstrap)
 - [x] Weighed-goods checkout + Code128/EAN-13 barcode label maker
 - [x] Windows packaging: bundled pocketbase.exe (v0.37.3) + signed NSIS installer (electron:build:win)
-- [x] Manual + camera barcode scanning
+- [x] Manual + camera barcode scanning (camera scan is desktop-only; web reads keyboard-wedge scanners)
+- [x] POS-core batch (web + desktop, all live): optional cashier shifts; invoice discount pre-GST;
+      per-line rate tier (Retail/Wholesale/Distributor, retail default); per-line salesperson;
+      **web weighed-goods full parity** (numeric quantities + weigh modal — desktop already did it)
+- [x] Consumer marketplace: public (unauthenticated) `/shop` browse + marketing hero, checkout gated
+      behind WhatsApp-OTP login; **platform-curated catalog** (only admin-featured shops, `entities.is_featured`)
+- [x] Marketplace vendor onboarding (reuse RETAILER): per-vendor `delivery_mode` (Delivery/Pickup/None →
+      rider bypass); self-serve **Excel product+opening-stock import** (exceljs template + validating importer);
+      manager **order cancel (full/partial) with stock-return**
+- [x] AI product enrichment via **z.ai / GLM** (glm-5.2 + cogview): metadata (desc/category/subcategory/
+      condition/brand/tags/HSN + category-appropriate specs), default catalog images, video link;
+      **admin-managed HSN-category custom-property templates** (`/admin/property-templates`)
+- [x] Transactional **email via SendGrid** (GoTrue SMTP for auth mail; order receipts + vendor
+      order/low-stock alerts from `noreply@app.pelbu.com`)
+- [x] WhatsApp gateway (Meta Cloud API) — OTP + receipts + stock alerts; **Twilio provider added**
+      (env-gated, preferred when set); dormant until creds
 
 ### 🔄 IN PROGRESS / PARTIAL
 - [ ] Per-role scoped RLS for distributor/wholesaler (base RLS done; scoped policies pending)
 - [ ] Distributor/wholesaler favourites + warehouse management (landing consoles exist)
-- [ ] Web touch-POS weighed-checkout parity (desktop done)
 - [ ] Sync follow-ups: signature verify on ingest, synced credit-sale khata balance, shifts sync
-- [ ] Desktop installer hardening: Authenticode signing + single-instance lock
+- [ ] Desktop installer hardening: Authenticode signing (single-instance lock done)
 
 ### ⏳ PENDING (not started)
 - [ ] YOLO26 ONNX vision / product recognition
 - [ ] Face-ID customer recognition (opt-in)
 - [ ] Banking API integration (mBoB/mPay) — replaces OCR payment verification
-- [ ] WhatsApp gateway (PDF receipts, restock alerts)
+- [ ] Production WhatsApp sender (Twilio sender registration + approved templates) — gateway ready, creds/approval pending
 - [ ] Predictive restocking + last-mile logistics integrations
+- [ ] Web-side barcode-label printing (label maker is desktop-only); POS-counter low-stock alert trigger
 
 > Full open/pending list: `web/docs/pending-tasks.md`.
 
@@ -446,10 +461,14 @@ module.exports = {
 
 ---
 
-**Last Updated**: 2026-06-09  
-**Architecture Version**: 1.1  
-**Status**: Retailer terminal (licensing + provisioning + offline POS) + platform consoles shipped; vision AI + banking/WhatsApp pending  
-**Next Milestone**: production rollout — apply prod migrations, set cloud URLs, sign the installer (see `web/docs/pending-tasks.md`)
+**Last Updated**: 2026-07-07  
+**Architecture Version**: 1.2  
+**Status**: Retailer terminal (offline POS + hardware) + platform consoles shipped; POS-core batch complete
+(shifts/discount/rate-per-line/salesperson-per-line/weighed); consumer marketplace live (public browse,
+featured catalog, vendor onboarding + pickup mode + Excel import + order cancel); AI product enrichment
+(z.ai/GLM) + SendGrid email live. Vision AI + banking + production WhatsApp sender pending.  
+**Next Milestone**: production rollout — apply prod migrations, point `pelbu.com` DNS at the box + set
+cloud URLs/SITE_URL, register a production WhatsApp sender, sign the installer (see `web/docs/pending-tasks.md`)
 
 
 # IMPORTANT: 
