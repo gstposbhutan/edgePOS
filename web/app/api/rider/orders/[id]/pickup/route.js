@@ -1,13 +1,11 @@
 import { NextResponse } from 'next/server'
-import { getAuthContext } from '@/lib/supabase/server'
-
-function generateOtp() {
-  return String(Math.floor(100000 + Math.random() * 900000))
-}
+import { getRiderContext } from '@/lib/supabase/server'
+import { generateOtp } from '@/lib/riders/dispatch'
+import { sendEmail, entityContactEmail } from '@/lib/email/notify'
 
 export async function POST(request, { params }) {
   try {
-    const ctx = await getAuthContext()
+    const ctx = await getRiderContext()
     if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id: orderId } = await params
@@ -29,7 +27,7 @@ export async function POST(request, { params }) {
 
     const { data: order } = await supabase
       .from('orders')
-      .select('id, order_no, status, pickup_otp, pickup_otp_expires_at, buyer_whatsapp, rider_id')
+      .select('id, order_no, status, pickup_otp, pickup_otp_expires_at, buyer_whatsapp, buyer_id, rider_id')
       .eq('id', orderId)
       .single()
 
@@ -63,7 +61,8 @@ export async function POST(request, { params }) {
       })
       .eq('id', orderId)
 
-    // Send delivery OTP to customer
+    // Deliver the delivery code to the customer on every channel: WhatsApp (parked), an in-app
+    // notification (always — visible even with a placeholder email), and email (real inboxes).
     const gatewayUrl = process.env.NEXT_PUBLIC_WHATSAPP_GATEWAY_URL || 'http://localhost:3001'
     if (order.buyer_whatsapp) {
       fetch(`${gatewayUrl}/api/send-delivery-otp`, {
@@ -76,6 +75,23 @@ export async function POST(request, { params }) {
           riderName: rider.name,
         }),
       }).catch(() => {})
+    }
+    if (order.buyer_id) {
+      ;(async () => {
+        await supabase.from('notifications').insert({
+          entity_id: order.buyer_id,
+          type: 'ORDER',
+          title: `Delivery code for ${order.order_no}: ${deliveryOtp}`,
+          body: `${rider.name} is on the way with order ${order.order_no}. Give them this code at your door: ${deliveryOtp}`,
+          link: `/shop/orders/${order.id}`,
+        })
+        const customerEmail = await entityContactEmail(supabase, order.buyer_id)
+        if (customerEmail) await sendEmail(
+          customerEmail,
+          `Your delivery code for order ${order.order_no}`,
+          `${rider.name} is on the way with order ${order.order_no}.\nDelivery code: ${deliveryOtp}\n\nIt also appears on your order page.`,
+        )
+      })().catch(() => {})
     }
 
     return NextResponse.json({ success: true })

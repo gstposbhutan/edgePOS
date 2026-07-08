@@ -2,56 +2,7 @@ import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/supabase/server'
 import { createHash, randomBytes } from 'node:crypto'
 import { notifyEntity } from '@/lib/email/notify'
-
-async function assignRider(supabase, orderId, order) {
-  try {
-    const { data: riders } = await supabase
-      .from('riders')
-      .select('id, name, whatsapp_no')
-      .eq('is_active', true)
-      .eq('is_available', true)
-      .is('current_order_id', null)
-      .order('created_at', { ascending: true })
-      .limit(1)
-
-    const rider = riders?.[0]
-    if (!rider) return
-
-    const pickupOtp = String(Math.floor(100000 + Math.random() * 900000))
-    const pickupOtpExpiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
-
-    await supabase
-      .from('orders')
-      .update({
-        rider_id:              rider.id,
-        rider_accepted_at:     new Date().toISOString(),
-        pickup_otp:            pickupOtp,
-        pickup_otp_expires_at: pickupOtpExpiresAt,
-      })
-      .eq('id', orderId)
-
-    await supabase
-      .from('riders')
-      .update({ is_available: false, current_order_id: orderId })
-      .eq('id', rider.id)
-
-    const gatewayUrl = process.env.NEXT_PUBLIC_WHATSAPP_GATEWAY_URL || 'http://localhost:3001'
-    if (order.seller_whatsapp) {
-      fetch(`${gatewayUrl}/api/send-pickup-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          vendorPhone: order.seller_whatsapp,
-          orderNo:     order.order_no,
-          riderName:   rider.name,
-          pickupOtp,
-        }),
-      }).catch(() => {})
-    }
-  } catch (err) {
-    console.error('[checkout/assignRider]', err.message)
-  }
-}
+import { assignOrderToRider } from '@/lib/riders/dispatch'
 
 export async function POST(request) {
   try {
@@ -206,13 +157,10 @@ export async function POST(request) {
           }))
         )
 
-        // Auto-assign an available rider only when this vendor delivers. Pickup-only vendors
-        // skip the rider flow entirely — the buyer collects the order in person.
+        // Push to the least-loaded on-shift rider (even + location-aware). Pickup-only vendors skip
+        // the rider flow entirely — the buyer collects the order in person.
         if (isDelivery) {
-          assignRider(supabase, order.id, {
-            order_no:       order.order_no,
-            seller_whatsapp: vendor.whatsapp_no,
-          })
+          await assignOrderToRider(supabase, order.id)
         }
 
         createdOrders.push({

@@ -94,3 +94,32 @@ export async function getAuthContext() {
     userClient: supabase,
   }
 }
+
+// Auth context for the RIDER portal. Riders are NOT entities (no user_profiles/entity_id row), so
+// they authenticate purely by session → riders row (matched on auth_user_id). Returns null for a
+// missing session, a non-rider user, or a deactivated rider.
+export async function getRiderContext() {
+  const supabase = await createClient()
+  if (!supabase) return null
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const serviceClient = createServiceClient()
+  if (!serviceClient) return null
+
+  const { data: rider } = await serviceClient
+    .from('riders')
+    .select('id, name, whatsapp_no, is_active, is_available, auth_email, email_notifications_enabled')
+    .eq('auth_user_id', user.id)
+    .maybeSingle()
+
+  const r = rider as unknown as { is_active: boolean } | null
+  if (!r || !r.is_active) return null
+
+  return {
+    userId: user.id,
+    rider,
+    supabase: serviceClient,
+    userClient: supabase,
+  }
+}

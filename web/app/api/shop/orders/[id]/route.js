@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/supabase/server'
+import { assignOrderToRider } from '@/lib/riders/dispatch'
 
 const VENDOR_TRANSITIONS = {
   CONFIRMED:  ['PROCESSING', 'CANCELLED'],
@@ -7,70 +8,6 @@ const VENDOR_TRANSITIONS = {
   // Fallback only — when Toofan not yet integrated:
   DISPATCHED: ['DELIVERED'],
   DELIVERED:  ['COMPLETED'],
-}
-
-function generateOtp() {
-  return String(Math.floor(100000 + Math.random() * 900000))
-}
-
-// Auto-assign the first available active rider, generate pickup OTP, notify vendor
-async function assignRider(supabase, orderId, order, actorId) {
-  try {
-    // Pick the first available active rider not currently on a delivery
-    const { data: riders } = await supabase
-      .from('riders')
-      .select('id, name, whatsapp_no')
-      .eq('is_active', true)
-      .eq('is_available', true)
-      .is('current_order_id', null)
-      .order('created_at', { ascending: true })
-      .limit(1)
-
-    const rider = riders?.[0]
-    if (!rider) return // no riders available — order stays in PROCESSING until one is free
-
-    const pickupOtp = generateOtp()
-    const pickupOtpExpiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
-
-    // Assign rider + pickup OTP atomically
-    await supabase
-      .from('orders')
-      .update({
-        rider_id:              rider.id,
-        rider_accepted_at:     new Date().toISOString(),
-        pickup_otp:            pickupOtp,
-        pickup_otp_expires_at: pickupOtpExpiresAt,
-      })
-      .eq('id', orderId)
-
-    await supabase
-      .from('riders')
-      .update({ is_available: false, current_order_id: orderId })
-      .eq('id', rider.id)
-
-    // Send pickup OTP to vendor via WhatsApp (fire-and-forget)
-    const gatewayUrl = process.env.NEXT_PUBLIC_WHATSAPP_GATEWAY_URL || 'http://localhost:3001'
-    const { data: vendor } = await supabase
-      .from('entities')
-      .select('whatsapp_no')
-      .eq('id', order.seller_id)
-      .single()
-
-    if (vendor?.whatsapp_no) {
-      fetch(`${gatewayUrl}/api/send-pickup-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          vendorPhone: vendor.whatsapp_no,
-          orderNo:     order.order_no,
-          riderName:   rider.name,
-          pickupOtp,
-        }),
-      }).catch(() => {})
-    }
-  } catch (err) {
-    console.error('[assignRider]', err.message)
-  }
 }
 
 // GET — customer views their own order detail, OR vendor views their own order
@@ -86,7 +23,7 @@ export async function GET(request, { params }) {
       .from('orders')
       .select(`
         id, order_no, order_type, order_source, status, grand_total, gst_total, subtotal,
-        payment_method, delivery_address, delivery_lat, delivery_lng,
+        payment_method, delivery_address, delivery_lat, delivery_lng, fulfilment_mode, dispatch_state,
         buyer_whatsapp, created_at, updated_at, completed_at, cancelled_at,
         seller_id, buyer_id, delivery_otp,
         seller:entities!seller_id(id, name, tpn_gstin, whatsapp_no)
@@ -191,9 +128,10 @@ export async function PATCH(request, { params }) {
     const gatewayUrl = process.env.NEXT_PUBLIC_WHATSAPP_GATEWAY_URL || 'http://localhost:3001'
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
-    // On PROCESSING or CONFIRMED: auto-assign an available rider
+    // On PROCESSING or CONFIRMED: push to the least-loaded on-shift rider (delivery orders only;
+    // the dispatch lib no-ops for pickup orders and when the order already has a rider).
     if (newStatus === 'PROCESSING' || newStatus === 'CONFIRMED') {
-      await assignRider(supabase, id, order, userId)
+      await assignOrderToRider(supabase, id)
     }
 
     // On DELIVERED (vendor fallback): send payment link to customer

@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
-import { getAuthContext } from '@/lib/supabase/server'
+import { getRiderContext } from '@/lib/supabase/server'
 
 export async function POST(request, { params }) {
   try {
-    const ctx = await getAuthContext()
+    const ctx = await getRiderContext()
     if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id: orderId } = await params
@@ -54,11 +54,8 @@ export async function POST(request, { params }) {
       })
       .eq('id', orderId)
 
-    // Free up rider
-    await supabase
-      .from('riders')
-      .update({ is_available: true, current_order_id: null })
-      .eq('id', rider.id)
+    // Rider stays on shift and keeps working the rest of their queue — delivering one order no
+    // longer flips availability (queue model).
 
     // Send payment link to customer
     const gatewayUrl = process.env.NEXT_PUBLIC_WHATSAPP_GATEWAY_URL || 'http://localhost:3001'
