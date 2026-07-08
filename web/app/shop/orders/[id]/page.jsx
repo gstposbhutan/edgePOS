@@ -1,8 +1,8 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { ArrowLeft, Store, CreditCard, MapPin, KeyRound, Truck } from "lucide-react"
+import { ArrowLeft, Store, CreditCard, MapPin, KeyRound, Truck, AlertTriangle, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { OrderStatusBadge } from "@/components/pos/orders/order-status-badge"
@@ -13,10 +13,27 @@ export default function ShopOrderDetailPage() {
   const params = useParams()
   const router = useRouter()
   const { orderDetail, loading, error, fetchOrderDetail } = useShopOrders()
+  const [cancelling, setCancelling] = useState(false)
+  const [cancelError, setCancelError] = useState(null)
 
   useEffect(() => {
     if (params.id) fetchOrderDetail(params.id)
   }, [params.id, fetchOrderDetail])
+
+  async function handleCancel(orderId) {
+    if (!window.confirm('Cancel this order? This cannot be undone.')) return
+    setCancelling(true); setCancelError(null)
+    try {
+      const res = await fetch(`/api/shop/orders/${orderId}/cancel`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) { setCancelError(data.error || 'Could not cancel'); return }
+      await fetchOrderDetail(orderId)
+    } catch (err) {
+      setCancelError(err.message)
+    } finally {
+      setCancelling(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -61,6 +78,33 @@ export default function ShopOrderDetailPage() {
       </header>
 
       <main className="max-w-2xl mx-auto px-4 py-6 space-y-6">
+        {/* Dispatch state — finding a rider / undeliverable, with a cancel option */}
+        {order.fulfilment_mode !== 'PICKUP' && ['CONFIRMED', 'PROCESSING'].includes(order.status) && (
+          <div className={`p-4 rounded-xl border space-y-3 ${
+            order.dispatch_state === 'UNDELIVERABLE'
+              ? 'bg-tibetan/10 border-tibetan/30'
+              : 'bg-amber-500/10 border-amber-500/30'
+          }`}>
+            <div className="flex items-start gap-2">
+              <AlertTriangle className={`h-5 w-5 shrink-0 mt-0.5 ${order.dispatch_state === 'UNDELIVERABLE' ? 'text-tibetan' : 'text-amber-600'}`} />
+              <div className="text-sm">
+                {order.dispatch_state === 'UNDELIVERABLE'
+                  ? <p><strong>No delivery rider is available right now.</strong> You can cancel this order, or wait — we'll keep trying as riders come online.</p>
+                  : <p>We're finding a delivery rider for your order.</p>}
+              </div>
+            </div>
+            {cancelError && <p className="text-xs text-tibetan">{cancelError}</p>}
+            <Button
+              variant={order.dispatch_state === 'UNDELIVERABLE' ? 'destructive' : 'outline'}
+              size="sm"
+              onClick={() => handleCancel(order.id)}
+              disabled={cancelling}
+            >
+              {cancelling ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Cancelling…</> : 'Cancel order'}
+            </Button>
+          </div>
+        )}
+
         {/* Pay Now CTA — shown only when DELIVERED */}
         {order.status === 'DELIVERED' && payUrl && (
           <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-3">
