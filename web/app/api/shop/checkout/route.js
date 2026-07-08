@@ -27,11 +27,13 @@ export async function POST(request) {
     // Get customer's entity record (id = auth user id per migration 041)
     const { data: customerEntity } = await supabase
       .from('entities')
-      .select('id')
+      .select('id, name')
       .eq('id', userId)
       .single()
 
     const buyerId = customerEntity?.id ?? null
+    const customerEmail = user?.email || null
+    const customerName = customerEntity?.name || user?.user_metadata?.name || 'Customer'
 
     // Fetch all active carts with items
     const { data: carts, error: cartsError } = await supabase
@@ -185,10 +187,38 @@ export async function POST(request) {
         }).catch(() => {})
 
         // Notifications: always in-app; emailed only if the recipient opted in (email off by default).
+        // Make the owner/manager order email self-contained: full customer + fulfilment + item detail.
+        const itemLines = cart.items
+          .map(i => `• ${i.name} × ${i.quantity} — Nu. ${parseFloat(i.total).toFixed(2)}`)
+          .join('\n')
+        const mapLink = (isDelivery && delivery_lat != null && delivery_lng != null)
+          ? `\n  Map: https://maps.google.com/?q=${delivery_lat},${delivery_lng}` : ''
+        const fulfilmentLine = isDelivery
+          ? `Deliver to: ${delivery_address}${mapLink}`
+          : 'Pickup — customer collects at store'
+        const orderBody = [
+          `New ${isDelivery ? 'delivery' : 'pickup'} order ${order.order_no}`,
+          '',
+          'Customer',
+          `  Name:  ${customerName}`,
+          `  Phone: ${customerPhone}`,
+          `  Email: ${customerEmail || '—'}`,
+          '',
+          fulfilmentLine,
+          'Payment: CREDIT (pay on delivery)',
+          '',
+          'Items',
+          itemLines,
+          '',
+          `Subtotal: Nu. ${subtotal.toFixed(2)}`,
+          `GST (5%): Nu. ${gstTotal.toFixed(2)}`,
+          `Total:    Nu. ${grandTotal.toFixed(2)}`,
+        ].join('\n')
+
         await notifyEntity(supabase, cart.entity_id, {
           type: 'ORDER',
           title: `New ${isDelivery ? 'delivery' : 'pickup'} order ${order.order_no} — Nu. ${grandTotal.toFixed(2)}`,
-          body: `${cart.items.length} item(s) · Nu. ${grandTotal.toFixed(2)} incl. 5% GST · ${isDelivery ? 'Delivery' : 'Pickup'}`,
+          body: orderBody,
           link: `/pos/orders/${order.id}`,
         })
 
