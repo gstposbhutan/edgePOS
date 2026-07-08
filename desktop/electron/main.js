@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, dialog, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, Tray, Menu, dialog, shell, Notification } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { launchPocketBase, PB_URL } = require("./pb-launcher");
@@ -26,6 +26,8 @@ let syncDebounce = null;
 let syncConfig = null;
 let pbDataDir = null;
 let lastSyncAt = null; // ISO time of the last successful push/pull — drives the renderer sync nudge
+let onlineOrdersInterval = null;
+let onlineOrdersPrimed = false; // suppress the notification storm on the first poll after launch
 
 function getResourcePath(...segments) {
   if (isDev) return path.join(__dirname, "..", ...segments);
@@ -621,15 +623,22 @@ ipcMain.handle("sync:start", (_, config) => {
   // restart (near-live pull). Longer cadence than the push — the bootstrap is bulkier.
   if (bootstrapInterval) clearInterval(bootstrapInterval);
   bootstrapInterval = setInterval(() => doBootstrap().catch(() => {}), 15 * 60 * 1000);
+  // Poll this store's online (marketplace) orders so they surface + notify on the terminal.
+  onlineOrdersPrimed = false;
+  if (onlineOrdersInterval) clearInterval(onlineOrdersInterval);
+  onlineOrdersInterval = setInterval(() => pollOnlineOrders().catch(() => {}), 45 * 1000);
+  pollOnlineOrders().catch(() => {});
   return true;
 });
 
 ipcMain.handle("sync:stop", () => {
   if (syncInterval) clearInterval(syncInterval);
   if (bootstrapInterval) clearInterval(bootstrapInterval);
+  if (onlineOrdersInterval) clearInterval(onlineOrdersInterval);
   if (syncDebounce) clearTimeout(syncDebounce);
   syncInterval = null;
   bootstrapInterval = null;
+  onlineOrdersInterval = null;
   syncDebounce = null;
   return true;
 });
@@ -648,6 +657,103 @@ function scheduleSync(delayMs = 1500) {
   syncDebounce = setTimeout(() => { syncDebounce = null; doSync().catch(() => {}); }, delayMs);
 }
 ipcMain.handle("sync:schedule", () => { scheduleSync(); return true; });
+
+// ── Online (marketplace) orders: pull this store's orders from the cloud for in-store management ──
+// The terminal is authenticated by the same per-terminal token as the sync. We mirror the store's
+// active online orders into local PB `online_orders` so the shopkeeper can manage them + read the
+// rider the pickup OTP, and the last-known list survives a brief outage.
+
+// The order endpoints share the ingest origin: …/api/sync/ingest -> …/api/sync/<suffix>.
+function deriveSyncUrl(suffix) {
+  if (!syncConfig || !syncConfig.remoteUrl) return null;
+  return syncConfig.remoteUrl.includes("/api/sync/")
+    ? syncConfig.remoteUrl.replace(/\/api\/sync\/[^/]+\/?$/, `/api/sync/${suffix}`)
+    : syncConfig.remoteUrl.replace(/\/$/, "") + `/api/sync/${suffix}`;
+}
+
+async function pollOnlineOrders() {
+  if (!syncConfig || !syncConfig.remoteUrl || !syncConfig.apiKey) return;
+  const ordersUrl = deriveSyncUrl("orders");
+  const token = syncConfig.apiKey;
+  const localUrl = syncConfig.pbUrl || PB_URL;
+  try {
+    const res = await fetch(ordersUrl, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) return; // offline / not configured — keep the last-known local mirror
+    const orders = (await res.json()).orders || [];
+
+    const authToken = await syncLocalAuth(localUrl);
+    const jsonAuth = { "Content-Type": "application/json", Authorization: authToken };
+
+    const existRes = await fetch(`${localUrl}/api/collections/online_orders/records?perPage=500`, { headers: { Authorization: authToken } });
+    const existing = existRes.ok ? (await existRes.json()).items || [] : [];
+    const localByCloud = new Map(existing.map((r) => [r.cloud_id, r]));
+
+    const cloudIds = new Set();
+    const freshOrders = [];
+
+    for (const o of orders) {
+      cloudIds.add(o.cloud_id);
+      const payload = {
+        cloud_id: o.cloud_id, order_no: o.order_no, status: o.status,
+        dispatch_state: o.dispatch_state || "", fulfilment_mode: o.fulfilment_mode || "",
+        grand_total: o.grand_total || 0, gst_total: o.gst_total || 0, subtotal: o.subtotal || 0,
+        items: o.items || [], customer_name: o.customer_name || "", customer_phone: o.customer_phone || "",
+        customer_email: o.customer_email || "", delivery_address: o.delivery_address || "",
+        delivery_lat: o.delivery_lat ?? null, delivery_lng: o.delivery_lng ?? null,
+        pickup_otp: o.pickup_otp || "", rider_name: o.rider_name || "", created_at_cloud: o.created_at || "",
+      };
+      const local = localByCloud.get(o.cloud_id);
+      if (local) {
+        await fetch(`${localUrl}/api/collections/online_orders/records/${local.id}`, { method: "PATCH", headers: jsonAuth, body: JSON.stringify(payload) }).catch(() => {});
+      } else {
+        await fetch(`${localUrl}/api/collections/online_orders/records`, { method: "POST", headers: jsonAuth, body: JSON.stringify(payload) }).catch(() => {});
+        freshOrders.push(o); // not previously mirrored → genuinely new
+      }
+    }
+
+    // Prune rows no longer active in the cloud (delivered/cancelled).
+    for (const r of existing) {
+      if (!cloudIds.has(r.cloud_id)) {
+        await fetch(`${localUrl}/api/collections/online_orders/records/${r.id}`, { method: "DELETE", headers: { Authorization: authToken } }).catch(() => {});
+      }
+    }
+
+    // Notify only after the first poll has primed the mirror (avoids a startup storm on a fresh box).
+    if (onlineOrdersPrimed && freshOrders.length) {
+      const one = freshOrders.length === 1;
+      const title = one ? "New online order" : `${freshOrders.length} new online orders`;
+      const body = one
+        ? `${freshOrders[0].order_no} — Nu. ${Number(freshOrders[0].grand_total || 0).toFixed(2)}${freshOrders[0].customer_name ? " · " + freshOrders[0].customer_name : ""}`
+        : freshOrders.map((o) => o.order_no).join(", ");
+      try { if (Notification.isSupported()) new Notification({ title, body }).show(); } catch (_) { /* headless */ }
+      mainWindow?.webContents.send("online-orders:new", { count: freshOrders.length });
+    }
+    onlineOrdersPrimed = true;
+    mainWindow?.webContents.send("online-orders:changed", { count: orders.length });
+  } catch (_) {
+    // network error — keep the local mirror as-is
+  }
+}
+
+async function onlineOrderAction(id, action, reason) {
+  if (!syncConfig || !syncConfig.remoteUrl || !syncConfig.apiKey) return { ok: false, error: "Sync not configured" };
+  try {
+    const res = await fetch(`${deriveSyncUrl("orders")}/${id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${syncConfig.apiKey}` },
+      body: JSON.stringify({ action, reason: reason || null }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, error: data.error || `HTTP ${res.status}` };
+    await pollOnlineOrders(); // reflect the change in the local mirror immediately
+    return { ok: true, status: data.status };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+ipcMain.handle("online-orders:action", (_, { id, action, reason }) => onlineOrderAction(id, action, reason));
+ipcMain.handle("online-orders:refresh", () => pollOnlineOrders());
 
 // ── App Lifecycle ───────────────────────────────────────────────────────────
 

@@ -11,6 +11,7 @@ import { useProducts, type Product } from "@/hooks/use-products";
 import { useCart } from "@/hooks/use-cart";
 import { useFavorites } from "@/hooks/use-favorites";
 import { useLayoutPreset } from "@/hooks/use-layout-preset";
+import { useOnlineOrders } from "@/hooks/use-online-orders";
 import { useCustomers } from "@/hooks/use-customers";
 import type { Customer } from "@/hooks/use-customers";
 import { getPB } from "@/lib/pb-client";
@@ -59,6 +60,7 @@ import {
   FileBarChart,
   Clock,
   ShoppingCart,
+  ShoppingBag,
   ArrowRight,
   Sun,
   Moon,
@@ -117,6 +119,16 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
   const { heldCarts, loadHeld, holdCart, recallCart, discardHeld } = useHeldCarts();
   const undoStack = useUndo();
   const { layoutPreset, setLayout } = useLayoutPreset();
+  const { orders: onlineOrders } = useOnlineOrders();
+
+  // Toast on a new online order (the native OS notification is fired by the main process).
+  useEffect(() => {
+    const api = (window as unknown as { electronAPI?: { onlineOrders?: { onNew?: (cb: (d: { count?: number }) => void) => () => void } } }).electronAPI;
+    return api?.onlineOrders?.onNew?.((d) => {
+      const n = d?.count || 1;
+      toast(n === 1 ? "New online order" : `${n} new online orders`, { description: "Open Online Orders to manage." });
+    });
+  }, []);
 
   const { theme, setTheme } = useTheme();
   const isDark = theme === "dark";
@@ -837,9 +849,20 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
 
         <div className="flex items-center gap-0.5">
           <div className="hidden md:flex items-center gap-0.5">
-            {/* Desktop is strictly the POS register — catalog/inventory/purchasing/order-history
-                live in the web back-office. Only counter/till functions remain here: customer +
-                khata (cashier) and cash-in/out (manager/owner). */}
+            {/* Counter/till + online-order management. Catalog/inventory/purchasing/order-history
+                still live in the web back-office; here we handle customer + khata (cashier),
+                cash-in/out (manager/owner), and incoming online (marketplace) orders. */}
+            <Link href="/online-orders">
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
+                <ShoppingBag className="h-4 w-4 mr-1.5" />
+                Online
+                {onlineOrders.length > 0 && (
+                  <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold h-4 min-w-4 px-1">
+                    {onlineOrders.length}
+                  </span>
+                )}
+              </Button>
+            </Link>
             <Link href="/customers">
               <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
                 <Users className="h-4 w-4 mr-1.5" />

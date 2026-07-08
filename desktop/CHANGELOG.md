@@ -5,6 +5,22 @@ Offline-first Electron + PocketBase retail terminal. Versions are the
 (`/api/desktop/releases/latest`); release notes are also entered in the
 admin **Releases** console at publish time.
 
+## 1.3.0 — Online order management on the terminal
+- **Incoming online (marketplace) orders now surface on the terminal** — a new
+  **Online Orders** screen (and toolbar badge) lists this store's marketplace
+  orders, pulled from the cloud with the terminal's own sync token.
+- **Native new-order notifications** — the terminal pops an OS notification when
+  a new online order arrives (polled ~45s; the debounced sales push is separate).
+- **Rider pickup-OTP sharing** — each order shows the pickup code to read to the
+  rider at collection, plus the rider's name and dispatch state (finding a
+  rider / no rider available / out for delivery).
+- **Confirm / cancel from the counter** — the shopkeeper can confirm an order
+  (→ Processing, which assigns a rider) or cancel it (with a reason), scoped to
+  their own store; mirrors the web vendor actions.
+- **Offline-resilient** — orders are mirrored into local PocketBase
+  (`online_orders`, PB migration 017), so the last-known list + OTPs stay
+  visible during a brief internet outage.
+
 ## 1.2.0 — Sales Order vs Quotation
 - **Save as draft now offers both** — Alt+Q lets the cashier save the cart as a
   committed **Sales Order** or a non-binding **Quotation** (both DRAFT
