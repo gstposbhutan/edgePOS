@@ -1,38 +1,19 @@
 "use client"
 
-import { useState } from "react"
-import { ArrowLeft, Loader2 } from "lucide-react"
+import { useEffect, useState } from "react"
+import { ArrowLeft, Mail, ShieldCheck } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 
 export default function RiderProfilePage() {
-  const [currentPin, setCurrentPin] = useState('')
-  const [newPin,     setNewPin]     = useState('')
-  const [loading,    setLoading]    = useState(false)
-  const [message,    setMessage]    = useState(null)
-  const [error,      setError]      = useState(null)
+  const [rider, setRider] = useState(null)
 
-  async function handleChangePin(e) {
-    e.preventDefault()
-    if (newPin.length < 4) { setError('PIN must be at least 4 digits'); return }
-    setLoading(true); setError(null); setMessage(null)
-    try {
-      const res = await fetch('/api/rider/profile/pin', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ current_pin: currentPin, new_pin: newPin }),
-      })
-      const data = await res.json()
-      if (!res.ok) { setError(data.error); return }
-      setMessage('PIN changed successfully')
-      setCurrentPin(''); setNewPin('')
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
+  useEffect(() => {
+    fetch('/api/rider/orders')
+      .then(r => r.json())
+      .then(d => setRider(d.rider || null))
+      .catch(() => {})
+  }, [])
 
   return (
     <div className="min-h-screen bg-background">
@@ -43,23 +24,22 @@ export default function RiderProfilePage() {
         <h1 className="font-semibold">Profile</h1>
       </header>
 
-      <main className="max-w-md mx-auto px-4 py-6">
-        <form onSubmit={handleChangePin} className="space-y-4">
-          <h2 className="text-sm font-semibold">Change PIN</h2>
-          <div className="space-y-1.5">
-            <label className="text-sm text-muted-foreground">Current PIN</label>
-            <Input type="password" inputMode="numeric" value={currentPin} onChange={e => setCurrentPin(e.target.value)} maxLength={6} required />
+      <main className="max-w-md mx-auto px-4 py-6 space-y-4">
+        {rider && (
+          <div className="border border-border rounded-xl p-4">
+            <p className="text-lg font-semibold">{rider.name}</p>
           </div>
-          <div className="space-y-1.5">
-            <label className="text-sm text-muted-foreground">New PIN (4–6 digits)</label>
-            <Input type="password" inputMode="numeric" value={newPin} onChange={e => setNewPin(e.target.value)} maxLength={6} required />
+        )}
+
+        <div className="border border-border rounded-xl p-4 space-y-3">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <ShieldCheck className="h-4 w-4 text-primary" /> How you sign in
           </div>
-          {error   && <p className="text-sm text-tibetan">{error}</p>}
-          {message && <p className="text-sm text-emerald-600">{message}</p>}
-          <Button type="submit" disabled={loading} className="w-full">
-            {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Updating...</> : 'Update PIN'}
-          </Button>
-        </form>
+          <div className="flex items-start gap-2 text-sm text-muted-foreground">
+            <Mail className="h-4 w-4 mt-0.5 shrink-0" />
+            <p>You sign in with your email. A fresh 6-digit code is emailed each time — there's no password to remember. To change your email, contact your admin.</p>
+          </div>
+        </div>
       </main>
     </div>
   )

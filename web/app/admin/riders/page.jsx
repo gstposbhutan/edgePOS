@@ -9,13 +9,13 @@ import { UserPlus, Bike, ToggleLeft, ToggleRight, X, Loader2, Bell, BellOff } fr
 
 function AddRiderModal({ open, onClose, onAdded }) {
   const [name,    setName]    = useState('')
+  const [email,   setEmail]   = useState('')
   const [phone,   setPhone]   = useState('')
-  const [pin,     setPin]     = useState('')
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState(null)
 
   useEffect(() => {
-    if (!open) { setName(''); setPhone(''); setPin(''); setError(null) }
+    if (!open) { setName(''); setEmail(''); setPhone(''); setError(null) }
   }, [open])
 
   async function handleSubmit(e) {
@@ -25,7 +25,7 @@ function AddRiderModal({ open, onClose, onAdded }) {
       const res = await fetch('/api/admin/riders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, whatsapp_no: phone, pin }),
+        body: JSON.stringify({ name, email, whatsapp_no: phone }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error); return }
@@ -54,13 +54,14 @@ function AddRiderModal({ open, onClose, onAdded }) {
             <Input value={name} onChange={e => setName(e.target.value)} placeholder="Rider name" required />
           </div>
           <div className="space-y-1">
-            <label className="text-sm font-medium">WhatsApp Number</label>
-            <Input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+975 17 123 456" required />
+            <label className="text-sm font-medium">Email</label>
+            <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="rider@example.com" required />
+            <p className="text-xs text-muted-foreground">Used to sign in — a login code is emailed each time.</p>
           </div>
           <div className="space-y-1">
-            <label className="text-sm font-medium">Initial PIN (4–6 digits)</label>
-            <Input type="password" inputMode="numeric" value={pin} onChange={e => setPin(e.target.value)} maxLength={6} placeholder="Set a PIN" required />
-            <p className="text-xs text-muted-foreground">Rider can change this from their profile.</p>
+            <label className="text-sm font-medium">Phone Number</label>
+            <Input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+975 17 123 456" required />
+            <p className="text-xs text-muted-foreground">Must be unique across all users (used for WhatsApp/contact).</p>
           </div>
           {error && <p className="text-sm text-tibetan">{error}</p>}
           <div className="flex gap-2 pt-1">
@@ -118,7 +119,7 @@ export default function AdminRidersPage() {
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6">
+    <div className="p-6 max-w-5xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold flex items-center gap-2"><Bike className="h-5 w-5" /> Riders</h1>
@@ -135,14 +136,16 @@ export default function AdminRidersPage() {
           <p className="text-sm">No riders yet. Add the first one.</p>
         </div>
       ) : (
-        <div className="border border-border rounded-xl overflow-hidden">
+        <div className="border border-border rounded-xl overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/30 text-xs text-muted-foreground">
                 <th className="text-left px-4 py-3 font-medium">Name</th>
-                <th className="text-left px-4 py-3 font-medium">WhatsApp</th>
+                <th className="text-left px-4 py-3 font-medium">Email</th>
+                <th className="text-left px-4 py-3 font-medium">Phone</th>
                 <th className="text-left px-4 py-3 font-medium">Status</th>
-                <th className="text-left px-4 py-3 font-medium">Availability</th>
+                <th className="text-left px-4 py-3 font-medium">Shift</th>
+                <th className="text-left px-4 py-3 font-medium">Queue</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -150,6 +153,7 @@ export default function AdminRidersPage() {
               {riders.map(rider => (
                 <tr key={rider.id} className="border-b border-border last:border-0 hover:bg-muted/20">
                   <td className="px-4 py-3 font-medium">{rider.name}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{rider.auth_email || '—'}</td>
                   <td className="px-4 py-3 text-muted-foreground">{rider.whatsapp_no}</td>
                   <td className="px-4 py-3">
                     <Badge variant="outline" className={rider.is_active
@@ -164,8 +168,13 @@ export default function AdminRidersPage() {
                       ? 'text-blue-600 border-blue-500/30 bg-blue-500/10'
                       : 'text-muted-foreground'
                     }>
-                      {rider.current_order_id ? 'On delivery' : rider.is_available ? 'Available' : 'Unavailable'}
+                      {rider.is_available && rider.is_active ? 'On shift' : 'Off'}
                     </Badge>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={rider.active_orders > 0 ? 'font-semibold text-primary' : 'text-muted-foreground'}>
+                      {rider.active_orders ?? 0}
+                    </span>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
@@ -181,10 +190,7 @@ export default function AdminRidersPage() {
                         className={`transition-colors ${rider.is_active ? 'text-emerald-600 hover:text-tibetan' : 'text-muted-foreground hover:text-emerald-600'}`}
                         title={rider.is_active ? 'Deactivate' : 'Activate'}
                       >
-                        {rider.is_active
-                          ? <ToggleRight className="h-5 w-5" />
-                          : <ToggleLeft className="h-5 w-5" />
-                        }
+                        {rider.is_active ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
                       </button>
                     </div>
                   </td>
