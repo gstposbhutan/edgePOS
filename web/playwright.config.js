@@ -32,7 +32,7 @@ module.exports = defineConfig({
     {
       name: 'retailer',
       // v1-auth runs unauthenticated only; v3-v7 run under 'manager' only.
-      testMatch: /v2[a-z]?-.*\.spec\.js|v8-.*\.spec\.js|v9-.*\.spec\.js|v10-.*\.spec\.js|c[1-2]-.*\.spec\.js|c[4-5]-.*\.spec\.js|system-.*\.spec\.js|f[1-5]-.*\.spec\.js/,
+      testMatch: /v2[a-z]?-.*\.spec\.js|v8-.*\.spec\.js|v9-.*\.spec\.js|v10-.*\.spec\.js|c[1-2]-.*\.spec\.js|c[4-5]-.*\.spec\.js|system-.*\.spec\.js|f[1-5]-.*\.spec\.js|rider-.*\.spec\.js/,
       use: { ...devices['Desktop Chrome'], storageState: 'e2e/storage/retailer-auth.json' },
       dependencies: ['auth-setup'],
     },
