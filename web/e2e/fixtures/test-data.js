@@ -453,6 +453,7 @@ const TEST_RIDER = {
   name: 'Test Rider',
   phone: '+97517100050',
   pin: '1234',
+  email: 'rider@teststore.bt', // login identity (email-OTP)
   vehicle_type: 'motorcycle',
   is_active: true,
   entity_id: TEST_ENTITY.id,

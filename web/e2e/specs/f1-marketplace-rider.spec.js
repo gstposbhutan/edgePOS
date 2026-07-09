@@ -37,60 +37,41 @@ function getAdminClient() {
 }
 
 /**
- * Ensure a marketplace order is assigned to TEST_RIDER with a pickup OTP, in
- * CONFIRMED state — exactly the state the app's `assignRider` (checkout route
- * / order-detail PATCH) leaves an order in after auto-assignment.
- *
- * `assignRider` is fire-and-forget and only runs when (a) a fresh checkout
- * fires it AND (b) the rider row is free (`is_available=true`,
- * `current_order_id IS NULL`). On a test RETRY only the failed test re-runs,
- * so no fresh checkout fires assignRider, and a prior partial run can leave
- * the rider stuck (is_available=false). That makes the rider dashboard show
- * "No active order" for reasons unrelated to the rider-delivery code under
- * test. This setup guarantees a real, assigned, pickup-ready order exists so
- * the pickup → dispatch → deliver → fee flow is always exercisable.
+ * Ensure a MARKETPLACE delivery order is assigned to TEST_RIDER with a pickup OTP, CONFIRMED — the
+ * state dispatch leaves an assigned order in. Queue model: assignment lives on orders.rider_id (there
+ * is no per-rider current_order_id lock), and the rider works a QUEUE of active orders. is_available
+ * now just means "on shift". pickup_otp is 123456 under MOCK_WHATSAPP, matching what the app generates.
  *
  * @returns {Promise<{orderId: string, orderNo: string}>}
  */
 async function ensureAssignedRiderOrder() {
   const supabase = getAdminClient()
 
-  // 1. Free the rider from any stuck prior order, then mark available.
-  const { data: stuck } = await supabase
-    .from('riders')
-    .select('current_order_id')
-    .eq('id', TEST_RIDER.id)
-    .maybeSingle()
-  if (stuck?.current_order_id) {
-    await supabase
-      .from('orders')
-      .update({ rider_id: null })
-      .eq('id', stuck.current_order_id)
-  }
-  await supabase
-    .from('riders')
-    .update({ is_available: true, current_order_id: null })
-    .eq('id', TEST_RIDER.id)
+  // TEST_RIDER on shift.
+  await supabase.from('riders').update({ is_available: true }).eq('id', TEST_RIDER.id)
 
-  // 2. If the rider already has a current, pickup-ready order (from a sibling
-  //    checkout test in the same run), reuse it.
+  // Reuse an existing active assigned order (e.g. from a prior run), but REFRESH its pickup OTP +
+  // expiry so a stale/expired code from an old run doesn't fail the pickup.
   const { data: existing } = await supabase
-    .from('riders')
-    .select('current_order_id')
-    .eq('id', TEST_RIDER.id)
+    .from('orders')
+    .select('id, order_no')
+    .eq('rider_id', TEST_RIDER.id)
+    .eq('order_type', 'MARKETPLACE')
+    .in('status', ['CONFIRMED', 'PROCESSING'])
+    .limit(1)
     .maybeSingle()
-  if (existing?.current_order_id) {
-    const { data: cur } = await supabase
-      .from('orders')
-      .select('id, order_no, pickup_otp')
-      .eq('id', existing.current_order_id)
-      .maybeSingle()
-    if (cur?.pickup_otp) {
-      return { orderId: cur.id, orderNo: cur.order_no }
-    }
+  if (existing?.id) {
+    await supabase.from('orders').update({
+      status: 'CONFIRMED',
+      pickup_otp: '123456',
+      pickup_otp_expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+      delivery_otp: null,
+      delivery_otp_expires_at: null,
+    }).eq('id', existing.id)
+    return { orderId: existing.id, orderNo: existing.order_no }
   }
 
-  // 3. Otherwise create a fresh assigned order (mirrors assignRider output).
+  // Otherwise create a fresh assigned order (mirrors dispatch output).
   const year = new Date().getFullYear()
   const { data: last } = await supabase
     .from('orders')
@@ -99,15 +80,9 @@ async function ensureAssignedRiderOrder() {
     .order('order_no', { ascending: false })
     .limit(1)
     .maybeSingle()
-  const nextSerial = (last?.order_no
-    ? parseInt(last.order_no.split('-')[2] ?? '0', 10)
-    : 0) + 1
+  const nextSerial = (last?.order_no ? parseInt(last.order_no.split('-')[2] ?? '0', 10) : 0) + 1
   const orderNo = `MKT-${year}-${String(nextSerial).padStart(5, '0')}`
 
-  const subtotal = 100
-  const gstTotal = 5
-  const grandTotal = 105
-  const pickupOtp = String(Math.floor(100000 + Math.random() * 900000))
   const pickupOtpExpiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
 
   const { data: order, error: orderError } = await supabase
@@ -117,16 +92,19 @@ async function ensureAssignedRiderOrder() {
       order_no: orderNo,
       order_source: 'E2E_SETUP',
       status: 'CONFIRMED',
+      fulfilment_mode: 'DELIVERY',
+      dispatch_state: 'ASSIGNED',
       seller_id: TEST_ENTITY.id,
       buyer_whatsapp: '+97517100011',
       items: [{ sku: 'E2E', name: 'E2E Setup Item', quantity: 1, unit_price: 100, gst_5: 5, total: 105 }],
-      subtotal,
-      gst_total: gstTotal,
-      grand_total: grandTotal,
+      subtotal: 100,
+      gst_total: 5,
+      grand_total: 105,
       payment_method: 'CREDIT',
       delivery_address: 'Changzamtog, Thimphu (e2e setup)',
       rider_id: TEST_RIDER.id,
-      pickup_otp: pickupOtp,
+      assigned_at: new Date().toISOString(),
+      pickup_otp: '123456',
       pickup_otp_expires_at: pickupOtpExpiresAt,
     })
     .select('id, order_no')
@@ -143,11 +121,6 @@ async function ensureAssignedRiderOrder() {
     total: 105,
     status: 'ACTIVE',
   })
-
-  await supabase
-    .from('riders')
-    .update({ is_available: false, current_order_id: order.id })
-    .eq('id', TEST_RIDER.id)
 
   return { orderId: order.id, orderNo: order.order_no }
 }
@@ -235,81 +208,47 @@ test.describe('Marketplace + Rider Flow — Customer → Vendor → Rider → Cu
     await expect(page.getByText('CONFIRMED').first()).toBeVisible()
   })
 
-  // TEST_RIDER (+97517100050, pin 1234) is provisioned by e2e/fixtures/db-seed.js
-  // §14 (auth user rider@teststore.bt + a riders row with auth_user_id/auth_email/
-  // auth_password/pin_hash). The setup helper above guarantees a real assigned
-  // order exists so the rider-delivery flow is exercisable regardless of
-  // whether the checkout sibling ran in this invocation.
-  test('rider picks up and delivers the marketplace order', async ({ page }) => {
-    // ── Setup: guarantee an assigned, pickup-ready order for TEST_RIDER ──
-    const { orderId } = await ensureAssignedRiderOrder()
-
+  // TEST_RIDER (rider@teststore.bt) is provisioned by e2e/fixtures/db-seed.js §14 (auth user +
+  // riders row with auth_user_id/auth_email/auth_password). Login is EMAIL-OTP; under MOCK_WHATSAPP
+  // the code is 123456. The setup helper guarantees an assigned, pickup-ready order in the queue.
+  test('rider logs in (email-OTP), sees the queue, picks up and delivers', async ({ page }) => {
+    const { orderId, orderNo } = await ensureAssignedRiderOrder()
     const rider = new RiderPage(page)
 
-    // ── Step 1: Rider logs in ──────────────────────────────────────────
+    // ── Step 1: Rider email-OTP login ──────────────────────────────────
     await rider.gotoLogin()
-    await rider.login(TEST_RIDER.phone, TEST_RIDER.pin)
+    await rider.login(TEST_RIDER.email)
     expect(page.url()).toContain('/rider')
     expect(page.url()).not.toContain('/rider/login')
 
-    // ── Step 2: The assigned order must appear on the dashboard ────────
-    // (No polling for fire-and-forget assignment — setup pre-assigned it.)
-    await rider.assertOrderVisible()
+    // ── Step 2: The assigned order appears in the QUEUE ────────────────
+    await rider.assertInQueue(orderNo)
 
-    let currentOrder = await page.evaluate(async () => {
-      const res = await fetch('/api/rider/orders')
-      return res.json()
-    })
-    expect(currentOrder.current.order_no).toMatch(/^MKT-/)
-    expect(currentOrder.current.id).toBe(orderId)
+    const q1 = await page.evaluate(async () => (await fetch('/api/rider/orders')).json())
+    const queued = q1.queue.find((o) => o.id === orderId)
+    expect(queued).toBeTruthy()
+    expect(queued.order_no).toMatch(/^MKT-/)
+    expect(queued.pickup_otp).toBeTruthy()
 
-    await rider.refreshOrders()
+    // ── Step 3: Confirm pickup with the vendor OTP ─────────────────────
+    await rider.confirmPickup(orderNo, queued.pickup_otp)
 
-    // ── Step 3: Accept order if Accept button is shown ─────────────────
-    // Auto-assign sets pickup_otp, so Confirm Pickup is shown directly and
-    // this branch is skipped. Kept for orders assigned without a pickup OTP.
-    if (await rider.acceptButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await rider.acceptOrder()
-      // Accept generates pickup OTP — re-fetch (keep currentOrder as the full
-      // { current, ... } API response so currentOrder.current.* is consistent).
-      await expect.poll(async () => {
-        const data = await page.evaluate(async () => {
-          const res = await fetch('/api/rider/orders')
-          return res.json()
-        })
-        if (data.current?.pickup_otp) currentOrder = data
-        return Boolean(data.current?.pickup_otp)
-      }, { timeout: 5000, message: 'Pickup OTP was not generated after Accept' }).toBe(true)
-    } else {
-      currentOrder = await page.evaluate(async () => {
-        const res = await fetch('/api/rider/orders')
-        return res.json()
-      })
-    }
-
-    // ── Step 4: Confirm pickup with real OTP ───────────────────────────
-    expect(currentOrder.current.pickup_otp).toBeTruthy()
-    await rider.assertCanPickup()
-    await rider.confirmPickup(currentOrder.current.pickup_otp)
-
-    // Pickup generates delivery OTP — re-fetch (keep currentOrder as the full
-    // { current, ... } API response so currentOrder.current.* stays consistent).
+    // Pickup → DISPATCHED + a delivery OTP; the order stays in the queue.
+    let deliveryOtp = null
     await expect.poll(async () => {
-      const data = await page.evaluate(async () => {
-        const res = await fetch('/api/rider/orders')
-        return res.json()
-      })
-      if (data.current?.delivery_otp) currentOrder = data
-      return Boolean(data.current?.delivery_otp)
-    }, { timeout: 5000, message: 'Delivery OTP was not generated after pickup' }).toBe(true)
+      const d = await page.evaluate(async () => (await fetch('/api/rider/orders')).json())
+      const o = d.queue.find((x) => x.id === orderId)
+      deliveryOtp = o?.delivery_otp || null
+      return Boolean(deliveryOtp)
+    }, { timeout: 8000, message: 'Delivery OTP was not generated after pickup' }).toBe(true)
 
-    // ── Step 5: Confirm delivery with real OTP ─────────────────────────
-    await rider.assertCanDeliver()
-    await rider.confirmDelivery(currentOrder.current.delivery_otp)
+    // ── Step 4: Confirm delivery with the customer OTP ─────────────────
+    await rider.confirmDelivery(orderNo, deliveryOtp)
 
-    // ── Step 6: Submit delivery fee via API ─────────────────────────────
-    // After delivery, the rider is freed (current_order_id = null) so the fee
-    // form disappears from the dashboard. Submit fee via API directly.
+    // Delivered → the order leaves the active queue.
+    await rider.assertNotInQueue(orderNo)
+
+    // ── Step 5: Submit the delivery fee ────────────────────────────────
     const feeRes = await page.evaluate(async (id) => {
       const res = await fetch(`/api/rider/orders/${id}/fee`, {
         method: 'POST',
@@ -318,7 +257,6 @@ test.describe('Marketplace + Rider Flow — Customer → Vendor → Rider → Cu
       })
       return { ok: res.ok, status: res.status }
     }, orderId)
-
     expect(feeRes.ok).toBeTruthy()
   })
 })
