@@ -17,6 +17,7 @@
     "pb:fetch": "node scripts/fetch-pocketbase.mjs",
     "test:e2e": "playwright test --project=pocketbase",
     "test:e2e:headed": "playwright test --project=pocketbase --headed",
+    "test:e2e:electron": "playwright test --config playwright.electron.config.ts",
     "electron:dev": "concurrently \"next dev\" \"wait-on http://localhost:3000 && electron .\"",
     "electron:build": "node scripts/fetch-pocketbase.mjs && next build && electron-builder",
     "electron:build:win": "node scripts/fetch-pocketbase.mjs --platform win32 && next build && electron-builder --win",

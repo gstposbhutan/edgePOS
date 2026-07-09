@@ -760,7 +760,9 @@ ipcMain.handle("online-orders:refresh", () => pollOnlineOrders());
 // Single-instance lock: a 2nd launch (e.g. the shopkeeper double-clicking the icon again) must NOT
 // boot a second PocketBase — it would clash on the :8090 port + the userData dir (Chromium "cache
 // Access denied"). The loser quits immediately; the winner surfaces its existing window instead.
-const gotSingleInstanceLock = app.requestSingleInstanceLock();
+// E2E (NEXUS_E2E) relaunches the app repeatedly under Playwright, so the lock is skipped there —
+// otherwise a lingering prior instance would make every relaunch self-quit.
+const gotSingleInstanceLock = process.env.NEXUS_E2E ? true : app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
   app.quit();
 } else {
@@ -830,13 +832,15 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    // Keep running in tray
-  }
+  // Production: keep running in the tray (do nothing). E2E: quit so Playwright's app.close() exits
+  // cleanly — otherwise close() hangs on the tray-resident app and the embedded PocketBase orphans.
+  if (process.env.NEXUS_E2E) app.quit();
 });
 
 app.on("before-quit", () => {
   if (staticServer) staticServer.close();
   if (pbProcess) pbProcess.kill();
   if (syncInterval) clearInterval(syncInterval);
+  if (bootstrapInterval) clearInterval(bootstrapInterval);
+  if (onlineOrdersInterval) clearInterval(onlineOrdersInterval);
 });
