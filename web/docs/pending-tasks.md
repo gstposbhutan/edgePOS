@@ -1,6 +1,18 @@
 # NEXUS BHUTAN — Open / Pending Tasks (session handoff)
 
-**Last updated:** 2026-07-07
+**Last updated:** 2026-07-09
+
+### 2026-07-09 session (merged to `main`, PR #46)
+- **Rider delivery queue** — replaced the one-rider-one-order model with even, location-aware
+  auto-dispatch (least-loaded on-shift rider, GPS-proximity tiebreak, backlog drain); rider works a
+  queue in any order. **Email-OTP rider login** (+ unique-phone registration); `getRiderContext` fix
+  (riders have no `user_profiles`, so the shared `getAuthContext` had 401'd every rider API).
+  **Undeliverable** orders surfaced to customer/vendor + customer self-cancel. Vendor order email now
+  carries full customer details. Migrations **102** (queue/geo) + **103** (dispatch_state).
+- **Desktop online-order management (v1.3.0)** — terminal now manages incoming marketplace orders
+  (cloud `GET/POST /api/sync/orders` on the terminal token), mirrors them into local PB (`online_orders`,
+  PB migration 017), fires **native notifications**, and shares the **rider pickup OTP** from the
+  counter, with confirm/cancel. Installer build + Releases publish still to do (operator).
 
 ## Shipped since (2026-06 → 2026-07, on `feat/web-pos-ui-overhaul`, web live)
 - POS-core batch (web + desktop): optional shifts, invoice discount pre-GST, per-line rate tier,
@@ -68,13 +80,22 @@ This file records what's **not** yet done. Detailed designs live in the per-area
 
 ---
 
-## A. Operational & deployment — do at production rollout
-- 🔴 **Rotate + purge the committed prod Supabase secrets.** The production `service_role` key + DB
-  password were committed earlier (P0-7). Rotate them in Supabase and purge from history. *(Never
-  touched/used by the assistant.)*
-- 🔴 **Apply the consolidated migrations to PROD Supabase** — `web/supabase/migrations/001_schema.sql`
-  + `002_seed.sql` + `003_sold_by_weight.sql`. Verified on the **local** stack only; prod apply is
-  operational/user-owned (per the no-prod-migrations rule).
+## A. Operational & deployment
+> **Deployment model — SINGLE INSTANCE, in production testing.** This box is the only running
+> environment (there is **no** separate staging/prod): self-hosted Supabase + web + WhatsApp/logistics
+> services in Docker, with terminals syncing to it. `supabase.pelbu.com` routes to this box's Kong. So
+> "the DB" = this box's `supabase-db`; there is nowhere else to promote to. **Currently under
+> end-to-end testing — not yet live to real customers.**
+- 🔴 **Rotate + purge the committed prod Supabase secrets.** The `service_role` key + DB password were
+  committed earlier (P0-7). Rotate them in Supabase and purge from history. *(Never touched/used by the assistant.)*
+- ✅ **Migrations are applied directly to this instance.** App `public` migrations run against this box's
+  `supabase-db` via raw `psql` (there is no `supabase db push`/`schema_migrations` tracking table — only
+  GoTrue/realtime keep their own). The DB is current through `103_orders_dispatch_state.sql`. Apply any
+  new migration here; note `102` carries a one-time data `UPDATE`, so verify object-by-object rather than
+  blindly re-running a file.
+- 🟠 **Test data cleanup — deferred until go-live.** During testing, seed/test data is intentionally
+  kept (e.g. the 20 `rider01–20@demo.bt` riders + `MKT-2026-*` test marketplace orders). Purge it only
+  once everything works end-to-end without failure, right before going live.
 - 🟠 **Set the production cloud URL on both sides** before building/shipping:
   - Web: `NEXT_PUBLIC_APP_URL` = real cloud domain (the license issuer derives the ingest URL from it).
   - Desktop: `DEFAULT_CLOUD_URL` in `desktop/electron/config.js` = same domain, then `npm run electron:build:win`.
