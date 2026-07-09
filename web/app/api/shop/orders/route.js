@@ -21,7 +21,7 @@ export async function GET(request) {
       .from('orders')
       .select(`
         id, order_no, order_source, status, grand_total, gst_total, subtotal,
-        payment_method, delivery_address, created_at, updated_at,
+        payment_method, delivery_address, fulfilment_mode, dispatch_state, created_at, updated_at,
         seller_id, entities!seller_id(id, name, whatsapp_no)
       `)
       .eq('buyer_whatsapp', customerPhone)

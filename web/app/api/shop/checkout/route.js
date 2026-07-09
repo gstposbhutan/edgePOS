@@ -2,56 +2,7 @@ import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/supabase/server'
 import { createHash, randomBytes } from 'node:crypto'
 import { notifyEntity } from '@/lib/email/notify'
-
-async function assignRider(supabase, orderId, order) {
-  try {
-    const { data: riders } = await supabase
-      .from('riders')
-      .select('id, name, whatsapp_no')
-      .eq('is_active', true)
-      .eq('is_available', true)
-      .is('current_order_id', null)
-      .order('created_at', { ascending: true })
-      .limit(1)
-
-    const rider = riders?.[0]
-    if (!rider) return
-
-    const pickupOtp = String(Math.floor(100000 + Math.random() * 900000))
-    const pickupOtpExpiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
-
-    await supabase
-      .from('orders')
-      .update({
-        rider_id:              rider.id,
-        rider_accepted_at:     new Date().toISOString(),
-        pickup_otp:            pickupOtp,
-        pickup_otp_expires_at: pickupOtpExpiresAt,
-      })
-      .eq('id', orderId)
-
-    await supabase
-      .from('riders')
-      .update({ is_available: false, current_order_id: orderId })
-      .eq('id', rider.id)
-
-    const gatewayUrl = process.env.NEXT_PUBLIC_WHATSAPP_GATEWAY_URL || 'http://localhost:3001'
-    if (order.seller_whatsapp) {
-      fetch(`${gatewayUrl}/api/send-pickup-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          vendorPhone: order.seller_whatsapp,
-          orderNo:     order.order_no,
-          riderName:   rider.name,
-          pickupOtp,
-        }),
-      }).catch(() => {})
-    }
-  } catch (err) {
-    console.error('[checkout/assignRider]', err.message)
-  }
-}
+import { assignOrderToRider } from '@/lib/riders/dispatch'
 
 export async function POST(request) {
   try {
@@ -76,11 +27,13 @@ export async function POST(request) {
     // Get customer's entity record (id = auth user id per migration 041)
     const { data: customerEntity } = await supabase
       .from('entities')
-      .select('id')
+      .select('id, name')
       .eq('id', userId)
       .single()
 
     const buyerId = customerEntity?.id ?? null
+    const customerEmail = user?.email || null
+    const customerName = customerEntity?.name || user?.user_metadata?.name || 'Customer'
 
     // Fetch all active carts with items
     const { data: carts, error: cartsError } = await supabase
@@ -206,13 +159,10 @@ export async function POST(request) {
           }))
         )
 
-        // Auto-assign an available rider only when this vendor delivers. Pickup-only vendors
-        // skip the rider flow entirely — the buyer collects the order in person.
+        // Push to the least-loaded on-shift rider (even + location-aware). Pickup-only vendors skip
+        // the rider flow entirely — the buyer collects the order in person.
         if (isDelivery) {
-          assignRider(supabase, order.id, {
-            order_no:       order.order_no,
-            seller_whatsapp: vendor.whatsapp_no,
-          })
+          await assignOrderToRider(supabase, order.id)
         }
 
         createdOrders.push({
@@ -237,10 +187,38 @@ export async function POST(request) {
         }).catch(() => {})
 
         // Notifications: always in-app; emailed only if the recipient opted in (email off by default).
+        // Make the owner/manager order email self-contained: full customer + fulfilment + item detail.
+        const itemLines = cart.items
+          .map(i => `• ${i.name} × ${i.quantity} — Nu. ${parseFloat(i.total).toFixed(2)}`)
+          .join('\n')
+        const mapLink = (isDelivery && delivery_lat != null && delivery_lng != null)
+          ? `\n  Map: https://maps.google.com/?q=${delivery_lat},${delivery_lng}` : ''
+        const fulfilmentLine = isDelivery
+          ? `Deliver to: ${delivery_address}${mapLink}`
+          : 'Pickup — customer collects at store'
+        const orderBody = [
+          `New ${isDelivery ? 'delivery' : 'pickup'} order ${order.order_no}`,
+          '',
+          'Customer',
+          `  Name:  ${customerName}`,
+          `  Phone: ${customerPhone}`,
+          `  Email: ${customerEmail || '—'}`,
+          '',
+          fulfilmentLine,
+          'Payment: CREDIT (pay on delivery)',
+          '',
+          'Items',
+          itemLines,
+          '',
+          `Subtotal: Nu. ${subtotal.toFixed(2)}`,
+          `GST (5%): Nu. ${gstTotal.toFixed(2)}`,
+          `Total:    Nu. ${grandTotal.toFixed(2)}`,
+        ].join('\n')
+
         await notifyEntity(supabase, cart.entity_id, {
           type: 'ORDER',
           title: `New ${isDelivery ? 'delivery' : 'pickup'} order ${order.order_no} — Nu. ${grandTotal.toFixed(2)}`,
-          body: `${cart.items.length} item(s) · Nu. ${grandTotal.toFixed(2)} incl. 5% GST · ${isDelivery ? 'Delivery' : 'Pickup'}`,
+          body: orderBody,
           link: `/pos/orders/${order.id}`,
         })
 

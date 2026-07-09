@@ -48,6 +48,22 @@ contextBridge.exposeInMainWorld("electronAPI", {
     setUrl: (url) => ipcRenderer.invoke("pb:set-url", url),
   },
 
+  // Online (marketplace) orders — main polls the cloud, mirrors to local PB, and notifies on new.
+  onlineOrders: {
+    action: (id, action, reason) => ipcRenderer.invoke("online-orders:action", { id, action, reason }),
+    refresh: () => ipcRenderer.invoke("online-orders:refresh"),
+    onNew: (callback) => {
+      const listener = (_, data) => callback(data);
+      ipcRenderer.on("online-orders:new", listener);
+      return () => ipcRenderer.removeListener("online-orders:new", listener);
+    },
+    onChanged: (callback) => {
+      const listener = (_, data) => callback(data);
+      ipcRenderer.on("online-orders:changed", listener);
+      return () => ipcRenderer.removeListener("online-orders:changed", listener);
+    },
+  },
+
   // Events
   onSyncStatus: (callback) => {
     const listener = (_, data) => callback(data);
