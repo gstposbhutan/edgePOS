@@ -461,14 +461,21 @@ module.exports = {
 
 ---
 
-**Last Updated**: 2026-07-07  
+**Last Updated**: 2026-07-09  
 **Architecture Version**: 1.2  
+**Deployment**: **single self-hosted instance, in production testing** — one box runs Supabase + web +
+WhatsApp/logistics services in Docker, and terminals sync to it. There is **no** separate staging/prod;
+`supabase.pelbu.com` routes to this box. DB migrations are applied directly to its `supabase-db` via
+`psql` (no `supabase db push`/tracking table) and are current through `103`. Currently under end-to-end
+testing — **not yet live to customers**; seed/test data is kept until go-live.  
 **Status**: Retailer terminal (offline POS + hardware) + platform consoles shipped; POS-core batch complete
 (shifts/discount/rate-per-line/salesperson-per-line/weighed); consumer marketplace live (public browse,
 featured catalog, vendor onboarding + pickup mode + Excel import + order cancel); AI product enrichment
-(z.ai/GLM) + SendGrid email live. Vision AI + banking + production WhatsApp sender pending.  
-**Next Milestone**: production rollout — apply prod migrations, point `pelbu.com` DNS at the box + set
-cloud URLs/SITE_URL, register a production WhatsApp sender, sign the installer (see `web/docs/pending-tasks.md`)
+(z.ai/GLM) + SendGrid email live; **rider delivery queue + email-OTP login + desktop online-order
+management (v1.3.0)** shipped. Vision AI + banking + production WhatsApp sender pending.  
+**Next Milestone**: production rollout — point `pelbu.com` DNS at the box + set cloud URLs/SITE_URL,
+register a production WhatsApp sender, sign the installer, build+publish desktop v1.3.0 (see
+`web/docs/pending-tasks.md`)
 
 
 # IMPORTANT: 
