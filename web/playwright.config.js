@@ -36,6 +36,18 @@ module.exports = defineConfig({
       use: { ...devices['Desktop Chrome'], storageState: 'e2e/storage/retailer-auth.json' },
       dependencies: ['auth-setup'],
     },
+    // Guided tours — slow-paced, every-click/keypress-visible walkthroughs recorded to video.
+    // Fresh context (no storageState); each tour signs itself in. Run: --project=tour.
+    {
+      name: 'tour',
+      testMatch: /tour-.*\.spec\.js/,
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1280, height: 800 },
+        video: { mode: 'on', size: { width: 1280, height: 800 } },
+        launchOptions: { slowMo: 700 },
+      },
+    },
     // Specs that hard-code `test.use({ storageState: 'manager-auth.json' })` at file
     // level (v3, v4, v5, v7) or declare per-describe auth (v6). Running these under
     // multiple projects would just repeat identical work — the spec's own test.use
