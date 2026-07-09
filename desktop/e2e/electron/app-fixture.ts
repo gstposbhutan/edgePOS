@@ -83,6 +83,8 @@ export { expect };
 // static server + hydration can take >15s), then logs in if the login form is showing, and asserts
 // the POS rendered (the always-present shift control — layout/shift-independent).
 export async function ensureLoggedIn(page: Page) {
+  // Land on the POS root first — a prior test may have navigated the (worker-shared) page elsewhere.
+  await page.goto("http://127.0.0.1:3200/").catch(() => {});
   const email = page.getByPlaceholder(OWNER.email);
   const shiftBtn = page.getByRole("button", { name: /open shift|close shift/i });
   // Boot is done once either the login form or the POS is on screen.
