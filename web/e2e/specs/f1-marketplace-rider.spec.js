@@ -90,7 +90,7 @@ async function ensureAssignedRiderOrder() {
     .insert({
       order_type: 'MARKETPLACE',
       order_no: orderNo,
-      order_source: 'E2E_SETUP',
+      order_source: 'MARKETPLACE_WEB',
       status: 'CONFIRMED',
       fulfilment_mode: 'DELIVERY',
       dispatch_state: 'ASSIGNED',
@@ -258,5 +258,92 @@ test.describe('Marketplace + Rider Flow — Customer → Vendor → Rider → Cu
       return { ok: res.ok, status: res.status }
     }, orderId)
     expect(feeRes.ok).toBeTruthy()
+  })
+})
+
+// ── Rider dispatch: reject → re-dispatch, and the undeliverable state ──────────
+test.describe('Rider dispatch — reject re-dispatches, undeliverable when no one left', () => {
+  test.use({ storageState: 'e2e/storage/manager-auth.json' })
+
+  // Seed a fresh CONFIRMED delivery order assigned to a given rider with a valid pickup OTP.
+  async function seedAssignedOrder(supabase, riderId) {
+    const year = new Date().getFullYear()
+    const { data: last } = await supabase
+      .from('orders').select('order_no').like('order_no', `MKT-${year}-%`)
+      .order('order_no', { ascending: false }).limit(1).maybeSingle()
+    const serial = (last?.order_no ? parseInt(last.order_no.split('-')[2] ?? '0', 10) : 0) + 1
+    const orderNo = `MKT-${year}-${String(serial).padStart(5, '0')}`
+    const { data: order } = await supabase.from('orders').insert({
+      order_type: 'MARKETPLACE', order_no: orderNo, order_source: 'MARKETPLACE_WEB', status: 'CONFIRMED',
+      fulfilment_mode: 'DELIVERY', dispatch_state: 'ASSIGNED', seller_id: TEST_ENTITY.id,
+      buyer_whatsapp: '+97517100011',
+      items: [{ sku: 'E2E', name: 'E2E', quantity: 1, unit_price: 100, gst_5: 5, total: 105 }],
+      subtotal: 100, gst_total: 5, grand_total: 105, payment_method: 'CREDIT',
+      delivery_address: 'Thimphu (e2e dispatch)', rider_id: riderId, assigned_at: new Date().toISOString(),
+      pickup_otp: '123456', pickup_otp_expires_at: new Date(Date.now() + 2 * 3600 * 1000).toISOString(),
+    }).select('id, order_no').single()
+    await supabase.from('order_items').insert({
+      order_id: order.id, name: 'E2E', quantity: 1, unit_price: 100, discount: 0, gst_5: 5, total: 105, status: 'ACTIVE',
+    })
+    return order
+  }
+
+  async function riderIdByPhone(supabase, phone) {
+    const { data } = await supabase.from('riders').select('id').eq('whatsapp_no', phone).maybeSingle()
+    return data?.id
+  }
+
+  test('reject re-dispatches the order to another on-shift rider', async ({ page }) => {
+    const supabase = getAdminClient()
+    // Only TEST_RIDER + rider01 on shift; everyone else off.
+    await supabase.from('riders').update({ is_available: false }).eq('is_active', true)
+    await supabase.from('riders').update({ is_available: true }).in('whatsapp_no', [TEST_RIDER.phone, '+97517800001'])
+    const otherId = await riderIdByPhone(supabase, '+97517800001')
+
+    const order = await seedAssignedOrder(supabase, TEST_RIDER.id)
+
+    const rider = new RiderPage(page)
+    await rider.gotoLogin()
+    await rider.login(TEST_RIDER.email)
+
+    // Reject via the authenticated rider API.
+    const res = await page.request.post(`/api/rider/orders/${order.id}/reject`)
+    expect(res.ok()).toBeTruthy()
+
+    // The order is reassigned to the other on-shift rider, with TEST_RIDER recorded as declining.
+    const { data: after } = await supabase
+      .from('orders').select('rider_id, declined_rider_ids').eq('id', order.id).single()
+    expect(after.rider_id).toBe(otherId)
+    expect(after.declined_rider_ids).toContain(TEST_RIDER.id)
+  })
+
+  test('order becomes UNDELIVERABLE when the only on-shift rider rejects it', async ({ page }) => {
+    const supabase = getAdminClient()
+    // ONLY TEST_RIDER on shift.
+    await supabase.from('riders').update({ is_available: false }).eq('is_active', true)
+    await supabase.from('riders').update({ is_available: true }).eq('id', TEST_RIDER.id)
+
+    const order = await seedAssignedOrder(supabase, TEST_RIDER.id)
+
+    const rider = new RiderPage(page)
+    await rider.gotoLogin()
+    await rider.login(TEST_RIDER.email)
+
+    const res = await page.request.post(`/api/rider/orders/${order.id}/reject`)
+    expect(res.ok()).toBeTruthy()
+
+    // No eligible rider remains → unassigned + flagged undeliverable.
+    const { data: after } = await supabase
+      .from('orders').select('rider_id, dispatch_state, declined_rider_ids').eq('id', order.id).single()
+    expect(after.rider_id).toBeNull()
+    expect(after.dispatch_state).toBe('UNDELIVERABLE')
+    expect(after.declined_rider_ids).toContain(TEST_RIDER.id)
+
+    // The customer can cancel an undeliverable order (buyer-authorized endpoint exists + guards).
+    const cancelUnauth = await page.request.post(`/api/shop/orders/${order.id}/cancel`)
+    expect([401, 403]).toContain(cancelUnauth.status())
+
+    // Restore the rider pool for other specs.
+    await supabase.from('riders').update({ is_available: true }).eq('is_active', true)
   })
 })
