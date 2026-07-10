@@ -83,7 +83,12 @@ Each phase ships independently and keeps app-layer entity-scoping (F4).
 5. **Feature reuse → parallel `/api/console/*`** pattern confirmed (port/adapt components; do not open `/pos` to the tiers).
 
 ### Foundation added by decision #2
-- **F5 — Per-warehouse inventory.** Add a warehouse dimension to stock: `warehouse_id` on `product_batches` + `inventory_movements` (and stock reads as a per-warehouse rollup, replacing entity-level `products.current_stock` for the tiers), plus an **inter-warehouse transfer** movement type. Warehouses (081) stop being records-only. This is a prerequisite for the console inventory build (Phase 2) and warehouse-scoped receiving/selling. Retailer stays entity-level (single store) unless later unified.
+- **F5 — Per-warehouse inventory.** 🟡 **foundation shipped** (migration `111`). Approach: keep `products.current_stock` as the entity total (all ~35 read sites untouched); add a new `warehouse_stock (product_id, warehouse_id, entity_id, quantity)` table + nullable `warehouse_id` on `inventory_movements`/`product_batches`; `apply_inventory_movement` now also upserts `warehouse_stock` when a movement is located. Retailer/single-shop flows leave `warehouse_id` NULL (entity-level, unchanged); tier flows stamp a warehouse and their per-warehouse totals sum back to `current_stock`. Transfers = a −qty + +qty movement pair. DB-verified. **Remaining in F5/Phase 2:** console inventory UI (levels/receive/adjust/transfer/batches/movements/low-stock, warehouse-scoped), distributor warehouse page+nav, warehouse-aware receiving in PO/PI + B2B sell/receive, FEFO batch pick filtered by warehouse.
+
+### Model clarified (2026-07-10, user)
+- **Retailers = shops** (single location, entity-level stock, keep the cash-sale POS). **Wholesalers/distributors = warehouses** (multi-location per F5, **no POS** — B2B only, back-office desktop). A wholesaler wanting retail registers a **separate RETAILER shop account** (supplied by the wholesaler via the existing B2B link) — no multi-entity feature for now.
+- **Sell-rate tiers (per line):** a wholesaler/distributor can sell at Retail (`mrp`) / Wholesale (`wholesale_price`) / Distributor (`distributor_price`), defaulting to their own tier — mirror the POS per-line rate tier in the console sell/SO flow. (TODO, Phase 2 catalog/sell work.)
+- **Manufacturer rate (cost):** add `products.manufacturer_price` = the distributor's buy cost from the manufacturer; auto-fill from PO/PI landed `unit_cost`, editable in the vendor product form; show margin (sell − cost). Distributors track it; wholesalers can see manufacturer + distributor rate for chain visibility. (TODO, Phase 2 catalog work.)
 
 ---
 
