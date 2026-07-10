@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/supabase/server'
+import { lineGst } from '@/lib/gst'
 
 const ITEM_SELECT = `
   *,
@@ -63,8 +64,14 @@ export async function POST(request) {
     // discrete items default to 1 (further adds increment via update_qty).
     const qty = Math.max(0.001, parseFloat(product.quantity ?? 1) || 1)
     const taxable = Math.max(0, unitPrice - 0)
-    const gst5  = parseFloat((taxable * 0.05 * qty).toFixed(2))
-    const total = parseFloat(((taxable * 1.05) * qty).toFixed(2))
+    // Resolve the exempt flag from the DB, not the client (tax must not be client-trusted).
+    let exempt = !!product.gst_exempt
+    if (product.id) {
+      const { data: pr } = await supabase.from('products').select('gst_exempt').eq('id', product.id).maybeSingle()
+      if (pr) exempt = !!pr.gst_exempt
+    }
+    const gst5  = lineGst(taxable * qty, exempt)   // 0 for GST-exempt products
+    const total = parseFloat((taxable * qty + gst5).toFixed(2))
 
     const { data, error } = await supabase
       .from('cart_items')
@@ -95,7 +102,7 @@ export async function POST(request) {
     // Get current item for price calc + stock source (product/batch/package)
     const { data: item } = await supabase
       .from('cart_items')
-      .select('unit_price, discount, product_id, batch_id, package_id')
+      .select('unit_price, discount, product_id, batch_id, package_id, products(gst_exempt)')
       .eq('id', itemId)
       .single()
 
@@ -114,8 +121,9 @@ export async function POST(request) {
     const unitPrice = parseFloat(item.unit_price)
     const discount  = parseFloat(item.discount ?? 0)
     const taxable   = Math.max(0, unitPrice - discount)
-    const gst5    = parseFloat((taxable * 0.05 * finalQty).toFixed(2))
-    const total   = parseFloat(((taxable * 1.05) * finalQty).toFixed(2))
+    const exempt    = !!(Array.isArray(item.products) ? item.products[0] : item.products)?.gst_exempt
+    const gst5    = lineGst(taxable * finalQty, exempt)
+    const total   = parseFloat((taxable * finalQty + gst5).toFixed(2))
 
     const { data, error } = await supabase
       .from('cart_items')

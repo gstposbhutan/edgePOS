@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/supabase/server'
 
-const SELECT_FIELDS = 'id, name, sku, hsn_code, image_url, available_stock, wholesale_price, mrp, selling_price, unit, product_type, package_type, package_def_id, package_barcode, reorder_point, batch_id, batch_number, expires_at, batch_barcode, barcode, category, subcategory, condition, description, brand, tags, specifications, video_url, sold_by_weight'
+const SELECT_FIELDS = 'id, name, sku, hsn_code, image_url, available_stock, wholesale_price, mrp, selling_price, unit, product_type, package_type, package_def_id, package_barcode, reorder_point, batch_id, batch_number, expires_at, batch_barcode, barcode, category, subcategory, condition, description, brand, tags, specifications, video_url, sold_by_weight, gst_exempt'
 
 /** GET /api/products/sellable — fetch from sellable_products view */
 export async function GET(request) {

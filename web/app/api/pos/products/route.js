@@ -15,7 +15,7 @@ export async function GET(request) {
 
   const supabase = ctx.supabase
 
-  const selectFields = 'id, batch_number, expires_at, mrp, selling_price, quantity, products!inner(id, name, sku, unit, mrp, selling_price, wholesale_price, distributor_price, sold_by_weight)'
+  const selectFields = 'id, batch_number, expires_at, mrp, selling_price, quantity, products!inner(id, name, sku, unit, mrp, selling_price, wholesale_price, distributor_price, sold_by_weight, gst_exempt)'
 
   // Price-ladder lookup for a set of product ids (used by the POS price-list
   // re-pricer). Returns the product's mrp / wholesale / distributor so the cart

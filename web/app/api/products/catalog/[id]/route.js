@@ -21,6 +21,7 @@ export async function PATCH(request, { params }) {
         image_url:       formData.image_url?.trim() || null,
         reorder_point:   parseInt(formData.reorder_point) || 10,
         sold_by_weight:  !!formData.sold_by_weight,
+        gst_exempt:      !!formData.gst_exempt,
         video_url:       formData.video_url?.trim() || null,
         ...(formData.specifications !== undefined ? { specifications: formData.specifications || {} } : {}),
       })

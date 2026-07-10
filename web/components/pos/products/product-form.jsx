@@ -12,7 +12,7 @@ const EMPTY_FORM = {
   name: '', sku: '', hsn_code: '', unit: 'pcs',
   wholesale_price: '', mrp: '', selling_price: '',
   current_stock: '0', image_url: '', reorder_point: '10',
-  sold_by_weight: false, video_url: '', specifications: {},
+  sold_by_weight: false, gst_exempt: false, video_url: '', specifications: {},
 }
 
 /**
@@ -52,6 +52,7 @@ export function ProductForm({ open, product, categories, saving, onSave, onClose
         image_url:       product.image_url ?? '',
         reorder_point:   String(product.reorder_point ?? '10'),
         sold_by_weight:  product.sold_by_weight ?? false,
+        gst_exempt:      product.gst_exempt ?? false,
         video_url:       product.video_url ?? '',
         specifications:  product.specifications && typeof product.specifications === 'object' ? product.specifications : {},
       })
@@ -262,6 +263,23 @@ export function ProductForm({ open, product, categories, saving, onSave, onClose
               <span className="font-medium text-foreground">Sold by weight / measure</span>
               <span className="block text-[10px] text-muted-foreground">
                 Cashier enters the amount in <strong>{form.unit}</strong> at checkout (e.g. 1.5 {form.unit}); the price is the rate per {form.unit}. Use for loose goods — rice, sugar, vegetables, fruit, oil.
+              </span>
+            </label>
+          </div>
+
+          {/* GST exempt */}
+          <div className="flex items-start gap-2 p-3 rounded-lg border border-border bg-muted/20">
+            <input
+              id="gst_exempt"
+              type="checkbox"
+              checked={!!form.gst_exempt}
+              onChange={e => set('gst_exempt', e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-input accent-primary"
+            />
+            <label htmlFor="gst_exempt" className="text-sm cursor-pointer">
+              <span className="font-medium text-foreground">GST exempt</span>
+              <span className="block text-[10px] text-muted-foreground">
+                No 5% GST on this product — it sells tax-free on every channel.
               </span>
             </label>
           </div>

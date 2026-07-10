@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext, createServiceClient } from '@/lib/supabase/server'
+import { lineGst } from '@/lib/gst'
 
 export async function POST(request, { params }) {
   try {
@@ -84,8 +85,8 @@ export async function POST(request, { params }) {
       for (const sb of subBatches) {
         const qty       = parseInt(sb.quantity || 1, 10)
         const unitPrice = parseFloat(sb.unit_price ?? soItem.unit_price ?? 0)
-        const gst5      = parseFloat((unitPrice * qty * 0.05).toFixed(2))
-        const total     = parseFloat((unitPrice * qty * 1.05).toFixed(2))
+        const gst5      = lineGst(unitPrice * qty, soItem.gst_exempt)   // carry the order line's exemption
+        const total     = parseFloat((unitPrice * qty + gst5).toFixed(2))
         subtotal       += unitPrice * qty
 
         invoiceItems.push({
@@ -96,6 +97,7 @@ export async function POST(request, { params }) {
           unit_price:   unitPrice,
           discount:     0,
           gst_5:        gst5,
+          gst_exempt:   !!soItem.gst_exempt,
           total,
           status:       'ACTIVE',
           batch_id:     sb.batch_id     || null,
@@ -104,7 +106,7 @@ export async function POST(request, { params }) {
       }
     }
 
-    const gstTotal   = parseFloat((subtotal * 0.05).toFixed(2))
+    const gstTotal   = parseFloat(invoiceItems.reduce((s, i) => s + i.gst_5, 0).toFixed(2))
     const grandTotal = parseFloat((subtotal + gstTotal).toFixed(2))
 
     // Generate SI number: SI-YYYY-XXXXX

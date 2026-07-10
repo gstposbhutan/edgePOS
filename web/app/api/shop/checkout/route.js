@@ -101,7 +101,8 @@ export async function POST(request) {
         for (const item of cart.items) {
           subtotal += parseFloat(item.unit_price) * item.quantity
         }
-        const gstTotal = parseFloat((subtotal * 0.05).toFixed(2))
+        // Sum the cart lines' GST (each 0 for a GST-exempt product) rather than a flat 5% on subtotal.
+        const gstTotal = parseFloat(cart.items.reduce((s, i) => s + parseFloat(i.gst_5 || 0), 0).toFixed(2))
         const grandTotal = parseFloat((subtotal + gstTotal).toFixed(2))
 
         const orderNo = await generateOrderNo()

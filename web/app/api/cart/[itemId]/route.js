@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/supabase/server'
+import { lineGst } from '@/lib/gst'
 
 // PATCH: Update cart item quantity
 export async function PATCH(request, { params }) {
@@ -17,7 +18,7 @@ export async function PATCH(request, { params }) {
 
     const { data: item } = await supabase
       .from('cart_items')
-      .select('id, cart_id, unit_price')
+      .select('id, cart_id, unit_price, products(gst_exempt)')
       .eq('id', itemId)
       .single()
 
@@ -25,8 +26,9 @@ export async function PATCH(request, { params }) {
       return NextResponse.json({ error: 'Item not found' }, { status: 404 })
     }
 
-    const gst = (parseFloat(item.unit_price) * 0.05 * quantity).toFixed(2)
-    const total = (parseFloat(item.unit_price) * quantity + parseFloat(gst)).toFixed(2)
+    const exempt = !!(Array.isArray(item.products) ? item.products[0] : item.products)?.gst_exempt
+    const gst = lineGst(parseFloat(item.unit_price) * quantity, exempt)
+    const total = (parseFloat(item.unit_price) * quantity + gst).toFixed(2)
 
     const { error } = await supabase
       .from('cart_items')
