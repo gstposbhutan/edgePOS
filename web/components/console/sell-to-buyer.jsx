@@ -22,6 +22,7 @@ export function SellToBuyer() {
   const [catalog, setCatalog]       = useState([])
   const [cart, setCart]             = useState([])
   const [payment, setPayment]       = useState('CREDIT')
+  const [mode, setMode]             = useState('INVOICE')  // INVOICE | SALES_ORDER | QUOTATION
   const [search, setSearch]         = useState('')
   const [loading, setLoading]       = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -65,7 +66,7 @@ export function SellToBuyer() {
   }, [selected])
 
   function selectBuyer(b) {
-    setSelected(b); setStep('catalog'); setSearch(''); setCart([]); setPayment('CREDIT'); fetchCatalog('')
+    setSelected(b); setStep('catalog'); setSearch(''); setCart([]); setPayment('CREDIT'); setMode('INVOICE'); fetchCatalog('')
   }
   function back() {
     setStep('buyers'); setSelected(null); setSearch(''); setCart([]); setCatalog([])
@@ -98,12 +99,13 @@ export function SellToBuyer() {
         body: JSON.stringify({
           buyer_id: selected.id,
           payment_method: payment,
+          mode,
           items: cart.map(c => ({ product_id: c.product_id, quantity: c.quantity })),
         }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to create sale')
-      setSuccess(data.order)
+      setSuccess({ ...data.order, _mode: mode })
       if (data.warning) setError(data.warning)
       setCart([])
       setTimeout(() => { setSuccess(null); back() }, 3500)
@@ -142,7 +144,9 @@ export function SellToBuyer() {
         <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg flex items-start gap-2">
           <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
           <div className="text-sm">
-            <p className="font-medium text-emerald-500">Sale confirmed</p>
+            <p className="font-medium text-emerald-500">
+              {success._mode === 'QUOTATION' ? 'Quotation created' : success._mode === 'SALES_ORDER' ? 'Sales order created' : 'Sale confirmed'}
+            </p>
             <p className="text-muted-foreground">{success.order_no} · {success.status}</p>
           </div>
         </div>
@@ -201,7 +205,7 @@ export function SellToBuyer() {
             <Cart
               items={cart} onUpdateQty={updateQty} onRemove={removeItem}
               subtotal={subtotal} gstTotal={gstTotal} grandTotal={grandTotal}
-              payment={payment} setPayment={setPayment}
+              payment={payment} setPayment={setPayment} mode={mode} setMode={setMode}
               onSubmit={submit} submitting={submitting} buyerName={selected?.name}
             />
           </div>
@@ -253,7 +257,15 @@ function BuyerList({ buyers, loading, onSelect }) {
   )
 }
 
-function Cart({ items, onUpdateQty, onRemove, subtotal, gstTotal, grandTotal, payment, setPayment, onSubmit, submitting, buyerName }) {
+const MODES = [
+  { id: 'INVOICE', label: 'Sell now' },
+  { id: 'SALES_ORDER', label: 'Sales order' },
+  { id: 'QUOTATION', label: 'Quotation' },
+]
+const SUBMIT_LABEL = { INVOICE: 'Confirm Sale', SALES_ORDER: 'Create Sales Order', QUOTATION: 'Create Quotation' }
+const SUBMIT_BUSY = { INVOICE: 'Confirming sale...', SALES_ORDER: 'Creating order...', QUOTATION: 'Creating quotation...' }
+
+function Cart({ items, onUpdateQty, onRemove, subtotal, gstTotal, grandTotal, payment, setPayment, mode, setMode, onSubmit, submitting, buyerName }) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -295,6 +307,16 @@ function Cart({ items, onUpdateQty, onRemove, subtotal, gstTotal, grandTotal, pa
             <div className="flex justify-between text-sm font-bold pt-1"><span>Grand Total</span><span className="text-primary">{money(grandTotal)}</span></div>
           </div>
 
+          {/* Document type */}
+          <div className="grid grid-cols-3 gap-1.5">
+            {MODES.map(m => (
+              <button key={m.id} onClick={() => setMode(m.id)}
+                className={`h-8 rounded-lg text-[11px] font-medium border transition-colors ${mode === m.id ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-muted'}`}>
+                {m.label}
+              </button>
+            ))}
+          </div>
+
           {/* Payment method */}
           <div className="flex gap-2">
             {['CREDIT', 'CASH'].map(m => (
@@ -304,11 +326,16 @@ function Cart({ items, onUpdateQty, onRemove, subtotal, gstTotal, grandTotal, pa
               </button>
             ))}
           </div>
+          {mode !== 'INVOICE' && (
+            <p className="text-[11px] text-muted-foreground">
+              {mode === 'QUOTATION' ? 'A quote — no stock or credit moves until you invoice it.' : 'A sales order — stock and credit move when you fulfil it into an invoice.'}
+            </p>
+          )}
 
           <Button onClick={onSubmit} disabled={submitting || !items.length} className="w-full bg-primary hover:bg-primary/90">
             {submitting
-              ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Confirming sale...</>
-              : <><Send className="mr-2 h-4 w-4" /> Confirm Sale</>}
+              ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {SUBMIT_BUSY[mode]}</>
+              : <><Send className="mr-2 h-4 w-4" /> {SUBMIT_LABEL[mode]}</>}
           </Button>
         </>
       )}

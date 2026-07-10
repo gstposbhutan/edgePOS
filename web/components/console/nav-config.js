@@ -1,4 +1,4 @@
-import { Store, Building2, Star, Package, Users, Warehouse, Settings, Inbox, Truck, ShoppingCart } from 'lucide-react'
+import { Store, Building2, Star, Package, Users, Warehouse, Settings, Inbox, Truck, ShoppingCart, FileText } from 'lucide-react'
 
 /**
  * Section nav for the distributor / wholesaler consoles — the single source of truth shared
@@ -16,6 +16,7 @@ export function distributorNav() {
     { key: 'retailers',   label: 'Retailers',   href: '/distributor/retailers',   icon: Building2, enabled: true,  note: 'Browse all · save favourites' },
     { key: 'saved',       label: 'Saved',       href: '/distributor/saved',       icon: Star,      enabled: true,  note: 'Your favourites' },
     { key: 'sell',        label: 'Sell',        href: '/distributor/sell',        icon: ShoppingCart, enabled: true, note: 'Sell to a wholesaler' },
+    { key: 'quotes',      label: 'Quotes & Orders', href: '/distributor/quotes',  icon: FileText,  enabled: true,  note: 'Sales orders & quotations' },
     { key: 'orders',      label: 'Orders',      href: '/distributor/orders',      icon: Inbox,     enabled: true,  note: 'Incoming orders' },
     { key: 'catalog',     label: 'Catalog',     href: '/distributor/catalog',     icon: Package,   enabled: true,  note: 'Your products' },
     { key: 'team',        label: 'Team',        href: '/distributor/team',        icon: Users,     enabled: true,  note: 'Your staff' },
@@ -28,6 +29,7 @@ export function wholesalerNav() {
     { key: 'retailers',  label: 'Retailers',  href: '/wholesaler/retailers',  icon: Store,     enabled: true,  note: 'Browse all · save favourites' },
     { key: 'saved',      label: 'Saved',      href: '/wholesaler/saved',      icon: Star,      enabled: true,  note: 'Your favourites' },
     { key: 'sell',       label: 'Sell',       href: '/wholesaler/sell',       icon: ShoppingCart, enabled: true, note: 'Sell to a retailer' },
+    { key: 'quotes',     label: 'Quotes & Orders', href: '/wholesaler/quotes', icon: FileText,  enabled: true,  note: 'Sales orders & quotations' },
     { key: 'orders',     label: 'Orders',     href: '/wholesaler/orders',     icon: Inbox,     enabled: true,  note: 'Incoming orders' },
     { key: 'restock',    label: 'Order supplies', href: '/wholesaler/restock', icon: Truck,    enabled: true,  note: 'Restock from distributors' },
     { key: 'warehouses', label: 'Warehouses', href: '/wholesaler/warehouses', icon: Warehouse, enabled: true,  note: 'Your buildings/depots' },
