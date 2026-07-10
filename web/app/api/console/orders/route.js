@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/supabase/server'
+import { ensureKhataAccount } from '@/lib/console/supply-links'
 
 // Orders for the distributor / wholesaler consoles. Two halves of the same B2B flow:
 //
@@ -244,6 +245,15 @@ export async function POST(request) {
 
     if (!link?.length) {
       return NextResponse.json({ error: 'Not linked to this distributor' }, { status: 403 })
+    }
+
+    // Safety-net: this order confirms as CREDIT, which fires khata_debit_on_confirm — and that
+    // trigger RAISES if no khata account exists for (creditor = distributor, debtor = me). New links
+    // auto-provision it, but a link created before that (or seeded) may not have one; ensure it now
+    // so the confirm below never fails on a missing account. Idempotent.
+    const khata = await ensureKhataAccount(supabase, { seller: supplier_id, buyer: entityId, createdBy: userId })
+    if (khata.error) {
+      return NextResponse.json({ error: `Could not prepare credit account: ${khata.error}` }, { status: 500 })
     }
 
     // Fetch the distributor's sellable products (SINGLE + PACKAGE) and validate the cart. A package

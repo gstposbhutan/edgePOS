@@ -20,8 +20,10 @@ export async function GET() {
 
   // Only RETAILER entities are licensable — the desktop POS (the thing a .lic activates)
   // is retailer-only; wholesalers/distributors/etc. are web-only.
+  // Retailer terminals ring cash sales; distributor/wholesaler terminals are back-office (warehouse
+  // stock + incoming B2B/online orders). All three are licensable.
   const { data: entities } = await ctx.supabase
-    .from('entities').select('id, name, tpn_gstin').eq('role', 'RETAILER').order('name')
+    .from('entities').select('id, name, tpn_gstin, role').in('role', ['RETAILER', 'DISTRIBUTOR', 'WHOLESALER']).order('name')
 
   // Pending terminal self-registrations (machine_id captured from a new POS on first start).
   const { data: requests } = await ctx.supabase
@@ -48,7 +50,7 @@ export async function POST(request) {
   const label = (body.label || '').trim() || null
   const days = Number(body.days) > 0 ? Math.floor(Number(body.days)) : 365
   // Terminal mode: POS rings cash sales; BACK_OFFICE handles stock + online orders only.
-  const mode = (body.mode || 'POS').trim().toUpperCase()
+  let mode = (body.mode || 'POS').trim().toUpperCase()
   if (!entityId || !machineId) {
     return NextResponse.json({ error: 'entity_id and machine_id are required' }, { status: 400 })
   }
@@ -68,9 +70,12 @@ export async function POST(request) {
 
   const { data: entity } = await ctx.supabase.from('entities').select('id, name, role').eq('id', entityId).maybeSingle()
   if (!entity) return NextResponse.json({ error: 'Entity not found' }, { status: 400 })
-  if (entity.role !== 'RETAILER') {
-    return NextResponse.json({ error: 'Licenses can only be issued for RETAILER terminals (the desktop POS is retailer-only)' }, { status: 400 })
+  if (!['RETAILER', 'DISTRIBUTOR', 'WHOLESALER'].includes(entity.role)) {
+    return NextResponse.json({ error: 'Licenses can only be issued for retailer, wholesaler, or distributor terminals' }, { status: 400 })
   }
+  // Distributor/wholesaler terminals are back-office only (no retail cash sale — vendor-parity
+  // decision #1). Force BACK_OFFICE regardless of the requested mode; retailers keep their choice.
+  if (entity.role !== 'RETAILER') mode = 'BACK_OFFICE'
 
   // 1. Provision the register for this (store, machine). A register IS the terminal, so approving
   //    its license is what brings it into existence (or adopts an already-synced one). Re-issuing

@@ -124,12 +124,28 @@ export default function LicensesPage() {
             it&apos;s shown once.
           </p>
           <div className="grid grid-cols-2 gap-2">
-            <select value={entityId} onChange={(e) => setEntityId(e.target.value)} className="col-span-2 h-9 rounded-md border border-border bg-background px-2 text-sm">
-              <option value="">— Select retail store —</option>
-              {entities.map((e) => <option key={e.id} value={e.id}>{e.name}{e.tpn_gstin ? ` (${e.tpn_gstin})` : ""}</option>)}
+            <select
+              value={entityId}
+              onChange={(e) => {
+                const id = e.target.value
+                setEntityId(id)
+                // Distributor/wholesaler terminals are back-office only — lock the mode.
+                const role = entities.find((x) => x.id === id)?.role
+                if (role && role !== "RETAILER") setMode("BACK_OFFICE")
+              }}
+              className="col-span-2 h-9 rounded-md border border-border bg-background px-2 text-sm"
+            >
+              <option value="">— Select store / vendor —</option>
+              {entities.map((e) => <option key={e.id} value={e.id}>{e.name}{e.role && e.role !== "RETAILER" ? ` · ${e.role.toLowerCase()}` : ""}{e.tpn_gstin ? ` (${e.tpn_gstin})` : ""}</option>)}
             </select>
             <Input value={machineId} onChange={(e) => setMachineId(e.target.value)} placeholder="Machine ID (Windows MachineGuid)" className="col-span-2" />
-            <select value={mode} onChange={(e) => setMode(e.target.value)} className="h-9 rounded-md border border-border bg-background px-2 text-sm" title="Terminal mode">
+            <select
+              value={mode}
+              onChange={(e) => setMode(e.target.value)}
+              disabled={(() => { const r = entities.find((x) => x.id === entityId)?.role; return !!r && r !== "RETAILER" })()}
+              className="h-9 rounded-md border border-border bg-background px-2 text-sm disabled:opacity-60"
+              title="Terminal mode (distributor/wholesaler are back-office only)"
+            >
               <option value="POS">POS terminal (cash sales)</option>
               <option value="BACK_OFFICE">Back office (stock only)</option>
             </select>
