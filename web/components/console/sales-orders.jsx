@@ -31,14 +31,20 @@ export function SalesOrders() {
 
   useEffect(() => { load() }, [load])
 
-  const fulfil = useCallback(async (order) => {
-    if (!window.confirm(`Fulfil ${order.order_no} into an invoice? This deducts your stock and, for a credit order, debits ${order.buyer_name || 'the buyer'}'s khata.`)) return
+  // lines omitted → fulfil all remaining; lines provided → partial fulfilment of those quantities.
+  const fulfil = useCallback(async (order, lines) => {
+    const what = lines ? 'the entered quantities' : 'all remaining lines'
+    if (!window.confirm(`Fulfil ${what} of ${order.order_no} into an invoice? This deducts your stock and, for a credit order, debits ${order.buyer_name || 'the buyer'}'s khata.`)) return
     setActing(order.id); setError(null); setNotice(null)
     try {
-      const res = await fetch(`/api/console/sales/${order.id}/invoice`, { method: 'POST' })
+      const res = await fetch(`/api/console/sales/${order.id}/invoice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(lines ? { lines } : {}),
+      })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Fulfilment failed')
-      setNotice(`Invoice ${data.invoice?.order_no || ''} created${data.warning ? ' — ' + data.warning : ''}`)
+      setNotice(`Invoice ${data.invoice?.order_no || ''} created (sales order ${data.invoice ? '' : ''}${data.so_status ? data.so_status.toLowerCase() : ''})${data.warning ? ' — ' + data.warning : ''}`)
       await load()
     } catch (err) { setError(err.message) } finally { setActing(null) }
   }, [load])
@@ -87,7 +93,33 @@ function money(v) { return `Nu. ${parseFloat(v ?? 0).toFixed(2)}` }
 function SORow({ order, open, onToggle, acting, onFulfil }) {
   const items = Array.isArray(order.items) ? order.items : []
   const statusClass = STATUS_STYLES[order.status] || STATUS_STYLES.DRAFT
-  const canFulfil = order.status === 'DRAFT'
+  const canFulfil = order.status === 'DRAFT' || order.status === 'PARTIALLY_FULFILLED'
+
+  const [detail, setDetail] = useState(null)     // { lines: [{...remaining}] }
+  const [qty, setQty] = useState({})             // line_id -> entered qty to fulfil now
+
+  // Load remaining-per-line when a fulfillable row is opened.
+  useEffect(() => {
+    if (!open || !canFulfil) return
+    let alive = true
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/console/sales/${order.id}`)
+        const data = await res.json()
+        if (!alive || !res.ok) return
+        setDetail(data)
+        const init = {}
+        for (const l of data.lines || []) init[l.id] = l.remaining
+        setQty(init)
+      } catch { /* leave detail null; the "all remaining" button still works */ }
+    })()
+    return () => { alive = false }
+  }, [open, canFulfil, order.id])
+
+  const enteredLines = (detail?.lines || [])
+    .map(l => ({ product_id: l.product_id, package_id: l.package_id || null, quantity: Math.min(parseInt(qty[l.id], 10) || 0, l.remaining) }))
+    .filter(l => l.quantity > 0)
+
   return (
     <div className={order.status === 'CANCELLED' ? 'opacity-70' : ''}>
       <button onClick={onToggle} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors text-left">
@@ -130,10 +162,42 @@ function SORow({ order, open, onToggle, acting, onFulfil }) {
             <span className="text-muted-foreground">Total <span className="text-primary font-bold">{money(order.grand_total)}</span></span>
           </div>
           {canFulfil && (
-            <div className="flex justify-end pt-2 border-t border-border">
-              {acting
-                ? <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Fulfilling…</span>
-                : <Button size="sm" onClick={() => onFulfil(order)}><FileCheck2 className="h-4 w-4 mr-1" /> Fulfil into invoice</Button>}
+            <div className="pt-2 border-t border-border space-y-2">
+              {/* Per-line quantities to invoice now (defaults to what's left). */}
+              {detail?.lines?.length > 0 && (
+                <div className="rounded-lg border border-border divide-y divide-border">
+                  {detail.lines.map(l => (
+                    <div key={l.id} className="flex items-center gap-3 px-3 py-1.5">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate">{l.name}</p>
+                        <p className="text-[10px] text-muted-foreground">{l.invoiced} invoiced · {l.remaining} left of {l.quantity}</p>
+                      </div>
+                      <input
+                        type="number" min="0" max={l.remaining} value={qty[l.id] ?? ''}
+                        onChange={e => setQty(q => ({ ...q, [l.id]: e.target.value }))}
+                        disabled={l.remaining <= 0}
+                        className="h-7 w-16 rounded-md border border-input bg-transparent px-2 text-xs text-right outline-none focus-visible:border-ring disabled:opacity-50"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex flex-wrap justify-end gap-2">
+                {acting ? (
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Fulfilling…</span>
+                ) : (
+                  <>
+                    {detail && enteredLines.length > 0 && (
+                      <Button size="sm" variant="outline" onClick={() => onFulfil(order, enteredLines)}>
+                        <FileCheck2 className="h-4 w-4 mr-1" /> Fulfil entered
+                      </Button>
+                    )}
+                    <Button size="sm" onClick={() => onFulfil(order)}>
+                      <FileCheck2 className="h-4 w-4 mr-1" /> Fulfil all remaining
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
           )}
         </div>

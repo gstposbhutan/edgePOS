@@ -309,28 +309,71 @@ export async function createSalesOrder({ supabase, sellerId, buyerId, items, use
   return { ok: true, order }
 }
 
+// Sum how much of each SO line has already been invoiced, keyed by product+package, across the SO's
+// non-cancelled SALES_INVOICE children.
+async function invoicedQtyBySoLine(supabase, soId) {
+  const { data: children } = await supabase
+    .from('orders').select('id').eq('sales_order_id', soId).eq('order_type', 'SALES_INVOICE').neq('status', 'CANCELLED')
+  const ids = (children ?? []).map(c => c.id)
+  const map = {}
+  if (!ids.length) return map
+  const { data: rows } = await supabase
+    .from('order_items').select('product_id, package_id, quantity').in('order_id', ids).eq('status', 'ACTIVE')
+  for (const r of rows ?? []) {
+    const key = `${r.product_id}:${r.package_id || ''}`
+    map[key] = (map[key] || 0) + r.quantity
+  }
+  return map
+}
+
+const soKey = (i) => `${i.product_id}:${i.package_id || ''}`
+
 /**
- * Convert a Sales Order into a Sales Invoice (full conversion): create a CONFIRMED SALES_INVOICE that
- * deducts the seller's stock (deduct_stock_on_sales_invoice) and debits the buyer's khata on CREDIT
- * (per-tier trigger), receive the goods into the buyer, and mark the SO CONFIRMED.
- * @returns {Promise<{ ok:true, invoice, warning? } | { ok:false, status, error, invoice? }>}
+ * Convert a Sales Order into a Sales Invoice. Fulfils ALL remaining lines by default, or only the
+ * `lines` [{ product_id, package_id?, quantity }] passed (partial fulfilment — invoice some now, the
+ * rest later). Creates a CONFIRMED SALES_INVOICE that deducts the seller's stock, debits the buyer's
+ * khata on CREDIT, and receives the goods into the buyer; the SO moves to PARTIALLY_FULFILLED, or
+ * CONFIRMED once everything is invoiced. Re-runnable until fully invoiced.
+ * @returns {Promise<{ ok:true, invoice, so_status, warning? } | { ok:false, status, error, invoice? }>}
  */
-export async function convertSalesOrderToInvoice({ supabase, sellerId, soId, userId }) {
+export async function convertSalesOrderToInvoice({ supabase, sellerId, soId, userId, lines }) {
   const { data: so, error: soErr } = await supabase
     .from('orders')
     .select('id, order_no, status, seller_id, buyer_id, payment_method, is_quotation')
     .eq('id', soId).eq('order_type', 'SALES_ORDER').maybeSingle()
   if (soErr || !so) return { ok: false, status: 404, error: 'Sales order not found' }
   if (so.seller_id !== sellerId) return { ok: false, status: 403, error: 'Not your sales order' }
-  if (so.status !== 'DRAFT') return { ok: false, status: 409, error: `Sales order is already ${so.status}` }
+  if (!['DRAFT', 'PARTIALLY_FULFILLED'].includes(so.status)) return { ok: false, status: 409, error: `Sales order is already ${so.status}` }
   if (!so.buyer_id) return { ok: false, status: 400, error: 'Sales order has no buyer' }
 
-  const { data: soItems, error: siErr } = await supabase
+  const { data: soItems, error: liErr } = await supabase
     .from('order_items')
-    .select('product_id, package_id, package_name, package_type, sku, name, quantity, unit_price, discount, gst_5, total')
+    .select('product_id, package_id, package_name, package_type, sku, name, quantity, unit_price, discount')
     .eq('order_id', soId).eq('status', 'ACTIVE')
-  if (siErr) return { ok: false, status: 500, error: 'Failed to read sales-order lines' }
+  if (liErr) return { ok: false, status: 500, error: 'Failed to read sales-order lines' }
   if (!soItems?.length) return { ok: false, status: 400, error: 'Sales order has no active lines' }
+
+  // Remaining = ordered − already invoiced, per line.
+  const invoiced = await invoicedQtyBySoLine(supabase, soId)
+  const remainingOf = (i) => i.quantity - (invoiced[soKey(i)] || 0)
+
+  // Decide what to invoice now.
+  let toInvoice
+  if (Array.isArray(lines) && lines.length) {
+    const wantByKey = {}
+    for (const l of lines) wantByKey[`${l.product_id}:${l.package_id || ''}`] = parseInt(l.quantity, 10) || 0
+    toInvoice = []
+    for (const i of soItems) {
+      const want = wantByKey[soKey(i)]
+      if (!want || want <= 0) continue
+      const rem = remainingOf(i)
+      if (want > rem) return { ok: false, status: 400, error: `Only ${rem} of "${i.name}" left to invoice` }
+      toInvoice.push({ line: i, qty: want })
+    }
+  } else {
+    toInvoice = soItems.filter(i => remainingOf(i) > 0).map(i => ({ line: i, qty: remainingOf(i) }))
+  }
+  if (!toInvoice.length) return { ok: false, status: 400, error: 'Nothing left to invoice on this sales order' }
 
   const method = so.payment_method || 'CREDIT'
   if (method === 'CREDIT') {
@@ -338,8 +381,17 @@ export async function convertSalesOrderToInvoice({ supabase, sellerId, soId, use
     if (khata.error) return { ok: false, status: 500, error: `Could not prepare credit account: ${khata.error}` }
   }
 
-  const orderItems = soItems.map(i => ({ ...i, status: 'ACTIVE' }))
-  const subtotal = orderItems.reduce((s, i) => s + parseFloat(i.unit_price) * i.quantity, 0)
+  // Build invoice lines at the SO's agreed unit price, GST recomputed for the invoiced quantity.
+  const orderItems = toInvoice.map(({ line, qty }) => {
+    const unitPrice = parseFloat(line.unit_price)
+    const gst5 = parseFloat((unitPrice * qty * 0.05).toFixed(2))
+    return {
+      product_id: line.product_id, package_id: line.package_id, package_name: line.package_name,
+      package_type: line.package_type, sku: line.sku, name: line.name, quantity: qty,
+      unit_price: unitPrice, discount: 0, gst_5: gst5, total: parseFloat((unitPrice * qty + gst5).toFixed(2)), status: 'ACTIVE',
+    }
+  })
+  const subtotal = orderItems.reduce((s, i) => s + i.unit_price * i.quantity, 0)
   const gstTotal = parseFloat((subtotal * 0.05).toFixed(2))
   const grandTotal = parseFloat((subtotal + gstTotal).toFixed(2))
 
@@ -365,8 +417,13 @@ export async function convertSalesOrderToInvoice({ supabase, sellerId, soId, use
 
   const warnings = await receiveIntoBuyer(supabase, invoice, orderItems, so.buyer_id)
 
-  // Mark the SO fully fulfilled.
-  await supabase.from('orders').update({ status: 'CONFIRMED' }).eq('id', soId)
+  // Fully invoiced now? Fold this invoice's quantities into the running total and check every line.
+  for (const { line, qty } of toInvoice) invoiced[soKey(line)] = (invoiced[soKey(line)] || 0) + qty
+  const fullyInvoiced = soItems.every(i => (invoiced[soKey(i)] || 0) >= i.quantity)
+  const soStatus = fullyInvoiced ? 'CONFIRMED' : 'PARTIALLY_FULFILLED'
+  await supabase.from('orders').update({ status: soStatus }).eq('id', soId)
 
-  return warnings.length ? { ok: true, invoice, warning: `Some lines not received: ${warnings.join('; ')}` } : { ok: true, invoice }
+  const out = { ok: true, invoice, so_status: soStatus }
+  if (warnings.length) out.warning = `Some lines not received: ${warnings.join('; ')}`
+  return out
 }

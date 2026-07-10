@@ -73,8 +73,10 @@ export function IncomingOrders() {
     }
   }, [load, filter])
 
-  const refund = useCallback(async (order) => {
-    const reason = window.prompt(`Refund order ${order.order_no} in full? This returns the stock on both sides and reverses any credit.\n\nReason (optional):`, '')
+  // itemIds omitted → full refund; provided → refund just those lines.
+  const refund = useCallback(async (order, itemIds) => {
+    const scope = itemIds ? `${itemIds.length} line${itemIds.length === 1 ? '' : 's'} of` : 'all of'
+    const reason = window.prompt(`Refund ${scope} order ${order.order_no}? This returns the stock on both sides and reverses any credit.\n\nReason (optional):`, '')
     if (reason === null) return
     setActing(order.id)
     setError(null)
@@ -82,7 +84,7 @@ export function IncomingOrders() {
       const res = await fetch(`/api/console/orders/${order.id}/refund`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: reason || undefined }),
+        body: JSON.stringify({ reason: reason || undefined, item_ids: itemIds || undefined }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Refund failed')
@@ -177,6 +179,34 @@ function OrderRow({ order, open, onToggle, acting, onAction, onRefund }) {
   const actions = NEXT_ACTIONS[order.status] || []
   const canRefund = REFUNDABLE.includes(order.status)
 
+  const [refundLines, setRefundLines] = useState(null)  // order_items (with ids) for line-level refund
+  const [selected, setSelected] = useState(() => new Set())
+
+  // For a refundable order, load its lines (with ids) on expand so a subset can be picked.
+  useEffect(() => {
+    if (!open || !canRefund) return
+    let alive = true
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/console/orders/${order.id}`)
+        const data = await res.json()
+        if (!alive || !res.ok) return
+        const active = (data.items || []).filter(l => l.status === 'ACTIVE')
+        setRefundLines(active)
+        setSelected(new Set(active.map(l => l.id)))
+      } catch { /* fall back to full-refund button only */ }
+    })()
+    return () => { alive = false }
+  }, [open, canRefund, order.id])
+
+  const toggleLine = (id) => setSelected(prev => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
+  const allSelected = refundLines && selected.size === refundLines.length
+  const someSelected = selected.size > 0
+
   return (
     <div className={!order.status || order.status === 'CANCELLED' || order.status === 'REFUNDED' ? 'opacity-70' : ''}>
       <button
@@ -203,7 +233,26 @@ function OrderRow({ order, open, onToggle, acting, onAction, onRefund }) {
 
       {open && (
         <div className="px-4 pb-4 pl-11 space-y-2">
-          {items.length === 0 ? (
+          {canRefund && refundLines ? (
+            // Refundable: show ACTIVE lines with a checkbox so a subset can be refunded.
+            refundLines.length === 0 ? (
+              <p className="text-xs text-muted-foreground">Nothing left to refund on this order.</p>
+            ) : (
+              <div className="rounded-lg border border-border divide-y divide-border">
+                {refundLines.map(l => (
+                  <label key={l.id} className="flex items-center gap-3 px-3 py-2 cursor-pointer">
+                    <input type="checkbox" checked={selected.has(l.id)} onChange={() => toggleLine(l.id)} className="h-3.5 w-3.5 accent-tibetan" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-foreground truncate">{l.name}</p>
+                      {l.sku && <p className="text-[10px] text-muted-foreground">{l.sku}</p>}
+                    </div>
+                    <p className="text-xs text-muted-foreground whitespace-nowrap">{l.quantity} × {money(l.unit_price)}</p>
+                    <p className="text-xs font-medium w-20 text-right">{money(l.total)}</p>
+                  </label>
+                ))}
+              </div>
+            )
+          ) : items.length === 0 ? (
             <p className="text-xs text-muted-foreground">No line items recorded.</p>
           ) : (
             <div className="rounded-lg border border-border divide-y divide-border">
@@ -248,6 +297,16 @@ function OrderRow({ order, open, onToggle, acting, onAction, onRefund }) {
                       {a.label}
                     </Button>
                   ))}
+                  {canRefund && refundLines && someSelected && !allSelected && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-tibetan border-tibetan/30 hover:bg-tibetan/10"
+                      onClick={() => onRefund(order, [...selected])}
+                    >
+                      Refund selected ({selected.size})
+                    </Button>
+                  )}
                   {canRefund && (
                     <Button
                       size="sm"
@@ -255,7 +314,7 @@ function OrderRow({ order, open, onToggle, acting, onAction, onRefund }) {
                       className="text-tibetan border-tibetan/30 hover:bg-tibetan/10"
                       onClick={() => onRefund(order)}
                     >
-                      Refund
+                      Refund all
                     </Button>
                   )}
                 </>
