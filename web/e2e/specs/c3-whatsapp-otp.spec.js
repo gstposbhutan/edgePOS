@@ -56,7 +56,7 @@ const phones = {
   expired: '+97517100066',
 }
 
-test.describe('WhatsApp OTP Auth', () => {
+test.describe.skip('WhatsApp OTP Auth [RETIRED — customer login moved to email-OTP]', () => {
   // Clean up all test OTPs before running to avoid rate limit pollution
   test.beforeAll(async () => {
     const supabase = getAdminClient()
