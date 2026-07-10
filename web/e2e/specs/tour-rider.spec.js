@@ -1,6 +1,7 @@
 const { test, expect } = require('@playwright/test')
 const { createClient } = require('@supabase/supabase-js')
 const { TEST_RIDER, TEST_ENTITY } = require('../fixtures/test-data')
+const { installTour, titleCard, caption, clearCaption } = require('../lib/tour-overlay')
 
 // GUIDED TOUR — Rider delivery. Deliberately slow (slowMo in the `tour` project + char-by-char typing
 // + pauses) so a viewer follows every click and keypress. Produces a .webm under test-results/.
@@ -59,29 +60,44 @@ async function seedOrder() {
 test('TOUR — Rider: log in, see the queue, pick up and deliver', async ({ page }) => {
   test.setTimeout(180_000)
   const order = await seedOrder()
+  await installTour(page)
 
   // 1) The rider opens the portal and signs in with their email.
-  await page.goto('/rider/login'); await beat(page, 1800)
+  await page.goto('/rider/login'); await beat(page, 1200)
+  await titleCard(page, {
+    kicker: 'Last-Mile · Rider',
+    title: 'Deliver an order',
+    sub: 'Sign in, pick up, and deliver — every hand-off confirmed by OTP.',
+  })
+  await caption(page, { step: 1, title: 'Sign in with your email', text: 'The rider enters their email; a 6-digit code is sent to them.' })
   await slowType(page.getByPlaceholder('you@example.com'), TEST_RIDER.email); await beat(page)
   await page.getByRole('button', { name: /send code/i }).click(); await beat(page, 1800)
 
   // 2) They enter the 6-digit code emailed to them.
+  await caption(page, { step: 2, title: 'Enter the emailed code', text: 'No passwords — the code proves it is really them.' })
   await slowType(page.getByPlaceholder('123456'), '123456'); await beat(page)
   await page.getByRole('button', { name: /^sign in$/i }).click()
-  await page.waitForURL('**/rider'); await beat(page, 2200)
+  await page.waitForURL('**/rider'); await beat(page, 1800)
 
   // 3) The assigned delivery appears in their queue.
+  await caption(page, { step: 3, title: 'Your delivery queue', text: 'Assigned orders appear here and can be worked in any order.' })
   const card = page.locator('div.border-2.rounded-xl').filter({ hasText: order.order_no })
-  await expect(card).toBeVisible({ timeout: 15000 }); await beat(page, 2000)
+  await expect(card).toBeVisible({ timeout: 15000 }); await beat(page, 1800)
 
   // 4) At the shop, the rider confirms pickup with the vendor's code.
+  await caption(page, { step: 4, title: 'Confirm pickup', text: 'At the shop, the rider enters the vendor’s pickup OTP.' })
   await card.getByRole('button', { name: /confirm pickup/i }).click(); await beat(page)
   await slowOtp(page, '123456'); await beat(page)
   await page.locator('div.fixed.inset-0').getByRole('button', { name: /^confirm$/i }).click(); await beat(page, 2200)
 
   // 5) At the door, the rider confirms delivery with the customer's code.
+  await caption(page, { step: 5, title: 'Confirm delivery', text: 'At the door, the customer’s delivery OTP closes the order.' })
   await expect(card.getByRole('button', { name: /confirm delivery/i })).toBeVisible({ timeout: 12000 })
   await card.getByRole('button', { name: /confirm delivery/i }).click(); await beat(page)
   await slowOtp(page, '123456'); await beat(page)
-  await page.locator('div.fixed.inset-0').getByRole('button', { name: /^confirm$/i }).click(); await beat(page, 2500)
+  await page.locator('div.fixed.inset-0').getByRole('button', { name: /^confirm$/i }).click(); await beat(page, 2200)
+
+  // 6) Done.
+  await caption(page, { step: 6, title: 'Delivered', text: 'The order is complete and the rider is free for the next one.' }, 3200)
+  await clearCaption(page); await beat(page, 800)
 })
