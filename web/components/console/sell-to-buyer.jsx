@@ -61,16 +61,11 @@ export function SellToBuyer() {
     return () => { alive = false }
   }, [])
 
-  // Display price for a product given who we're selling to. A wholesaler buyer means we're a
-  // distributor (distributor_price → wholesale → mrp); a retailer buyer means we're a wholesaler
-  // (wholesale → mrp). The server is authoritative; this is just the shown estimate.
-  const unitPrice = useCallback((p) => {
-    const ladder = selected?.role === 'WHOLESALER'
-      ? [p.distributor_price, p.wholesale_price, p.mrp]
-      : [p.wholesale_price, p.mrp]
-    for (const c of ladder) { const n = parseFloat(c); if (Number.isFinite(n) && n > 0) return n }
-    return 0
-  }, [selected])
+  // Our natural rate tier: selling to a wholesaler means we're a distributor (default Distributor
+  // rate); selling to a retailer means we're a wholesaler (default Wholesale rate). Each line can be
+  // overridden to any tier. The server re-prices authoritatively; this is the shown estimate.
+  const defaultTier = selected?.role === 'WHOLESALER' ? 'DISTRIBUTOR' : 'WHOLESALE'
+  const unitPrice = useCallback((p) => priceForTier(p, selected?.role === 'WHOLESALER' ? 'DISTRIBUTOR' : 'WHOLESALE'), [selected])
 
   function selectBuyer(b) {
     setSelected(b); setStep('catalog'); setSearch(''); setCart([]); setPayment('CREDIT'); setMode('INVOICE'); fetchCatalog('')
@@ -84,15 +79,19 @@ export function SellToBuyer() {
     setCart(prev => {
       const existing = prev.find(c => c.product_id === product.id)
       if (existing) return prev.map(c => c.product_id === product.id ? { ...c, quantity: c.quantity + 1 } : c)
+      const prices = { mrp: product.mrp, wholesale_price: product.wholesale_price, distributor_price: product.distributor_price }
       return [...prev, {
         product_id: product.id, name: product.name, sku: product.sku,
-        product_type: product.product_type || 'SINGLE',
-        unit_price: unitPrice(product), stock: parseFloat(product.current_stock ?? 0), quantity: 1,
+        product_type: product.product_type || 'SINGLE', prices, rate_tier: defaultTier,
+        unit_price: priceForTier(prices, defaultTier), stock: parseFloat(product.current_stock ?? 0), quantity: 1,
       }]
     })
   }
   function updateQty(pid, delta) {
     setCart(prev => prev.map(c => c.product_id === pid ? { ...c, quantity: Math.max(1, c.quantity + delta) } : c))
+  }
+  function setLineTier(pid, tier) {
+    setCart(prev => prev.map(c => c.product_id === pid ? { ...c, rate_tier: tier, unit_price: priceForTier(c.prices, tier) } : c))
   }
   function removeItem(pid) { setCart(prev => prev.filter(c => c.product_id !== pid)) }
 
@@ -108,7 +107,7 @@ export function SellToBuyer() {
           payment_method: payment,
           mode,
           source_warehouse_id: sourceWarehouseId || undefined,
-          items: cart.map(c => ({ product_id: c.product_id, quantity: c.quantity })),
+          items: cart.map(c => ({ product_id: c.product_id, quantity: c.quantity, rate_tier: c.rate_tier })),
         }),
       })
       const data = await res.json()
@@ -211,7 +210,7 @@ export function SellToBuyer() {
 
           <div className="border border-border rounded-lg bg-muted/30 p-4 h-fit">
             <Cart
-              items={cart} onUpdateQty={updateQty} onRemove={removeItem}
+              items={cart} onUpdateQty={updateQty} onRemove={removeItem} onSetTier={setLineTier}
               subtotal={subtotal} gstTotal={gstTotal} grandTotal={grandTotal}
               payment={payment} setPayment={setPayment} mode={mode} setMode={setMode}
               warehouses={warehouses} sourceWarehouseId={sourceWarehouseId} setSourceWarehouseId={setSourceWarehouseId}
@@ -225,6 +224,20 @@ export function SellToBuyer() {
 }
 
 function money(v) { return `Nu. ${parseFloat(v ?? 0).toFixed(2)}` }
+
+const SELL_TIERS = [{ id: 'RETAIL', label: 'Retail' }, { id: 'WHOLESALE', label: 'Wholesale' }, { id: 'DISTRIBUTOR', label: 'Distributor' }]
+const RATE_LADDERS = {
+  RETAIL: p => [p.mrp, p.wholesale_price, p.distributor_price],
+  WHOLESALE: p => [p.wholesale_price, p.mrp],
+  DISTRIBUTOR: p => [p.distributor_price, p.wholesale_price, p.mrp],
+}
+// Unit price for a product's price columns at a given rate tier (mirrors the server engine).
+function priceForTier(p, tier) {
+  for (const c of (RATE_LADDERS[tier] || RATE_LADDERS.WHOLESALE)(p)) {
+    const n = parseFloat(c); if (Number.isFinite(n) && n > 0) return n
+  }
+  return 0
+}
 
 function BuyerList({ buyers, loading, onSelect }) {
   if (loading) {
@@ -274,7 +287,7 @@ const MODES = [
 const SUBMIT_LABEL = { INVOICE: 'Confirm Sale', SALES_ORDER: 'Create Sales Order', QUOTATION: 'Create Quotation' }
 const SUBMIT_BUSY = { INVOICE: 'Confirming sale...', SALES_ORDER: 'Creating order...', QUOTATION: 'Creating quotation...' }
 
-function Cart({ items, onUpdateQty, onRemove, subtotal, gstTotal, grandTotal, payment, setPayment, mode, setMode, warehouses, sourceWarehouseId, setSourceWarehouseId, onSubmit, submitting, buyerName }) {
+function Cart({ items, onUpdateQty, onRemove, onSetTier, subtotal, gstTotal, grandTotal, payment, setPayment, mode, setMode, warehouses, sourceWarehouseId, setSourceWarehouseId, onSubmit, submitting, buyerName }) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -291,21 +304,28 @@ function Cart({ items, onUpdateQty, onRemove, subtotal, gstTotal, grandTotal, pa
         <>
           <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
             {items.map(item => (
-              <div key={item.product_id} className="flex items-center gap-2 p-2 rounded-lg bg-card">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium truncate">{item.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {money(item.unit_price)} × {item.quantity}
-                    {item.quantity > item.stock && <span className="text-tibetan"> · over stock ({item.stock})</span>}
-                  </p>
+              <div key={item.product_id} className="p-2 rounded-lg bg-card space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate">{item.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {money(item.unit_price)} × {item.quantity}
+                      {item.quantity > item.stock && <span className="text-tibetan"> · over stock ({item.stock})</span>}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => onUpdateQty(item.product_id, -1)} className="h-6 w-6 rounded flex items-center justify-center hover:bg-muted"><Minus className="h-3 w-3" /></button>
+                    <span className="w-6 text-center text-xs font-medium">{item.quantity}</span>
+                    <button onClick={() => onUpdateQty(item.product_id, +1)} className="h-6 w-6 rounded flex items-center justify-center hover:bg-muted"><Plus className="h-3 w-3" /></button>
+                  </div>
+                  <p className="text-xs font-bold w-16 text-right">{money(item.unit_price * item.quantity)}</p>
+                  <button onClick={() => onRemove(item.product_id)} className="h-6 w-6 rounded flex items-center justify-center text-muted-foreground hover:text-tibetan hover:bg-tibetan/10"><Trash2 className="h-3 w-3" /></button>
                 </div>
-                <div className="flex items-center gap-1">
-                  <button onClick={() => onUpdateQty(item.product_id, -1)} className="h-6 w-6 rounded flex items-center justify-center hover:bg-muted"><Minus className="h-3 w-3" /></button>
-                  <span className="w-6 text-center text-xs font-medium">{item.quantity}</span>
-                  <button onClick={() => onUpdateQty(item.product_id, +1)} className="h-6 w-6 rounded flex items-center justify-center hover:bg-muted"><Plus className="h-3 w-3" /></button>
-                </div>
-                <p className="text-xs font-bold w-16 text-right">{money(item.unit_price * item.quantity)}</p>
-                <button onClick={() => onRemove(item.product_id)} className="h-6 w-6 rounded flex items-center justify-center text-muted-foreground hover:text-tibetan hover:bg-tibetan/10"><Trash2 className="h-3 w-3" /></button>
+                {/* Per-line rate tier */}
+                <select value={item.rate_tier} onChange={e => onSetTier(item.product_id, e.target.value)}
+                  className="h-6 w-full rounded border border-input bg-transparent px-1.5 text-[11px] outline-none focus-visible:border-ring">
+                  {SELL_TIERS.map(t => <option key={t.id} value={t.id}>{t.label} rate</option>)}
+                </select>
               </div>
             ))}
           </div>

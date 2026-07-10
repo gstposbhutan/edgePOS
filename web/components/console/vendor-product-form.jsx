@@ -10,7 +10,7 @@ const UNITS = ['pcs', 'kg', 'g', 'litre', 'ml', 'btl', 'box', 'pack', 'dozen', '
 
 const EMPTY_FORM = {
   name: '', sku: '', hsn_code: '', unit: 'pcs',
-  wholesale_price: '', mrp: '', distributor_price: '',
+  wholesale_price: '', mrp: '', distributor_price: '', manufacturer_price: '',
   current_stock: '0', reorder_point: '10',
   sold_by_weight: false,
   batch_number: '', manufactured_at: '', expires_at: '',
@@ -41,9 +41,10 @@ export function VendorProductForm({ open, product, categories, saving, role, onS
   const [selectedCats, setSelectedCats] = useState([])
   const [error,        setError]        = useState(null)
 
-  // Populate form when editing
+  // Populate form when editing (sync the incoming product prop into local form state)
   useEffect(() => {
     if (product) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setForm({
         name:              product.name ?? '',
         sku:               product.sku ?? '',
@@ -52,6 +53,7 @@ export function VendorProductForm({ open, product, categories, saving, role, onS
         wholesale_price:   product.wholesale_price != null ? String(product.wholesale_price) : '',
         mrp:               product.mrp != null ? String(product.mrp) : '',
         distributor_price: product.distributor_price != null ? String(product.distributor_price) : '',
+        manufacturer_price: product.manufacturer_price != null ? String(product.manufacturer_price) : '',
         current_stock:     String(product.current_stock ?? '0'),
         reorder_point:     String(product.reorder_point ?? '10'),
         sold_by_weight:    product.sold_by_weight ?? false,
@@ -174,6 +176,33 @@ export function VendorProductForm({ open, product, categories, saving, role, onS
                   <p className="text-[10px] text-muted-foreground">3rd-tier rate</p>
                 </div>
               )}
+            </div>
+
+            {/* Cost + margin */}
+            <div className="grid grid-cols-2 gap-3 pt-1 border-t border-border">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">Manufacturer cost</label>
+                <Input
+                  type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00"
+                  value={form.manufacturer_price}
+                  onChange={e => set('manufacturer_price', e.target.value)}
+                />
+                <p className="text-[10px] text-muted-foreground">What you pay to buy it</p>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">Margin</label>
+                {(() => {
+                  const cost = parseFloat(form.manufacturer_price)
+                  const sell = parseFloat(isDistributor ? form.distributor_price : form.wholesale_price)
+                  if (!Number.isFinite(cost) || cost <= 0 || !Number.isFinite(sell) || sell <= 0) {
+                    return <p className="h-9 flex items-center text-sm text-muted-foreground">—</p>
+                  }
+                  const m = sell - cost
+                  const pct = (m / sell) * 100
+                  return <p className={`h-9 flex items-center text-sm font-semibold ${m >= 0 ? 'text-emerald-600' : 'text-tibetan'}`}>Nu. {m.toFixed(2)} <span className="text-[10px] font-normal text-muted-foreground ml-1">({pct.toFixed(0)}%)</span></p>
+                })()}
+                <p className="text-[10px] text-muted-foreground">Your {isDistributor ? 'distributor' : 'wholesale'} rate − cost</p>
+              </div>
             </div>
           </div>
 

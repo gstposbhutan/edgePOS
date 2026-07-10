@@ -22,7 +22,7 @@ export async function GET() {
       supabase
         .from('products')
         .select(`
-          id, name, sku, hsn_code, unit, wholesale_price, mrp, distributor_price,
+          id, name, sku, hsn_code, unit, wholesale_price, mrp, distributor_price, manufacturer_price,
           current_stock, is_active, sold_by_weight, product_type, created_at,
           product_categories(category_id, categories(id, name))
         `)
@@ -72,7 +72,8 @@ export async function POST(request) {
         wholesale_price:  numOrNull(formData.wholesale_price),
         mrp:              numOrNull(formData.mrp),
         distributor_price: numOrNull(formData.distributor_price),
-        current_stock:    parseInt(formData.current_stock) || 0,
+        manufacturer_price: numOrNull(formData.manufacturer_price),
+        current_stock:    0,   // opening stock is set by the RESTOCK movement below (avoids a double-count)
         reorder_point:    parseInt(formData.reorder_point) || 10,
         sold_by_weight:   !!formData.sold_by_weight,
         is_active:        true,
@@ -103,7 +104,7 @@ export async function POST(request) {
           batch_number:    batchNo,
           manufactured_at: formData.manufactured_at || null,
           expires_at:      formData.expires_at || null,
-          quantity:        openingStock,
+          quantity:        0,   // set by the RESTOCK movement below (avoids doubling the batch)
           status:          'ACTIVE',
           notes:           'Opening stock',
         })

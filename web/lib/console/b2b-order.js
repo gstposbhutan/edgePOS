@@ -11,18 +11,33 @@ import { ownedWarehouse, warehouseOnHand, primaryWarehouse } from '@/lib/console
 //                        deduct seller stock + debit khata (via triggers) + receive into the buyer.
 // Keeping it in one place means the flows can't drift.
 
-// Best B2B unit price for a seller of a given tier. A distributor sells at distributor_price (→
-// wholesale → mrp); a wholesaler sells at wholesale_price (→ mrp) — a wholesaler's distributor_price,
-// if any, is what THEY pay upstream and must never leak into what a retailer is charged.
-export function b2bPriceForSeller(p, sellerRole) {
-  const ladder = sellerRole === 'DISTRIBUTOR'
-    ? [p.distributor_price, p.wholesale_price, p.mrp]
-    : [p.wholesale_price, p.mrp]
+// Price ladders per rate tier (first positive column wins). A seller can sell a line at any tier —
+// Retail (mrp), Wholesale (wholesale_price) or Distributor (distributor_price) — mirroring the POS
+// per-line rate tier. Each ladder falls back so a missing column still yields a price.
+const RATE_LADDERS = {
+  RETAIL:      p => [p.mrp, p.wholesale_price, p.distributor_price],
+  WHOLESALE:   p => [p.wholesale_price, p.mrp],
+  DISTRIBUTOR: p => [p.distributor_price, p.wholesale_price, p.mrp],
+}
+
+/** A seller's natural (default) rate tier: distributors sell at distributor rate, wholesalers at wholesale. */
+export function defaultRateTier(sellerRole) {
+  return sellerRole === 'DISTRIBUTOR' ? 'DISTRIBUTOR' : 'WHOLESALE'
+}
+
+/** Unit price for a product at a given rate tier. */
+export function priceForTier(p, tier) {
+  const ladder = (RATE_LADDERS[tier] || RATE_LADDERS.WHOLESALE)(p)
   for (const c of ladder) {
     const n = parseFloat(c)
     if (Number.isFinite(n) && n > 0) return n
   }
   return 0
+}
+
+// Best B2B unit price for a seller at their natural tier (back-compat wrapper).
+export function b2bPriceForSeller(p, sellerRole) {
+  return priceForTier(p, defaultRateTier(sellerRole))
 }
 
 /**
@@ -160,11 +175,14 @@ async function priceB2BCart(supabase, sellerId, sellerRole, items) {
     }
   }
 
+  const fallbackTier = defaultRateTier(sellerRole)
   let subtotal = 0
   const orderItems = items.map(item => {
     const p = productMap[item.product_id]
     const def = item.package_id ? pkgDefsOf(p).find(d => d.id === item.package_id) : null
-    const unitPrice = b2bPriceForSeller(p, sellerRole)
+    // Per-line rate tier (Retail/Wholesale/Distributor), defaulting to the seller's own tier.
+    const tier = RATE_LADDERS[String(item.rate_tier || '').toUpperCase()] ? item.rate_tier.toUpperCase() : fallbackTier
+    const unitPrice = priceForTier(p, tier)
     const qty = item.quantity
     const gst5 = parseFloat((unitPrice * qty * 0.05).toFixed(2))
     const total = parseFloat((unitPrice * qty + gst5).toFixed(2))
