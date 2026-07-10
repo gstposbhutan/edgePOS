@@ -1,4 +1,5 @@
 import { resolveLink, ensureKhataAccount } from '@/lib/console/supply-links'
+import { ownedWarehouse, warehouseOnHand, primaryWarehouse } from '@/lib/console/inventory'
 
 // Shared B2B order engine for the vendor consoles. One set of validation/pricing/receiving helpers
 // backs every seller/buyer flow:
@@ -203,8 +204,9 @@ function itemsSnapshot(orderItems) {
 }
 
 // Receive an order's lines into the buyer's own stock (mirror + RESTOCK), idempotent on
-// (reference_id, product_id, entity). Returns a list of warnings (empty on full success).
-async function receiveIntoBuyer(supabase, order, orderItems, buyerId) {
+// (reference_id, product_id, entity). The goods land in the buyer's primary warehouse when the buyer
+// is a tier with warehouses (destWarehouseId), else entity-level. Returns warnings (empty on success).
+async function receiveIntoBuyer(supabase, order, orderItems, buyerId, destWarehouseId) {
   const warnings = []
   for (const item of orderItems) {
     try {
@@ -216,7 +218,8 @@ async function receiveIntoBuyer(supabase, order, orderItems, buyerId) {
         .limit(1)
       if (prior?.length) continue
       const { error: mvErr } = await supabase.from('inventory_movements').insert({
-        product_id: productId, entity_id: buyerId, movement_type: 'RESTOCK', quantity: item.quantity,
+        product_id: productId, entity_id: buyerId, warehouse_id: destWarehouseId || null,
+        movement_type: 'RESTOCK', quantity: item.quantity,
         reference_id: order.id, package_id: item.package_id || null,
         package_qty: item.package_id ? item.quantity : null, notes: `Received on order ${order.order_no}`,
       })
@@ -226,6 +229,25 @@ async function receiveIntoBuyer(supabase, order, orderItems, buyerId) {
     }
   }
   return warnings
+}
+
+// Validate an optional source warehouse for a seller and check per-line on-hand. Returns
+// { ok:true, warehouseId } (warehouseId null = sell entity-level) or { ok:false, status, error }.
+async function resolveSourceWarehouse(supabase, sellerId, sourceWarehouseId, orderItems) {
+  if (!sourceWarehouseId) return { ok: true, warehouseId: null }
+  const wh = await ownedWarehouse(supabase, sellerId, sourceWarehouseId)
+  if (!wh) return { ok: false, status: 400, error: 'Source warehouse not found' }
+  // Aggregate required qty per product (a product could appear on more than one line).
+  const need = {}
+  for (const it of orderItems) need[it.product_id] = (need[it.product_id] || 0) + it.quantity
+  for (const [productId, qty] of Object.entries(need)) {
+    const onHand = await warehouseOnHand(supabase, sellerId, sourceWarehouseId, productId)
+    if (onHand < qty) {
+      const nm = orderItems.find(i => i.product_id === productId)?.name || productId
+      return { ok: false, status: 400, error: `Only ${onHand} of "${nm}" in ${wh.name}` }
+    }
+  }
+  return { ok: true, warehouseId: sourceWarehouseId }
 }
 
 // Insert order_items rows for an order.
@@ -241,7 +263,7 @@ async function insertOrderItems(supabase, orderId, orderItems) {
  * seller's stock, debits the buyer's khata on CREDIT, and receives the goods into the buyer.
  * @returns {Promise<{ ok:true, order, warning? } | { ok:false, status, error, order? }>}
  */
-export async function createB2BOrder({ supabase, sellerId, buyerId, items, userId, paymentMethod = 'CREDIT' }) {
+export async function createB2BOrder({ supabase, sellerId, buyerId, items, userId, paymentMethod = 'CREDIT', sourceWarehouseId = null }) {
   const method = String(paymentMethod || 'CREDIT').toUpperCase()
   if (!['CREDIT', 'CASH'].includes(method)) return { ok: false, status: 400, error: 'payment_method must be CREDIT or CASH' }
 
@@ -254,13 +276,19 @@ export async function createB2BOrder({ supabase, sellerId, buyerId, items, userI
   const priced = await priceB2BCart(supabase, sellerId, ctx.sellerEnt.role, items)
   if (!priced.ok) return priced
 
+  // Optional source warehouse: sell from a specific depot (checks its on-hand). Null = entity-level.
+  const src = await resolveSourceWarehouse(supabase, sellerId, sourceWarehouseId, priced.orderItems)
+  if (!src.ok) return src
+  // The goods land in the buyer's primary warehouse if the buyer keeps warehouses (a tier), else entity-level.
+  const destWarehouseId = await primaryWarehouse(supabase, buyerId)
+
   const orderNo = await nextOrderNo(supabase, 'WHL')
   const { data: order, error: orderErr } = await supabase
     .from('orders')
     .insert({
       order_type: 'WHOLESALE', order_no: orderNo, status: 'DRAFT', seller_id: sellerId, buyer_id: buyerId,
-      items: itemsSnapshot(priced.orderItems), subtotal: priced.subtotal, gst_total: priced.gstTotal,
-      grand_total: priced.grandTotal, payment_method: method, created_by: userId,
+      warehouse_id: src.warehouseId, items: itemsSnapshot(priced.orderItems), subtotal: priced.subtotal,
+      gst_total: priced.gstTotal, grand_total: priced.grandTotal, payment_method: method, created_by: userId,
     })
     .select('id, order_no, status, grand_total')
     .single()
@@ -273,7 +301,7 @@ export async function createB2BOrder({ supabase, sellerId, buyerId, items, userI
   if (confirmErr) return { ok: false, status: 400, error: confirmErr.message, order }
   order.status = 'CONFIRMED'
 
-  const warnings = await receiveIntoBuyer(supabase, order, priced.orderItems, buyerId)
+  const warnings = await receiveIntoBuyer(supabase, order, priced.orderItems, buyerId, destWarehouseId)
   return warnings.length ? { ok: true, order, warning: `Some lines not received: ${warnings.join('; ')}` } : { ok: true, order }
 }
 
@@ -282,7 +310,7 @@ export async function createB2BOrder({ supabase, sellerId, buyerId, items, userI
  * stock or khata movement. Invoice it later with convertSalesOrderToInvoice.
  * @returns {Promise<{ ok:true, order } | { ok:false, status, error }>}
  */
-export async function createSalesOrder({ supabase, sellerId, buyerId, items, userId, paymentMethod = 'CREDIT', isQuotation = false }) {
+export async function createSalesOrder({ supabase, sellerId, buyerId, items, userId, paymentMethod = 'CREDIT', isQuotation = false, sourceWarehouseId = null }) {
   const method = String(paymentMethod || 'CREDIT').toUpperCase()
   if (!['CREDIT', 'CASH'].includes(method)) return { ok: false, status: 400, error: 'payment_method must be CREDIT or CASH' }
 
@@ -291,12 +319,18 @@ export async function createSalesOrder({ supabase, sellerId, buyerId, items, use
   const priced = await priceB2BCart(supabase, sellerId, ctx.sellerEnt.role, items)
   if (!priced.ok) return priced
 
+  // A source warehouse is just recorded on the SO here (no stock moves until it's invoiced); validate ownership.
+  if (sourceWarehouseId) {
+    const wh = await ownedWarehouse(supabase, sellerId, sourceWarehouseId)
+    if (!wh) return { ok: false, status: 400, error: 'Source warehouse not found' }
+  }
+
   const orderNo = await nextOrderNo(supabase, isQuotation ? 'QT' : 'SO')
   const { data: order, error: orderErr } = await supabase
     .from('orders')
     .insert({
       order_type: 'SALES_ORDER', order_no: orderNo, status: 'DRAFT', is_quotation: !!isQuotation,
-      seller_id: sellerId, buyer_id: buyerId, items: itemsSnapshot(priced.orderItems),
+      seller_id: sellerId, buyer_id: buyerId, warehouse_id: sourceWarehouseId, items: itemsSnapshot(priced.orderItems),
       subtotal: priced.subtotal, gst_total: priced.gstTotal, grand_total: priced.grandTotal,
       payment_method: method, created_by: userId,
     })
@@ -339,7 +373,7 @@ const soKey = (i) => `${i.product_id}:${i.package_id || ''}`
 export async function convertSalesOrderToInvoice({ supabase, sellerId, soId, userId, lines }) {
   const { data: so, error: soErr } = await supabase
     .from('orders')
-    .select('id, order_no, status, seller_id, buyer_id, payment_method, is_quotation')
+    .select('id, order_no, status, seller_id, buyer_id, payment_method, is_quotation, warehouse_id')
     .eq('id', soId).eq('order_type', 'SALES_ORDER').maybeSingle()
   if (soErr || !so) return { ok: false, status: 404, error: 'Sales order not found' }
   if (so.seller_id !== sellerId) return { ok: false, status: 403, error: 'Not your sales order' }
@@ -395,12 +429,18 @@ export async function convertSalesOrderToInvoice({ supabase, sellerId, soId, use
   const gstTotal = parseFloat((subtotal * 0.05).toFixed(2))
   const grandTotal = parseFloat((subtotal + gstTotal).toFixed(2))
 
+  // Source warehouse carried from the SO: check this invoice's quantities are on hand there (null =
+  // entity-level). Goods land in the buyer's primary warehouse if the buyer is a tier.
+  const src = await resolveSourceWarehouse(supabase, sellerId, so.warehouse_id, orderItems)
+  if (!src.ok) return src
+  const destWarehouseId = await primaryWarehouse(supabase, so.buyer_id)
+
   const invNo = await nextOrderNo(supabase, 'SI')
   const { data: invoice, error: invErr } = await supabase
     .from('orders')
     .insert({
       order_type: 'SALES_INVOICE', order_no: invNo, status: 'DRAFT', seller_id: sellerId, buyer_id: so.buyer_id,
-      sales_order_id: soId, items: itemsSnapshot(orderItems), subtotal: parseFloat(subtotal.toFixed(2)),
+      sales_order_id: soId, warehouse_id: src.warehouseId, items: itemsSnapshot(orderItems), subtotal: parseFloat(subtotal.toFixed(2)),
       gst_total: gstTotal, grand_total: grandTotal, payment_method: method, created_by: userId,
     })
     .select('id, order_no, status, grand_total')
@@ -415,7 +455,7 @@ export async function convertSalesOrderToInvoice({ supabase, sellerId, soId, use
   if (confirmErr) return { ok: false, status: 400, error: confirmErr.message, invoice }
   invoice.status = 'CONFIRMED'
 
-  const warnings = await receiveIntoBuyer(supabase, invoice, orderItems, so.buyer_id)
+  const warnings = await receiveIntoBuyer(supabase, invoice, orderItems, so.buyer_id, destWarehouseId)
 
   // Fully invoiced now? Fold this invoice's quantities into the running total and check every line.
   for (const { line, qty } of toInvoice) invoiced[soKey(line)] = (invoiced[soKey(line)] || 0) + qty

@@ -23,6 +23,8 @@ export function SellToBuyer() {
   const [cart, setCart]             = useState([])
   const [payment, setPayment]       = useState('CREDIT')
   const [mode, setMode]             = useState('INVOICE')  // INVOICE | SALES_ORDER | QUOTATION
+  const [warehouses, setWarehouses] = useState([])
+  const [sourceWarehouseId, setSourceWarehouseId] = useState('')  // '' = sell entity-level
   const [search, setSearch]         = useState('')
   const [loading, setLoading]       = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -53,6 +55,11 @@ export function SellToBuyer() {
   }, [])
 
   useEffect(() => { if (step === 'buyers') fetchBuyers() }, [step, fetchBuyers])
+  useEffect(() => {
+    let alive = true
+    ;(async () => { try { const r = await fetch('/api/console/warehouses'); const d = await r.json(); if (alive && r.ok) setWarehouses((d.warehouses || []).filter(w => w.is_active)) } catch { /* */ } })()
+    return () => { alive = false }
+  }, [])
 
   // Display price for a product given who we're selling to. A wholesaler buyer means we're a
   // distributor (distributor_price → wholesale → mrp); a retailer buyer means we're a wholesaler
@@ -100,6 +107,7 @@ export function SellToBuyer() {
           buyer_id: selected.id,
           payment_method: payment,
           mode,
+          source_warehouse_id: sourceWarehouseId || undefined,
           items: cart.map(c => ({ product_id: c.product_id, quantity: c.quantity })),
         }),
       })
@@ -206,6 +214,7 @@ export function SellToBuyer() {
               items={cart} onUpdateQty={updateQty} onRemove={removeItem}
               subtotal={subtotal} gstTotal={gstTotal} grandTotal={grandTotal}
               payment={payment} setPayment={setPayment} mode={mode} setMode={setMode}
+              warehouses={warehouses} sourceWarehouseId={sourceWarehouseId} setSourceWarehouseId={setSourceWarehouseId}
               onSubmit={submit} submitting={submitting} buyerName={selected?.name}
             />
           </div>
@@ -265,7 +274,7 @@ const MODES = [
 const SUBMIT_LABEL = { INVOICE: 'Confirm Sale', SALES_ORDER: 'Create Sales Order', QUOTATION: 'Create Quotation' }
 const SUBMIT_BUSY = { INVOICE: 'Confirming sale...', SALES_ORDER: 'Creating order...', QUOTATION: 'Creating quotation...' }
 
-function Cart({ items, onUpdateQty, onRemove, subtotal, gstTotal, grandTotal, payment, setPayment, mode, setMode, onSubmit, submitting, buyerName }) {
+function Cart({ items, onUpdateQty, onRemove, subtotal, gstTotal, grandTotal, payment, setPayment, mode, setMode, warehouses, sourceWarehouseId, setSourceWarehouseId, onSubmit, submitting, buyerName }) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -306,6 +315,15 @@ function Cart({ items, onUpdateQty, onRemove, subtotal, gstTotal, grandTotal, pa
             <div className="flex justify-between text-xs"><span className="text-muted-foreground">GST (5%)</span><span>{money(gstTotal)}</span></div>
             <div className="flex justify-between text-sm font-bold pt-1"><span>Grand Total</span><span className="text-primary">{money(grandTotal)}</span></div>
           </div>
+
+          {/* Sell from warehouse (optional — else entity-level) */}
+          {warehouses.length > 0 && (
+            <select value={sourceWarehouseId} onChange={e => setSourceWarehouseId(e.target.value)}
+              className="h-8 w-full rounded-lg border border-input bg-transparent px-2 text-xs outline-none focus-visible:border-ring">
+              <option value="">Sell from: any stock (total)</option>
+              {warehouses.map(w => <option key={w.id} value={w.id}>Sell from: {w.name}</option>)}
+            </select>
+          )}
 
           {/* Document type */}
           <div className="grid grid-cols-3 gap-1.5">

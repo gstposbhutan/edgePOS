@@ -60,13 +60,13 @@ export async function POST(request) {
     if (!VENDOR_ROLES.includes(ctx.role)) return NextResponse.json({ error: 'Only distributors and wholesalers can sell to buyers' }, { status: 403 })
 
     const { entityId, userId, supabase } = ctx
-    const { buyer_id, items, payment_method, mode } = await request.json().catch(() => ({}))
+    const { buyer_id, items, payment_method, mode, source_warehouse_id } = await request.json().catch(() => ({}))
     const kind = String(mode || 'INVOICE').toUpperCase()
 
     if (kind === 'SALES_ORDER' || kind === 'QUOTATION') {
       const result = await createSalesOrder({
         supabase, sellerId: entityId, buyerId: buyer_id, items, userId,
-        paymentMethod: payment_method || 'CREDIT', isQuotation: kind === 'QUOTATION',
+        paymentMethod: payment_method || 'CREDIT', isQuotation: kind === 'QUOTATION', sourceWarehouseId: source_warehouse_id || null,
       })
       if (!result.ok) return NextResponse.json({ error: result.error, order: result.order }, { status: result.status })
       return NextResponse.json({ order: result.order }, { status: 201 })
@@ -74,7 +74,7 @@ export async function POST(request) {
 
     // Default: immediate invoice.
     const result = await createB2BOrder({
-      supabase, sellerId: entityId, buyerId: buyer_id, items, userId, paymentMethod: payment_method || 'CREDIT',
+      supabase, sellerId: entityId, buyerId: buyer_id, items, userId, paymentMethod: payment_method || 'CREDIT', sourceWarehouseId: source_warehouse_id || null,
     })
     if (!result.ok) return NextResponse.json({ error: result.error, order: result.order }, { status: result.status })
     return NextResponse.json(result.warning ? { order: result.order, warning: result.warning } : { order: result.order }, { status: 201 })

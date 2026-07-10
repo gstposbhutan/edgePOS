@@ -26,3 +26,12 @@ export async function warehouseOnHand(supabase, entityId, warehouseId, productId
     .eq('warehouse_id', warehouseId).eq('entity_id', entityId).eq('product_id', productId).maybeSingle()
   return data?.quantity ?? 0
 }
+
+/** The entity's default warehouse id (primary first, else any active), or null if it has none. */
+export async function primaryWarehouse(supabase, entityId) {
+  const { data } = await supabase
+    .from('warehouses').select('id, is_primary')
+    .eq('entity_id', entityId).eq('is_active', true)
+    .order('is_primary', { ascending: false }).limit(1).maybeSingle()
+  return data?.id ?? null
+}
