@@ -112,6 +112,7 @@ export default function StockPage() {
           {lowStockCount > 0 && <Badge variant="outline" className="text-amber-600 border-amber-500/30">{lowStockCount} low</Badge>}
           {outOfStockCount > 0 && <Badge variant="outline" className="text-tibetan border-tibetan/30">{outOfStockCount} out</Badge>}
         </div>
+        <Link href="/b2b-orders"><Button variant="ghost" size="sm">B2B orders</Button></Link>
         <Link href="/online-orders"><Button variant="ghost" size="sm">Online orders</Button></Link>
         <Link href="/customers"><Button variant="ghost" size="sm">Customers</Button></Link>
       </header>

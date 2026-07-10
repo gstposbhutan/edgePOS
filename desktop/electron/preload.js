@@ -75,6 +75,21 @@ contextBridge.exposeInMainWorld("electronAPI", {
     },
   },
 
+  b2bOrders: {
+    action: (id, status, reason) => ipcRenderer.invoke("b2b-orders:action", { id, status, reason }),
+    refresh: () => ipcRenderer.invoke("b2b-orders:refresh"),
+    onNew: (callback) => {
+      const listener = (_, data) => callback(data);
+      ipcRenderer.on("b2b-orders:new", listener);
+      return () => ipcRenderer.removeListener("b2b-orders:new", listener);
+    },
+    onChanged: (callback) => {
+      const listener = (_, data) => callback(data);
+      ipcRenderer.on("b2b-orders:changed", listener);
+      return () => ipcRenderer.removeListener("b2b-orders:changed", listener);
+    },
+  },
+
   // Events
   onSyncStatus: (callback) => {
     const listener = (_, data) => callback(data);

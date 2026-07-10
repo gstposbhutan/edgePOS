@@ -97,9 +97,12 @@ export default function OnlineOrdersPage() {
             <Badge variant="outline">{orders.length}</Badge>
           </div>
         </div>
-        <Button variant="ghost" size="icon" onClick={refresh} disabled={loading} title="Refresh">
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Link href="/b2b-orders"><Button variant="ghost" size="sm">B2B orders</Button></Link>
+          <Button variant="ghost" size="icon" onClick={refresh} disabled={loading} title="Refresh">
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
       </header>
 
       <main className="max-w-3xl mx-auto px-4 py-5">

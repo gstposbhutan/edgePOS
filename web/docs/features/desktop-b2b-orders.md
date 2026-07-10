@@ -1,7 +1,7 @@
 # Feature: Desktop B2B order fulfilment for distributor/wholesaler terminals
 
 **Feature ID**: F-DESK-B2B-001
-**Status**: Planned (implementation follows)
+**Status**: Built — web routes deployed + gated; desktop compiles (`next build` + `tsc` clean). **Runtime-unverified**: needs an on-terminal build/test (PB boot + pull/fulfil round-trip) before rollout.
 **Platform**: Desktop POS terminal (Electron + embedded PocketBase + Next.js), BACK_OFFICE mode
 **Phase**: 4 (desktop follow-on) of the distributor/wholesaler parity plan
 

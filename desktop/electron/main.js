@@ -31,6 +31,8 @@ let pbDataDir = null;
 let lastSyncAt = null; // ISO time of the last successful push/pull — drives the renderer sync nudge
 let onlineOrdersInterval = null;
 let onlineOrdersPrimed = false; // suppress the notification storm on the first poll after launch
+let b2bOrdersInterval = null;
+let b2bOrdersPrimed = false;    // same, for incoming B2B (wholesale) orders
 
 function getResourcePath(...segments) {
   if (isDev) return path.join(__dirname, "..", ...segments);
@@ -646,6 +648,11 @@ ipcMain.handle("sync:start", (_, config) => {
   if (onlineOrdersInterval) clearInterval(onlineOrdersInterval);
   onlineOrdersInterval = setInterval(() => pollOnlineOrders().catch(() => {}), 45 * 1000);
   pollOnlineOrders().catch(() => {});
+  // Poll incoming B2B (wholesale) orders — the fulfilment surface for a distributor/wholesaler terminal.
+  b2bOrdersPrimed = false;
+  if (b2bOrdersInterval) clearInterval(b2bOrdersInterval);
+  b2bOrdersInterval = setInterval(() => pollB2bOrders().catch(() => {}), 45 * 1000);
+  pollB2bOrders().catch(() => {});
   return true;
 });
 
@@ -653,10 +660,12 @@ ipcMain.handle("sync:stop", () => {
   if (syncInterval) clearInterval(syncInterval);
   if (bootstrapInterval) clearInterval(bootstrapInterval);
   if (onlineOrdersInterval) clearInterval(onlineOrdersInterval);
+  if (b2bOrdersInterval) clearInterval(b2bOrdersInterval);
   if (syncDebounce) clearTimeout(syncDebounce);
   syncInterval = null;
   bootstrapInterval = null;
   onlineOrdersInterval = null;
+  b2bOrdersInterval = null;
   syncDebounce = null;
   return true;
 });
@@ -773,6 +782,85 @@ async function onlineOrderAction(id, action, reason) {
 ipcMain.handle("online-orders:action", (_, { id, action, reason }) => onlineOrderAction(id, action, reason));
 ipcMain.handle("online-orders:refresh", () => pollOnlineOrders());
 
+// ── Incoming B2B (wholesale) orders — a distributor/wholesaler BACK_OFFICE terminal fulfils the
+//    orders where its store is the seller. Same cloud-pull mirror pattern as online orders, against
+//    the b2b_orders collection + /api/sync/wholesale-orders. ──────────────────────────────────────
+async function pollB2bOrders() {
+  if (!syncConfig || !syncConfig.remoteUrl || !syncConfig.apiKey) return;
+  const url = deriveSyncUrl("wholesale-orders");
+  const token = syncConfig.apiKey;
+  const localUrl = syncConfig.pbUrl || PB_URL;
+  try {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) return; // offline / not configured — keep the last-known mirror
+    const orders = (await res.json()).orders || [];
+
+    const authToken = await syncLocalAuth(localUrl);
+    const jsonAuth = { "Content-Type": "application/json", Authorization: authToken };
+
+    const existRes = await fetch(`${localUrl}/api/collections/b2b_orders/records?perPage=500`, { headers: { Authorization: authToken } });
+    const existing = existRes.ok ? (await existRes.json()).items || [] : [];
+    const localByCloud = new Map(existing.map((r) => [r.cloud_id, r]));
+
+    const cloudIds = new Set();
+    const freshOrders = [];
+    for (const o of orders) {
+      cloudIds.add(o.cloud_id);
+      const payload = {
+        cloud_id: o.cloud_id, order_no: o.order_no, status: o.status, payment_method: o.payment_method || "",
+        buyer_name: o.buyer_name || "", buyer_phone: o.buyer_phone || "", buyer_tpn: o.buyer_tpn || "",
+        subtotal: o.subtotal || 0, gst_total: o.gst_total || 0, grand_total: o.grand_total || 0,
+        items: o.items || [], created_at_cloud: o.created_at || "",
+      };
+      const local = localByCloud.get(o.cloud_id);
+      if (local) {
+        await fetch(`${localUrl}/api/collections/b2b_orders/records/${local.id}`, { method: "PATCH", headers: jsonAuth, body: JSON.stringify(payload) }).catch(() => {});
+      } else {
+        await fetch(`${localUrl}/api/collections/b2b_orders/records`, { method: "POST", headers: jsonAuth, body: JSON.stringify(payload) }).catch(() => {});
+        freshOrders.push(o);
+      }
+    }
+    // Prune rows no longer actionable in the cloud (completed/cancelled/refunded).
+    for (const r of existing) {
+      if (!cloudIds.has(r.cloud_id)) {
+        await fetch(`${localUrl}/api/collections/b2b_orders/records/${r.id}`, { method: "DELETE", headers: { Authorization: authToken } }).catch(() => {});
+      }
+    }
+
+    if (b2bOrdersPrimed && freshOrders.length) {
+      const one = freshOrders.length === 1;
+      const title = one ? "New B2B order" : `${freshOrders.length} new B2B orders`;
+      const body = one
+        ? `${freshOrders[0].order_no} — Nu. ${Number(freshOrders[0].grand_total || 0).toFixed(2)}${freshOrders[0].buyer_name ? " · " + freshOrders[0].buyer_name : ""}`
+        : freshOrders.map((o) => o.order_no).join(", ");
+      try { if (Notification.isSupported()) new Notification({ title, body }).show(); } catch (_) { /* headless */ }
+      mainWindow?.webContents.send("b2b-orders:new", { count: freshOrders.length });
+    }
+    b2bOrdersPrimed = true;
+    mainWindow?.webContents.send("b2b-orders:changed", { count: orders.length });
+  } catch (_) { /* network error — keep the mirror as-is */ }
+}
+
+async function b2bOrderAction(id, status, reason) {
+  if (!syncConfig || !syncConfig.remoteUrl || !syncConfig.apiKey) return { ok: false, error: "Sync not configured" };
+  try {
+    const res = await fetch(`${deriveSyncUrl("wholesale-orders")}/${id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${syncConfig.apiKey}` },
+      body: JSON.stringify({ status, reason: reason || null }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, error: data.error || `HTTP ${res.status}` };
+    await pollB2bOrders();
+    return { ok: true, status: data.status };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+ipcMain.handle("b2b-orders:action", (_, { id, status, reason }) => b2bOrderAction(id, status, reason));
+ipcMain.handle("b2b-orders:refresh", () => pollB2bOrders());
+
 // ── App Lifecycle ───────────────────────────────────────────────────────────
 
 // Single-instance lock: a 2nd launch (e.g. the shopkeeper double-clicking the icon again) must NOT
@@ -861,4 +949,5 @@ app.on("before-quit", () => {
   if (syncInterval) clearInterval(syncInterval);
   if (bootstrapInterval) clearInterval(bootstrapInterval);
   if (onlineOrdersInterval) clearInterval(onlineOrdersInterval);
+  if (b2bOrdersInterval) clearInterval(b2bOrdersInterval);
 });
