@@ -12,6 +12,8 @@ const NEXT_ACTIONS = {
   DISPATCHED: [{ to: 'DELIVERED', label: 'Mark delivered' }],
   DELIVERED:  [{ to: 'COMPLETED', label: 'Mark completed' }],
 }
+// Post-fulfilment statuses that can be refunded (returns stock both sides + reverses khata).
+const REFUNDABLE = ['DISPATCHED', 'DELIVERED', 'COMPLETED']
 
 /**
  * Incoming-orders section for the distributor / wholesaler consoles. Lists the orders where this
@@ -71,6 +73,27 @@ export function IncomingOrders() {
     }
   }, [load, filter])
 
+  const refund = useCallback(async (order) => {
+    const reason = window.prompt(`Refund order ${order.order_no} in full? This returns the stock on both sides and reverses any credit.\n\nReason (optional):`, '')
+    if (reason === null) return
+    setActing(order.id)
+    setError(null)
+    try {
+      const res = await fetch(`/api/console/orders/${order.id}/refund`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reason || undefined }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Refund failed')
+      await load(filter)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setActing(null)
+    }
+  }, [load, filter])
+
   return (
     <div className="space-y-4">
       {/* Heading + filter + refresh */}
@@ -91,6 +114,7 @@ export function IncomingOrders() {
           <option value="DELIVERED">Delivered</option>
           <option value="COMPLETED">Completed</option>
           <option value="CANCELLED">Cancelled</option>
+          <option value="REFUNDED">Refunded</option>
         </select>
         <Button variant="ghost" size="icon-sm" onClick={() => load(filter)} title="Refresh">
           <RefreshCw className="h-4 w-4" />
@@ -122,6 +146,7 @@ export function IncomingOrders() {
                 onToggle={() => setOpenId(openId === o.id ? null : o.id)}
                 acting={acting === o.id}
                 onAction={act}
+                onRefund={refund}
               />
             ))}
           </div>
@@ -139,19 +164,21 @@ const STATUS_STYLES = {
   DELIVERED:  'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20',
   COMPLETED:  'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20',
   CANCELLED:  'bg-tibetan/10 text-tibetan border border-tibetan/20',
+  REFUNDED:   'bg-tibetan/10 text-tibetan border border-tibetan/20',
 }
 
 function money(v) {
   return `Nu. ${parseFloat(v ?? 0).toFixed(2)}`
 }
 
-function OrderRow({ order, open, onToggle, acting, onAction }) {
+function OrderRow({ order, open, onToggle, acting, onAction, onRefund }) {
   const items = Array.isArray(order.items) ? order.items : []
   const statusClass = STATUS_STYLES[order.status] || STATUS_STYLES.DRAFT
   const actions = NEXT_ACTIONS[order.status] || []
+  const canRefund = REFUNDABLE.includes(order.status)
 
   return (
-    <div className={!order.status || order.status === 'CANCELLED' ? 'opacity-70' : ''}>
+    <div className={!order.status || order.status === 'CANCELLED' || order.status === 'REFUNDED' ? 'opacity-70' : ''}>
       <button
         onClick={onToggle}
         className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors text-left"
@@ -204,21 +231,35 @@ function OrderRow({ order, open, onToggle, acting, onAction }) {
           </div>
 
           {/* Fulfilment actions (seller) */}
-          {actions.length > 0 && (
+          {(actions.length > 0 || canRefund) && (
             <div className="flex flex-wrap justify-end gap-2 pt-2 border-t border-border">
               {acting ? (
                 <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Working…</span>
-              ) : actions.map(a => (
-                <Button
-                  key={a.to}
-                  size="sm"
-                  variant={a.danger ? 'outline' : 'default'}
-                  className={a.danger ? 'text-tibetan border-tibetan/30 hover:bg-tibetan/10' : ''}
-                  onClick={() => onAction(order, a.to)}
-                >
-                  {a.label}
-                </Button>
-              ))}
+              ) : (
+                <>
+                  {actions.map(a => (
+                    <Button
+                      key={a.to}
+                      size="sm"
+                      variant={a.danger ? 'outline' : 'default'}
+                      className={a.danger ? 'text-tibetan border-tibetan/30 hover:bg-tibetan/10' : ''}
+                      onClick={() => onAction(order, a.to)}
+                    >
+                      {a.label}
+                    </Button>
+                  ))}
+                  {canRefund && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-tibetan border-tibetan/30 hover:bg-tibetan/10"
+                      onClick={() => onRefund(order)}
+                    >
+                      Refund
+                    </Button>
+                  )}
+                </>
+              )}
             </div>
           )}
         </div>
