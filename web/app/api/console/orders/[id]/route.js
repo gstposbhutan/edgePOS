@@ -89,21 +89,9 @@ export async function PATCH(request, { params }) {
     if (newStatus === 'CANCELLED') { updates.cancelled_at = new Date().toISOString(); updates.cancellation_reason = reason || null }
     if (newStatus === 'COMPLETED') updates.completed_at = new Date().toISOString()
 
-    // On cancel, pre-cancel the lines FIRST so the seller's stock is restored exactly once. Both an
-    // order-level trigger (restore_stock_on_cancel) and an item-level trigger
-    // (restore_stock_on_item_cancel) return stock, and a plain order flip fires both → double
-    // restore. Cancelling the lines first fires only the item-level restore (once); the order flip
-    // below then finds no ACTIVE lines, so the order-level trigger is a stock no-op. The khata
-    // reversal still fires on the order flip (it keys off the DEBIT txn, not the lines).
-    if (newStatus === 'CANCELLED') {
-      const { error: lineErr } = await supabase
-        .from('order_items')
-        .update({ status: 'CANCELLED' })
-        .eq('order_id', id).eq('status', 'ACTIVE')
-      if (lineErr) return NextResponse.json({ error: lineErr.message }, { status: 500 })
-    }
-
-    // The order flip fires khata_credit_on_cancel (reverses the buyer's khata debit).
+    // The order flip fires the cancel triggers: restore_stock_on_cancel returns the seller's stock
+    // (exactly once — migration 108 stopped the item-level trigger from double-restoring product-
+    // backed lines) and khata_credit_on_cancel reverses the buyer's khata debit.
     const { error: updateErr } = await supabase.from('orders').update(updates).eq('id', id)
     if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 })
 
