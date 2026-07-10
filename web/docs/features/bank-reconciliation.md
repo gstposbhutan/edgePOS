@@ -1,437 +1,235 @@
-# Feature: Bank Statement Parser & Auto-Match
+# Feature: Desktop Bank Reconciliation
 
 **Feature ID**: F-BANK-001
-**Phase**: 3
-**Status**: Scoped
-**Last Updated**: 2026-04-19
+**Status**: Planned (refreshed 2026-07-10) — **not yet implemented**
+**Platform**: Desktop POS terminal (Electron + embedded PocketBase + Next.js App Router)
+**Access**: Owner / Manager, back-office context
+
+> This supersedes the 2026-04 "Bank Statement Parser & Auto-Match" scope, which was written against
+> an aspirational architecture (a "Hono.js on Bun" local API, `payment_method IN (MBOB,MPAY,RTGS)`,
+> OCR-first parsing). None of that matches the shipped stack. The corrections are called out inline.
 
 ---
 
-## Overview
+## 1. What this is (and isn't)
 
-Desktop-only reconciliation tool that lets an owner upload a PDF or photo of their daily/weekly bank statement (mBoB or BNB), OCR-parses every transaction row, and auto-matches each bank entry to system orders. The goal is a single-screen reconciliation dashboard that answers three questions at end-of-day: *Which bills have money in the bank? Which bills are missing? Which bank credits have no matching bill?*
+**Bank reconciliation** = matching the store's *recorded digital receipts* against the **actual bank /
+mobile-wallet statement**, and flagging the gaps. There are **three** money-in sources that hit the
+bank, and all three must be reconciled:
 
----
+1. **Orders paid `ONLINE`** (mBoB/mPay/RTGS at the counter).
+2. **Cash deposits** — a `cash_adjustments` row with reason `Deposit` (cash physically banked).
+3. **Khata repayments via a bank channel** — a customer/B2B buyer settling their credit balance by
+   mBoB/mPay/RTGS/bank transfer. This is money in the bank but it is **not an order**, so it must be
+   matched against the khata repayment record (see §5.3). Missing this makes every digital repayment
+   look like an unmatched bank credit.
 
-## Platform Scope
+Match outcomes:
+- **Matched** — a bank credit lines up with an order, a deposit, or a khata repayment → money confirmed.
+- **Unmatched receipt** — an `ONLINE` order (or a confirmed digital khata repayment) exists but no
+  bank credit found → delayed settlement, wrong reference, or a fake payment screenshot.
+- **Unmatched bank credit** — money in the bank with none of the three above → a personal transfer,
+  a salary credit, or a sale recorded on another terminal.
 
-This is a **desktop-only** feature. File upload, OCR batch processing, and the reconciliation dashboard are built for the POS Terminal desktop app. The PWA/mobile app may view reconciliation results in a read-only summary, but all upload and matching operations require desktop.
+**This is NOT** the cash-drawer/shift reconciliation that already ships (close shift → count cash vs
+`expected = opening_float + cashSales − cashRefunds + cashIn − cashOut` → BALANCED/OVERAGE/SHORTAGE;
+see `desktop/hooks/use-shifts.ts` `getReconciliation`). Drawer reconciliation answers "is the cash
+right?"; bank reconciliation answers "did the digital money actually land?". They are complementary.
 
-**Rationale**: Bank statement files are large, batch OCR is compute-intensive, and reconciliation requires side-by-side comparison of many rows — a workflow that needs a wide screen and file system access.
+It is also distinct from, but a stepping stone toward, the pending **mBoB/mPay banking-API**
+integration (CLAUDE.md launch blocker). Until a real API exists, reconciliation works off the
+statement the owner already downloads from their bank app.
 
----
-
-## Supported Bank Statement Formats
-
-### mBoB (Mobile Bank of Bhutan)
-
-Tabular layout with the following columns:
-
-| Column | Description |
-|--------|-------------|
-| Date | Transaction date (DD/MM/YYYY or DD-Mon-YYYY) |
-| Narration | Description containing the Journal Number, payer name, and reference details |
-| Withdrawal (Nu.) | Debit amount |
-| Deposit (Nu.) | Credit amount |
-| Balance (Nu.) | Running account balance |
-
-**Journal Number location**: Embedded within the Narration column, typically formatted as `JNL-XXXXXXXX` or a numeric sequence. The OCR parser must extract this using regex patterns specific to mBoB's narration format.
-
-### BNB (Bank of Bhutan National)
-
-Similar tabular layout with different column headers:
-
-| Column | Description |
-|--------|-------------|
-| Tran Date | Transaction date |
-| Particulars | Description / payer details |
-| Debit (Nu.) | Debit amount |
-| Credit (Nu.) | Credit amount |
-| Balance (Nu.) | Running balance |
-
-**Journal Number location**: Appears in the Particulars column. Format may differ from mBoB. Parser must detect bank type automatically or allow manual selection.
+**In scope vs out of scope for khata.** Bank rec matches *digital khata repayments* to bank credits
+(§5.3) — that IS a bank event. It does **not** perform khata **ledger-integrity** reconciliation
+(verifying each account's `outstanding_balance` equals Σdebits − Σrepayments, catching drift from a
+failed trigger or a manual edit). That internal audit belongs to the khata/credit console (parity plan
+Phase 3), not here; conflating the two would muddle "did the money land?" with "is the ledger self-
+consistent?".
 
 ---
 
-## OCR Pipeline
+## 2. Platform & placement
 
-The pipeline reuses the same Gemini Vision infrastructure built for `F-OCR-001` (payment screenshot verification). Statement parsing is a new prompt template on the same API path.
+Desktop-side, mirroring the existing back-office pages (`/stock`, `/adjustments`). Rationale: it reads
+local `orders` + `cash_adjustments`, needs a wide screen for side-by-side review, and the terminal is
+where a shopkeeper works day-to-day. Offline-first still holds — everything except the optional OCR
+fallback (§4b) is local PocketBase.
 
-### Flow
+- **Route:** `desktop/app/reconciliation/page.tsx` (new).
+- **Nav:** add a link in the POS header of `desktop/app/page.tsx`, gated `{(isManager || isOwner) && …}`
+  exactly like the **Stock** link. Also reachable from a BACK_OFFICE terminal.
+- **Gating:** `useRequireRole(["owner","manager"])` (as `adjustments/page.tsx` does) + it's a
+  back-office screen, so it shows in both POS and BACK_OFFICE terminals for owner/manager.
+- **Web (optional, later):** a read-only cloud mirror once shifts/statements sync. Out of scope for v1.
 
-```
-Owner uploads bank statement file (PDF or image)
-  → If PDF:
-      → Convert each page to a high-res PNG (pdf-to-image library)
-      → Process each page image independently
-  → If image (JPG/PNG):
-      → Use directly
-  → For each image:
-      → Send to Gemini Vision API with bank-statement-specific prompt
-      → Gemini returns structured JSON: array of transaction rows
-  → Merge all page results into a single ordered list
-  → Store parsed results in bank_statement_rows table
-  → Trigger auto-match engine
-```
-
-### Gemini Vision Prompt Requirements
-
-The prompt must instruct Gemini to:
-1. Identify the bank (mBoB or BNB) from the statement header/logo
-2. Parse every transaction row into structured fields
-3. Extract the Journal Number from the narration/particulars column
-4. Distinguish between credits (deposits) and debits (withdrawals)
-5. Return results as a JSON array with schema: `{ date, narration, journal_no, amount, type: CREDIT|DEBIT, balance }`
-6. Handle multi-page statements by returning rows in chronological order
-
-### Parsed Row Schema
-
-Each row extracted from the statement is stored as:
-
-```
-{
-  date: Date,              // Parsed transaction date
-  narration: String,       // Full narration text from statement
-  journal_no: String|null, // Extracted Journal Number (null if not found)
-  amount: Decimal,         // Transaction amount (always positive)
-  type: CREDIT | DEBIT,    // Credit = money in, Debit = money out
-  balance: Decimal|null,   // Running balance if available
-  page_number: Int,        // Source page in multi-page PDF
-  row_index: Int           // Row position on the page (for ordering)
-}
-```
+> **Correction vs old spec:** there is no "Desktop POS API (Hono.js on Bun)". Desktop features are
+> Next.js pages + PocketBase collections + hooks (`getPB()`/`PB_REQ` from `desktop/lib/pb-client.ts`),
+> with the Electron main process handling anything privileged. All `/local/reconciliation/*` routes
+> from the old spec are dropped in favour of direct PocketBase reads/writes via a `use-reconciliation`
+> hook.
 
 ---
 
-## Database Schema
+## 3. Data model (PocketBase collections)
 
-### `bank_statements` table
+Mirror the `shifts` (`002_shifts.js`) / `cash_adjustments` (`003_cash_adjustments.js`) pattern: a
+`base` collection with rules `@request.auth.id != ''`, a parent→child relation, `autodate`
+timestamps, and a matching down-migration. New migration file: `desktop/pb/pb_migrations/021_bank_reconciliation.js`.
 
-Tracks each uploaded statement file.
+### `bank_statements` (the uploaded/entered statement)
+| field | type | notes |
+|---|---|---|
+| `bank_name` | text | free text or a small select (`MBOB`/`BNB`/`OTHER`) |
+| `source` | select | `IMPORT` (CSV/XLSX) \| `OCR` \| `MANUAL` |
+| `statement_start` / `statement_end` | date | period covered |
+| `opening_balance` / `closing_balance` | number | optional, for a balance check |
+| `total_credits` / `total_debits` | number | parsed sums |
+| `rows_parsed` / `rows_matched` | number | progress |
+| `status` | select | `UPLOADED`\|`PARSING`\|`PARSED`\|`RECONCILED`\|`FAILED` |
+| `register_id` | relation → cash_registers | which terminal produced it (as 004 added elsewhere) |
+| `created_by` | relation → _pb_users_auth_ | owner/manager who ran it |
+| `created_at`/`updated_at` | autodate | |
 
-```sql
-CREATE TABLE bank_statements (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  entity_id       UUID NOT NULL REFERENCES entities(id),
-  bank_name       TEXT NOT NULL CHECK (bank_name IN ('MBOB', 'BNB')),
-  file_name       TEXT NOT NULL,
-  file_type       TEXT NOT NULL CHECK (file_type IN ('PDF', 'JPG', 'PNG', 'JPEG')),
-  file_size_bytes BIGINT,
-  statement_date  DATE,                     -- Date range covered (start)
-  statement_end   DATE,                     -- Date range covered (end)
-  total_credits   DECIMAL(12,2),            -- Sum of all deposits parsed
-  total_debits    DECIMAL(12,2),            -- Sum of all withdrawals parsed
-  rows_parsed     INT DEFAULT 0,
-  rows_matched    INT DEFAULT 0,
-  status          TEXT NOT NULL DEFAULT 'UPLOADED'
-                  CHECK (status IN ('UPLOADED', 'PROCESSING', 'PARSED', 'MATCHED', 'FAILED')),
-  error_message   TEXT,
-  uploaded_by     UUID NOT NULL REFERENCES user_profiles(id),
-  created_at      TIMESTAMPTZ DEFAULT NOW(),
-  processed_at    TIMESTAMPTZ
-);
-```
+### `bank_statement_rows` (one transaction line)
+| field | type | notes |
+|---|---|---|
+| `statement` | relation → bank_statements | parent (like `cash_adjustments.shift`) |
+| `row_date` | date | |
+| `narration` | text | full description |
+| `reference_no` | text | extracted journal/UTR/reference (the match key) |
+| `amount` | number | positive |
+| `row_type` | select | `CREDIT` \| `DEBIT` |
+| `balance` | number | running balance if present |
+| `match_status` | select | `UNMATCHED`\|`MATCHED`\|`MANUAL`\|`DISMISSED` |
+| `match_kind` | select | `ORDER`\|`DEPOSIT`\|`KHATA_REPAYMENT` — what a matched row settled |
+| `matched_order` | relation → orders | nullable |
+| `matched_adjustment` | relation → cash_adjustments | nullable (deposit match) |
+| `matched_khata_txn` | relation → khata_transactions | nullable (khata repayment match; on the terminal a repayment is a `khata_transactions` CREDIT row, not a separate `khata_repayments` collection) |
+| `dismiss_reason` | text | when dismissed |
+| `created_at` | autodate | |
 
-### `bank_statement_rows` table
+Unique index (inline `indexes: [...]`, as `017_online_orders.js` does) on
+`(statement, reference_no, amount, row_index)` to make re-imports idempotent.
 
-Individual transaction rows extracted from OCR.
-
-```sql
-CREATE TABLE bank_statement_rows (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  bank_statement_id UUID NOT NULL REFERENCES bank_statements(id) ON DELETE CASCADE,
-  entity_id       UUID NOT NULL REFERENCES entities(id),
-  row_date        DATE NOT NULL,
-  narration       TEXT,
-  journal_no      TEXT,                      -- Extracted from narration
-  amount          DECIMAL(12,2) NOT NULL,
-  row_type        TEXT NOT NULL CHECK (row_type IN ('CREDIT', 'DEBIT')),
-  balance         DECIMAL(12,2),
-  page_number     INT DEFAULT 1,
-  row_index       INT NOT NULL,
-  match_status    TEXT NOT NULL DEFAULT 'UNMATCHED'
-                  CHECK (match_status IN ('MATCHED', 'UNMATCHED', 'DISMISSED', 'MANUALLY_LINKED')),
-  matched_order_id UUID REFERENCES orders(id),
-  dismissed_at    TIMESTAMPTZ,
-  dismissed_by    UUID REFERENCES user_profiles(id),
-  dismissed_reason TEXT,
-  created_at      TIMESTAMPTZ DEFAULT NOW()
-);
-```
-
-### Additions to `orders` table
-
-```sql
-ALTER TABLE orders ADD COLUMN bank_reconciled  BOOLEAN NOT NULL DEFAULT FALSE;
-ALTER TABLE orders ADD COLUMN reconciled_at    TIMESTAMPTZ;
-ALTER TABLE orders ADD COLUMN reconciled_by    UUID REFERENCES user_profiles(id);
-ALTER TABLE orders ADD COLUMN matched_row_id   UUID REFERENCES bank_statement_rows(id);
-```
+> **Correction vs old spec:** it referenced `orders(id)`, `user_profiles(id)`, and SQL DDL. On desktop
+> those are PocketBase relations (`orders`, `_pb_users_auth_`); there is no `user_profiles` collection
+> on the terminal. No `ALTER TABLE orders ADD bank_reconciled …` — instead store the link on the
+> statement row (`matched_order`) and derive an order's reconciled state from it, to avoid schema
+> churn on the heavily-synced `orders` collection.
 
 ---
 
-## Auto-Match Engine
+## 4. Getting the statement in
 
-### Match Criteria
+### 4a. Structured import (primary) — CSV / XLSX
+Lead with this; it's exact, offline, and avoids OCR fragility (CLAUDE.md explicitly warns off OCR for
+money verification). Reuse the proven **product-import** structure: download a template → choose file
+→ **dry-run preview** (`{total, valid, errors, sample}`) → confirm. See
+`web/lib/marketplace/product-import.js` (`buildTemplateWorkbook`/`parseWorkbook`) and
+`web/components/pos/products/product-import-modal.jsx` for the exact UX to mirror.
 
-For each parsed bank entry of type `CREDIT`, the engine searches the `orders` table:
+Two implementation notes:
+- `exceljs` is currently a **web-only** dependency. For desktop either (a) add `exceljs` to
+  `desktop/package.json`, or (b) accept **CSV** and parse it in-process (no dep) — CSV is the safer,
+  lighter default since every bank exports CSV. Recommendation: **CSV first**, XLSX if a bank only
+  gives `.xlsx`.
+- Column mapping is tolerant (header row → key map, case/`*`-insensitive), same as `parseWorkbook`.
+  Bhutanese bank columns: mBoB `Date | Narration | Withdrawal | Deposit | Balance`; BNB
+  `Tran Date | Particulars | Debit | Credit | Balance`. Extract `reference_no` from the narration via
+  bank-specific regex; leave null if not found (owner can fill it to trigger a re-match).
 
-1. **Primary match** (strong confidence):
-   - `bank_statement_rows.journal_no` = `orders.payment_ref` (exact match, case-insensitive, trimmed)
-   - AND `bank_statement_rows.amount` is within +/- Nu. 1 of `orders.grand_total`
-   - AND `orders.seller_id` = current entity
-   - AND `orders.bank_reconciled` = FALSE
+### 4b. OCR (fallback only) — reuse the existing web vision
+A real server-side vision path already exists: `web/lib/vision/server-payment-ocr.js`
+(`verifyPaymentImage`, Zhipu GLM-4V primary / Gemini fallback) and the invoice-oriented
+`web/lib/vision/bill-ocr.js` + `web/app/api/bill-parse/route.js`. A statement-OCR mode would be a new
+prompt on that same path (`web/app/api/bank-statement-parse/route.js`). **Caveats:** desktop is
+offline-first, so OCR is a cloud round-trip (degrades gracefully when offline → fall back to import);
+and per CLAUDE.md, OCR must never be the source of truth for money. Treat OCR output as a *draft* the
+owner reviews before it's saved as rows. **Desktop has no local vision code today** (only an unused
+`ocr_verify_id` column), so there is nothing to port on the terminal — it calls the cloud endpoint.
 
-2. **Amount-only match** (weak confidence, flagged for manual review):
-   - `bank_statement_rows.amount` is within +/- Nu. 1 of `orders.grand_total`
-   - AND `bank_statement_rows.row_date` is within 3 days of `orders.created_at`
-   - AND `orders.payment_method` IN ('MBOB', 'MPAY', 'RTGS')
-   - AND no Journal Number match found
-   - These appear as **yellow (amount mismatch / low confidence)** in the dashboard
-
-### Match Flow
-
-```
-Auto-match engine runs after OCR parsing completes
-  → For each bank_statement_row where row_type = CREDIT and match_status = UNMATCHED:
-      → If journal_no is not null:
-          → Search orders WHERE payment_ref ILIKE journal_no
-              AND seller_id = entity_id
-              AND bank_reconciled = FALSE
-              AND ABS(grand_total - amount) <= 1.00
-          → If exactly 1 match found:
-              → Mark bank_statement_row.match_status = MATCHED
-              → Mark bank_statement_row.matched_order_id = order.id
-              → Mark order.bank_reconciled = TRUE
-              → Set order.reconciled_at = NOW()
-          → If multiple matches found:
-              → Flag as AMBIGUOUS (manual review needed)
-          → If no matches:
-              → Remain UNMATCHED
-      → If journal_no is null:
-          → Attempt amount-only match with date window
-          → If found, mark as weak match (requires manual confirmation)
-  → Update bank_statements.rows_matched count
-  → Update bank_statements.status = MATCHED
-  → Trigger WhatsApp end-of-day summary
-```
-
-### Match Prevention
-
-- An order can only be matched to ONE bank row. Once `bank_reconciled = TRUE`, it is excluded from future matching.
-- A bank row can only be matched to ONE order. Once `match_status = MATCHED`, it is excluded from future matching.
-- Duplicate statement uploads are detected by checking `bank_statements.statement_date` + `entity_id` + `bank_name` — owner is warned before re-processing.
+### 4c. Manual entry
+A simple add-row form for a handful of lines (small shops often reconcile 5–10 digital sales/day).
 
 ---
 
-## Reconciliation Dashboard
+## 5. Auto-match engine (client-side, in the hook)
 
-### Color Coding
+Runs after rows land, over local PocketBase. For each **CREDIT** row still `UNMATCHED`:
 
-| Color | Status | Meaning |
-|-------|--------|---------|
-| Green | Matched | Bank entry matched to an order. Money verified in bank. |
-| Yellow | Unmatched Order | Order exists (MBOB/MPAY/RTGS payment) but no matching bank entry found. Potential fraud, delayed settlement, or OCR failure. |
-| Blue | Unmatched Bank Entry | Money received in bank but no matching order. Could be personal transfer, salary credit, or cash deposit. |
-| Red | Amount Mismatch | Journal Number matches an order but amount differs by more than Nu. 1. Suspect partial payment or wrong order linked. |
+1. **Order match (strong)** — `reference_no` (trim/case-insensitive) == `orders.payment_ref`
+   AND `abs(amount − orders.grand_total) ≤ Nu.1`
+   AND `orders.payment_method = 'ONLINE'` AND the order isn't already matched.
+   → `match_status='MATCHED'`, `match_kind='ORDER'`, `matched_order`.
+2. **Order match (weak, needs confirmation)** — no reference hit, but `abs(amount − grand_total) ≤ Nu.1`
+   AND `row_date` within 3 days of `orders.created_at` AND `payment_method='ONLINE'`. → surfaced as a
+   suggestion, not auto-committed.
+3. **Khata-repayment match** — a CREDIT row settling a credit balance paid by a bank channel. Match a
+   `khata_transactions` CREDIT row (the terminal's repayment record) whose `payment_method` is a bank
+   rail (`MBOB`/`MPAY`/`RTGS`/`BANK_TRANSFER`, **literal** values — khata does NOT use the
+   `ONLINE`+`payment_channel` split that `orders` do), on `reference_no` (strong) or `amount` within
+   the date window (weak). → `match_kind='KHATA_REPAYMENT'`, `matched_khata_txn`. (Cloud/web parity:
+   the same row is a `khata_repayments` record with `payment_method` + `reference_no` + `confirmed_at`;
+   only confirmed/paid repayments participate — the auto-created `CREATED` due-schedule rows do not.)
+4. **Deposit match** — a CREDIT row that equals a `cash_adjustments` row with
+   `reason='Deposit'` (see `lib/constants.ts` `ADJUSTMENT_REASON.DEPOSIT`) → `match_kind='DEPOSIT'`,
+   `matched_adjustment`.
+5. Otherwise **unmatched bank credit** (blue).
 
-### Dashboard Layout
+Invariants: each order / repayment / deposit matches at most one row, and a row matches at most one
+of them. A khata **DEBIT** (the credit *sale*) is never a bank event — only the repayment is. **DEBIT**
+bank rows are parsed and shown for reference but not matched in v1 (future: supplier payments / expenses).
 
-```
-+-------------------------------------------------------------------+
-| BANK RECONCILIATION                               [Upload Statement]|
-| Statement: mBoB | Date: 19-Apr-2026 | 47 rows parsed              |
-|-------------------------------------------------------------------|
-| Summary: 32 matched | 4 unmatched orders | 8 unmatched entries    |
-|          3 amount mismatches                                         |
-|-------------------------------------------------------------------|
-| [All] [Matched] [Unmatched Orders] [Unmatched Bank] [Mismatches]   |
-|-------------------------------------------------------------------|
-| Date       | Narration          | Journal | Amount | Order    | St  |
-|------------|--------------------|---------|--------|----------|-----|
-| 19-Apr     | NEFT-ShopEasy      | JNL-421 | 1,200  | POS-142  | Grn |
-| 19-Apr     | Salary-April       | —       | 15,000 | —        | Blu |
-| 19-Apr     | mBoB-Transfer      | JNL-422 | 850    | POS-139  | Red |
-| 19-Apr     | (no bank entry)    | —       | —      | POS-143  | Ylw |
-+-------------------------------------------------------------------+
-```
-
-### Manual Actions
-
-- **Dismiss unmatched bank entry**: Owner clicks a blue row, selects "Dismiss" with a reason (Personal Transfer / Salary / Cash Deposit / Other). Row is marked `DISMISSED`.
-- **Manually link bank entry to order**: Owner clicks a blue row, selects "Link to Order", searches by order number or customer name, and creates the link. Row is marked `MANUALLY_LINKED`, order is marked `bank_reconciled = TRUE`.
-- **Investigate unmatched order**: Owner clicks a yellow row to view the order detail. Possible actions: re-check bank statement, mark as "Cash Collected", or flag for investigation.
+> **Correction vs old spec:** matching is on `payment_method='ONLINE'` (+ optional `payment_channel`
+> `MBOB/MPAY/RTGS`), **not** `payment_method IN ('MBOB','MPAY','RTGS')` — those literals were migrated
+> to `ONLINE`+`payment_channel` (web migration `064`; desktop `orders.payment_method` CHECK is
+> `CASH|CREDIT|ONLINE`). CASH and CREDIT orders are excluded from matching (cash never hits the bank;
+> credit is a khata, not a bank credit).
 
 ---
 
-## WhatsApp End-of-Day Summary
+## 6. Reconciliation dashboard
 
-After reconciliation completes (or at a scheduled time each evening), a WhatsApp summary is sent to the store owner.
+Single screen, summary bar + filterable colour-coded table (Green matched / Yellow unmatched order /
+Blue unmatched bank credit / Red amount-mismatch). Manual actions:
+- **Dismiss** a blue row with a reason (Personal transfer / Owner deposit / Other) → `DISMISSED`.
+- **Link** a blue row to an order (search by `order_no`/amount) → `MANUAL` + set `matched_order`.
+- **Investigate** a yellow order (view detail; re-check reference; mark "cash collected").
 
-### Message Template
-
-```
-*Bank Reconciliation — 19 Apr 2026*
-Statement: mBoB
-
-*Bills:* 32 totaling Nu. 45,200
-*Matched in bank:* 28 (Nu. 39,600)
-*Unmatched:* 4 (Nu. 5,600)
-
-_Unmatched orders need attention._
-Open POS Desktop to review.
-```
-
-### Trigger Conditions
-
-- Automatically sent when a statement is fully processed and matched.
-- Also sent via scheduled job at 8:00 PM if any orders from today remain `bank_reconciled = FALSE` and payment_method is not CASH.
-- Sent only to the Owner's WhatsApp number (from `entities.whatsapp_no` or `user_profiles`).
+Build it the shifts way: a `desktop/hooks/use-reconciliation.ts` using TanStack Query over
+`pb.collection('bank_statements'|'bank_statement_rows'|'orders'|'cash_adjustments')`, with
+`invalidateQueries` on each mutation; aggregates computed client-side (like `computeShiftCashAggregates`).
 
 ---
 
-## API Routes
-
-### Desktop POS API (Hono.js on Bun)
-
-```
-POST /local/reconciliation/upload
-  → Accepts multipart file upload (PDF or image)
-  → Creates bank_statements record
-  → Triggers OCR pipeline
-  → Returns bank_statement_id for polling
-
-GET /local/reconciliation/status/:statement_id
-  → Returns processing status + progress
-
-GET /local/reconciliation/dashboard/:statement_id
-  → Returns full reconciliation results with color-coded match status
-  → Query params: filter (all|matched|unmatched_order|unmatched_bank|mismatch)
-
-POST /local/reconciliation/dismiss/:row_id
-  → Marks a bank row as DISMISSED with reason
-
-POST /local/reconciliation/link
-  → Body: { row_id, order_id }
-  → Manually links a bank row to an order
-
-GET /local/reconciliation/unmatched-orders
-  → Returns orders for the statement period that are bank_reconciled = FALSE
-  → Used for manual linking search
-```
+## 7. Access control
+Owner + Manager only (`useRequireRole(["owner","manager"])`), enforced again by PocketBase collection
+rules (`@request.auth.role = 'owner' || 'manager'`, as `004_cash_registers.js` does for registers).
+Dismiss is arguably owner-only — match the existing granularity in the old spec's table if desired.
 
 ---
 
-## Security & Access Control
-
-| Action | Cashier | Manager | Owner |
-|--------|---------|---------|-------|
-| Upload bank statement | No | Yes | Yes |
-| View reconciliation dashboard | No | Yes | Yes |
-| Dismiss unmatched bank entry | No | No | Yes |
-| Manually link bank entry to order | No | Yes | Yes |
-| View WhatsApp summary | No | No | Yes |
-
-Row-Level Security: `bank_statements` and `bank_statement_rows` are filtered by `entity_id` matching the user's store. No cross-store visibility.
+## 8. Sync considerations
+`orders` already sync to Supabase; `shifts`/`cash_adjustments` do **not** yet (no `external_id`). Keep
+v1 reconciliation **terminal-local** — statements never need to leave the box. If a cloud/web view is
+wanted later, add web parity tables + an `external_id` column and fold into the existing sync ingest,
+same as the shifts follow-up in CLAUDE.md's IN-PROGRESS list.
 
 ---
 
-## Error Handling
-
-### OCR Failures
-
-| Scenario | Handling |
-|----------|----------|
-| Unreadable PDF (corrupt, encrypted) | Return error with message. Owner must download a fresh copy from bank app. |
-| Gemini API timeout | Retry up to 2 times. If still failing, mark statement as FAILED with error detail. |
-| Partial page parse | Process whatever rows are extractable. Log warning for failed pages. Owner can re-upload those pages separately. |
-| Bank format not recognized | Prompt owner to manually select bank (mBoB / BNB / Other) and re-process. |
-
-### Match Failures
-
-| Scenario | Handling |
-|----------|----------|
-| Journal Number in narration but not extracted | Owner can manually enter the Journal Number on the bank row to trigger re-match. |
-| Multiple orders with same payment_ref | Flag as ambiguous. Owner picks the correct match from a list. |
-| Order paid in cash but marked as MBOB | Cashier error. Owner corrects payment_method on the order, which removes it from unmatched. |
+## 9. Phasing
+- **P0** — collections (`021_…js`) + `use-reconciliation` hook + CSV import (dry-run→confirm) + the
+  match engine + dashboard (matched/unmatched/dismiss/link). Fully offline.
+- **P1** — deposit matching against `cash_adjustments`; amount-only weak-match suggestions.
+- **P2** — OCR fallback via the cloud vision endpoint (draft-then-review); XLSX support.
+- **P3** — WhatsApp/email end-of-day summary (reuse the gateway); web read-only mirror + sync.
 
 ---
 
-## Dependencies
-
-- **F-OCR-001**: Uses the same Gemini Vision API pipeline for OCR processing. The statement parsing prompt is a new template on the shared infrastructure.
-- **F-ORDER-001**: Reads from `orders` table for matching. Requires `payment_ref` to be populated during payment verification.
-- **WhatsApp Gateway**: Requires the `whatsapp-gateway` microservice to be operational for end-of-day summary delivery.
-
----
-
-## Implementation Checklist
-
-### Database
-- [ ] Create `bank_statements` table
-- [ ] Create `bank_statement_rows` table
-- [ ] Add `bank_reconciled`, `reconciled_at`, `reconciled_by`, `matched_row_id` columns to `orders` table
-- [ ] DB index on `bank_statement_rows(journal_no)` for fast match lookups
-- [ ] DB index on `orders(payment_ref)` for fast match lookups
-- [ ] DB constraint: each order can only be matched once (`bank_reconciled` check)
-- [ ] DB constraint: each bank row can only be matched once (`match_status` check)
-- [ ] RLS policies on `bank_statements` and `bank_statement_rows` filtered by `entity_id`
-
-### OCR Pipeline
-- [ ] PDF-to-image conversion utility (multi-page support)
-- [ ] Gemini Vision prompt template for mBoB statement parsing
-- [ ] Gemini Vision prompt template for BNB statement parsing
-- [ ] Auto-detect bank type from statement header
-- [ ] Parsed row validation (date format, amount range, required fields)
-- [ ] Multi-page merge and chronological ordering
-- [ ] Duplicate statement detection (same date range + bank + entity)
-
-### Auto-Match Engine
-- [ ] Primary match: Journal Number + amount tolerance (+/- Nu. 1)
-- [ ] Secondary match: amount-only with date window (3 days)
-- [ ] Ambiguous match detection (multiple candidates)
-- [ ] Match execution: update `bank_statement_rows` and `orders` in single transaction
-- [ ] Re-match support: allow re-running match after manual Journal Number entry
-
-### Reconciliation Dashboard (Desktop)
-- [ ] File upload component (drag-and-drop + file picker)
-- [ ] Processing status indicator with progress bar
-- [ ] Summary bar (matched / unmatched orders / unmatched bank / mismatches)
-- [ ] Filterable results table with color-coded rows
-- [ ] Dismiss action for unmatched bank entries (with reason dropdown)
-- [ ] Manual link action (search order by order number or customer)
-- [ ] Order detail drawer for investigating unmatched orders
-- [ ] Export reconciliation results as CSV
-
-### WhatsApp Integration
-- [ ] End-of-day summary message template
-- [ ] Trigger on reconciliation completion
-- [ ] Scheduled 8:00 PM job for unresolved orders
-- [ ] Sent only to Owner role
-
-### API Routes
-- [ ] `POST /local/reconciliation/upload` — file upload + OCR trigger
-- [ ] `GET /local/reconciliation/status/:statement_id` — polling endpoint
-- [ ] `GET /local/reconciliation/dashboard/:statement_id` — results with filters
-- [ ] `POST /local/reconciliation/dismiss/:row_id` — dismiss bank entry
-- [ ] `POST /local/reconciliation/link` — manual link
-- [ ] `GET /local/reconciliation/unmatched-orders` — search for manual linking
-
----
-
-## Resolved Decisions
-
-**Q: Why desktop-only and not available on PWA/mobile?**
-A: Bank statement reconciliation is a batch operation involving file uploads (often multi-page PDFs), OCR processing of many rows, and a side-by-side comparison UI. This workflow is poorly suited to small screens and mobile browsers. Mobile users can view a read-only reconciliation summary in a future iteration.
-
-**Q: Why +/- Nu. 1 tolerance on amount matching instead of exact match?**
-A: Bhutanese banks occasionally round differently at the paisa level. A Nu. 1 tolerance catches these cases without creating false positives. Amounts differing by more than Nu. 1 are flagged as red (mismatch) for manual investigation.
-
-**Q: What happens if the owner uploads the same statement twice?**
-A: The system detects duplicates by checking `statement_date` + `statement_end` + `bank_name` + `entity_id`. If a duplicate is detected, the owner is warned and must confirm re-upload. Previous matches are not overwritten — the new upload creates a fresh statement record and re-runs matching against only unmatched orders.
-
-**Q: Should debits (withdrawals) from the bank statement be matched?**
-A: Not in v1. The auto-match engine only processes CREDIT rows (money received). Debit rows are parsed and stored but not matched — they are visible in the dashboard for the owner's reference. Future iterations may match debits to supplier payments or expense records.
-
-**Q: How are cash orders handled in reconciliation?**
-A: Cash orders (`payment_method = CASH`) are excluded from reconciliation entirely. They never appear as "unmatched" because cash never appears in the bank statement. Only MBOB, MPAY, and RTGS orders participate in matching.
+## 10. Open questions
+1. CSV-only vs add `exceljs` to desktop for XLSX? (Recommend CSV first.)
+2. Reconcile per-terminal or per-store (multiple registers → one bank account)? Per-store is more
+   useful but needs cross-terminal order visibility — which today only exists cloud-side. v1 = local
+   terminal's own `ONLINE` orders; revisit when shifts/orders reconciliation goes cloud.
+3. Match tolerance — keep ±Nu.1 (bank paisa rounding) as the old spec resolved.
