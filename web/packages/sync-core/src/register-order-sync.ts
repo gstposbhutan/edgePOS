@@ -79,6 +79,7 @@ export interface TerminalOrderItemLine {
   unit_price?: number
   discount?: number
   gst_5?: number
+  gst_exempt?: boolean
   total?: number
 }
 
@@ -274,6 +275,7 @@ export async function syncOrderItems(
         unit_price: line.unit_price ?? 0,
         discount: line.discount ?? 0,
         gst_5: line.gst_5 ?? 0,
+        gst_exempt: line.gst_exempt ?? false,
         total: line.total ?? 0,
         external_id: `${machineId}:${o.order_no}:${idx}`,
       })

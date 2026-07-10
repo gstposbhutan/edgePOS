@@ -49,7 +49,7 @@ export async function GET(request) {
       .from('products')
       .select(`
         id, name, sku, barcode, qr_code, hsn_code, unit, mrp, selling_price,
-        wholesale_price, current_stock, reorder_point, image_url, is_active, sold_by_weight,
+        wholesale_price, current_stock, reorder_point, image_url, is_active, sold_by_weight, gst_exempt,
         product_categories(categories(name))
       `)
       .eq('created_by', entityId)
@@ -90,6 +90,7 @@ export async function GET(request) {
     image_url: p.image_url || '',
     is_active: p.is_active ?? true,
     sold_by_weight: p.sold_by_weight ?? false,
+    gst_exempt: p.gst_exempt ?? false,
     category_name: p.product_categories?.[0]?.categories?.name ?? null,
   }))
 

@@ -333,7 +333,7 @@ async function doBootstrap() {
         hsn_code: p.hsn_code, unit: p.unit, mrp: p.mrp, sale_price: p.sale_price,
         wholesale_price: p.wholesale_price, current_stock: p.current_stock,
         reorder_point: p.reorder_point, image_url: p.image_url, is_active: p.is_active,
-        sold_by_weight: p.sold_by_weight,
+        sold_by_weight: p.sold_by_weight, gst_exempt: p.gst_exempt,
       };
       if (p.category_name && catMap.has(p.category_name)) fields.category = catMap.get(p.category_name);
       const existing = p.sku ? await findOne("products", `sku = "${esc(p.sku)}"`) : null;

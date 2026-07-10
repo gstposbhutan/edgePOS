@@ -144,6 +144,7 @@ async function setup() {
     { name: 'image_embedding', type: 'text', required: false },
     { name: 'is_active', type: 'bool', required: false, options: { default: true } },
     { name: 'sold_by_weight', type: 'bool', required: false, options: { default: false } },
+    { name: 'gst_exempt', type: 'bool', required: false, options: { default: false } },
     { name: 'category', type: 'relation', target: 'categories', required: false },
     { name: 'entity_id', type: 'relation', target: 'entities', required: false },
     { name: 'created_by', type: 'relation', target: 'users', required: false },
@@ -184,6 +185,7 @@ async function setup() {
     { name: 'unit_price', type: 'number', required: true, options: { default: 0 } },
     { name: 'discount', type: 'number', required: false, options: { default: 0 } },
     { name: 'gst_5', type: 'number', required: false, options: { default: 0 } },
+    { name: 'gst_exempt', type: 'bool', required: false, options: { default: false } },
     { name: 'total', type: 'number', required: false, options: { default: 0 } },
   ]);
 
