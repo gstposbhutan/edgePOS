@@ -1,4 +1,4 @@
-import { Store, Building2, Star, Package, Users, Warehouse, Settings, Inbox, Truck, ShoppingCart, FileText, Boxes, ClipboardList, Wallet } from 'lucide-react'
+import { Store, Building2, Star, Package, Users, Warehouse, Settings, Inbox, Truck, ShoppingCart, FileText, Boxes, ClipboardList, Wallet, Monitor } from 'lucide-react'
 
 /**
  * Section nav for the distributor / wholesaler consoles — the single source of truth shared
@@ -23,6 +23,7 @@ export function distributorNav() {
     { key: 'inventory',   label: 'Inventory',   href: '/distributor/inventory',   icon: Boxes,     enabled: true,  note: 'Stock per warehouse' },
     { key: 'purchases',   label: 'Purchases',   href: '/distributor/purchases',   icon: ClipboardList, enabled: true, note: 'Buy from suppliers' },
     { key: 'khata',       label: 'Credit',      href: '/distributor/khata',       icon: Wallet,    enabled: true,  note: 'Buyer credit / khata' },
+    { key: 'terminals',   label: 'Terminals',   href: '/distributor/terminals',   icon: Monitor,   enabled: true,  note: 'Back-office desktop terminals' },
     { key: 'team',        label: 'Team',        href: '/distributor/team',        icon: Users,     enabled: true,  note: 'Your staff' },
     { key: 'settings',    label: 'Settings',    href: '/distributor/settings',    icon: Settings,  enabled: true,  note: 'Business profile' },
   ]
@@ -40,6 +41,7 @@ export function wholesalerNav() {
     { key: 'inventory',  label: 'Inventory',  href: '/wholesaler/inventory',  icon: Boxes,     enabled: true,  note: 'Stock per warehouse' },
     { key: 'purchases',  label: 'Purchases',  href: '/wholesaler/purchases',  icon: ClipboardList, enabled: true, note: 'Buy from suppliers' },
     { key: 'khata',      label: 'Credit',     href: '/wholesaler/khata',      icon: Wallet,    enabled: true,  note: 'Buyer credit / khata' },
+    { key: 'terminals',  label: 'Terminals',  href: '/wholesaler/terminals',  icon: Monitor,   enabled: true,  note: 'Back-office desktop terminals' },
     { key: 'catalog',    label: 'Catalog',    href: '/wholesaler/catalog',    icon: Package,   enabled: true,  note: 'Your products' },
     { key: 'team',       label: 'Team',       href: '/wholesaler/team',       icon: Users,     enabled: true,  note: 'Your staff' },
     { key: 'settings',   label: 'Settings',   href: '/wholesaler/settings',   icon: Settings,  enabled: true,  note: 'Business profile' },
