@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { X, Camera } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ReceiptScanModal } from "@/components/pos/receipt-scan-modal"
+import { PaymentQr } from "@/components/pos/payment-qr"
 
 const METHODS = [
   { key: 'ONLINE', label: 'Online',  num: '1' },
@@ -165,9 +166,10 @@ export function PaymentModal({ open, grandTotal, onConfirm, onClose }) {
             </div>
           </div>
 
-          {/* Online: journal number */}
+          {/* Online: show the payment QR first (customer scans & pays), then capture the journal number */}
           {method === 'ONLINE' && (
             <div className="space-y-2">
+              <PaymentQr amount={grandTotal} />
               <div className="flex items-center justify-between gap-2">
                 <label className="text-sm font-medium text-muted-foreground">Journal Number *</label>
                 <Button type="button" variant="outline" size="sm" className="h-8" onClick={() => setShowScan(true)}>

@@ -257,6 +257,13 @@ async function setup() {
     { name: 'gst_rate', type: 'number', required: false, options: { default: 5 } },
     { name: 'entity_id', type: 'relation', target: 'entities', required: false },
     { name: 'store_entity_id', type: 'text', required: false },
+    { name: 'nqrc_enabled', type: 'bool', required: false, options: { default: false } },
+    { name: 'nqrc_merchant_name', type: 'text', required: false },
+    { name: 'nqrc_merchant_city', type: 'text', required: false },
+    { name: 'nqrc_account_id', type: 'text', required: false },
+    { name: 'nqrc_psp_guid', type: 'text', required: false },
+    { name: 'nqrc_mcc', type: 'text', required: false },
+    { name: 'nqrc_account_tag', type: 'text', required: false },
   ]);
 
   // ── shifts ─────────────────────────────────────────────────────────────────

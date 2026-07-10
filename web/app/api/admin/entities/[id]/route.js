@@ -19,13 +19,19 @@ export async function PATCH(request, { params }) {
   }
   if (body.is_active !== undefined) patch.is_active = !!body.is_active
   if (body.is_featured !== undefined) patch.is_featured = !!body.is_featured   // promote to the public catalog
+  // Payment-QR (NQRC) merchant/bank config — the platform admin can set it for any vendor.
+  if (body.nqrc_enabled !== undefined) patch.nqrc_enabled = !!body.nqrc_enabled
+  for (const f of ['nqrc_merchant_name', 'nqrc_merchant_city', 'nqrc_account_id', 'nqrc_psp_guid', 'nqrc_mcc']) {
+    if (body[f] !== undefined) patch[f] = (typeof body[f] === 'string' ? body[f].trim() : body[f]) || null
+  }
+  if (body.nqrc_account_tag !== undefined) patch.nqrc_account_tag = body.nqrc_account_tag?.trim() || '26'
   if (Object.keys(patch).length === 0) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
 
   const { data, error } = await ctx.supabase
     .from('entities')
     .update(patch)
     .eq('id', id)
-    .select('id, name, role, tpn_gstin, whatsapp_no, address, credit_limit, is_active, is_featured')
+    .select('id, name, role, tpn_gstin, whatsapp_no, address, credit_limit, is_active, is_featured, nqrc_enabled, nqrc_merchant_name, nqrc_merchant_city, nqrc_account_id, nqrc_psp_guid, nqrc_mcc, nqrc_account_tag')
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (!data) return NextResponse.json({ error: 'Entity not found' }, { status: 404 })

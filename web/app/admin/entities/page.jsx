@@ -6,7 +6,7 @@ import { getUser, getRoleClaims } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Building2, Plus, X, Loader2 } from 'lucide-react'
+import { Building2, Plus, X, Loader2, QrCode } from 'lucide-react'
 
 const ROLES = ['DISTRIBUTOR', 'WHOLESALER', 'RETAILER', 'CUSTOMER']
 
@@ -15,6 +15,7 @@ export default function AdminEntitiesPage() {
   const [ready, setReady] = useState(false)
   const [entities, setEntities] = useState([])
   const [modalOpen, setModalOpen] = useState(false)
+  const [qrEntity, setQrEntity] = useState(null)
 
   useEffect(() => {
     async function init() {
@@ -98,6 +99,12 @@ export default function AdminEntitiesPage() {
                         {e.is_featured ? 'Remove from marketplace' : 'Feature on marketplace'}
                       </Button>
                     )}
+                    {e.role !== 'CUSTOMER' && (
+                      <Button size="sm" variant="outline" className="w-full gap-1.5" onClick={() => setQrEntity(e)}>
+                        <QrCode className="h-3.5 w-3.5" />
+                        Payment QR {e.nqrc_enabled ? '(on)' : ''}
+                      </Button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -107,6 +114,65 @@ export default function AdminEntitiesPage() {
       })}
 
       {modalOpen && <AddEntityModal onClose={() => setModalOpen(false)} onAdded={() => { load(); setModalOpen(false) }} />}
+      {qrEntity && <NqrcModal entity={qrEntity} onClose={() => setQrEntity(null)} onSaved={() => { load(); setQrEntity(null) }} />}
+    </div>
+  )
+}
+
+// Platform-admin editor for a vendor's Bhutan NQRC payment-QR merchant details.
+function NqrcModal({ entity, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    nqrc_enabled: !!entity.nqrc_enabled,
+    nqrc_merchant_name: entity.nqrc_merchant_name || '',
+    nqrc_merchant_city: entity.nqrc_merchant_city || '',
+    nqrc_account_id: entity.nqrc_account_id || '',
+    nqrc_psp_guid: entity.nqrc_psp_guid || '',
+    nqrc_mcc: entity.nqrc_mcc || '',
+    nqrc_account_tag: entity.nqrc_account_tag || '26',
+  })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+  const set = (k) => (ev) => setForm((f) => ({ ...f, [k]: ev.target.value }))
+
+  async function submit(ev) {
+    ev.preventDefault(); setLoading(true); setError(null)
+    const res = await fetch(`/api/admin/entities/${entity.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
+    })
+    const data = await res.json(); setLoading(false)
+    if (!res.ok) { setError(data.error || 'Failed to save'); return }
+    onSaved()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-background rounded-xl shadow-xl p-6 w-full max-w-sm space-y-3 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold">Payment QR — {entity.name}</h2>
+          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+        </div>
+        <form onSubmit={submit} className="space-y-3">
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" checked={form.nqrc_enabled} onChange={(e) => setForm(f => ({ ...f, nqrc_enabled: e.target.checked }))} className="h-4 w-4" />
+            <span>Show a payment QR for online payments</span>
+          </label>
+          <Input value={form.nqrc_merchant_name} onChange={set('nqrc_merchant_name')} placeholder={`Merchant name (default: ${entity.name})`} />
+          <Input value={form.nqrc_merchant_city} onChange={set('nqrc_merchant_city')} placeholder="City (e.g. Thimphu)" />
+          <Input value={form.nqrc_account_id} onChange={set('nqrc_account_id')} placeholder="Merchant ID / account number" />
+          <Input value={form.nqrc_psp_guid} onChange={set('nqrc_psp_guid')} placeholder="PSP / scheme GUID (from bank/RMA)" />
+          <div className="flex gap-2">
+            <Input value={form.nqrc_mcc} onChange={set('nqrc_mcc')} placeholder="MCC (e.g. 5411)" />
+            <Input value={form.nqrc_account_tag} onChange={set('nqrc_account_tag')} placeholder="Tag (26)" className="max-w-[6rem]" />
+          </div>
+          <p className="text-[11px] text-muted-foreground">EMVCo amount, BTN currency and checksum are added automatically. Account fields come from the vendor&apos;s bank onboarding.</p>
+          {error && <p className="text-sm text-tibetan">{error}</p>}
+          <div className="flex gap-2 pt-1">
+            <Button type="button" variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
+            <Button type="submit" disabled={loading} className="flex-1">{loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving…</> : 'Save'}</Button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }

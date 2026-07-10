@@ -37,7 +37,32 @@ bridge; new `components/pos/receipt-scan-modal.tsx`; wired into `components/pos/
 
 ---
 
-## Phase 2 — Dynamic Bhutan NQRC payment QR (QUEUED)
+## Phase 2 — Dynamic Bhutan NQRC payment QR (CODE COMPLETE)
+
+**Status:** built web + desktop, configurable (per the user — the scheme-specific merchant-account
+template is stored as vendor settings, not hardcoded). Files:
+- **Payload builder** `web/lib/nqrc.js` + `desktop/lib/nqrc.ts` — pure EMVCo TLV + CRC-16/CCITT-FALSE
+  (validated against the `123456789`→`29B1` check value); dynamic QR (POI 12), amount in tag 54,
+  currency 064 (BTN), country BT, merchant name/city, configurable merchant-account template
+  (tag/GUID/account id). `buildNqrcPayload` returns null when unconfigured → the QR is simply hidden.
+- **DB** `web/supabase/migrations/116_nqrc_merchant.sql` (applied) — `entities.nqrc_*`
+  (enabled, merchant_name, merchant_city, account_id, psp_guid, mcc, account_tag).
+- **QR render** `web/components/pos/payment-qr.jsx` (`qrcode` lib, fetches `/api/pos/nqrc`, session-cached)
+  + `desktop/components/pos/payment-qr.tsx` (`bwip-js` toSVG, reads the synced settings singleton → offline).
+- **Wired before the journal step** on all three ONLINE surfaces: keyboard `payment-modal.jsx`,
+  touch `cart-panel.jsx`, desktop `payment-modal.tsx`.
+- **Config (OWNER + platform admin):** vendor self-serve OWNER-only section in `EntityProfileForm`
+  (+ `/api/admin/settings` GET returns subRole, PATCH gates `nqrc_*` to OWNER); platform admin via a
+  "Payment QR" modal in `app/admin/entities/page.jsx` (+ `/api/admin/entities/[id]` PATCH & list GET).
+  Read-only `GET /api/pos/nqrc` lets any cashier render the QR at checkout.
+- **Desktop sync:** `nqrc_*` carried through `/api/sync/bootstrap` → `electron/main.js` doBootstrap →
+  local `settings` singleton; PB `settings` fields added via migration `023_nqrc_settings.js` + setup-pb.
+
+**Still needed before real bank apps parse it:** the vendor/operator must enter the real RMA/Bhutan
+Financial Switch **PSP GUID + merchant account id** (and confirm the template tag) from their bank's
+merchant onboarding. Runtime-unverified against a live bank app.
+
+### Original design notes
 
 Generate a **dynamic** QR on the POS screen for the exact bill so the customer scans it with any
 Bhutanese bank app (mBoB/BNB/eTeeru…) and the app auto-fills merchant + amount — no manual entry.

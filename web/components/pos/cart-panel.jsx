@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { BillDiscountModal } from "@/components/pos/keyboard/bill-discount-modal"
 import { ReceiptScanModal } from "@/components/pos/receipt-scan-modal"
+import { PaymentQr } from "@/components/pos/payment-qr"
 
 const PAYMENT_METHODS = [
   { id: 'ONLINE', label: 'Online',  activeClass: 'bg-blue-600 text-white border-transparent' },
@@ -208,9 +209,10 @@ export function CartPanel({
             </div>
           </div>
 
-          {/* Online: journal number */}
+          {/* Online: show the payment QR first (customer scans & pays), then capture the journal number */}
           {paymentMethod === 'ONLINE' && (
             <div className="space-y-1.5">
+              <PaymentQr amount={grandTotal} />
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs font-medium text-muted-foreground">Journal Number *</p>
                 <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => setShowScan(true)}>

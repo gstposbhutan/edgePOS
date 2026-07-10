@@ -381,9 +381,19 @@ async function doBootstrap() {
     //    complete row (mirrors hooks/use-settings defaults) if none exists yet.
     if (data.entity) {
       const e = data.entity;
+      // NQRC payment-QR merchant config — synced down so the terminal builds the QR fully offline.
+      const nqrc = {
+        nqrc_enabled: !!e.nqrc_enabled,
+        nqrc_merchant_name: e.nqrc_merchant_name || "",
+        nqrc_merchant_city: e.nqrc_merchant_city || "",
+        nqrc_account_id: e.nqrc_account_id || "",
+        nqrc_psp_guid: e.nqrc_psp_guid || "",
+        nqrc_mcc: e.nqrc_mcc || "",
+        nqrc_account_tag: e.nqrc_account_tag || "26",
+      };
       const existing = await findOne("settings", "id != ''"); // settings is a singleton
       if (existing) {
-        const patch = { tpn_gstin: e.tpn_gstin || "", store_entity_id: e.id || "" };
+        const patch = { tpn_gstin: e.tpn_gstin || "", store_entity_id: e.id || "", ...nqrc };
         if (e.name) patch.store_name = e.name;
         await updateRec("settings", existing.id, patch);
       } else {
@@ -401,6 +411,7 @@ async function doBootstrap() {
           printer_auto_print: false,
           printer_copies: 1,
           printer_open_drawer: false,
+          ...nqrc,
         });
       }
     }

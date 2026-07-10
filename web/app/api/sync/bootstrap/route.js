@@ -42,7 +42,7 @@ export async function GET(request) {
   const [entityRes, productsRes, categoriesRes, khataRes, storeUsersRes] = await Promise.all([
     supabase
       .from('entities')
-      .select('id, name, role, tpn_gstin, whatsapp_no')
+      .select('id, name, role, tpn_gstin, whatsapp_no, nqrc_enabled, nqrc_merchant_name, nqrc_merchant_city, nqrc_account_id, nqrc_psp_guid, nqrc_mcc, nqrc_account_tag')
       .eq('id', entityId)
       .maybeSingle(),
     supabase

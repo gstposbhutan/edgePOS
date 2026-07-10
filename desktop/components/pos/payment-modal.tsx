@@ -23,6 +23,7 @@ import {
 import type { Customer } from "@/hooks/use-customers";
 import { PAYMENT_METHOD, PAYMENT_CHANNEL, type PaymentMethod, type PaymentChannel } from "@/lib/constants";
 import { ReceiptScanModal, type ScanMeta } from "@/components/pos/receipt-scan-modal";
+import { PaymentQr } from "@/components/pos/payment-qr";
 
 interface PaymentModalProps {
   open: boolean;
@@ -244,6 +245,9 @@ export function PaymentModal({ open, onClose, grandTotal, customer, onConfirm }:
               )}
             </div>
           )}
+
+          {/* Online: show the payment QR first (customer scans & pays), then capture the journal number */}
+          {isOnline && <PaymentQr amount={grandTotal} />}
 
           {/* Reference for non-cash payments */}
           {!isCash && (

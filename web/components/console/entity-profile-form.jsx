@@ -13,7 +13,11 @@ import { Loader2, Save } from 'lucide-react'
  * bio are optional and only matter for businesses that list a public storefront.
  */
 export function EntityProfileForm() {
-  const [form, setForm] = useState({ name: '', whatsapp_no: '', tpn_gstin: '', shop_slug: '', marketplace_bio: '', delivery_mode: 'DELIVERY', email_notifications_enabled: false })
+  const [form, setForm] = useState({
+    name: '', whatsapp_no: '', tpn_gstin: '', shop_slug: '', marketplace_bio: '', delivery_mode: 'DELIVERY', email_notifications_enabled: false,
+    nqrc_enabled: false, nqrc_merchant_name: '', nqrc_merchant_city: '', nqrc_account_id: '', nqrc_psp_guid: '', nqrc_mcc: '', nqrc_account_tag: '26',
+  })
+  const [isOwner, setIsOwner] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState(null)
@@ -31,8 +35,16 @@ export function EntityProfileForm() {
           marketplace_bio: data.entity.marketplace_bio || '',
           delivery_mode: data.entity.delivery_mode || 'DELIVERY',
           email_notifications_enabled: !!data.entity.email_notifications_enabled,
+          nqrc_enabled: !!data.entity.nqrc_enabled,
+          nqrc_merchant_name: data.entity.nqrc_merchant_name || '',
+          nqrc_merchant_city: data.entity.nqrc_merchant_city || '',
+          nqrc_account_id: data.entity.nqrc_account_id || '',
+          nqrc_psp_guid: data.entity.nqrc_psp_guid || '',
+          nqrc_mcc: data.entity.nqrc_mcc || '',
+          nqrc_account_tag: data.entity.nqrc_account_tag || '26',
         })
       }
+      setIsOwner(data.subRole === 'OWNER')
       setLoading(false)
     }
     load()
@@ -148,6 +160,62 @@ export function EntityProfileForm() {
                 Choose <strong>Pickup only</strong> if you list items customers collect in person (e.g. used goods) — checkout skips the rider flow.
               </p>
             </div>
+
+            {isOwner && (
+              <div className="pt-3 border-t border-border space-y-3">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Payment QR (Bhutan NQRC)</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Shown to customers at checkout to scan & pay. Owner-only — these are your bank/merchant details.</p>
+                </div>
+
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={form.nqrc_enabled}
+                    onChange={(e) => setForm(f => ({ ...f, nqrc_enabled: e.target.checked }))}
+                    className="h-4 w-4"
+                  />
+                  <span>Show a payment QR for online payments</span>
+                </label>
+
+                {form.nqrc_enabled && (
+                  <div className="space-y-3 pl-1">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium text-foreground">Merchant name on QR</label>
+                        <Input value={form.nqrc_merchant_name} onChange={(e) => setForm(f => ({ ...f, nqrc_merchant_name: e.target.value }))} placeholder={form.name || 'Business name'} />
+                        <p className="text-xs text-muted-foreground">Defaults to your business name.</p>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium text-foreground">City</label>
+                        <Input value={form.nqrc_merchant_city} onChange={(e) => setForm(f => ({ ...f, nqrc_merchant_city: e.target.value }))} placeholder="Thimphu" />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium text-foreground">Merchant ID / account number</label>
+                      <Input value={form.nqrc_account_id} onChange={(e) => setForm(f => ({ ...f, nqrc_account_id: e.target.value }))} placeholder="Registered with your bank" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium text-foreground">PSP / scheme GUID</label>
+                        <Input value={form.nqrc_psp_guid} onChange={(e) => setForm(f => ({ ...f, nqrc_psp_guid: e.target.value }))} placeholder="From your bank / RMA" />
+                        <p className="text-xs text-muted-foreground">Identifies the NQRC scheme on the Bhutan Financial Switch.</p>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium text-foreground">Merchant category (MCC)</label>
+                        <Input value={form.nqrc_mcc} onChange={(e) => setForm(f => ({ ...f, nqrc_mcc: e.target.value }))} placeholder="e.g. 5411" />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5 max-w-[10rem]">
+                      <label className="text-sm font-medium text-foreground">Account template tag</label>
+                      <Input value={form.nqrc_account_tag} onChange={(e) => setForm(f => ({ ...f, nqrc_account_tag: e.target.value }))} placeholder="26" />
+                      <p className="text-xs text-muted-foreground">EMVCo tag (26–51). Leave at 26 unless your bank says otherwise.</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Get the PSP GUID, account number and tag from your bank&apos;s merchant onboarding. Amount, currency (BTN) and checksum are added automatically.</p>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="flex items-start gap-2 pt-2 border-t border-border">
               <input
