@@ -34,6 +34,7 @@ export async function PATCH(request, { params }) {
         mrp:               numOrNull(formData.mrp),
         distributor_price: numOrNull(formData.distributor_price),
         manufacturer_price: numOrNull(formData.manufacturer_price),
+        gst_exempt:        !!formData.gst_exempt,
         reorder_point:     parseInt(formData.reorder_point) || 10,
         sold_by_weight:    !!formData.sold_by_weight,
       })

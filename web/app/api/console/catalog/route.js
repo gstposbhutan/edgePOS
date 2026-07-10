@@ -23,7 +23,7 @@ export async function GET() {
         .from('products')
         .select(`
           id, name, sku, hsn_code, unit, wholesale_price, mrp, distributor_price, manufacturer_price,
-          current_stock, is_active, sold_by_weight, product_type, created_at,
+          gst_exempt, current_stock, is_active, sold_by_weight, product_type, created_at,
           product_categories(category_id, categories(id, name))
         `)
         .eq('created_by', entityId)
@@ -73,6 +73,7 @@ export async function POST(request) {
         mrp:              numOrNull(formData.mrp),
         distributor_price: numOrNull(formData.distributor_price),
         manufacturer_price: numOrNull(formData.manufacturer_price),
+        gst_exempt:       !!formData.gst_exempt,
         current_stock:    0,   // opening stock is set by the RESTOCK movement below (avoids a double-count)
         reorder_point:    parseInt(formData.reorder_point) || 10,
         sold_by_weight:   !!formData.sold_by_weight,

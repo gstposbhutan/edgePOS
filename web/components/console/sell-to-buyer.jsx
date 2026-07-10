@@ -82,7 +82,7 @@ export function SellToBuyer() {
       const prices = { mrp: product.mrp, wholesale_price: product.wholesale_price, distributor_price: product.distributor_price }
       return [...prev, {
         product_id: product.id, name: product.name, sku: product.sku,
-        product_type: product.product_type || 'SINGLE', prices, rate_tier: defaultTier,
+        product_type: product.product_type || 'SINGLE', prices, rate_tier: defaultTier, gst_exempt: !!product.gst_exempt,
         unit_price: priceForTier(prices, defaultTier), stock: parseFloat(product.current_stock ?? 0), quantity: 1,
       }]
     })
@@ -120,7 +120,7 @@ export function SellToBuyer() {
   }
 
   const subtotal = cart.reduce((s, i) => s + i.unit_price * i.quantity, 0)
-  const gstTotal = subtotal * 0.05
+  const gstTotal = cart.reduce((s, i) => s + (i.gst_exempt ? 0 : i.unit_price * i.quantity * 0.05), 0)
   const grandTotal = subtotal + gstTotal
 
   return (

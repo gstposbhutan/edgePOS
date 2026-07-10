@@ -1,5 +1,6 @@
 import { resolveLink, ensureKhataAccount } from '@/lib/console/supply-links'
 import { ownedWarehouse, warehouseOnHand, primaryWarehouse } from '@/lib/console/inventory'
+import { lineGst } from '@/lib/gst'
 
 // Shared B2B order engine for the vendor consoles. One set of validation/pricing/receiving helpers
 // backs every seller/buyer flow:
@@ -156,7 +157,7 @@ async function priceB2BCart(supabase, sellerId, sellerRole, items) {
   const productIds = [...new Set(items.map(i => i.product_id))]
   const { data: products, error: prodErr } = await supabase
     .from('products')
-    .select('id, name, sku, distributor_price, wholesale_price, mrp, current_stock, hsn_code, product_type, product_packages(id, name, package_type, stocked_as_unit, is_active)')
+    .select('id, name, sku, distributor_price, wholesale_price, mrp, current_stock, hsn_code, gst_exempt, product_type, product_packages(id, name, package_type, stocked_as_unit, is_active)')
     .in('id', productIds)
     .eq('created_by', sellerId)
     .eq('is_active', true)
@@ -184,16 +185,16 @@ async function priceB2BCart(supabase, sellerId, sellerRole, items) {
     const tier = RATE_LADDERS[String(item.rate_tier || '').toUpperCase()] ? item.rate_tier.toUpperCase() : fallbackTier
     const unitPrice = priceForTier(p, tier)
     const qty = item.quantity
-    const gst5 = parseFloat((unitPrice * qty * 0.05).toFixed(2))
+    const gst5 = lineGst(unitPrice * qty, p.gst_exempt)   // 0 for GST-exempt products
     const total = parseFloat((unitPrice * qty + gst5).toFixed(2))
     subtotal += unitPrice * qty
     return {
       product_id: p.id, package_id: def ? def.id : null, package_name: def ? (def.name || p.name) : null,
       package_type: def ? def.package_type : null, sku: p.sku, name: p.name, quantity: qty,
-      unit_price: unitPrice, discount: 0, gst_5: gst5, total, status: 'ACTIVE',
+      unit_price: unitPrice, discount: 0, gst_5: gst5, gst_exempt: !!p.gst_exempt, total, status: 'ACTIVE',
     }
   })
-  const gstTotal = parseFloat((subtotal * 0.05).toFixed(2))
+  const gstTotal = parseFloat(orderItems.reduce((s, i) => s + i.gst_5, 0).toFixed(2))
   const grandTotal = parseFloat((subtotal + gstTotal).toFixed(2))
   return { ok: true, orderItems, subtotal, gstTotal, grandTotal }
 }
@@ -400,7 +401,7 @@ export async function convertSalesOrderToInvoice({ supabase, sellerId, soId, use
 
   const { data: soItems, error: liErr } = await supabase
     .from('order_items')
-    .select('product_id, package_id, package_name, package_type, sku, name, quantity, unit_price, discount')
+    .select('product_id, package_id, package_name, package_type, sku, name, quantity, unit_price, discount, gst_exempt')
     .eq('order_id', soId).eq('status', 'ACTIVE')
   if (liErr) return { ok: false, status: 500, error: 'Failed to read sales-order lines' }
   if (!soItems?.length) return { ok: false, status: 400, error: 'Sales order has no active lines' }
@@ -436,15 +437,16 @@ export async function convertSalesOrderToInvoice({ supabase, sellerId, soId, use
   // Build invoice lines at the SO's agreed unit price, GST recomputed for the invoiced quantity.
   const orderItems = toInvoice.map(({ line, qty }) => {
     const unitPrice = parseFloat(line.unit_price)
-    const gst5 = parseFloat((unitPrice * qty * 0.05).toFixed(2))
+    const gst5 = lineGst(unitPrice * qty, line.gst_exempt)   // carry the SO line's exemption
     return {
       product_id: line.product_id, package_id: line.package_id, package_name: line.package_name,
       package_type: line.package_type, sku: line.sku, name: line.name, quantity: qty,
-      unit_price: unitPrice, discount: 0, gst_5: gst5, total: parseFloat((unitPrice * qty + gst5).toFixed(2)), status: 'ACTIVE',
+      unit_price: unitPrice, discount: 0, gst_5: gst5, gst_exempt: !!line.gst_exempt,
+      total: parseFloat((unitPrice * qty + gst5).toFixed(2)), status: 'ACTIVE',
     }
   })
   const subtotal = orderItems.reduce((s, i) => s + i.unit_price * i.quantity, 0)
-  const gstTotal = parseFloat((subtotal * 0.05).toFixed(2))
+  const gstTotal = parseFloat(orderItems.reduce((s, i) => s + i.gst_5, 0).toFixed(2))
   const grandTotal = parseFloat((subtotal + gstTotal).toFixed(2))
 
   // Source warehouse carried from the SO: check this invoice's quantities are on hand there (null =

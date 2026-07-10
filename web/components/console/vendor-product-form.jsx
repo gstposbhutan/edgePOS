@@ -12,7 +12,7 @@ const EMPTY_FORM = {
   name: '', sku: '', hsn_code: '', unit: 'pcs',
   wholesale_price: '', mrp: '', distributor_price: '', manufacturer_price: '',
   current_stock: '0', reorder_point: '10',
-  sold_by_weight: false,
+  sold_by_weight: false, gst_exempt: false,
   batch_number: '', manufactured_at: '', expires_at: '',
 }
 
@@ -54,6 +54,7 @@ export function VendorProductForm({ open, product, categories, saving, role, onS
         mrp:               product.mrp != null ? String(product.mrp) : '',
         distributor_price: product.distributor_price != null ? String(product.distributor_price) : '',
         manufacturer_price: product.manufacturer_price != null ? String(product.manufacturer_price) : '',
+        gst_exempt:        !!product.gst_exempt,
         current_stock:     String(product.current_stock ?? '0'),
         reorder_point:     String(product.reorder_point ?? '10'),
         sold_by_weight:    product.sold_by_weight ?? false,
@@ -254,6 +255,23 @@ export function VendorProductForm({ open, product, categories, saving, role, onS
               <span className="font-medium text-foreground">Sold by weight / measure</span>
               <span className="block text-[10px] text-muted-foreground">
                 Priced per {form.unit} — use for loose goods (rice, sugar, oil). The price above is the rate per {form.unit}.
+              </span>
+            </label>
+          </div>
+
+          {/* GST exempt */}
+          <div className="flex items-start gap-2 p-3 rounded-lg border border-border bg-muted/20">
+            <input
+              id="vendor_gst_exempt"
+              type="checkbox"
+              checked={!!form.gst_exempt}
+              onChange={e => set('gst_exempt', e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-input accent-primary"
+            />
+            <label htmlFor="vendor_gst_exempt" className="text-sm cursor-pointer">
+              <span className="font-medium text-foreground">GST exempt</span>
+              <span className="block text-[10px] text-muted-foreground">
+                No 5% GST on this product — it sells tax-free on every channel.
               </span>
             </label>
           </div>
