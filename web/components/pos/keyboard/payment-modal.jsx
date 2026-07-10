@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { X } from "lucide-react"
+import { X, Camera } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { ReceiptScanModal } from "@/components/pos/receipt-scan-modal"
 
 const METHODS = [
   { key: 'ONLINE', label: 'Online',  num: '1' },
@@ -19,6 +20,8 @@ export function PaymentModal({ open, grandTotal, onConfirm, onClose }) {
   const [method,       setMethod]       = useState('CASH')
   const [received,     setReceived]     = useState('')
   const [journalNo,    setJournalNo]    = useState('')
+  const [showScan,     setShowScan]     = useState(false)
+  const [scanHint,     setScanHint]     = useState(null)
   const journalRef = useRef(null)
 
   useEffect(() => {
@@ -26,6 +29,8 @@ export function PaymentModal({ open, grandTotal, onConfirm, onClose }) {
       setMethod('CASH')
       setReceived('')
       setJournalNo('')
+      setShowScan(false)
+      setScanHint(null)
     }
   }, [open])
 
@@ -40,6 +45,7 @@ export function PaymentModal({ open, grandTotal, onConfirm, onClose }) {
     if (!open) return
 
     function handleKey(e) {
+      if (showScan) return   // camera modal owns the keyboard while open
       const inInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)
 
       // 1-3: select payment method (only when no input focused)
@@ -101,7 +107,7 @@ export function PaymentModal({ open, grandTotal, onConfirm, onClose }) {
 
     document.addEventListener('keydown', handleKey)
     return () => document.removeEventListener('keydown', handleKey)
-  }, [open, method, received, grandTotal, journalNo])
+  }, [open, method, received, grandTotal, journalNo, showScan])
 
   function handleConfirm() {
     onConfirm({
@@ -162,17 +168,31 @@ export function PaymentModal({ open, grandTotal, onConfirm, onClose }) {
           {/* Online: journal number */}
           {method === 'ONLINE' && (
             <div className="space-y-2">
-              <label className="text-sm font-medium text-muted-foreground">Journal Number *</label>
-              <p className="text-xs text-muted-foreground">Enter the reference number from the customer's payment confirmation.</p>
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-sm font-medium text-muted-foreground">Journal Number *</label>
+                <Button type="button" variant="outline" size="sm" className="h-8" onClick={() => setShowScan(true)}>
+                  <Camera className="h-4 w-4 mr-1.5" /> Scan receipt
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">Enter the reference number from the payment confirmation, or scan it from the phone.</p>
               <input
                 ref={journalRef}
                 type="text"
                 value={journalNo}
-                onChange={e => setJournalNo(e.target.value)}
+                onChange={e => { setJournalNo(e.target.value); setScanHint(null) }}
                 className="w-full px-3 py-2.5 text-lg font-mono text-center border border-input rounded-lg bg-background outline-none focus:ring-2 focus:ring-ring"
                 placeholder="Enter journal number"
                 autoFocus
               />
+              {scanHint && (
+                <p className={`text-xs ${scanHint.amountMatches ? 'text-emerald-600' : 'text-amber-600'}`}>
+                  {scanHint.amountMatches
+                    ? `Scanned — Nu. ${scanHint.extractedAmount} matches the bill.`
+                    : scanHint.extractedAmount != null
+                      ? `Scanned — found Nu. ${scanHint.extractedAmount}, bill is Nu. ${parseFloat(grandTotal).toFixed(2)}. Please verify.`
+                      : `Scanned — please verify the number.`}
+                </p>
+              )}
             </div>
           )}
 
@@ -257,6 +277,13 @@ export function PaymentModal({ open, grandTotal, onConfirm, onClose }) {
           </Button>
         </div>
       </div>
+
+      <ReceiptScanModal
+        open={showScan}
+        expectedAmount={grandTotal}
+        onClose={() => setShowScan(false)}
+        onExtracted={(ref, meta) => { setJournalNo(ref); setScanHint(meta); setShowScan(false) }}
+      />
     </div>
   )
 }

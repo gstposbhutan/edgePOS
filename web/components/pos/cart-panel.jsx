@@ -1,11 +1,12 @@
 "use client"
 
 import { useState } from "react"
-import { Minus, Plus, Trash2, ShoppingCart, CreditCard, Tag, Pencil, X, PlusCircle, Coins, UserPlus } from "lucide-react"
+import { Minus, Plus, Trash2, ShoppingCart, CreditCard, Tag, Pencil, X, PlusCircle, Coins, UserPlus, Camera } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { BillDiscountModal } from "@/components/pos/keyboard/bill-discount-modal"
+import { ReceiptScanModal } from "@/components/pos/receipt-scan-modal"
 
 const PAYMENT_METHODS = [
   { id: 'ONLINE', label: 'Online',  activeClass: 'bg-blue-600 text-white border-transparent' },
@@ -48,6 +49,8 @@ export function CartPanel({
   carts = [], activeIndex = 0, onHoldCart, onSwitchCart, onCancelCart, onSaveDraft,
 }) {
   const [showBillDisc, setShowBillDisc] = useState(false)
+  const [showScan, setShowScan] = useState(false)
+  const [scanHint, setScanHint] = useState(null)
   const hasItems    = items.length > 0
   const canCheckout = hasItems && !!paymentMethod && (paymentMethod !== 'ONLINE' || (journalNo || '').trim().length > 0)
   const canDiscount = ['MANAGER', 'OWNER', 'ADMIN'].includes(userSubRole)
@@ -208,14 +211,34 @@ export function CartPanel({
           {/* Online: journal number */}
           {paymentMethod === 'ONLINE' && (
             <div className="space-y-1.5">
-              <p className="text-xs font-medium text-muted-foreground">Journal Number *</p>
-              <p className="text-[10px] text-muted-foreground">Enter the reference number from the customer's payment confirmation.</p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-medium text-muted-foreground">Journal Number *</p>
+                <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => setShowScan(true)}>
+                  <Camera className="h-3.5 w-3.5 mr-1" /> Scan receipt
+                </Button>
+              </div>
+              <p className="text-[10px] text-muted-foreground">Enter the reference number from the payment confirmation, or scan it from the phone.</p>
               <input
                 type="text"
                 value={journalNo || ''}
-                onChange={e => onJournalNoChange?.(e.target.value)}
+                onChange={e => { onJournalNoChange?.(e.target.value); setScanHint(null) }}
                 className="w-full px-3 py-2 text-sm font-mono border border-input rounded-lg bg-background outline-none focus:ring-2 focus:ring-ring"
                 placeholder="Enter journal number"
+              />
+              {scanHint && (
+                <p className={`text-[10px] ${scanHint.amountMatches ? 'text-emerald-600' : 'text-amber-600'}`}>
+                  {scanHint.amountMatches
+                    ? `Scanned — Nu. ${scanHint.extractedAmount} matches the bill.`
+                    : scanHint.extractedAmount != null
+                      ? `Scanned — found Nu. ${scanHint.extractedAmount}, bill is Nu. ${parseFloat(grandTotal).toFixed(2)}. Please verify.`
+                      : `Scanned — please verify the number.`}
+                </p>
+              )}
+              <ReceiptScanModal
+                open={showScan}
+                expectedAmount={grandTotal}
+                onClose={() => setShowScan(false)}
+                onExtracted={(ref, meta) => { onJournalNoChange?.(ref); setScanHint(meta); setShowScan(false) }}
               />
             </div>
           )}

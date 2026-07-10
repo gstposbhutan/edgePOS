@@ -861,6 +861,41 @@ async function b2bOrderAction(id, status, reason) {
 ipcMain.handle("b2b-orders:action", (_, { id, status, reason }) => b2bOrderAction(id, status, reason));
 ipcMain.handle("b2b-orders:refresh", () => pollB2bOrders());
 
+// ── Payment receipt OCR ─────────────────────────────────────────────────────
+// Read the journal/reference number off a customer's bank payment-confirmation photo. The terminal
+// has no local vision engine, so it relays the frame to the CLOUD OCR endpoint (/api/payment-verify,
+// same origin as sync). Offline (no sync config / network) → returns ok:false so the renderer falls
+// back to manual entry. Extract-and-fill: the referenceNo is returned regardless of amount match.
+ipcMain.handle("payment:extract-journal", async (_, { imageBase64, mimeType, expectedAmount }) => {
+  if (!syncConfig || !syncConfig.remoteUrl) {
+    return { ok: false, error: "offline" };
+  }
+  const base = syncConfig.remoteUrl.includes("/api/sync/")
+    ? syncConfig.remoteUrl.replace(/\/api\/sync\/.*$/, "")
+    : syncConfig.remoteUrl.replace(/\/$/, "");
+  const url = `${base}/api/payment-verify`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 25000);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(syncConfig.apiKey ? { Authorization: `Bearer ${syncConfig.apiKey}` } : {}),
+      },
+      body: JSON.stringify({ imageBase64, mimeType: mimeType || "image/jpeg", expectedAmount }),
+      signal: controller.signal,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, error: data.reason || `Server error ${res.status}` };
+    return { ok: true, ...data };
+  } catch (err) {
+    return { ok: false, error: err.name === "AbortError" ? "Timed out" : (err.message || "Network error") };
+  } finally {
+    clearTimeout(timer);
+  }
+});
+
 // ── App Lifecycle ───────────────────────────────────────────────────────────
 
 // Single-instance lock: a 2nd launch (e.g. the shopkeeper double-clicking the icon again) must NOT

@@ -90,6 +90,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
     },
   },
 
+  // Payment receipt OCR — relay a captured frame to the cloud vision endpoint to read the journal no.
+  payment: {
+    extractJournal: (payload) => ipcRenderer.invoke("payment:extract-journal", payload),
+  },
+
   // Events
   onSyncStatus: (callback) => {
     const listener = (_, data) => callback(data);
