@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   ScanLine, ClipboardList, BookOpen, Package, ShoppingCart, Wallet, Landmark,
-  Clock, Users, Store, Settings, MonitorDown, PanelLeftClose, PanelLeftOpen,
+  Clock, Users, Store, Settings, MonitorDown, FileBarChart, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react'
 import { Logo } from '@/components/ui/logo'
 
@@ -20,6 +20,7 @@ const NAV = [
   { href: '/pos/khata',     label: 'Khata',         icon: Wallet,        show: r => r !== 'CASHIER' },
   { href: '/pos/registers', label: 'Cash Registers', icon: Landmark,     show: r => r !== 'CASHIER' },
   { href: '/pos/shifts',    label: 'Shifts',        icon: Clock,         show: r => ['MANAGER', 'OWNER', 'ADMIN'].includes(r) },
+  { href: '/pos/reports',   label: 'GST Report',    icon: FileBarChart,  show: r => ['MANAGER', 'OWNER', 'ADMIN'].includes(r) },
   { href: '/pos/team',      label: 'Team',          icon: Users,         show: r => r === 'OWNER' },
   { href: '/pos/stores',    label: 'Stores',        icon: Store,         show: r => r === 'OWNER' },
   { href: '/pos/settings',  label: 'Settings',      icon: Settings,      show: r => ['MANAGER', 'OWNER', 'ADMIN'].includes(r) },
