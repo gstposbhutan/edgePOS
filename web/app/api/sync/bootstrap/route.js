@@ -29,7 +29,7 @@ export async function GET(request) {
   const tokenHash = createHash('sha256').update(token).digest('hex')
   const { data: cred, error: credError } = await supabase
     .from('terminal_tokens')
-    .select('id, entity_id')
+    .select('id, entity_id, register_id')
     .eq('token_hash', tokenHash)
     .eq('is_active', true)
     .maybeSingle()
@@ -99,10 +99,20 @@ export async function GET(request) {
     .update({ last_seen_at: new Date().toISOString() })
     .eq('id', cred.id)
 
+  // This terminal's register + mode (POS vs BACK_OFFICE). Pushed down so a mode change made in
+  // the web propagates to the terminal on the next bootstrap, without re-issuing the .lic.
+  let register = null
+  if (cred.register_id) {
+    const { data: reg } = await supabase
+      .from('cash_registers').select('id, name, mode').eq('id', cred.register_id).maybeSingle()
+    if (reg) register = { id: reg.id, name: reg.name, mode: reg.mode || 'POS' }
+  }
+
   return NextResponse.json({
     ok: true,
     entityId,
     entity: entityRes.data ?? null,
+    register,
     categories: categoriesRes.data ?? [],
     products,
     khata: khataRes.data ?? [],

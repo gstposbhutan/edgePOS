@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
+import { useTerminalMode } from "@/hooks/use-terminal-mode";
 import { useSettings } from "@/hooks/use-settings";
 import { useHeldCarts } from "@/hooks/use-held-carts";
 import { useUndo } from "@/hooks/use-undo";
@@ -61,6 +63,7 @@ import {
   Clock,
   ShoppingCart,
   ShoppingBag,
+  Boxes,
   ArrowRight,
   Sun,
   Moon,
@@ -77,12 +80,26 @@ const LoginFallback = dynamic(() => import("@/app/login/page"), { ssr: false });
 
 export default function PosPage() {
   const { user, isAuthenticated, signOut, switchUser, isManager, isOwner, loading: authLoading } = useAuth();
+  const terminalMode = useTerminalMode();
+  const router = useRouter();
+
+  // A BACK_OFFICE terminal never rings a cash sale — it's a stock + online-orders terminal. Managers
+  // land on Stock (which is manager-gated); cashiers land on online orders (avoids a redirect loop
+  // against Stock's own manager gate).
+  const canManage = isManager || isOwner;
+  useEffect(() => {
+    if (isAuthenticated && terminalMode === "BACK_OFFICE") router.replace(canManage ? "/stock" : "/online-orders");
+  }, [isAuthenticated, terminalMode, canManage, router]);
 
   if (authLoading) {
     return <div className="min-h-screen flex items-center justify-center"><p className="text-muted-foreground">Loading...</p></div>;
   }
 
   if (!isAuthenticated) return <LoginFallback />;
+
+  if (terminalMode === "BACK_OFFICE") {
+    return <div className="min-h-screen flex items-center justify-center"><p className="text-muted-foreground">Back-office terminal — opening stock…</p></div>;
+  }
 
   return <PosTerminal user={user} isManager={isManager} isOwner={isOwner} signOut={signOut} switchUser={switchUser} />;
 }
@@ -229,17 +246,12 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
     complimentaryReason,
   });
 
-  // Auto-prompt shift open when no active shift (once data loads)
+  // Shifts are optional (parity with the web) — do NOT force the shift modal open on load. The
+  // cashier opens a shift only if they want cash-drawer reconciliation.
   const [hasPromptedShift, setHasPromptedShift] = useState(false);
   useEffect(() => {
-    if (!shiftLoading && !activeShift && !hasPromptedShift && !anyModalOpen) {
-      setShowShiftModal("open");
-      setHasPromptedShift(true);
-    }
-    if (activeShift) {
-      setHasPromptedShift(true);
-    }
-  }, [shiftLoading, activeShift, hasPromptedShift, anyModalOpen]);
+    if (activeShift) setHasPromptedShift(true);
+  }, [activeShift]);
 
   // Fetch reconciliation data when closing shift
   useEffect(() => {
@@ -431,15 +443,12 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
   }, [items, products, removeItem, addItem, undoStack]);
 
   const handleCheckout = useCallback(async () => {
-    if (!activeShift) {
-      toast.error("No active shift. Please open a shift first.");
-      setShowShiftModal("open");
-      return;
-    }
+    // Shifts are optional (parity with the web) — a cashier can sell without an open shift. An open
+    // shift, when present, still tracks the drawer; it's just no longer required to take payment.
     if (validateStock()) {
       setShowPayment(true);
     }
-  }, [validateStock, activeShift]);
+  }, [validateStock]);
 
   const handlePaymentConfirm = useCallback(
     async (method: string, channel: string | null, ref: string, tendered?: number) => {
@@ -869,6 +878,14 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
                 Customers
               </Button>
             </Link>
+            {(isManager || isOwner) && (
+            <Link href="/stock">
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
+                <Boxes className="h-4 w-4 mr-1.5" />
+                Stock
+              </Button>
+            </Link>
+            )}
             {isManager && (
             <Link href="/adjustments">
               <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
@@ -966,7 +983,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
               onSelectCustomer={() => setShowCustomer(true)}
               onClearCustomer={() => setSelectedCustomer(null)}
               onNewSale={handleNewTransaction}
-              noShift={!activeShift}
+              noShift={false}
             />
             </div>
           )}
@@ -983,7 +1000,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
                   onSelectCustomer={() => setShowCustomer(true)}
                   onClearCustomer={() => setSelectedCustomer(null)}
                   onNewSale={handleNewTransaction}
-                  noShift={!activeShift}
+                  noShift={false}
                 />
               </div>
             </div>

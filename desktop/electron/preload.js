@@ -31,6 +31,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
     getMachineId: () => ipcRenderer.invoke("system:get-machine-id"),
   },
 
+  // Terminal mode: "POS" (rings cash sales) vs "BACK_OFFICE" (stock + online orders, no cash sale).
+  // From the license/bootstrap; the main process pushes updates on the "terminal:mode" event.
+  terminal: {
+    getMode: () => ipcRenderer.invoke("terminal:get-mode"),
+    onMode: (callback) => {
+      const listener = (_, data) => callback(data);
+      ipcRenderer.on("terminal:mode", listener);
+      return () => ipcRenderer.removeListener("terminal:mode", listener);
+    },
+  },
+
   // Sync
   sync: {
     getStatus: () => ipcRenderer.invoke("sync:get-status"),

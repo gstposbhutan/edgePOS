@@ -19,6 +19,7 @@ export default function LicensesPage() {
   const [entityId, setEntityId] = useState("")
   const [machineId, setMachineId] = useState("")
   const [tier, setTier] = useState("STANDARD")
+  const [mode, setMode] = useState("POS")   // terminal mode: POS (cash sales) vs BACK_OFFICE (stock only)
   const [days, setDays] = useState("365")
   const [label, setLabel] = useState("")
   const [error, setError] = useState("")
@@ -58,7 +59,7 @@ export default function LicensesPage() {
     const res = await fetch("/api/admin/licenses", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ entity_id: entityId, machine_id: machineId.trim(), tier, days: Number(days) || 365, label: label.trim() || null }),
+      body: JSON.stringify({ entity_id: entityId, machine_id: machineId.trim(), tier, mode, days: Number(days) || 365, label: label.trim() || null }),
     })
     const json = await res.json()
     setIssuing(false)
@@ -128,10 +129,14 @@ export default function LicensesPage() {
               {entities.map((e) => <option key={e.id} value={e.id}>{e.name}{e.tpn_gstin ? ` (${e.tpn_gstin})` : ""}</option>)}
             </select>
             <Input value={machineId} onChange={(e) => setMachineId(e.target.value)} placeholder="Machine ID (Windows MachineGuid)" className="col-span-2" />
+            <select value={mode} onChange={(e) => setMode(e.target.value)} className="h-9 rounded-md border border-border bg-background px-2 text-sm" title="Terminal mode">
+              <option value="POS">POS terminal (cash sales)</option>
+              <option value="BACK_OFFICE">Back office (stock only)</option>
+            </select>
             <select value={tier} onChange={(e) => setTier(e.target.value)} className="h-9 rounded-md border border-border bg-background px-2 text-sm">
               <option value="STANDARD">STANDARD</option><option value="TRIAL">TRIAL</option><option value="ENTERPRISE">ENTERPRISE</option>
             </select>
-            <Input type="number" value={days} onChange={(e) => setDays(e.target.value)} min="1" placeholder="Valid days" />
+            <Input type="number" value={days} onChange={(e) => setDays(e.target.value)} min="1" placeholder="Valid days" className="col-span-2" />
             <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Label (optional)" className="col-span-2" />
           </div>
           {error && <p className="text-xs text-tibetan">{error}</p>}
@@ -156,7 +161,7 @@ export default function LicensesPage() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium">{entityName(l.entity_id)} <span className="text-[10px] text-muted-foreground">· {l.tier}</span></p>
                   <p className="text-[11px] text-muted-foreground break-all">
-                    machine {l.machine_id?.slice(0, 16)} · {l.is_active ? "active" : "revoked"} · expires {new Date(l.expires_at).toLocaleDateString()}
+                    {l.register?.name ? `${l.register.name} · ` : ""}{l.register?.mode === "BACK_OFFICE" ? "back office" : "POS"} · machine {l.machine_id?.slice(0, 16)} · {l.is_active ? "active" : "revoked"} · expires {new Date(l.expires_at).toLocaleDateString()}
                   </p>
                 </div>
                 {l.is_active && (

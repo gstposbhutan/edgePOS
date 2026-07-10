@@ -24,6 +24,9 @@ let syncInterval = null;
 let bootstrapInterval = null;
 let syncDebounce = null;
 let syncConfig = null;
+// Terminal mode from the license / bootstrap: "POS" rings cash sales; "BACK_OFFICE" is a
+// stock-only terminal (stock + online orders, no cash sale). Default POS for older licenses.
+let terminalMode = "POS";
 let pbDataDir = null;
 let lastSyncAt = null; // ISO time of the last successful push/pull — drives the renderer sync nudge
 let onlineOrdersInterval = null;
@@ -122,6 +125,10 @@ ipcMain.handle("printer:test", async (_, settings) => {
 ipcMain.handle("printer:kick-drawer", async (_, settings) => kickDrawer(mainWindow, settings));
 
 ipcMain.handle("app:get-version", () => app.getVersion());
+
+// Terminal mode (POS vs BACK_OFFICE) from the license / bootstrap — gates the renderer UI so a
+// back-office terminal never rings a cash sale. Refreshed live via the "terminal:mode" event.
+ipcMain.handle("terminal:get-mode", () => terminalMode);
 
 // Open the installer download in the user's browser (update banner).
 ipcMain.handle("update:open-download", (_, url) => {
@@ -283,6 +290,12 @@ async function doBootstrap() {
       throw new Error(`bootstrap ${res.status}: ${text.slice(0, 200)}`);
     }
     const data = await res.json();
+
+    // Refresh the terminal mode from the cloud (an owner can flip POS ↔ back office in the web).
+    if (data.register && (data.register.mode === "POS" || data.register.mode === "BACK_OFFICE")) {
+      terminalMode = data.register.mode;
+      mainWindow?.webContents.send("terminal:mode", terminalMode);
+    }
 
     const authToken = await syncLocalAuth(localUrl);
     const jsonAuth = { "Content-Type": "application/json", Authorization: authToken };
@@ -524,6 +537,11 @@ function applyLicensePayload(payload) {
       apiKey: payload.sync.token,
       pbUrl: (syncConfig && syncConfig.pbUrl) || PB_URL,
     };
+  }
+  // Terminal mode is carried in the license payload (and refreshed from bootstrap). A mode change
+  // made in the cloud propagates on the next bootstrap without needing a new .lic.
+  if (payload && (payload.mode === "POS" || payload.mode === "BACK_OFFICE")) {
+    terminalMode = payload.mode;
   }
 }
 

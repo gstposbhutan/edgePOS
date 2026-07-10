@@ -14,7 +14,7 @@ export async function GET() {
 
   const { data: licenses, error } = await ctx.supabase
     .from('licenses')
-    .select('id, lic_id, entity_id, machine_id, tier, label, issued_at, expires_at, is_active')
+    .select('id, lic_id, entity_id, machine_id, tier, label, issued_at, expires_at, is_active, register_id, register:register_id(name, mode)')
     .order('issued_at', { ascending: false })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
@@ -47,8 +47,13 @@ export async function POST(request) {
   const tier = (body.tier || 'STANDARD').trim()
   const label = (body.label || '').trim() || null
   const days = Number(body.days) > 0 ? Math.floor(Number(body.days)) : 365
+  // Terminal mode: POS rings cash sales; BACK_OFFICE handles stock + online orders only.
+  const mode = (body.mode || 'POS').trim().toUpperCase()
   if (!entityId || !machineId) {
     return NextResponse.json({ error: 'entity_id and machine_id are required' }, { status: 400 })
+  }
+  if (!['POS', 'BACK_OFFICE'].includes(mode)) {
+    return NextResponse.json({ error: 'mode must be POS or BACK_OFFICE' }, { status: 400 })
   }
 
   // The ingest URL is the cloud's OWN address — derived server-side so the admin never types
@@ -67,16 +72,43 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Licenses can only be issued for RETAILER terminals (the desktop POS is retailer-only)' }, { status: 400 })
   }
 
-  // 1. Mint the per-terminal sync token; store ONLY sha256 in terminal_tokens.
+  // 1. Provision the register for this (store, machine). A register IS the terminal, so approving
+  //    its license is what brings it into existence (or adopts an already-synced one). Re-issuing
+  //    updates the mode + reactivates but preserves a manager-renamed register name.
+  let registerId
+  {
+    const { data: existing } = await ctx.supabase
+      .from('cash_registers')
+      .select('id')
+      .eq('entity_id', entityId).eq('machine_id', machineId)
+      .maybeSingle()
+    if (existing) {
+      registerId = existing.id
+      await ctx.supabase.from('cash_registers').update({ mode, is_active: true }).eq('id', registerId)
+    } else {
+      // Name from the terminal's self-reported hostname (from its license request) if any.
+      const { data: req } = await ctx.supabase
+        .from('license_requests').select('hostname').eq('machine_id', machineId).maybeSingle()
+      const name = (req?.hostname || '').trim() || `Terminal ${machineId.slice(0, 8)}`
+      const { data: reg, error: regErr } = await ctx.supabase
+        .from('cash_registers')
+        .insert({ entity_id: entityId, machine_id: machineId, name, mode, created_by: ctx.userId })
+        .select('id').single()
+      if (regErr) return NextResponse.json({ error: regErr.message }, { status: 500 })
+      registerId = reg.id
+    }
+  }
+
+  // 2. Mint the per-terminal sync token, bound to the register; store ONLY sha256.
   const token = 'nxs_' + randomBytes(32).toString('base64url')
   const tokenHash = createHash('sha256').update(token).digest('hex')
   const { data: tok, error: tokErr } = await ctx.supabase
     .from('terminal_tokens')
-    .insert({ entity_id: entityId, token_hash: tokenHash, label: label || `License — ${entity.name}`, created_by: ctx.userId })
+    .insert({ entity_id: entityId, register_id: registerId, token_hash: tokenHash, label: label || `License — ${entity.name}`, created_by: ctx.userId })
     .select('id').single()
   if (tokErr) return NextResponse.json({ error: tokErr.message }, { status: 500 })
 
-  // 2. Build + sign the .lic (carries entity + machine lock + sync token + ingest URL).
+  // 3. Build + sign the .lic (carries entity + machine lock + register + mode + sync token).
   const licId = randomUUID()
   const issuedAt = new Date().toISOString()
   const expiresAt = new Date(Date.now() + days * 86400000).toISOString()
@@ -87,6 +119,8 @@ export async function POST(request) {
       entity_id: entityId,
       store_name: entity.name,
       machine_id: machineId,
+      register_id: registerId,
+      mode,
       tier,
       issued_at: issuedAt,
       expires_at: expiresAt,
@@ -96,9 +130,9 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Signing failed: ' + e.message }, { status: 500 })
   }
 
-  // 3. Record for revocation + audit (no plaintext token stored here).
+  // 4. Record for revocation + audit (no plaintext token stored here).
   const { data: licRow, error: licErr } = await ctx.supabase.from('licenses').insert({
-    lic_id: licId, entity_id: entityId, machine_id: machineId, token_id: tok.id,
+    lic_id: licId, entity_id: entityId, machine_id: machineId, token_id: tok.id, register_id: registerId,
     tier, label, issued_at: issuedAt, expires_at: expiresAt, created_by: ctx.userId,
   }).select('id').single()
   if (licErr) return NextResponse.json({ error: licErr.message }, { status: 500 })
@@ -110,7 +144,7 @@ export async function POST(request) {
 
   const safeName = entity.name.replace(/[^A-Za-z0-9]+/g, '_')
   return NextResponse.json(
-    { license, filename: `${safeName}-${machineId.slice(0, 8)}.lic`, lic_id: licId, expires_at: expiresAt },
+    { license, filename: `${safeName}-${machineId.slice(0, 8)}.lic`, lic_id: licId, expires_at: expiresAt, register_id: registerId, mode },
     { status: 201 },
   )
 }
