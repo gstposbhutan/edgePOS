@@ -28,6 +28,11 @@ const CSS = `
 #tour-cap .cap-body { min-width: 0; }
 #tour-cap .cap-title { color: #fff; font-weight: 700; font-size: 20px; line-height: 1.25; letter-spacing: .2px; }
 #tour-cap .cap-text  { color: #cbd5e1; font-size: 15.5px; line-height: 1.45; margin-top: 4px; }
+#tour-hl { position: fixed; left: 0; top: 0; width: 0; height: 0; border: 3px solid #D4AF37; border-radius: 12px;
+  box-shadow: 0 0 0 9999px rgba(9,14,25,.58), 0 0 22px 4px rgba(212,175,55,.55); opacity: 0;
+  transition: opacity .4s ease, left .45s cubic-bezier(.22,1,.36,1), top .45s cubic-bezier(.22,1,.36,1),
+    width .45s cubic-bezier(.22,1,.36,1), height .45s cubic-bezier(.22,1,.36,1); }
+#tour-hl.show { opacity: 1; }
 #tour-card { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
   justify-content: center; text-align: center; padding: 8vh 10vw;
   background: radial-gradient(120% 120% at 50% 30%, #16223c 0%, #0F172A 46%, #070c16 100%);
@@ -41,6 +46,7 @@ const CSS = `
 `;
 
 const HTML = `
+  <div id="tour-hl"></div>
   <div id="tour-card">
     <div class="tc-kicker"></div><div class="tc-rule"></div>
     <div class="tc-title"></div><div class="tc-sub"></div>
@@ -78,6 +84,12 @@ const PAGE_SRC = `
     try { sessionStorage.setItem('__tourCap', JSON.stringify({step:step,title:title,text:text})); } catch(e){}
   };
   api.hideCaption = function(){ var cap=q('tour-cap'); if(cap) cap.classList.remove('show'); try{sessionStorage.removeItem('__tourCap');}catch(e){} };
+  api.highlight = function(box){
+    build(); var hl=q('tour-hl'); if(!hl||!box) return; var pad=6;
+    hl.style.left=(box.x-pad)+'px'; hl.style.top=(box.y-pad)+'px';
+    hl.style.width=(box.w+pad*2)+'px'; hl.style.height=(box.h+pad*2)+'px'; hl.classList.add('show');
+  };
+  api.hideHighlight = function(){ var hl=q('tour-hl'); if(hl) hl.classList.remove('show'); };
   api.card = function(kicker,title,sub){
     build(); var c=q('tour-card'); if(!c) return;
     c.querySelector('.tc-kicker').textContent=kicker||'';
@@ -123,6 +135,35 @@ export async function caption(
 
 export async function clearCaption(page: Page) {
   await page.evaluate(() => (window as any).__tour?.hideCaption()).catch(() => {});
+}
+
+// Component callout — spotlight one on-screen element and explain it (the "explain every component"
+// layer). Tolerant: if the selector misses, falls back to caption-only. Mirrors the web helper.
+export async function callout(
+  page: Page,
+  selector: string,
+  { step = "" as string | number, title = "", text = "" }: { step?: string | number; title?: string; text?: string } = {},
+  hold = 2600,
+) {
+  let box: { x: number; y: number; w: number; h: number } | null = null;
+  try {
+    const el = page.locator(selector).first();
+    await el.scrollIntoViewIfNeeded({ timeout: 2500 });
+    box = await el.evaluate((node: Element) => {
+      const r = node.getBoundingClientRect();
+      return { x: r.x, y: r.y, w: r.width, h: r.height };
+    });
+  } catch { box = null; }
+  await page.evaluate(([b, st, t, x]) => {
+    (window as any).__tourBuild?.();
+    if (b) (window as any).__tour.highlight(b); else (window as any).__tour.hideHighlight();
+    (window as any).__tour.caption(st, t, x);
+  }, [box, step === "" ? "" : String(step), title, text] as const);
+  await page.waitForTimeout(hold);
+}
+
+export async function clearHighlight(page: Page) {
+  await page.evaluate(() => (window as any).__tour?.hideHighlight()).catch(() => {});
 }
 
 export const beat = (page: Page, ms = 1400) => page.waitForTimeout(ms);

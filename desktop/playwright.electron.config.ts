@@ -12,5 +12,8 @@ export default defineConfig({
   retries: 0,
   reporter: "line",
   globalSetup: "./e2e/electron/global-setup.ts",
-  use: { trace: "retain-on-failure" },
+  // navigationTimeout: the app keeps background cloud-sync connections open, so a goto waiting on the
+  // full 'load' event can stall — cap it so a stuck navigation fails in seconds, never the whole test.
+  // actionTimeout: same fast-fail for clicks/fills (mirrors the web tour project).
+  use: { trace: "retain-on-failure", navigationTimeout: 30_000, actionTimeout: 20_000 },
 });

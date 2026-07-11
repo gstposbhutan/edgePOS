@@ -41,9 +41,11 @@ export const test = base.extend<object, { electronApp: ElectronApplication; appP
   electronApp: [
     async ({}, use) => {
       const app = await electron.launch({
-        args: [".", "--no-sandbox"],
+        // --disable-gpu / software rendering: under xvfb the GPU command buffer fails and the
+        // renderer can hang before domcontentloaded fires; force software GL so the window loads.
+        args: [".", "--no-sandbox", "--disable-gpu", "--disable-software-rasterizer", "--in-process-gpu"],
         cwd: DESKTOP_DIR,
-        env: { ...process.env, NEXUS_SERVE_BUILT: "1", NEXUS_E2E: "1" },
+        env: { ...process.env, NEXUS_SERVE_BUILT: "1", NEXUS_E2E: "1", LIBGL_ALWAYS_SOFTWARE: "1" },
         recordVideo: { dir: path.join(DESKTOP_DIR, "e2e/recordings/tours"), size: { width: 1280, height: 800 } },
         timeout: 90_000,
       });
@@ -61,7 +63,20 @@ export const test = base.extend<object, { electronApp: ElectronApplication; appP
   appPage: [
     async ({ electronApp }, use) => {
       const page = await electronApp.firstWindow();
-      await page.waitForLoadState("domcontentloaded");
+      // The first window can race the static server at boot — it may have attempted to load :3200
+      // before it was serving and be stuck on a failed load (domcontentloaded never fires). Wait for
+      // :3200 to actually serve, then force-navigate so we reliably land on the built UI.
+      for (let i = 0; i < 40; i++) {
+        try { if ((await fetch("http://127.0.0.1:3200/")).ok) break; } catch { /* not up yet */ }
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      await page.goto("http://127.0.0.1:3200/", { waitUntil: "domcontentloaded", timeout: 60_000 }).catch(() => {});
+      // Wait until the app is actually interactive (login field or the authenticated POS shell) so a
+      // tour never acts on a half-mounted page. Background cloud-sync XHRs stay pending (ERR_CONN_REFUSED
+      // in E2E), so never wait on networkidle.
+      await page.getByPlaceholder(OWNER.email)
+        .or(page.getByRole("button", { name: /open shift|close shift/i }))
+        .first().waitFor({ state: "visible", timeout: 60_000 }).catch(() => {});
       await use(page);
     },
     { scope: "worker" },
@@ -71,7 +86,9 @@ export const test = base.extend<object, { electronApp: ElectronApplication; appP
 export { expect };
 
 export async function ensureLoggedIn(page: Page) {
-  await page.goto("http://127.0.0.1:3200/").catch(() => {});
+  // domcontentloaded, not the default 'load' — the app holds background cloud-sync connections open,
+  // so the load event can stall and hang the navigation.
+  await page.goto("http://127.0.0.1:3200/", { waitUntil: "domcontentloaded" }).catch(() => {});
   const email = page.getByPlaceholder(OWNER.email);
   const shiftBtn = page.getByRole("button", { name: /open shift|close shift/i });
   await expect(email.or(shiftBtn).first()).toBeVisible({ timeout: 60_000 });
