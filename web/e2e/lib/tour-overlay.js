@@ -52,6 +52,18 @@ const CSS = `
 #tour-cap .cap-title { color: #fff; font-weight: 700; font-size: 20px; line-height: 1.25; letter-spacing: .2px; }
 #tour-cap .cap-text  { color: #cbd5e1; font-size: 15.5px; line-height: 1.45; margin-top: 4px; }
 
+/* ── component-callout spotlight ─────────────────────────────────────────
+   A gold ring around one on-screen element, with a huge box-shadow spread that
+   dims everything else — directs the eye to the component being explained. */
+#tour-hl {
+  position: fixed; left: 0; top: 0; width: 0; height: 0;
+  border: 3px solid #D4AF37; border-radius: 12px;
+  box-shadow: 0 0 0 9999px rgba(9,14,25,.58), 0 0 22px 4px rgba(212,175,55,.55);
+  opacity: 0; transition: opacity .4s ease, left .45s cubic-bezier(.22,1,.36,1),
+    top .45s cubic-bezier(.22,1,.36,1), width .45s cubic-bezier(.22,1,.36,1), height .45s cubic-bezier(.22,1,.36,1);
+}
+#tour-hl.show { opacity: 1; }
+
 /* ── full-frame title card ───────────────────────────────────────────── */
 #tour-card {
   position: absolute; inset: 0; display: flex; flex-direction: column;
@@ -68,6 +80,7 @@ const CSS = `
 `
 
 const HTML = `
+  <div id="tour-hl"></div>
   <div id="tour-card">
     <div class="tc-kicker"></div>
     <div class="tc-rule"></div>
@@ -112,6 +125,15 @@ const PAGE_SRC = `
     var cap = q('tour-cap'); if (cap) cap.classList.remove('show');
     try { sessionStorage.removeItem('__tourCap'); } catch (e) {}
   };
+  // Spotlight a component: position the gold ring over a viewport rect {x,y,w,h}.
+  api.highlight = function (box) {
+    build(); var hl = q('tour-hl'); if (!hl || !box) return;
+    var pad = 6;
+    hl.style.left = (box.x - pad) + 'px'; hl.style.top = (box.y - pad) + 'px';
+    hl.style.width = (box.w + pad * 2) + 'px'; hl.style.height = (box.h + pad * 2) + 'px';
+    hl.classList.add('show');
+  };
+  api.hideHighlight = function () { var hl = q('tour-hl'); if (hl) hl.classList.remove('show'); };
   api.card = function (kicker, title, sub) {
     build(); var c = q('tour-card'); if (!c) return;
     c.querySelector('.tc-kicker').textContent = kicker || '';
@@ -146,6 +168,39 @@ async function clearCaption(page) {
   await page.evaluate(() => window.__tour && window.__tour.hideCaption()).catch(() => {})
 }
 
+/**
+ * Component callout — spotlight one on-screen element and explain what it is/does. This is the
+ * "explain every screen's components" layer: point at the sidebar item, cart panel, payment method,
+ * button or field, dim the rest, and caption it. Tolerant — if the element isn't found/visible it
+ * falls back to just showing the caption (never breaks the tour).
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {string} selector           CSS/text selector for the element to spotlight
+ * @param {{step?:string|number,title?:string,text?:string}} cap
+ * @param {number} hold               ms to hold the callout
+ */
+async function callout(page, selector, { step = '', title = '', text = '' } = {}, hold = 2600) {
+  let box = null
+  try {
+    const el = page.locator(selector).first()
+    await el.scrollIntoViewIfNeeded({ timeout: 2500 })
+    box = await el.evaluate((node) => {
+      const r = node.getBoundingClientRect()
+      return { x: r.x, y: r.y, w: r.width, h: r.height }
+    })
+  } catch { box = null }
+  await page.evaluate(([b, st, t, x]) => {
+    window.__tourBuild && window.__tourBuild()
+    if (b) window.__tour.highlight(b); else window.__tour.hideHighlight()
+    window.__tour.caption(st, t, x)
+  }, [box, step === '' ? '' : String(step), title, text])
+  await page.waitForTimeout(hold)
+}
+
+async function clearHighlight(page) {
+  await page.evaluate(() => window.__tour && window.__tour.hideHighlight()).catch(() => {})
+}
+
 const beat = (page, ms = 1400) => page.waitForTimeout(ms)
 
-module.exports = { installTour, titleCard, caption, clearCaption, beat }
+module.exports = { installTour, titleCard, caption, clearCaption, callout, clearHighlight, beat }

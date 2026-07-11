@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { X, Plus, Trash2, Edit2, GripVertical } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useCategoryProperties } from '@/hooks/use-category-properties'
 import PropertyTypeConfigs from './property-type-configs'
 

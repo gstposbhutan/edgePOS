@@ -41,11 +41,18 @@ module.exports = defineConfig({
     {
       name: 'tour',
       testMatch: /tour-.*\.spec\.js/,
+      // Onboarding tours walk 10+ screens with slow-paced overlay holds, so they run well past the
+      // default 20-min per-test timeout — give the recording plenty of room.
+      timeout: 45 * 60 * 1000,
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 1280, height: 800 },
         video: { mode: 'on', size: { width: 1280, height: 800 } },
         launchOptions: { slowMo: 700 },
+        // Cap any single action (click/fill/waitFor) so a missing selector fails in seconds instead of
+        // hanging the whole recording until the test timeout. Overlay holds use page.waitForTimeout and
+        // are unaffected.
+        actionTimeout: 20 * 1000,
       },
     },
     // Specs that hard-code `test.use({ storageState: 'manager-auth.json' })` at file
