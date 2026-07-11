@@ -100,6 +100,24 @@ spec uses. (Desktop mirror `desktop/e2e/lib/tour-overlay.ts` gets the same addit
 
 ---
 
+## Status (as built)
+
+- **Overlay helper** ✅ — `callout()` (component spotlight + caption) added to `web/e2e/lib/tour-overlay.js`
+  and mirrored in `desktop/e2e/lib/tour-overlay.ts`.
+- **Web tours ✅ RECORDED (8/8)** — all `tour-onboard-*.spec.js` recorded to `web/e2e/recordings/tours/`
+  (`.webm`, gitignored artifacts). Admin is split into 3 segments joined into `tour-onboard-admin.webm`
+  (concat verified: 606.7s = exact sum of segments). Committed `ec2a617`. Sizes ~10–34 MB each.
+  Fixes made during recording: over-scoped/absent selectors softened to tolerant `.waitFor().catch()`;
+  `tour` project timeout 45 min + 20 s action timeout; regenerated storage states; seeded NQRC merchant
+  config so the checkout QR renders; fixed the admin categories `property-config-modal` missing `Dialog`
+  import (a real app bug).
+- **Desktop tours ⚠️ AUTHORED, RECORDING BLOCKED** — 3 specs (`tour-onboard-desktop-{owner,cashier,backoffice}.spec.ts`)
+  authored + `tsc`-clean; committed `8bc6c70`. Harness hardened (appPage waits for the static server then
+  force-navigates; `domcontentloaded` goto; nav/action timeouts; software GL). **Blocker:** the Electron app
+  renders correctly under xvfb (verified via a console-capture probe — full POS UI), but the Playwright-driven
+  session times out (even the pre-existing `tour-online-orders` tour now hangs the same way). Needs interactive
+  trace-viewer / headed debugging to resolve — not achievable blind. Desktop `.webm`s are NOT yet produced.
+
 ## 6. Build order
 1. **Reusable overlay helper** (title/screen/callout/step + highlight) — one style for all tours.
 2. **Web owner-full tours** (customer, rider, admin, retailer/wholesaler/distributor owner) with full
