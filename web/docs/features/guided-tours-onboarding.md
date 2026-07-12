@@ -122,6 +122,22 @@ spec uses. (Desktop mirror `desktop/e2e/lib/tour-overlay.ts` gets the same addit
   cashier = seeded cashier login, POS surface; back-office = reaches stock/online/b2b/customers by direct
   navigation (no Electron IPC mode-forcing possible from chromium).
 
+## Licensing tours (added) ✅
+The desktop licensing process is covered end-to-end by two extra guides (committed `0faeee6`):
+- **`tour-onboard-admin-licensing`** (web) — super-admin **approves** a pending terminal request and
+  **issues** the machine-locked `.lic`: Pending terminals → Use (approve) → issue form (store/machine/
+  mode/tier/valid-days/label) → Issue & download → license list + Revoke. Seeds a PENDING
+  `license_request` via `/api/license/request` so the approval block renders. Recorded 7.9M, frame-verified.
+- **`desktop-tour-onboard-activation.cjs`** (desktop, chromium workaround) — the **terminal side**:
+  loads the real `electron/activation.html` via `file://` with a **stubbed `window.activation`**, walks
+  machine-ID + cloud-URL → **Request license** (awaiting approval) → paste `.lic` → **Activate**
+  ("Activated for Pelbu Store. Pulled 128 products. Opening POS…") → **post-approval startup** into the
+  POS login at :3200. Recorded 3.8M, frame-verified. (Activation is a stubbed *cosmetic* walkthrough — it
+  explains every field but performs no real activation, since that needs a real `.lic`/cloud.)
+
+Full onboarding suite is now **13 videos**: 8 web personas + 3 desktop (owner/cashier/back-office) +
+admin-licensing + desktop-activation.
+
 ## 6. Build order
 1. **Reusable overlay helper** (title/screen/callout/step + highlight) — one style for all tours.
 2. **Web owner-full tours** (customer, rider, admin, retailer/wholesaler/distributor owner) with full
