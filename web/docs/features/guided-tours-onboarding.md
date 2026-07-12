@@ -111,12 +111,16 @@ spec uses. (Desktop mirror `desktop/e2e/lib/tour-overlay.ts` gets the same addit
   `tour` project timeout 45 min + 20 s action timeout; regenerated storage states; seeded NQRC merchant
   config so the checkout QR renders; fixed the admin categories `property-config-modal` missing `Dialog`
   import (a real app bug).
-- **Desktop tours ⚠️ AUTHORED, RECORDING BLOCKED** — 3 specs (`tour-onboard-desktop-{owner,cashier,backoffice}.spec.ts`)
-  authored + `tsc`-clean; committed `8bc6c70`. Harness hardened (appPage waits for the static server then
-  force-navigates; `domcontentloaded` goto; nav/action timeouts; software GL). **Blocker:** the Electron app
-  renders correctly under xvfb (verified via a console-capture probe — full POS UI), but the Playwright-driven
-  session times out (even the pre-existing `tour-online-orders` tour now hangs the same way). Needs interactive
-  trace-viewer / headed debugging to resolve — not achievable blind. Desktop `.webm`s are NOT yet produced.
+- **Desktop tours ✅ RECORDED (3/3) via the chromium-vs-:3200 workaround.** Playwright's Electron `recordVideo`
+  hangs in this sandbox (known issue), so instead of the Electron fixture the tours run as standalone chromium
+  runners against the app's served UI: `web/desktop-tour-onboard-{owner,cashier,backoffice}.cjs` — launch the
+  desktop app for services only (`desktop/launch-app.sh` → :3200 UI + :8090 PB), then a plain chromium (in the
+  playwright docker, `--network host`) drives :3200 with the web overlay helper + `recordVideo`, seeding via PB
+  REST. Produced `tour-onboard-desktop-{owner (14.7M),cashier (8.3M),backoffice (8.2M)}.webm`; owner frame-verified
+  (full POS UI + working component spotlight). The 3 `.cjs` runners are committed; the Electron specs
+  (`tour-onboard-desktop-*.spec.ts`) remain as the source-of-truth content. Owner = POS-mode full terminal;
+  cashier = seeded cashier login, POS surface; back-office = reaches stock/online/b2b/customers by direct
+  navigation (no Electron IPC mode-forcing possible from chromium).
 
 ## 6. Build order
 1. **Reusable overlay helper** (title/screen/callout/step + highlight) — one style for all tours.
