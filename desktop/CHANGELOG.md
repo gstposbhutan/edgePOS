@@ -5,6 +5,20 @@ Offline-first Electron + PocketBase retail terminal. Versions are the
 (`/api/desktop/releases/latest`); release notes are also entered in the
 admin **Releases** console at publish time.
 
+## 1.4.0 — B2B fulfilment, register-bound licensing & counter upgrades
+- **Incoming B2B orders on tier terminals** — wholesale/distributor terminals now
+  receive and fulfil incoming business-to-business orders alongside their own retail.
+- **Licenses bound to registers + terminal mode** — a desktop license is now tied to
+  its register and terminal mode, tightening activation and preventing seat drift.
+- **Owner/manager stock handling on the terminal** — elevated roles can adjust and
+  manage stock directly at the counter.
+- **GST-exempt products at the counter** — items flagged GST-exempt ring up without
+  the 5% GST, matching the web sell-side.
+- **Dynamic Bhutan NQRC payment QR** — online payments render a live NQRC QR for
+  scan-to-pay.
+- **Scan a payment receipt to auto-fill the journal number** — scanning a payment
+  receipt fills the journal/reference number automatically.
+
 ## 1.3.0 — Online order management on the terminal
 - **Incoming online (marketplace) orders now surface on the terminal** — a new
   **Online Orders** screen (and toolbar badge) lists this store's marketplace
