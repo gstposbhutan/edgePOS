@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import type { Customer } from "@/hooks/use-customers";
 import { PAYMENT_METHOD, PAYMENT_CHANNEL, type PaymentMethod, type PaymentChannel } from "@/lib/constants";
+import { TillBar } from "@/components/pos/keyboard/till-bar";
 import { ReceiptScanModal, type ScanMeta } from "@/components/pos/receipt-scan-modal";
 import { PaymentQr } from "@/components/pos/payment-qr";
 
@@ -126,12 +127,51 @@ export function PaymentModal({ open, onClose, grandTotal, customer, onConfirm }:
 
   const remaining = isCash ? Math.max(0, grandTotal - effectiveTendered) : 0;
 
+  // The tender sheet is keyboard-complete: before this, F10 opened it and the cashier then had
+  // to reach for the mouse to finish the sale, which is exactly where a RanceLab counter is
+  // fastest. Method keys take Alt so plain digits stay free for typing an amount.
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const typing = !!target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA");
+
+      if (e.key === "Escape") { e.preventDefault(); onClose(); return; }
+      // F10 tenders from anywhere on the sheet — the same key that opened it. Enter does too,
+      // except while typing a reference, where it would fire before the number is finished.
+      if (e.key === "F10" || (e.key === "Enter" && !typing)) { e.preventDefault(); handleConfirm(); return; }
+
+      if (e.altKey && /^[1-9]$/.test(e.key)) {
+        const m = METHODS[parseInt(e.key, 10) - 1];
+        if (m) { e.preventDefault(); setSelectedId(m.id); }
+        return;
+      }
+      if (!isCash || typing) return;
+      if (e.ctrlKey && /^[1-9]$/.test(e.key)) {
+        const denom = DENOMINATIONS[parseInt(e.key, 10) - 1];
+        if (denom) { e.preventDefault(); addDenomination(denom); }
+        return;
+      }
+      if (e.key.toLowerCase() === "e") { e.preventDefault(); setExact(); }
+      else if (e.key.toLowerCase() === "r") { e.preventDefault(); roundUp(); }
+    };
+    // Capture, so the sheet's keys win over the counter's registry underneath it.
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  });
+
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Payment</DialogTitle>
+        <DialogHeader className="sr-only">
+          <DialogTitle>Tender</DialogTitle>
         </DialogHeader>
+        {/* Spec WF-07: the sheet states its own tax basis and the key that finishes the sale. */}
+        <TillBar
+          title="Tender"
+          buyer={customer?.debtor_name}
+          hint="Esc close"
+        />
 
         <div className="space-y-4">
           {/* Total */}
@@ -307,12 +347,15 @@ export function PaymentModal({ open, onClose, grandTotal, customer, onConfirm }:
 
           <div className="flex gap-3">
             <Button variant="outline" className="flex-1 h-12" onClick={onClose}>
-              Cancel
+              Esc — Close
             </Button>
             <Button className="flex-1 h-12 text-base" onClick={handleConfirm}>
-              Confirm Payment
+              F10 — Tender
             </Button>
           </div>
+          <p className="text-[11px] text-center text-muted-foreground">
+            Alt+1–5 payment method{isCash ? " · Ctrl+1–5 add note · E exact · R round to Nu.5" : ""}
+          </p>
         </div>
 
         <ReceiptScanModal

@@ -26,6 +26,7 @@ import { CartTable, type EditField } from "@/components/pos/keyboard/cart-table"
 import { ProductSearchModal } from "@/components/pos/keyboard/product-search-modal";
 import { ListingFooter } from "@/components/pos/keyboard/listing-footer";
 import { BarcodeRow, BARCODE_INPUT_ID } from "@/components/pos/keyboard/barcode-row";
+import { TillBar } from "@/components/pos/keyboard/till-bar";
 import { BarcodeScanner } from "@/components/pos/barcode-scanner";
 import { PaymentModal } from "@/components/pos/payment-modal";
 import { CustomerModal } from "@/components/pos/customer-modal";
@@ -975,6 +976,12 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
         /* Keyboard listing layout: barcode row, cart table filling the screen, totals +
            shortcuts below (spec WF-01). */
         <div className="flex-1 flex flex-col overflow-hidden">
+          <TillBar
+            title="Counter"
+            buyer={selectedCustomer?.debtor_name}
+            taxExempt={taxExempt}
+            hint="F11 Day"
+          />
           <BarcodeRow
             disabled={anyModalOpen}
             onSubmit={handleBarcodeEntry}

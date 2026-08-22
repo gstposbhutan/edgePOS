@@ -1,0 +1,30 @@
+"use client";
+
+interface TillBarProps {
+  /** Which surface this bar sits on — "Counter" on the ticket, "Tender" on the payment sheet. */
+  title: string;
+  /** Buyer on the ticket; walk-in when nobody is attached. */
+  buyer?: string | null;
+  /** Whole-ticket GST exemption, which changes what the bill charges. */
+  taxExempt?: boolean;
+  /** Right-hand hint, e.g. "F11 Day" on the counter or "Esc close" on a sheet. */
+  hint?: string;
+}
+
+/**
+ * The till's status strip (spec WF-01). RanceLab puts the standing facts of the sale on one
+ * line above the ticket — which surface you are on, the tax basis, the currency and the buyer —
+ * so a cashier can confirm at a glance what the next bill will be, without opening anything.
+ */
+export function TillBar({ title, buyer, taxExempt = false, hint }: TillBarProps) {
+  const status = [taxExempt ? "GST exempt" : "GST 5%", "Nu", buyer?.trim() || "walk-in"].join(" · ");
+
+  return (
+    <div className="flex items-center gap-3 px-4 py-2 bg-primary text-primary-foreground text-xs shrink-0">
+      <span className="h-[18px] w-[18px] rounded-full border-[1.5px] border-current opacity-80" aria-hidden />
+      <span className="font-medium">{title}</span>
+      <span className="flex-1 opacity-70 truncate">{status}</span>
+      {hint && <span className="opacity-80 whitespace-nowrap">{hint}</span>}
+    </div>
+  );
+}
