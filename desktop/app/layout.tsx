@@ -5,6 +5,7 @@ import { QueryProvider } from "@/providers/query-provider";
 import { ThemeProvider } from "@/providers/theme-provider";
 import { UpdateBanner } from "@/components/update-banner";
 import { SyncNudge } from "@/components/sync-nudge";
+import { OfficeChrome } from "@/components/office/office-chrome";
 
 export const metadata: Metadata = {
   title: "Pelbu POS",
@@ -23,6 +24,7 @@ export default function RootLayout({
           <QueryProvider>
             <UpdateBanner />
             <SyncNudge />
+            <OfficeChrome />
             {children}
           </QueryProvider>
         </ThemeProvider>
