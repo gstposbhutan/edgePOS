@@ -69,12 +69,14 @@ function createWindow() {
     mainWindow.loadURL(`http://127.0.0.1:${APP_PORT}`);
   }
 
-  // F11 = window-fullscreen toggle, owned HERE so it works on every screen (login,
-  // register, stock, back-office mode) and can't mismatch with DOM fullscreen. The
-  // key is consumed — the renderer never sees F11. Esc is deliberately NOT bound:
-  // the POS UI uses it constantly (close modals / clear search).
+  // Alt+Enter = window-fullscreen toggle, owned HERE so it works on every screen (login,
+  // register, stock, back-office mode) and can't mismatch with DOM fullscreen. It used to be
+  // F11, but the RanceLab map the counter now follows gives F11 to Day (day-end), and shops
+  // coming from RanceLab press it expecting that — so fullscreen moved to the other
+  // conventional Windows toggle and F11 passes through to the renderer. Esc is deliberately
+  // NOT bound: the POS UI uses it constantly (close modals / clear search).
   mainWindow.webContents.on("before-input-event", (event, input) => {
-    if (input.type === "keyDown" && input.key === "F11" && !input.isAutoRepeat) {
+    if (input.type === "keyDown" && input.key === "Enter" && input.alt && !input.isAutoRepeat) {
       event.preventDefault();
       mainWindow.setFullScreen(!mainWindow.isFullScreen());
     }

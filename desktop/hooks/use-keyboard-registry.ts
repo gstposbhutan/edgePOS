@@ -20,7 +20,10 @@ interface RegisteredShortcut {
 }
 
 function matchesCombo(event: KeyboardEvent, combo: KeyCombo): boolean {
-  if (event.key !== combo.key && event.code !== combo.key) return false;
+  // Alt rewrites the character on macOS (Alt+L arrives as "¬"), so letter combos taken with
+  // Alt are matched on the physical key as well as the glyph.
+  const physical = combo.alt && combo.key.length === 1 ? `Key${combo.key.toUpperCase()}` : null;
+  if (event.key !== combo.key && event.code !== combo.key && (!physical || event.code !== physical)) return false;
   if ((combo.ctrl ?? false) !== event.ctrlKey) return false;
   if ((combo.shift ?? false) !== event.shiftKey) return false;
   if ((combo.alt ?? false) !== event.altKey) return false;
@@ -28,12 +31,14 @@ function matchesCombo(event: KeyboardEvent, combo: KeyCombo): boolean {
   return true;
 }
 
+// Keys whose browser default would fight the till when running outside Electron. Consulted
+// only after a shortcut has already matched. (Tab is no longer registered, so it navigates
+// normally again; fullscreen moved off F11 to Alt+Enter in the Electron main process.)
 const PREVENTED_DEFAULTS: Record<string, string> = {
-  F1: "Help overlay",
-  F5: "Payment trigger",
-  F11: "Fullscreen toggle",
-  F12: "Lock terminal",
-  Tab: "Panel switch",
+  F1: "Help",
+  F5: "Rate change",
+  F11: "Day",
+  F12: "Location",
 };
 
 export function useKeyboardRegistry() {

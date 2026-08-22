@@ -1,5 +1,8 @@
 "use client";
 
+import { useState } from "react";
+import { railPage, RAIL_PAGES } from "@/lib/pos-shortcuts";
+
 interface ListingFooterProps {
   itemCount: number;
   subtotal: number;
@@ -8,24 +11,9 @@ interface ListingFooterProps {
   grandTotal: number;
 }
 
-// Compact F-key legend for the listing layout. Mirrors the canonical Pelbu map
-// (use-pos-shortcuts / help-overlay) so the operator sees the full intent at a glance.
-const SHORTCUTS: { key: string; label: string }[] = [
-  { key: "F1", label: "Help" },
-  { key: "F2", label: "Clear" },
-  { key: "F3", label: "Search" },
-  { key: "F4", label: "Hold" },
-  { key: "F5", label: "Recall" },
-  { key: "F6", label: "Customer" },
-  { key: "F8", label: "Salesperson" },
-  { key: "F9", label: "Change Qty" },
-  { key: "F10", label: "Tender" },
-  { key: "Ctrl+D", label: "Bill Disc" },
-  { key: "Del", label: "Remove" },
-];
-
 const NAMED_KEYS: Record<string, string> = {
   del: "Delete", delete: "Delete", esc: "Escape", escape: "Escape", enter: "Enter", tab: "Tab", space: " ",
+  pgup: "PageUp", pgdn: "PageDown",
 };
 
 // Map a display label ("F10", "Ctrl+D", "Del", …) to a KeyboardEvent init, or null when it
@@ -44,10 +32,12 @@ function keyEventInit(label: string): KeyboardEventInit | null {
     const low = part.toLowerCase();
     if (NAMED_KEYS[low])               key = NAMED_KEYS[low];
     else if (/^f\d{1,2}$/i.test(part)) key = part.toUpperCase();
-    else if (part.length === 1)        key = part.toLowerCase();
+    else if (part.length === 1)      { key = part.toLowerCase(); init.code = `Key${part.toUpperCase()}`; }
   }
   if (!key) return null;
   init.key = key;
+  // `code` matters for the Alt combos, which the registry matches on the physical key because
+  // macOS rewrites the glyph. A synthesised event without it would never match.
   return init;
 }
 
@@ -64,6 +54,9 @@ function triggerShortcut(label: string) {
  * cart has items, and the F-key legend as big tappable buttons. Matches the web footer.
  */
 export function ListingFooter({ itemCount, subtotal, billDiscount = 0, gstTotal, grandTotal }: ListingFooterProps) {
+  const [page, setPage] = useState(1);
+  const flip = (d: number) => setPage((p) => ((p - 1 + d + RAIL_PAGES) % RAIL_PAGES) + 1);
+
   return (
     <div className="border-t border-border bg-muted/20 shrink-0">
       {itemCount > 0 && (
@@ -85,19 +78,33 @@ export function ListingFooter({ itemCount, subtotal, billDiscount = 0, gstTotal,
           <span className="text-lg font-bold text-primary">Total: Nu. {grandTotal.toFixed(2)}</span>
         </div>
       )}
+      <div className="flex items-center justify-between px-3 pt-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+        <span>Footer page {page}</span>
+        <span className="flex gap-1">
+          <button type="button" onClick={() => flip(-1)} title="Previous page" className="px-2 py-0.5 rounded border border-border hover:bg-accent">&lt; More</button>
+          <button type="button" onClick={() => flip(1)} title="Next page" className="px-2 py-0.5 rounded border border-border hover:bg-accent">&gt; More</button>
+        </span>
+      </div>
       <div className="px-3 py-2 grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-2">
-        {SHORTCUTS.map((s) => (
+        {railPage(page).map((s) => (
           <button
-            key={s.key}
+            key={s.id}
             type="button"
-            onClick={() => triggerShortcut(s.key)}
-            title={`${s.key} — ${s.label}`}
-            className="w-full flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 min-h-[52px] select-none transition hover:bg-accent hover:border-primary/50 active:scale-95 cursor-pointer"
+            disabled={s.todo}
+            onClick={s.todo ? undefined : () => triggerShortcut(s.combo)}
+            title={`${s.combo} — ${s.label}`}
+            className={`w-full flex items-center gap-2 rounded-lg border px-3 py-2 min-h-[52px] select-none transition
+              ${s.todo
+                ? "border-transparent bg-transparent opacity-40 cursor-default"
+                : "border-border bg-background hover:bg-accent hover:border-primary/50 active:scale-95 cursor-pointer"}
+              ${s.go ? "border-primary bg-primary/10" : ""}`}
           >
             <span className="inline-flex items-center justify-center min-w-[3.5rem] text-sm font-mono font-bold px-2 py-1 rounded bg-muted text-foreground border border-border whitespace-nowrap">
-              {s.key}
+              {s.combo}
             </span>
-            <span className="text-sm font-medium text-foreground whitespace-nowrap overflow-hidden text-ellipsis">{s.label}</span>
+            <span className="text-sm font-medium text-foreground whitespace-nowrap overflow-hidden text-ellipsis">
+              {s.label}{s.todo ? " ◌" : ""}
+            </span>
           </button>
         ))}
       </div>

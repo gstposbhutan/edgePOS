@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 import { useKeyboardRegistry } from "./use-keyboard-registry";
 import { toast } from "sonner";
+import { COUNTER_KEYS } from "@/lib/pos-shortcuts";
 import type { CartItem } from "./use-cart";
 
 interface PosShortcutsInput {
@@ -29,18 +30,16 @@ interface PosShortcutsInput {
   setShowPostMarket: (v: boolean) => void;
   setShowQuotation: (v: boolean) => void;
   setShowDeliveryAddress: (v: boolean) => void;
-  // Optional overrides — the listing (keyboard) layout routes F3 to its full-screen
-  // search modal and F9 to the cart-table inline qty edit. When omitted, F3 focuses
-  // the grid search box and F9 shows the change-qty hint (grid-mode default).
+  // F11 Day — the day-end (close shift) flow. F12 Location reports the bound shop.
+  setShowShiftModal: (v: "open" | "close" | null) => void;
+  storeName?: string;
+  // Optional overrides — the listing (keyboard) layout owns row selection, so the
+  // line-scoped keys are routed back to it. Grid mode has no selected row and gets a hint.
   onFocusSearch?: () => void;
   onChangeQty?: () => void;
+  onQtyDelta?: (delta: number) => void;
+  onItemDiscount?: () => void;
 }
-
-/** Shortcut whose target feature ships in a later phase — shows a toast. */
-const stub = (msg: string) => (e: KeyboardEvent) => {
-  e.preventDefault();
-  toast(msg);
-};
 
 export function usePosShortcuts(input: PosShortcutsInput) {
   const { registerShortcut } = useKeyboardRegistry();
@@ -48,8 +47,10 @@ export function usePosShortcuts(input: PosShortcutsInput) {
   const setup = useCallback(() => {
     // Grid-mode default: focus the in-grid search box. Listing mode overrides this
     // (input.onFocusSearch) to open the full-screen product-search modal.
-    const focusSearch = () => input.onFocusSearch ? input.onFocusSearch() : document.getElementById("pos-search")?.focus();
-    // Ctrl+D — invoice/bill-level discount: a single pre-GST amount off the net bill (NOT
+    const focusSearch = () =>
+      input.onFocusSearch ? input.onFocusSearch() : document.getElementById("pos-search")?.focus();
+
+    // Ctrl+Shift+B — invoice/bill-level discount: a single pre-GST amount off the net bill (NOT
     // distributed across lines). Enter a % of the taxable base; it's stored on the cart and GST
     // is then computed on the discounted net.
     const billDiscount = () => {
@@ -66,52 +67,67 @@ export function usePosShortcuts(input: PosShortcutsInput) {
       toast.success(pct > 0 ? `Invoice discount ${pct}% (Nu. ${amount.toFixed(2)}) applied` : "Invoice discount cleared");
     };
 
-    // --- Function keys (canonical Pelbu map) ---
-    const unregs = [
-      registerShortcut("global", { key: "F1" }, () => input.showHelpToggle()),
-      registerShortcut("global", { key: "F2" }, () => input.handleNewTransaction()),
-      registerShortcut("global", { key: "F3" }, focusSearch),                          // Search
-      registerShortcut("global", { key: "F4" }, () => input.handleHoldCart()),         // New Cart (hold current)
-      registerShortcut("global", { key: "F5" }, () => input.setShowHeldCarts(true)),   // Previous Cart (recall held)
-      registerShortcut("global", { key: "F6" }, () => input.setShowCustomer(true)),    // Customer
-      registerShortcut("global", { key: "F8" }, () => input.setShowSalesperson(true)),                 // Sales person
-      registerShortcut("global", { key: "F9" }, (e) => {
-        // Listing mode: edit qty on the selected cart row. Grid mode has no row
-        // selection, so fall back to the change-qty hint.
-        if (input.onChangeQty) { e.preventDefault(); input.onChangeQty(); }
-        else stub("Change qty — tap +/- or # on any line")(e);
-      }),
-      registerShortcut("global", { key: "F10" }, () => input.handleCheckout()),        // Tender
-      // F11 (fullscreen) is owned by the Electron main process (before-input-event →
-      // window fullscreen, every screen) — the renderer never sees the key. In plain-
-      // browser mode the browser's native F11 applies. No DOM-fullscreen handler here:
-      // two fullscreen layers fighting over F11 left terminals stuck fullscreen.
-      registerShortcut("global", { key: "Escape" }, () => {
+    // A line-scoped key pressed in grid mode, which has no selected row.
+    const needsListing = (what: string) => () => toast(`${what} — switch to List layout`);
+
+    const actions: Record<string, () => void> = {
+      help:          () => input.showHelpToggle(),
+      exit:          () => {
         if (input.showPayment) input.setShowPayment(false);
         else if (input.showHeldCarts) input.setShowHeldCarts(false);
         else if (input.showCustomer) input.setShowCustomer(false);
         else input.setSearchQuery("");
-      }),
-      registerShortcut("global", { key: "Tab" }, () => { /* panel toggle handled externally */ }),
-      registerShortcut("global", { key: "z", ctrl: true }, () => input.handleUndo()),
-      registerShortcut("global", { key: "Delete" }, () => input.handleVoidLast()),  // Remove last (toast + undo)
+      },
 
-      // --- Ctrl modifiers ---
-      registerShortcut("global", { key: "a", ctrl: true }, (e) => { e.preventDefault(); focusSearch(); }),    // Add
-      registerShortcut("global", { key: "r", ctrl: true }, (e) => { e.preventDefault(); input.handleVoidLast(); }),     // Remove last (toast + undo)
-      registerShortcut("global", { key: "d", ctrl: true }, (e) => { e.preventDefault(); billDiscount(); }),   // Bill discount (all lines)
-      registerShortcut("global", { key: "c", ctrl: true }, (e) => {
-        e.preventDefault();
+      qtyUp:         input.onQtyDelta ? () => input.onQtyDelta!(1)  : needsListing("Add quantity"),
+      qtyDown:       input.onQtyDelta ? () => input.onQtyDelta!(-1) : needsListing("Less quantity"),
+      qtyFocus:      input.onChangeQty ?? needsListing("Change qty"),
+      itemDiscount:  input.onItemDiscount ?? needsListing("Item discount"),
+      complimentary: () => {
         if (!input.isManager) { toast("Complimentary is manager-only"); return; }
         input.setShowComplimentary(true);
-      }),                                                                                              // Complimentary (manager)
-      registerShortcut("global", { key: "e", ctrl: true }, (e) => { e.preventDefault(); input.setShowExchange(true); }),                  // Exchange / return
+      },
+      removeLine:    () => input.handleVoidLast(),
+      undo:          () => input.handleUndo(),
 
-      // --- Alt modifiers (all stubs) ---
-      registerShortcut("global", { key: "m", alt: true }, (e) => { e.preventDefault(); input.setShowPostMarket(true); }),                  // Post to market
-      registerShortcut("global", { key: "q", alt: true }, (e) => { e.preventDefault(); input.setShowQuotation(true); }),                   // Save as quotation
-      registerShortcut("global", { key: "d", alt: true }, (e) => { e.preventDefault(); input.setShowDeliveryAddress(true); }),             // Delivery address
-    ];
+      productInfo:   focusSearch,
+      products:      focusSearch,
+      customerInfo:  () => input.setShowCustomer(true),
+      party:         () => input.setShowCustomer(true),
+      salesperson:   () => input.setShowSalesperson(true),
+      deliveryDetail:() => input.setShowDeliveryAddress(true),
+      tender:        () => input.handleCheckout(),
+      tenderAlt:     () => input.handleCheckout(),
+
+      hold:          () => input.handleHoldCart(),
+      retrieve:      () => input.setShowHeldCarts(true),
+      clearTicket:   () => input.handleNewTransaction(),
+      // Day-end. The close-shift flow itself refuses to run on an open ticket, so a cashier
+      // mid-sale is told rather than losing the ticket.
+      day:           () => {
+        if (input.items.length > 0) { toast("Finish or hold the ticket before day-end"); return; }
+        input.setShowShiftModal("close");
+      },
+      location:      () => toast(input.storeName ? `Shop: ${input.storeName}` : "Shop not set"),
+
+      billDiscount,
+      quotation:     () => input.setShowQuotation(true),
+      exchange:      () => input.setShowExchange(true),
+      postMarket:    () => input.setShowPostMarket(true),
+    };
+
+    // Every binding comes from the shared map, so the keys, the footer rail and the F1 sheet
+    // cannot disagree. A key the spec reserves but whose action is not built says so, rather
+    // than silently doing nothing under a reflex the cashier trusts.
+    const unregs = COUNTER_KEYS.map((entry) => {
+      const run = entry.todo
+        ? () => toast(`${entry.combo} ${entry.label} — not built yet`)
+        : actions[entry.id];
+      return registerShortcut("global", entry.match, (e: KeyboardEvent) => {
+        e.preventDefault();
+        if (run) run();
+      });
+    });
 
     return () => unregs.forEach((un) => un());
   }, [registerShortcut, input]);

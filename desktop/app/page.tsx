@@ -611,11 +611,31 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
     setShowPostMarket,
     setShowQuotation,
     setShowDeliveryAddress,
-    // Listing mode reroutes F3 → full-screen search and F9 → inline qty edit on the
-    // selected row. In grid mode these are undefined, so the canonical defaults apply
-    // (F3 focuses the grid search, F9 shows the change-qty hint).
+    setShowShiftModal,
+    storeName: settings?.store_name,
+    // The line-scoped keys need a selected row, which only the listing layout has. Left
+    // undefined in grid mode, where they report that instead.
     onFocusSearch: inputMode === "listing" ? () => openSearch("") : undefined,
     onChangeQty: inputMode === "listing" ? () => editRowRef.current?.(selectedRow) : undefined,
+    onQtyDelta: inputMode === "listing"
+      ? (delta: number) => {
+          const line = items[selectedRow];
+          if (!line) { toast("Select a product line first"); return; }
+          const next = line.quantity + delta;
+          // Stepping below 1 removes the line — what a cashier walking back a mis-scan expects.
+          if (next < 1) removeItem(line.id);
+          else updateQty(line.id, next);
+        }
+      : undefined,
+    onItemDiscount: inputMode === "listing"
+      ? () => {
+          const line = items[selectedRow];
+          if (!line) { toast("Select a product line first"); return; }
+          const raw = window.prompt("Discount per unit on this line (Nu.):");
+          if (raw === null) return;
+          applyDiscount(line.id, Math.max(0, parseFloat(raw) || 0));
+        }
+      : undefined,
   });
   useEffect(() => setupShortcuts(), [setupShortcuts]);
 
