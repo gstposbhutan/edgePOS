@@ -252,6 +252,22 @@ export default function KeyboardPosPage() {
     // added → items unchanged → effect not re-run) leaves a stale closure.
   }, [searchOpen, paymentOpen, helpOpen, showCustomerPanel, showDiscount, showBillDiscount, showInvoiceSearch, showSalesPerson, showQuotation, showComp, showExchange, showMarket, showDelivery, showHandover, showReceipt, items, selectedRow, carts, activeIndex, subRole, checkoutErr, shiftsEnabled])
 
+  // Suppress the BROWSER's own function-key actions across the whole till, in the capture phase
+  // and independently of the handler above — that one returns early whenever a sheet is open or
+  // focus sits in a field, which left F5 reloading the page mid-sale and F3 opening the find bar.
+  // (The cart itself survives a reload — it is server-side — but the open sheet, the typed query,
+  // the selected row and any uncommitted qty edit do not, in front of a waiting customer.)
+  // preventDefault in capture does not stop propagation, so every binding above still runs.
+  // F11/F12 belong to the browser chrome and cannot be reclaimed here; the Electron terminal
+  // takes F11 in its main process instead.
+  useEffect(() => {
+    function swallowBrowserFnKeys(e) {
+      if (/^F([1-9]|10)$/.test(e.key)) e.preventDefault()
+    }
+    document.addEventListener('keydown', swallowBrowserFnKeys, true)
+    return () => document.removeEventListener('keydown', swallowBrowserFnKeys, true)
+  }, [])
+
   function showToast(msg) {
     setToastMsg(msg)
     if (toastTimer.current) clearTimeout(toastTimer.current)
@@ -912,7 +928,7 @@ export default function KeyboardPosPage() {
           itemCount={items.length}
           grandTotal={grandTotal}
           onClose={() => setShowQuotation(false)}
-          onConfirm={saveQuotation}
+          onConfirm={saveDraft}
         />
       )}
 
