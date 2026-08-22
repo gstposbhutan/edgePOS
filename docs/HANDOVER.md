@@ -56,30 +56,48 @@ Phase 2).
 4. RLS is largely OFF — `getAuthContext()` hands back the service-role client; every query must
    scope by `entityId`. (Hardening is a Phase 3/handover item — see PLAN.md open question 4.)
 
-## What's next — Phase 2: make the app standalone (cut the `apps/auth` dependency)
+## Phase 2 — standalone-ize: CODE DONE (2026-08-22), deploy gated on Shawn
 
-The POS still redirects login to the auth app (`AUTH_URL` → app.pelbu.com) and lacks the
-super-admin surface. To do, in order:
+All four items landed on `v2` (commits `3427804`…; build-verified, smoke-tested against the
+live DB on a local port):
 
-1. **Login pages in the POS**: `/login` (+ signup entry, password reset) rendered locally;
-   the BFF API routes already exist (`web/app/api/auth/*` — login/logout/session/switch/OTP/
-   OAuth proxies). Remove the redirect in `web/proxy.js` (see `AUTH_URL` / the `/login` +
-   `/signup` handling) and the `ROLE_HOME` SUPER_ADMIN bounce in `web/lib/hosts.js`.
-2. **Reactivate the dormant super-admin surface** (deliberately NOT deleted): `web/app/pos/
-   licenses/` page + `web/app/api/admin/{licenses,entities,users,riders,units,desktop-releases,
-   property-templates,category-properties,stats}` — gate on SUPER_ADMIN (JWT claim; see
-   `getAuthContext()` in `web/lib/supabase/server.js`), add a nav entry, verify the license
-   approval → terminal `.lic` flow end-to-end (`web/lib/license/`).
-3. **Env sweep**: `.env.example` for `web/` documenting every var (Supabase URLs/keys, SendGrid,
-   S3/img.pelbu.com, `NEXT_PUBLIC_COOKIE_DOMAIN`, AI keys — the client deploy runs with AI off).
-4. **Desktop-release continuity** (auth app retirement breaks two things — see KNOWLEDGE.md):
-   installed terminals check updates + register licenses at `app.pelbu.com` (baked
-   `DEFAULT_CLOUD_URL`), so keep that vhost routing `/api/desktop/releases/*` + license
-   `register` to the POS app; and the release CI secrets (`APP_URL`, `RELEASE_INGEST_TOKEN`)
-   exist only on the monorepo's GitHub — recreate on this repo before the first tag.
-4. Then Phases 3–5 per `docs/PLAN.md`: slim droplet compose + **automated DB backups (none have
-   ever existed — confirmed)** + till-only feature flags + 10-shop seed; camera pad v0 (the
-   client's real ask — see the brief); box cutover + suite retirement.
+1. ✅ **Login in the POS**: `web/app/(auth)/login` (+ `/login/reset`, `/login/reset/confirm`,
+   `/api/auth/reset`); proxy sends unauthenticated hits to local `/login`; `?redirect=`
+   restricted to same-app paths. Business signup is admin-only (meeting D7) — the un-gated
+   legacy `/api/auth/signup/wholesaler` route was REMOVED; customers self-serve on the login
+   page's customer tab. Bonus: the whole marketing site (`/`, `/features`, `/sell`, `/about`,
+   `/contact`, `/terms`) now renders locally too (content/components/images were already here).
+2. ✅ **Super-admin console at `/admin`**: dashboard + entities/users/manufacturers/
+   property-templates/releases/riders/units (ported from the auth app, suite modules dropped);
+   `ROLE_HOME.SUPER_ADMIN → /admin`; licenses stay at the newer `/pos/licenses`;
+   `/api/admin/stats` rewritten platform-wide + SUPER_ADMIN-gated. NOT yet re-verified: the
+   license approval → terminal `.lic` flow end-to-end.
+3. ✅ **Env sweep**: `web/.env.example` documents every var.
+4. ✅ **Desktop-release continuity** (code/docs side): `infra/Caddyfile` snapshot now has the
+   app.pelbu.com vhost routing `/api/desktop/*` + `/api/license/*` → :3100 and redirecting
+   everything else to pos.pelbu.com; `desktop/electron/config.js` bakes
+   `DEFAULT_CLOUD_URL=https://pos.pelbu.com` for FUTURE builds (≤v1.4.x rely on the vhost).
+
+### Operator checklist to end the maintenance window (each step = Shawn's gate)
+
+1. Rebuild + restart the live app: `docker compose up -d --build pos` at repo root — ships
+   login/marketing/admin to pos.pelbu.com (restores browser login).
+2. Apply the updated app.pelbu.com vhost: copy the `infra/Caddyfile` block into
+   `/etc/caddy/Caddyfile`, `systemctl reload caddy` — un-breaks installed terminals'
+   update-check + license register (currently 502 against the stopped auth app).
+3. GoTrue redirects (box Supabase stack; local gitignored copy at `infra-supabase-live/.env`):
+   `SITE_URL=https://pos.pelbu.com`, `ADDITIONAL_REDIRECT_URLS=https://pos.pelbu.com/*` —
+   else password-reset + OAuth land on the dead app.pelbu.com SITE_URL. Recreate the auth
+   container after.
+4. GitHub (whenever the repo is pushed): recreate release CI secrets `APP_URL` +
+   `RELEASE_INGEST_TOKEN` on this repo before the first `desktop-vX.Y.Z` tag.
+
+### After that — Phases 3–5 per `docs/PLAN.md`
+
+Slim droplet compose + **automated DB backups (none have ever existed — confirmed)** +
+till-only feature flags + 10-shop seed; camera pad v0 (the client's real ask — see the brief);
+box cleanup (suite already stopped). Also queued: e2e/tour update pass (specs target the
+mid-July app), local-storage image driver for client droplets, `.lic` flow re-verification.
 
 ## Client context in one line
 

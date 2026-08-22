@@ -11,6 +11,9 @@
 // DEV OVERRIDE: set the NEXUS_CLOUD_URL environment variable before launching to point a dev
 // terminal at your dev cloud. It's normally unset in a packaged build, so the baked constant
 // below is what ships. e.g. PowerShell:  $env:NEXUS_CLOUD_URL = "http://192.168.68.103:3021"
-const DEFAULT_CLOUD_URL = process.env.NEXUS_CLOUD_URL || "https://app.pelbu.com";
+//
+// Builds ≤ v1.4.x baked https://app.pelbu.com — that vhost keeps routing /api/desktop/* and
+// /api/license/* to the POS app (see infra/Caddyfile) so installed terminals stay updatable.
+const DEFAULT_CLOUD_URL = process.env.NEXUS_CLOUD_URL || "https://pos.pelbu.com";
 
 module.exports = { DEFAULT_CLOUD_URL };

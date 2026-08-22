@@ -18,10 +18,20 @@
 	}
 }
 
+# The auth app that lived here (:3007) is retired. The vhost stays because installed
+# desktop terminals bake DEFAULT_CLOUD_URL=https://app.pelbu.com for update checks
+# (/api/desktop/releases/latest) and license register/status (/api/license/*) — route
+# those to the POS app; every other path now lives on pos.pelbu.com.
 app.pelbu.com {
 	import sec
 	encode zstd gzip
-	reverse_proxy localhost:3007
+	@terminal path /api/desktop/* /api/license/*
+	handle @terminal {
+		reverse_proxy localhost:3100
+	}
+	handle {
+		redir https://pos.pelbu.com{uri} permanent
+	}
 }
 
 supabase.pelbu.com {
