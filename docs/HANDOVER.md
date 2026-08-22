@@ -80,26 +80,37 @@ live DB on a local port):
 
 ### Operator checklist to end the maintenance window (each step = Shawn's gate)
 
-1. ✅ DONE 2026-08-22: live app rebuilt from this repo (`docker compose up -d --build pos`)
-   — login/marketing/admin live on pos.pelbu.com, verified through Caddy.
-2. ⏳ Shawn runs (sudo blocked for the agent): apply the updated app.pelbu.com vhost from
-   `infra/Caddyfile` to `/etc/caddy/Caddyfile` + `systemctl reload caddy` — un-breaks
-   installed terminals' update-check + license register (currently 502).
-3. ✅ DONE 2026-08-22: GoTrue `SITE_URL=https://pos.pelbu.com`,
-   `ADDITIONAL_REDIRECT_URLS=https://pos.pelbu.com,https://pos.pelbu.com/*`; auth container
-   recreated healthy; login re-verified.
+**MAINTENANCE WINDOW CLOSED 2026-08-22 — the platform is fully live again.**
+
+1. ✅ Live app rebuilt from this repo (`docker compose up -d --build pos`) — login/marketing/
+   admin serving on pos.pelbu.com, verified through Caddy.
+2. ✅ app.pelbu.com vhost applied to `/etc/caddy/Caddyfile` (backup:
+   `Caddyfile.bak-2026-08-22`), `caddy validate` clean, reloaded. `/api/desktop/*` +
+   `/api/license/*` → :3100 (releases endpoint 200, was 502); everything else 301s to
+   pos.pelbu.com. Installed terminals can auto-update + register licenses again.
+3. ✅ GoTrue `SITE_URL=https://pos.pelbu.com`,
+   `ADDITIONAL_REDIRECT_URLS=https://pos.pelbu.com,https://pos.pelbu.com/*`; auth recreated
+   healthy; login + `POST /api/auth/reset` re-verified 200.
 4. GitHub (whenever the repo is pushed): recreate release CI secrets `APP_URL` +
-   `RELEASE_INGEST_TOKEN` on this repo before the first `desktop-vX.Y.Z` tag.
+   `RELEASE_INGEST_TOKEN` on this repo before the first `desktop-vX.Y.Z` tag. ← only item left.
 
-### Supabase stack re-home (Shawn's request 2026-08-22, in progress)
+### Supabase stack re-home — DONE 2026-08-22
 
-The live stack (project `pelbu-supabase`, all data in named Docker volumes) ran from the
-monorepo's `infra/supabase`. Its config now lives at **`infra-supabase-live/`** (gitignored)
-in this repo — same `name: pelbu-supabase`, GoTrue fix included. To complete the move, run
-`docker compose up -d` from `infra-supabase-live/` (recreates containers onto the new config
-paths; data volumes untouched; ~1 min blip). After that the monorepo folder is fully inert.
-Old stopped containers (retired suite + 5-week-dead edgePOS-era stack) are queued for
-`docker rm` — data volumes (`edgepos_*`) and manual DB dumps are retained.
+The live stack (project `pelbu-supabase`) now runs from **`infra-supabase-live/`** in this
+repo (gitignored; same project name so the named data volumes re-attached untouched). All 10
+containers force-recreated onto the new config path and healthy; **nothing on the box
+bind-mounts `~/bhutan-tour-operator` any more** — that folder is inert, do not operate from
+it. Data verified intact after the move: 32 entities, 1,246 products, 122 orders, 53 users.
+
+Retired containers removed the same day (`docker rm`, no `-v`): the suite (`pelbu-pos-1`,
+`pelbu-auth-1`, `pelbu-travel-1`, `pelbu-pms-1`), the `sync-worker` zombie,
+`whatsapp-gateway`, and the 5-week-dead edgePOS-era stack. **Old data volumes retained**:
+`edgepos_db-data`, `edgepos_db-config`, `edgepos_storage-data` (plus the manual dumps in
+`backups/` and `/home/ubuntu/pelbu-backups/`). 18 containers remain, all running.
+
+Still running, undecided: `logistics-bridge` (edgePOS-era delivery webhooks, source only in
+`legacy/*` tags) and the monitoring stack. ~42 GB reclaimable in old images + build cache
+(`docker image prune -a`, `docker builder prune`) once you're happy nothing needs a rollback.
 
 ### After that — Phases 3–5 per `docs/PLAN.md`
 
