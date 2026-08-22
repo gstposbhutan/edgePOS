@@ -1,3 +1,106 @@
+# Handover — RanceLab parity on the desktop terminal
+
+**Read this section first; it is the live work.** Written 2026-08-22 (second handover of the
+day — the Phase 2 port section below is now history, kept for context). Branch `v2`, head
+`5034363`, **pushed to `origin/v2`**, working tree clean.
+
+## Why this work exists
+
+The client's shops are trained on **RanceLab** ERP/POS. Our UI forced them to relearn, so
+**adoption was zero** — this is the top product priority, ahead of the camera pad. The
+requirement is `docs/keyboard-shortcuts.html` (wireframes WF-01…WF-10 + full key tables).
+
+Two decisions from Shawn that shape everything:
+- **The client uses the DESKTOP terminal, not the web till.** "web can remain the same".
+- **The desktop must mimic RanceLab's UI**, not merely its keys.
+
+⚠ The older `web/docs/features/*keyboard*` docs describe the OLD system and are **not** the
+requirement — "the docs merely reflect the existing system". One wrong diagnosis was caused by
+trusting them. Trust `docs/keyboard-shortcuts.html` and the code.
+
+## What is done (all committed + pushed)
+
+Desktop, in the order it was built: key map as a single source of truth → RanceLab ticket
+columns → always-focused barcode row → rate editor + Enter cycle → till status bar →
+keyboard-complete tender sheet → Office letter navigation → price list + reprint → split tender.
+
+- `desktop/lib/pos-shortcuts.ts` — **the Counter key map, as data.** Drives the bindings, the
+  two-page footer rail and the F1 sheet. Those three each kept their own copy before and had
+  drifted apart; do not reintroduce a second list.
+- `desktop/lib/office-menu.ts` + `components/office/` — the Office letter strip (WF-08/09).
+- `desktop/components/pos/keyboard/` — barcode row, till bar, cart table, listing footer.
+- Split tender: `orders.payments` holds the parts; `payment_method` stays the largest part
+  because the cloud CHECKs that enum and reports group by it.
+
+The **web** till was also remapped (`7716521`) and is verified but **never deployed** — so
+production web is unchanged either way. If Shawn wants web left alone, revert that one commit;
+the two web bug fixes in `b435161` are worth keeping regardless.
+
+## Things that will bite you — read before releasing
+
+1. **Migration 025 enables the PocketBase Batch API.** Checkout writes the order, stock,
+   movements and khata in ONE batch. PocketBase ships with batch DISABLED and nothing turned it
+   on, so on a default-settings terminal **every sale failed outright**. This was invisible
+   until a test rang a real sale.
+2. **Migration 026 repairs 14 fields that never existed.** Every migration from 007 on guarded
+   with `try { getByName(x); exists = true } catch {}`, assuming a missing field *throws*. It
+   returns `undefined` — so the guard always said "already present", nothing was added, and
+   PocketBase recorded the migration as applied. PocketBase then silently drops unknown fields
+   on write. Missing: bill discount, salesperson, invoice date, quotation flag, delivery
+   address, complimentary reason, GST-exempt (products + cart lines), distributor price, and
+   the printer + NQRC payment-QR settings. **Those values had been going nowhere on every
+   terminal.** Guards corrected for fresh installs; 026 repairs existing ones.
+   → **Both migrations change installed terminals. A PB config change bricked v1.0.2 boot
+   before (see the notes on partial-index parens). Exercise them on a real Windows terminal
+   before tagging a release — xvfb here is not enough.**
+3. **Electron fullscreen moved F11 → Alt+Enter**, because the RanceLab map gives F11 to Day.
+   Terminals in the field will notice; tell the shopkeepers before the release goes out.
+4. **`window.prompt` is not implemented in Electron — it throws.** Never use it. Use
+   `components/pos/amount-prompt-modal.tsx`.
+5. **The shared `Input` component does not forward `id`** (base-ui primitive underneath), which
+   breaks label association and lookups. Use a plain `<input>` when you need an id.
+
+## What is left
+
+- **Five reserved keys**, deliberately not faked — they report "not built yet" rather than
+  doing nothing: unit sheet (Alt+U), item remark (Ctrl+T), GST-included toggle (Alt+T),
+  F2 date, barcode print. Alt+U additionally needs **pack/case factors**, which the terminal's
+  catalog does not carry — a Pcs/Pack/Case sheet without them would invent quantities.
+- **Release**: desktop ships via a `desktop-vX.Y.Z` tag; CI secrets `APP_URL` and
+  `RELEASE_INGEST_TOKEN` still need recreating on this repo (they only existed on the
+  monorepo's GitHub).
+- The web till's remap is undeployed (see above), and `pelbu-customer-pricelist.spec.js` tests
+  an F7 price-list feature that **does not exist in web/** — stale, failing before this work.
+
+## Running the tests (this is the trustworthy signal)
+
+    cd desktop
+    node scripts/fetch-pocketbase.mjs --force     # arm64 box: tracked pb/pocketbase is x86-64
+    xvfb-run -a npx playwright test --config playwright.electron.config.ts
+    # fullscreen spec needs a WM:
+    xvfb-run -a sh -c 'openbox & sleep 2; npx playwright test --config playwright.electron.config.ts e2e/electron/fullscreen.spec.ts'
+
+**Do NOT commit the swapped arm64 binary** — `git checkout -- desktop/pb/pocketbase` before
+committing. 22 specs, 22/22 across three consecutive runs at handover.
+
+The harness was ~50% flaky and was fixed: the window is worker-scoped but `appPage` is now
+test-scoped and resets both the screen and the ticket before every test. `zz-split-tender` is
+named to sort last because it is the only spec that rings a real sale.
+
+## How to work on this without wasting a day
+
+Every bug in this stretch was invisible to typecheck and build, and only surfaced by driving the
+real app: the rate editor was unusable (the barcode row stole focus back the instant it opened),
+every Ctrl/Alt shortcut was dead on the counter (the row holds the caret, and the registry only
+exempted F-keys), `Ctrl+Shift+B` never matched its binding (Shift makes `event.key` uppercase),
+and the two above. **Verify against real bindings and a running app before claiming behaviour.**
+When something fails, print the app's actual state — toasts, `document.activeElement`, the
+dialog's innerHTML — rather than reasoning about what should happen; that resolved every one of
+these faster than inspection did. Also strip ANSI before grepping Playwright output, or you will
+read a failing run as clean.
+
+---
+
 # Handover — continuing the POS port in this repo
 
 **Read this first.** Written 2026-08-22, the day the POS was transplanted back into this repo.
