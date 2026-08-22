@@ -8,9 +8,9 @@ export const LOGIN_URL = '/login'
 export const MARKETPLACE_URL = '/shop'
 
 // Where each role lands after login. SUPER_ADMIN's platform console is the reactivated
-// license/admin surface (see app/pos/licenses + app/api/admin/*).
+// admin surface (app/admin + app/pos/licenses + app/api/admin/*).
 export const ROLE_HOME = {
-  SUPER_ADMIN: '/pos/licenses',
+  SUPER_ADMIN: '/admin',
   DISTRIBUTOR: '/distributor',
   WHOLESALER: '/wholesaler',
   RETAILER: '/pos',

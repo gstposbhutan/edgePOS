@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Settings, LogOut, Building2, Ruler, Bike, Network, KeyRound, UserCog, MonitorDown, SlidersHorizontal } from 'lucide-react'
+import { LayoutDashboard, LogOut, Building2, Ruler, Bike, Network, KeyRound, UserCog, MonitorDown, SlidersHorizontal, Factory } from 'lucide-react'
 import { signOut, getUser, getRoleClaims } from '@/lib/auth'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
@@ -12,12 +12,12 @@ const NAV_ITEMS = [
   { href: '/admin',            label: 'Dashboard',  icon: LayoutDashboard, roles: null },
   { href: '/admin/entities',   label: 'Entities',   icon: Network,         roles: ['SUPER_ADMIN'] },
   { href: '/admin/users',      label: 'Users',      icon: UserCog,         roles: ['SUPER_ADMIN'] },
+  { href: '/admin/manufacturers', label: 'Manufacturers', icon: Factory,   roles: ['SUPER_ADMIN'] },
   { href: '/admin/property-templates', label: 'Product Properties', icon: SlidersHorizontal, roles: ['SUPER_ADMIN'] },
   { href: '/admin/units',      label: 'Units',      icon: Ruler,           roles: ['SUPER_ADMIN'] },
   { href: '/admin/riders',     label: 'Riders',     icon: Bike,            roles: ['SUPER_ADMIN'] },
   { href: '/admin/releases',   label: 'Desktop App', icon: MonitorDown,    roles: ['SUPER_ADMIN'] },
   { href: '/pos/licenses',     label: 'Licenses',   icon: KeyRound,        roles: ['SUPER_ADMIN'] },
-  { href: '/admin/settings',   label: 'Settings',   icon: Settings,        roles: null },
 ]
 
 export function AdminSidebar() {
