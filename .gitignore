@@ -14,6 +14,9 @@ web/e2e/recordings/
 playwright-report/
 test-results/
 
+# DB dumps + financial-data samples — never commit
+backups/
+
 # Per-user Claude Code permissions / settings
 .claude/settings.local.json
 

@@ -24,7 +24,13 @@ Apps use the **instance role over IMDS** for S3 — no AWS keys on disk.
   docker compose up -d --build pos`. After cutover the same shape works from this repo's
   root compose.
 - **NO automated DB backups have ever existed** (audited 2026-08-22 — no cron, no timer).
-  Manual dumps in `/home/ubuntu/pelbu-backups/`. Fix in Phase 3.
+  Fix in Phase 3. Existing manual backups, two places:
+  - **`backups/` in this repo (gitignored, disk-only)** — `full_20260813_234041.dump`
+    (full DB, pre-category-Phase-3) + `phase3_tagtables_*.dump` (the dropped tag tables)
+    + the 2 mBoB receipt sample JPEGs for the banking phase (financial data — never commit).
+  - `/home/ubuntu/pelbu-backups/` (box-level, root-owned dir) — six timestamped snapshots
+    from the 2026-07-13 migration day (P1/P2/P4 cutover: all.sql, postgres.dump, storage tgz).
+  Copy both off-box for real safety; the box has no snapshot schedule.
 - Old edgePOS-era containers still running: monitoring (grafana/prometheus/uptime-kuma/
   exporters — prometheus's postgres-exporter points at a dead container, metrics silently
   broken), `logistics-bridge`:3002 (delivery webhooks; source in `legacy/*` tags),
