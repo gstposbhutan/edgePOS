@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
+import { resolve as resolveShortcut } from "@/lib/pos/shortcuts"
 import { CartTable }          from "@/components/pos/keyboard/cart-table"
 import { BatchPickerModal }   from "@/components/pos/batch-picker-modal"
 import { ProductSearchModal } from "@/components/pos/keyboard/product-search-modal"
@@ -172,48 +173,58 @@ export default function KeyboardPosPage() {
       if (searchOpen || paymentOpen || helpOpen || showCustomerPanel || showDiscount || showBillDiscount || showInvoiceSearch || showSalesPerson || showQuotation || showComp || showExchange || showMarket || showDelivery || showHandover || showReceipt) return
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return
 
-      // --- Function keys (canonical Pelbu map) ---
-      if (e.key === 'F1')  { e.preventDefault(); setHelpOpen(true); return }
-      if (e.key === 'F2')  { e.preventDefault(); handleNewTransaction(); return }
-      if (e.key === 'F3')  { e.preventDefault(); openSearch(''); return }
-      if (e.key === 'F4')  { e.preventDefault(); holdCart(); return }                       // New Cart
-      if (e.key === 'F5')  {                                                                 // Previous Cart
-        e.preventDefault()
-        if (carts.length > 1) switchCart((activeIndex - 1 + carts.length) % carts.length)
-        return
-      }
-      if (e.key === 'F6')  { e.preventDefault(); setShowCustomerPanel(true); return }                          // Customer Select
-      if (e.key === 'F8')  {                                                                                  // Salesperson for the SELECTED line
-        e.preventDefault()
-        if (!items.length || !items[selectedRow]) { showToast('Select a product line first'); return }
-        setShowSalesPerson(true)
-        return
-      }
-      if (e.key === 'F9')  { e.preventDefault(); editRowRef.current?.(selectedRow); return }                  // Change Qty
-      if (e.key === 'F10') { e.preventDefault(); if (items.length > 0) setPaymentOpen(true); return }         // Tender
-
-      // --- Manager shortcuts ---
+      // --- Commands: the RanceLab Counter map (lib/pos/shortcuts.js is the source of truth) ---
       const isManager = ['MANAGER', 'OWNER', 'ADMIN'].includes(subRole)
-      if (e.ctrlKey && e.shiftKey && (e.key === 'z' || e.key === 'Z') && isManager && shiftsEnabled) { e.preventDefault(); setShowZReport(true); return }
-      if (e.ctrlKey && e.shiftKey && (e.key === 'x' || e.key === 'X') && isManager && shiftsEnabled) { e.preventDefault(); setShowCashAdj(true); return }   // Cash In/Out (relocated off F8)
+      const line = items[selectedRow] || null
+      const hit = resolveShortcut(e)
+      if (hit) {
+        e.preventDefault()
+        // A key the spec reserves but whose action we have not built says so, rather than
+        // silently doing nothing under a reflex the cashier trusts.
+        if (hit.todo) { showToast(`${hit.combo} ${hit.label} — not built yet`); return }
 
-      // --- Ctrl modifiers ---
-      if (e.ctrlKey && !e.shiftKey) {
-        const k = e.key.toLowerCase()
-        if (k === 'm') { e.preventDefault(); if (items.length > 0 && items[selectedRow]) setShowDiscount(true); return }   // per-row discount
-        if (k === 'a') { e.preventDefault(); openSearch(''); return }                                                      // Add product
-        if (k === 'r') { e.preventDefault(); voidSelected(); return }                                                       // Remove selected row
-        if (k === 'd') { e.preventDefault(); if (items.length > 0) setShowBillDiscount(true); return }                      // Bill discount (all lines)
-        if (k === 'c') { e.preventDefault(); if (isManager && items.length > 0) setShowComp(true); else showToast(isManager ? 'Add items first' : 'Complimentary is manager-only'); return }   // Complimentary (manager)
-        if (k === 'e') { e.preventDefault(); setShowExchange(true); return }                                                  // Return / refund (from a past order)
-      }
+        const needLine  = () => { if (line) return true; showToast('Select a product line first'); return false }
+        const needItems = () => { if (items.length) return true; showToast('Add items first'); return false }
 
-      // --- Alt modifiers (all stubs) ---
-      if (e.altKey && !e.ctrlKey) {
-        const k = e.key.toLowerCase()
-        if (k === 'm') { e.preventDefault(); if (items.length > 0) setShowMarket(true); else showToast('Add items first'); return }   // Post to Market
-        if (k === 'q') { e.preventDefault(); if (items.length > 0) setShowQuotation(true); else showToast('Add items first'); return }   // Quotation
-        if (k === 'd') { e.preventDefault(); setShowDelivery(true); return }                                                    // Delivery Address
+        switch (hit.id) {
+          case 'help':          setHelpOpen(true); break
+          case 'date':          setShowDateOverride(true); break
+
+          case 'qtyUp':         if (needLine()) updateQty(line.id, line.quantity + 1); break
+          // Less-quantity stops at 1 and removes the line below that, which is what a cashier
+          // stepping a mis-scan back down expects.
+          case 'qtyDown':       if (needLine()) { if (line.quantity > 1) updateQty(line.id, line.quantity - 1); else removeItem(line.id) } break
+          case 'qtyFocus':      if (needLine()) editRowRef.current?.(selectedRow); break
+          case 'itemDiscount':  if (needLine()) setShowDiscount(true); break
+          case 'complimentary': if (!isManager) showToast('Complimentary is manager-only'); else if (needItems()) setShowComp(true); break
+          case 'removeLine':    voidSelected(); break
+
+          case 'productInfo':
+          case 'products':      openSearch(''); break
+          case 'customerInfo':
+          case 'party':         setShowCustomerPanel(true); break
+          case 'salesperson':   if (needLine()) setShowSalesPerson(true); break
+          case 'deliveryDetail':setShowDelivery(true); break
+          case 'tender':
+          case 'tenderAlt':     if (needItems()) setPaymentOpen(true); break
+
+          case 'hold':          holdCart(); break
+          case 'retrieve':      if (carts.length > 1) switchCart((activeIndex - 1 + carts.length) % carts.length); else showToast('No held ticket'); break
+          case 'clearTicket':   handleNewTransaction(); break
+          // Both reprint the last bill on its own serial — no new GST number is drawn.
+          case 'print':
+          case 'lastGst':       if (lastOrderNo) setShowReceipt(true); else showToast('No bill to reprint'); break
+          case 'exit':          setCheckoutErr(null); break
+
+          case 'billDiscount':  if (needItems()) setShowBillDiscount(true); break
+          case 'quotation':     if (needItems()) setShowQuotation(true); break
+          case 'exchange':      setShowExchange(true); break
+          case 'postMarket':    if (needItems()) setShowMarket(true); break
+          case 'zReport':       if (isManager && shiftsEnabled) setShowZReport(true); break
+          case 'cashInOut':     if (isManager && shiftsEnabled) setShowCashAdj(true); break
+          default: break
+        }
+        return
       }
 
       // --- Navigation / cart switching ---
@@ -227,7 +238,6 @@ export default function KeyboardPosPage() {
         if (carts.length > 1) switchCart((activeIndex - 1 + carts.length) % carts.length)
         return
       }
-      if (e.key === 'Delete') { e.preventDefault(); voidSelected(); return }
       if (e.key === 'ArrowDown') { e.preventDefault(); if (items.length > 0) setSelectedRow(r => (r + 1) % items.length); return }
       if (e.key === 'ArrowUp')   { e.preventDefault(); if (items.length > 0) setSelectedRow(r => (r - 1 + items.length) % items.length); return }
       if (e.key === 'Enter' && items.length > 0) { e.preventDefault(); editRowRef.current?.(selectedRow); return }
@@ -250,7 +260,7 @@ export default function KeyboardPosPage() {
     // checkoutErr must be a dep: handleNewTransaction (F2) reads it to block
     // clearing on a stock error. Without it, the out-of-stock branch (no item
     // added → items unchanged → effect not re-run) leaves a stale closure.
-  }, [searchOpen, paymentOpen, helpOpen, showCustomerPanel, showDiscount, showBillDiscount, showInvoiceSearch, showSalesPerson, showQuotation, showComp, showExchange, showMarket, showDelivery, showHandover, showReceipt, items, selectedRow, carts, activeIndex, subRole, checkoutErr, shiftsEnabled])
+  }, [searchOpen, paymentOpen, helpOpen, showCustomerPanel, showDiscount, showBillDiscount, showInvoiceSearch, showSalesPerson, showQuotation, showComp, showExchange, showMarket, showDelivery, showHandover, showReceipt, items, selectedRow, carts, activeIndex, subRole, checkoutErr, shiftsEnabled, lastOrderNo, updateQty, removeItem])
 
   // Suppress the BROWSER's own function-key actions across the whole till, in the capture phase
   // and independently of the handler above — that one returns early whenever a sheet is open or

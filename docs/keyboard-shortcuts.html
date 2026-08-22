@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Keyboard shortcuts — wireframes</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --soil: #6B4E3D;
+      --stone: #D6D4CF;
+      --river: #2E4A52;
+      --river-2: #3D636C;
+      --canvas: #E7ECF0;
+      --paper: #F5F7F8;
+      --ink: #14201B;
+      --ink-mute: #4A5A54;
+      --saffron: #F5A311;
+      --saffron-ink: #14201B;
+      --danger: #B42318;
+      --ok: #1B7A4E;
+      --line: #C5D0CC;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: var(--canvas); color: var(--ink); font: 14px/1.45 "IBM Plex Sans", ui-sans-serif, sans-serif; }
+    a { color: inherit; }
+    header.top {
+      position: sticky; top: 0; z-index: 4;
+      display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px;
+      padding: 12px 20px; background: var(--paper); border-bottom: 1px solid var(--line);
+    }
+    header.top h1 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+    header.top p { margin: 0; color: var(--ink-mute); font-size: 13px; }
+    nav.tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-left: auto; }
+    nav.tabs button {
+      border: 1px solid var(--line); background: var(--paper); color: var(--ink);
+      min-height: 32px; padding: 0 12px; font: inherit; cursor: pointer;
+    }
+    nav.tabs button[aria-current="true"] { background: var(--river); color: var(--paper); border-color: var(--river); }
+    main { max-width: 1180px; margin: 0 auto; padding: 24px 20px 80px; }
+    section { display: none; }
+    section.active { display: block; }
+    .caption {
+      display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+      margin: 0 0 10px; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-mute);
+    }
+    .frame {
+      background: var(--paper); border: 1px dashed var(--river-2); outline: 8px solid var(--paper);
+      margin-bottom: 28px;
+    }
+    .frame.solid { border-style: solid; outline-width: 0; }
+    .note { margin: 8px 0 0; color: var(--ink-mute); font-size: 12px; }
+    h2 { margin: 0 0 6px; font-size: 20px; font-weight: 600; }
+    h3 { margin: 28px 0 8px; font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-mute); font-weight: 600; }
+
+    /* Till chrome */
+    .till { background: var(--paper); }
+    .till-bar {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--river); color: var(--paper); padding: 8px 12px; font-size: 12px;
+    }
+    .till-bar .mark {
+      width: 18px; height: 18px; border: 1.5px solid var(--saffron); border-radius: 50%;
+    }
+    .till-bar .grow { flex: 1; color: color-mix(in srgb, var(--paper) 70%, transparent); }
+    .till-scan {
+      display: flex; gap: 8px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--line);
+    }
+    .till-scan input {
+      flex: 1; height: 32px; border: 0; border-bottom: 2px solid var(--saffron);
+      background: var(--paper); font: inherit; padding: 0 8px; outline: none;
+    }
+    .ticket {
+      width: 100%; border-collapse: collapse; font-size: 12px;
+    }
+    .ticket th, .ticket td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: left; }
+    .ticket th { background: var(--canvas); font-weight: 500; color: var(--ink-mute); font-size: 11px; }
+    .ticket td.num, .ticket th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .ticket tr.sel td { background: color-mix(in srgb, var(--saffron) 18%, var(--paper)); }
+    .ticket .cell-focus { outline: 2px solid var(--saffron); outline-offset: -2px; background: #fff; }
+
+    .fkey-rail {
+      display: grid; background: var(--river); box-shadow: inset 0 1px 0 var(--saffron);
+    }
+    .fkey-rail.p1 { grid-template-columns: repeat(15, 1fr); }
+    .fkey-rail.p2 { grid-template-columns: repeat(10, 1fr); }
+    .fkey {
+      display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 4px;
+      min-height: 36px; border: 0; border-right: 1px solid var(--river-2);
+      background: transparent; color: var(--paper); font: 11px/1 "IBM Plex Sans", sans-serif;
+      padding: 4px 2px; cursor: default; white-space: nowrap;
+    }
+    .fkey small { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--saffron); }
+    .fkey.go { background: var(--saffron); color: var(--saffron-ink); }
+    .fkey.go small { color: var(--saffron-ink); }
+    .fkey:last-child { border-right: 0; }
+
+    /* Physical keyboard */
+    .kb { padding: 16px 12px 12px; background: var(--canvas); }
+    .kb-row { display: flex; justify-content: center; gap: 4px; margin-bottom: 4px; }
+    .k {
+      min-width: 36px; height: 36px; padding: 0 6px;
+      border: 1px solid var(--line); background: var(--paper); color: var(--ink);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 500;
+    }
+    .k.wide { min-width: 56px; }
+    .k.wider { min-width: 72px; }
+    .k.space { min-width: 220px; }
+    .k.f { min-width: 42px; }
+    .k.hit { background: var(--river); color: var(--paper); border-color: var(--river); }
+    .k.go { background: var(--saffron); color: var(--saffron-ink); border-color: var(--saffron); }
+    .k.mod { background: var(--stone); }
+    .k.alt { outline: 2px solid var(--saffron); outline-offset: -2px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 12px; padding: 8px 12px 12px; font-size: 12px; color: var(--ink-mute); }
+    .legend i { display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -1px; border: 1px solid var(--line); }
+    .legend .hit { background: var(--river); }
+    .legend .go { background: var(--saffron); }
+    .legend .mod { background: var(--stone); }
+    .legend .alt { outline: 2px solid var(--saffron); outline-offset: 0; }
+
+    /* Office letters */
+    .letters {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+      padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--paper);
+    }
+    .letters.nested { background: var(--canvas); }
+    .letters .kicker { margin-right: 6px; font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-mute); }
+    .letter {
+      display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 6px; font-size: 12px;
+    }
+    .letter b {
+      display: inline-flex; width: 24px; height: 24px; align-items: center; justify-content: center;
+      border: 1px solid var(--line); background: var(--canvas); font-size: 12px; font-weight: 600;
+    }
+    .letters.nested .letter b { background: var(--paper); }
+    .os-keys {
+      display: grid; grid-template-columns: repeat(8, 1fr); background: var(--river); color: var(--paper); font-size: 10px;
+    }
+    .os-keys span {
+      min-height: 32px; display: flex; align-items: center; justify-content: center;
+      border-right: 1px solid var(--river-2); letter-spacing: 0.04em;
+    }
+
+    table.keys { width: 100%; border-collapse: collapse; font-size: 13px; }
+    table.keys th, table.keys td { border-bottom: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+    table.keys th { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-mute); font-weight: 500; background: var(--canvas); }
+    table.keys kbd {
+      display: inline-block; min-width: 1.6em; padding: 1px 6px; margin: 0 1px;
+      border: 1px solid var(--line); background: var(--paper); font: 12px/1.4 "IBM Plex Sans", sans-serif;
+      font-weight: 600; text-align: center;
+    }
+    table.keys kbd.go { background: var(--saffron); border-color: var(--saffron); }
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 860px) {
+      .two, .fkey-rail.p1, .fkey-rail.p2, .os-keys { grid-template-columns: 1fr 1fr; }
+      .k.space { min-width: 80px; }
+      nav.tabs { margin-left: 0; width: 100%; }
+    }
+    .stack { display: flex; flex-direction: column; gap: 0; }
+    .stack .step {
+      display: grid; grid-template-columns: 88px 1fr; gap: 12px; padding: 10px 12px;
+      border-bottom: 1px solid var(--line); font-size: 13px;
+    }
+    .stack .step:last-child { border-bottom: 0; }
+    .stack .step strong { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--river); }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>Keyboard shortcuts</h1>
+      <p>Wireframes from the live till and Office letter menu. Barcode stays focused unless a sheet is open. Browser never steals F10.</p>
+    </div>
+    <nav class="tabs" aria-label="Wireframe screens">
+      <button type="button" aria-current="true" data-tab="counter">Counter</button>
+      <button type="button" data-tab="ticket">Ticket</button>
+      <button type="button" data-tab="tender">Tender</button>
+      <button type="button" data-tab="office">Office</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- COUNTER -->
+    <section id="counter" class="active">
+      <div class="caption"><span>WF-01 · Counter chrome</span><span>Scan POS · desktop</span></div>
+      <div class="frame solid">
+        <div class="till">
+          <div class="till-bar">
+            <span class="mark" aria-hidden="true"></span>
+            <span>Counter</span>
+            <span class="grow">GST 5% · Nu · walk-in</span>
+            <span>F11 Day</span>
+          </div>
+          <div class="till-scan">
+            <span style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-mute)">Barcode</span>
+            <input value="" placeholder="Scan or type · always focused" aria-label="Barcode" readonly />
+          </div>
+          <table class="ticket">
+            <thead>
+              <tr>
+                <th class="num">Srl</th><th>Product Name</th><th>Product Code</th><th class="num">Stock</th>
+                <th class="num">Qty</th><th>Unit</th><th>Sale Tax Price Name</th><th class="num">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="sel">
+                <td class="num">1</td><td>Red rice 1kg</td><td>8901</td><td class="num">24</td>
+                <td class="num cell-focus">2</td><td>Pcs</td><td>GST 5%</td><td class="num">210.00</td>
+              </tr>
+              <tr>
+                <td class="num">2</td><td>Mustard oil 1L</td><td>8902</td><td class="num">8</td>
+                <td class="num">1</td><td>Pcs</td><td>GST 5%</td><td class="num">185.00</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="caption" style="padding:8px 12px 0"><span>Footer page 1</span><span>F10 saffron</span></div>
+          <div class="fkey-rail p1" aria-label="Function keys page 1">
+            <span class="fkey"><small>F3</small> Add Quantity</span>
+            <span class="fkey"><small>F4</small> Less Quantity</span>
+            <span class="fkey"><small>F5</small> Rate Change</span>
+            <span class="fkey"><small>F8</small> Product Info</span>
+            <span class="fkey"><small>F9</small> Customer Info</span>
+            <span class="fkey"><small>^L</small> Delivery Detail</span>
+            <span class="fkey"><small>^H</small> Hold Trans</span>
+            <span class="fkey"><small>^R</small> Retrieve Trans</span>
+            <span class="fkey go"><small>F10</small> Tender</span>
+            <span class="fkey"><small>^T</small> Item Remark</span>
+            <span class="fkey"><small>^C</small> Complimentary</span>
+            <span class="fkey"><small>^M</small> Item Discount</span>
+            <span class="fkey"><small>Del</small> Remove</span>
+            <span class="fkey"><small>&lt;</small> More</span>
+            <span class="fkey"><small>&gt;</small> More</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="caption"><span>WF-02 · Footer page 2</span><span>&lt; More / &gt; More</span></div>
+      <div class="frame solid">
+        <div class="fkey-rail p2" aria-label="Function keys page 2">
+          <span class="fkey"><small>F2</small> Date</span>
+          <span class="fkey"><small>F6</small> Sales Person</span>
+          <span class="fkey"><small>F7</small> Party</span>
+          <span class="fkey"><small>F11</small> Day</span>
+          <span class="fkey"><small>F12</small> Location</span>
+          <span class="fkey"><small>B</small> Barcode Prn</span>
+          <span class="fkey"><small>Esc</small> Exit</span>
+          <span class="fkey"><small>F1</small> Help</span>
+          <span class="fkey"><small>&lt;</small> More</span>
+          <span class="fkey"><small>&gt;</small> More</span>
+        </div>
+      </div>
+
+      <div class="caption"><span>WF-03 · Desktop keys</span><span>F2–F12 preventDefault</span></div>
+      <div class="frame">
+        <div class="kb" aria-hidden="true">
+          <div class="kb-row">
+            <span class="k">Esc</span>
+            <span class="k f">F1</span>
+            <span class="k f hit">F2</span>
+            <span class="k f hit">F3</span>
+            <span class="k f hit">F4</span>
+            <span class="k f hit">F5</span>
+            <span class="k f hit">F6</span>
+            <span class="k f hit">F7</span>
+            <span class="k f hit">F8</span>
+            <span class="k f hit">F9</span>
+            <span class="k f go">F10</span>
+            <span class="k f hit">F11</span>
+            <span class="k f hit">F12</span>
+          </div>
+          <div class="kb-row">
+            <span class="k">`</span><span class="k">1</span><span class="k">2</span><span class="k">3</span><span class="k">4</span><span class="k">5</span><span class="k">6</span><span class="k">7</span><span class="k">8</span><span class="k">9</span><span class="k">0</span><span class="k">-</span><span class="k">=</span><span class="k wider">Back</span>
+          </div>
+          <div class="kb-row">
+            <span class="k wide">Tab</span><span class="k alt">Q</span><span class="k">W</span><span class="k">E</span><span class="k">R</span><span class="k hit">T</span><span class="k alt">U</span><span class="k">I</span><span class="k">O</span><span class="k alt">P</span><span class="k">[</span><span class="k">]</span><span class="k wide">\</span>
+          </div>
+          <div class="kb-row">
+            <span class="k wider">Caps</span><span class="k">A</span><span class="k alt">S</span><span class="k">D</span><span class="k">F</span><span class="k">G</span><span class="k hit">H</span><span class="k">J</span><span class="k">K</span><span class="k alt">L</span><span class="k">;</span><span class="k">'</span><span class="k wider">Enter</span>
+          </div>
+          <div class="kb-row">
+            <span class="k wider">Shift</span><span class="k">Z</span><span class="k">X</span><span class="k hit">C</span><span class="k">V</span><span class="k">B</span><span class="k">N</span><span class="k hit">M</span><span class="k">,</span><span class="k">.</span><span class="k">/</span><span class="k wider">Shift</span>
+          </div>
+          <div class="kb-row">
+            <span class="k wide mod">Ctrl</span><span class="k">Win</span><span class="k wide mod alt">Alt/⌥</span><span class="k space">Space · barcode</span><span class="k wide mod alt">Alt/⌥</span><span class="k wide mod">Ctrl</span><span class="k">↑</span><span class="k">↓</span><span class="k hit">Del</span><span class="k hit">PgUp</span>
+          </div>
+        </div>
+        <div class="legend">
+          <span><i class="go"></i> Tender</span>
+          <span><i class="hit"></i> Bound</span>
+          <span><i class="mod"></i> Modifier</span>
+          <span><i class="alt"></i> Alt / Option letter</span>
+        </div>
+      </div>
+
+      <h3>Counter map</h3>
+      <div class="frame solid">
+        <table class="keys">
+          <thead><tr><th>Key</th><th>Action</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td><kbd>F1</kbd></td><td>Help</td><td>Status: sale voucher keys. Esc closes sheets.</td></tr>
+            <tr><td><kbd>F2</kbd></td><td>Date</td><td>Sets bill date to today.</td></tr>
+            <tr><td><kbd>F3</kbd></td><td>+ Qty</td><td>Add 1 to highlighted line.</td></tr>
+            <tr><td><kbd>F4</kbd></td><td>− Qty</td><td>Less 1 on highlighted line.</td></tr>
+            <tr><td><kbd>F5</kbd></td><td>Rate</td><td>Opens rate on highlighted line.</td></tr>
+            <tr><td><kbd>F6</kbd></td><td>Sales person</td><td>Stamps staff on the line.</td></tr>
+            <tr><td><kbd>F7</kbd></td><td>Party</td><td>Same sheet as F9.</td></tr>
+            <tr><td><kbd>F8</kbd></td><td>Product info</td><td>Item picker. Also Alt/⌥ L.</td></tr>
+            <tr><td><kbd>F9</kbd></td><td>Customer info</td><td>Party sheet. Asks WhatsApp No.</td></tr>
+            <tr><td><kbd class="go">F10</kbd></td><td>Tender</td><td>Also Alt/⌥ S. Blocked if qty × unit &gt; on-hand.</td></tr>
+            <tr><td><kbd>F11</kbd></td><td>Day</td><td>Day-end. Hold-or-Stay if the ticket has lines.</td></tr>
+            <tr><td><kbd>F12</kbd></td><td>Location</td><td>Status: shop.</td></tr>
+            <tr><td><kbd>Ctrl</kbd> <kbd>H</kbd></td><td>Hold trans</td><td>Max 5 holds.</td></tr>
+            <tr><td><kbd>Ctrl</kbd> <kbd>R</kbd></td><td>Retrieve trans</td><td>Bring a held ticket back.</td></tr>
+            <tr><td><kbd>Ctrl</kbd> <kbd>P</kbd></td><td>Print</td><td>Reprints last GST slip. No extra serial.</td></tr>
+            <tr><td><kbd>Ctrl</kbd> <kbd>T</kbd></td><td>Item remark</td><td></td></tr>
+            <tr><td><kbd>Ctrl</kbd> <kbd>M</kbd></td><td>Item discount</td><td>Logged on Staff run.</td></tr>
+            <tr><td><kbd>Ctrl</kbd> <kbd>C</kbd></td><td>Complimentary</td><td>Rate 0. Malpractice log.</td></tr>
+            <tr><td><kbd>Ctrl</kbd> <kbd>D</kbd></td><td>Clear ticket</td><td></td></tr>
+            <tr><td><kbd>Ctrl</kbd> <kbd>L</kbd></td><td>Delivery detail</td><td></td></tr>
+            <tr><td><kbd>Alt</kbd> <kbd>L</kbd> / <kbd>⌥</kbd> <kbd>L</kbd></td><td>Products</td><td>Match <code>e.code</code> KeyL (Mac Option remaps glyphs).</td></tr>
+            <tr><td><kbd>Alt</kbd> <kbd>S</kbd> / <kbd>⌥</kbd> <kbd>S</kbd></td><td>Tender</td><td>Opens then tenders the GST bill.</td></tr>
+            <tr><td><kbd>Alt</kbd> <kbd>Q</kbd></td><td>Qty</td><td>Focus qty on highlighted row.</td></tr>
+            <tr><td><kbd>Alt</kbd> <kbd>U</kbd> / <kbd>⌥</kbd> <kbd>U</kbd></td><td>Unit sheet</td><td>Pcs / Pack / Case. ↑↓ Enter Esc.</td></tr>
+            <tr><td><kbd>Alt</kbd> <kbd>T</kbd></td><td>GST included toggle</td><td></td></tr>
+            <tr><td><kbd>Alt</kbd> <kbd>P</kbd></td><td>Price list</td><td>Party list or retail.</td></tr>
+            <tr><td><kbd>Del</kbd></td><td>Remove line</td><td>Off the live ticket. Exchange is not on the ticket.</td></tr>
+            <tr><td><kbd>Page Up</kbd></td><td>Last GST</td><td>View 80mm slip, reprint same serial, refund once.</td></tr>
+            <tr><td><kbd>Esc</kbd></td><td>Close / exit</td><td>Sheets first. Till Full locks Esc until F10/sheets close. Qty Esc returns to barcode.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- TICKET -->
+    <section id="ticket">
+      <div class="caption"><span>WF-04 · Ticket grid</span><span>Highlighted row · qty cell</span></div>
+      <div class="frame solid">
+        <div class="till">
+          <div class="till-bar"><span class="mark"></span><span>Ticket</span><span class="grow">↑↓ move row · Enter cycles qty → unit → rate</span></div>
+          <table class="ticket">
+            <thead>
+              <tr>
+                <th class="num">Srl</th><th>Product Name</th><th class="num">Stock</th>
+                <th class="num">Qty</th><th>Unit</th><th class="num">Unit Rate</th><th class="num">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="num">1</td><td>Red rice 1kg</td><td class="num">24</td>
+                <td class="num">2</td><td>Pcs</td><td class="num">100.00</td><td class="num">210.00</td>
+              </tr>
+              <tr class="sel">
+                <td class="num">2</td><td>Mustard oil 1L</td><td class="num">8</td>
+                <td class="num cell-focus">1</td><td>Pcs</td><td class="num">185.00</td><td class="num">185.00</td>
+              </tr>
+              <tr>
+                <td class="num">3</td><td>Sugar 1kg</td><td class="num">40</td>
+                <td class="num">12</td><td>Pcs</td><td class="num">48.00</td><td class="num">576.00</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="two">
+        <div>
+          <div class="caption"><span>WF-05 · Enter cycle</span><span>from barcode</span></div>
+          <div class="frame solid stack">
+            <div class="step"><strong>Enter</strong><span>Focus qty on the highlighted line.</span></div>
+            <div class="step"><strong>Enter</strong><span>Open unit sheet (Pcs / Pack / Case).</span></div>
+            <div class="step"><strong>Enter</strong><span>Confirm unit, then open rate if the cashier may edit rate.</span></div>
+            <div class="step"><strong>Esc</strong><span>From qty or rate: return to barcode. No sticky qty focus on row arrows.</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="caption"><span>WF-06 · Unit sheet</span><span>Alt/⌥ U</span></div>
+          <div class="frame solid">
+            <table class="ticket">
+              <thead><tr><th></th><th>Unit</th><th>Stock issues in</th></tr></thead>
+              <tbody>
+                <tr class="sel"><td>→</td><td>Pcs</td><td>Pieces</td></tr>
+                <tr><td></td><td>Pack</td><td>Pack factor</td></tr>
+                <tr><td></td><td>Case</td><td>Carton pieces from stock</td></tr>
+              </tbody>
+            </table>
+            <p class="note" style="padding:8px 12px">↑↓ choose · Enter confirm · Esc leave. Qty 12 uses wholesale Nu (editable).</p>
+          </div>
+        </div>
+      </div>
+
+      <h3>Ticket map</h3>
+      <div class="frame solid">
+        <table class="keys">
+          <thead><tr><th>Key</th><th>Action</th></tr></thead>
+          <tbody>
+            <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Move the highlighted ticket row. From barcode, returns focus to scan.</td></tr>
+            <tr><td><kbd>↑</kbd> <kbd>↓</kbd> in qty</td><td>Commit qty, move to next/prev line qty.</td></tr>
+            <tr><td><kbd>Enter</kbd></td><td>Cycle qty → unit → rate.</td></tr>
+            <tr><td><kbd>Alt</kbd> <kbd>Q</kbd></td><td>Jump to qty on the highlighted line.</td></tr>
+            <tr><td><kbd>Del</kbd></td><td>Remove the line.</td></tr>
+            <tr><td>Click qty</td><td>Edit in place.</td></tr>
+            <tr><td>Click unit</td><td>Pcs / Pack / Case. Case takes carton pieces from FEFO stock.</td></tr>
+            <tr><td>Click rate</td><td>Same as F5.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- TENDER -->
+    <section id="tender">
+      <div class="caption"><span>WF-07 · Tender sheet</span><span>F10 / Alt⌥S</span></div>
+      <div class="frame solid">
+        <div class="till">
+          <div class="till-bar"><span class="mark"></span><span>Tender</span><span class="grow">GST 5% included · F10 tenders</span><span>Esc close</span></div>
+          <div style="display:grid;grid-template-columns:1fr 220px;gap:16px;padding:16px">
+            <div>
+              <p style="margin:0 0 8px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-mute)">Buyer</p>
+              <p style="margin:0 0 16px;border:1px solid var(--line);padding:8px 10px">Walk-in ▾</p>
+              <p style="margin:0 0 8px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-mute)">Cash in</p>
+              <p style="margin:0 0 16px;border:1px solid var(--line);padding:8px 10px;text-align:right;font-variant-numeric:tabular-nums">500.00</p>
+              <p style="margin:0 0 8px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-mute)">Split</p>
+              <p style="margin:0;font-size:13px;color:var(--ink-mute)">Cash + online + credit on one GST bill. Scan QR fills Buyer. Jrnl / +975 on this screen.</p>
+            </div>
+            <div style="border:1px dashed var(--line);padding:12px;text-align:center;background:var(--canvas)">
+              <div style="width:120px;height:120px;margin:0 auto 8px;border:8px solid var(--ink);background:#fff"></div>
+              <p style="margin:0;font-size:11px;color:var(--ink-mute)">SCAN &amp; PAY · tag 09 kept · F10 stamps Nu</p>
+            </div>
+          </div>
+          <div class="fkey-rail p2" style="grid-template-columns:repeat(4,1fr)">
+            <span class="fkey"><small>Esc</small> Close</span>
+            <span class="fkey"><small>Print</small> Reprint last</span>
+            <span class="fkey"><small>Save &amp; Print</small> Write then print</span>
+            <span class="fkey go"><small>F10 / ⌥S</small> Tender</span>
+          </div>
+        </div>
+      </div>
+
+      <h3>Tender + leave</h3>
+      <div class="frame solid">
+        <table class="keys">
+          <thead><tr><th>Key</th><th>Action</th></tr></thead>
+          <tbody>
+            <tr><td><kbd class="go">F10</kbd></td><td>Tender the GST bill. No extra serial on Print.</td></tr>
+            <tr><td><kbd>Alt</kbd> <kbd>S</kbd></td><td>Opens tender, then tenders.</td></tr>
+            <tr><td><kbd>Esc</kbd></td><td>Close tender / picker / rate / unit / party / disc / remark / delivery first.</td></tr>
+            <tr><td><kbd>Enter</kbd> on Hold or Stay</td><td>Confirm hold before leaving Counter with lines.</td></tr>
+            <tr><td>Void / clear hold</td><td>Manager PIN. Audit logs item names × qty.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- OFFICE -->
+    <section id="office">
+      <div class="caption"><span>WF-08 · Office letter menu</span><span>Keys strip · not in an input</span></div>
+      <div class="frame solid">
+        <div class="till-bar"><span class="mark"></span><span>Office</span><span class="grow">Letter keys fire only when focus is not in INPUT / TEXTAREA / SELECT</span></div>
+        <nav class="letters" aria-label="Office modules">
+          <span class="kicker">Keys</span>
+          <span class="letter"><b>P</b> Purchase Management</span>
+          <span class="letter"><b>S</b> Sale Management</span>
+          <span class="letter"><b>W</b> Warehouse Management</span>
+          <span class="letter"><b>F</b> Financial Management</span>
+          <span class="letter"><b>C</b> Customer Relationship</span>
+          <span class="letter"><b>R</b> Customer Service</span>
+          <span class="letter"><b>E</b> Payroll</span>
+          <span class="letter"><b>M</b> Master Data Management</span>
+          <span class="letter"><b>T</b> Settings</span>
+          <span class="letter"><b>X</b> Exit</span>
+        </nav>
+        <div style="padding:24px 16px;color:var(--ink-mute);font-size:13px">Module body · letter strip stays on every Office screen.</div>
+      </div>
+
+      <div class="caption"><span>WF-09 · Nested letters</span><span>second row</span></div>
+      <div class="frame solid">
+        <nav class="letters" aria-label="Office modules">
+          <span class="kicker">Keys</span>
+          <span class="letter"><b>P</b> Purchase</span>
+          <span class="letter"><b>S</b> Sale</span>
+          <span class="letter"><b>W</b> Warehouse</span>
+          <span class="letter"><b>F</b> Financial</span>
+          <span class="letter"><b>X</b> Exit</span>
+        </nav>
+        <nav class="letters nested" aria-label="Purchase Management">
+          <span class="letter"><b>V</b> Purchase Voucher</span>
+          <span class="letter"><b>O</b> Purchase Order Register</span>
+          <span class="letter"><b>N</b> Purchase Challan Register</span>
+          <span class="letter"><b>I</b> Rejection Out Register</span>
+          <span class="letter"><b>P</b> Purchase Register</span>
+          <span class="letter"><b>R</b> Purchase Return Register</span>
+          <span class="letter"><b>X</b> Exit</span>
+        </nav>
+        <div class="os-keys" aria-label="Purchase voucher keys">
+          <span>F2 Date</span><span>D Display</span><span>B Barcode Prn</span><span>S Save</span>
+          <span>L List</span><span>Esc Exit</span><span>F1 Help</span><span></span>
+        </div>
+      </div>
+
+      <h3>Sale · Warehouse · Finance · KOT</h3>
+      <div class="two">
+        <div class="frame solid">
+          <nav class="letters nested"><span class="letter"><b>T</b> Transaction</span><span class="letter"><b>R</b> Reports</span><span class="letter"><b>A</b> Analysis Tools</span><span class="letter"><b>N</b> Business Intelligence</span><span class="letter"><b>X</b> Exit</span></nav>
+          <p class="note" style="padding:8px 12px">Sale Management. T opens Counter.</p>
+        </div>
+        <div class="frame solid">
+          <nav class="letters nested"><span class="letter"><b>O</b> Stock Register</span><span class="letter"><b>D</b> Discrepancy</span><span class="letter"><b>N</b> Opening Stock</span><span class="letter"><b>J</b> Stock Journal</span><span class="letter"><b>T</b> Transfer</span><span class="letter"><b>K</b> KOT Register</span><span class="letter"><b>X</b> Exit</span></nav>
+          <p class="note" style="padding:8px 12px">Warehouse. Double-click register row → ledger.</p>
+        </div>
+        <div class="frame solid">
+          <nav class="letters nested"><span class="letter"><b>R</b> Receipt</span><span class="letter"><b>P</b> Payment</span><span class="letter"><b>C</b> Contra</span><span class="letter"><b>J</b> Journal</span><span class="letter"><b>X</b> Exit</span></nav>
+          <p class="note" style="padding:8px 12px">Financial voucher kinds. Books via nav, not letters.</p>
+        </div>
+        <div class="frame solid">
+          <nav class="letters nested"><span class="letter"><b>K</b> KOT Register</span><span class="letter"><b>D</b> Daily Sales Summary</span><span class="letter"><b>E</b> Stock Report</span><span class="letter"><b>X</b> Exit</span></nav>
+          <p class="note" style="padding:8px 12px">F&amp;B under Warehouse K / Sale N. Grocery KOT may stay empty.</p>
+        </div>
+      </div>
+
+      <div class="caption"><span>WF-10 · Register footer</span><span>reports</span></div>
+      <div class="frame solid">
+        <div class="os-keys" style="grid-template-columns:repeat(7,1fr)">
+          <span>F2 Date</span><span>D Detail</span><span>S Summary</span><span>E Expand</span>
+          <span>C Collapse</span><span>P Print</span><span>F10 Save View</span>
+          <span>F9 Load View</span><span>F12 Location</span><span>F8 Analysis</span><span>O Option</span>
+          <span>W Warehouse</span><span>Esc Exit</span><span>F1 Help</span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const tabs = document.querySelectorAll("nav.tabs button");
+    const sections = document.querySelectorAll("main > section");
+    tabs.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        tabs.forEach((b) => b.setAttribute("aria-current", String(b === btn)));
+        sections.forEach((s) => s.classList.toggle("active", s.id === btn.dataset.tab));
+      });
+    });
+  </script>
+</body>
+</html>

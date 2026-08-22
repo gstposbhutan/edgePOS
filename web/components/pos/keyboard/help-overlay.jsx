@@ -1,50 +1,29 @@
 "use client"
 
 import { useEffect } from "react"
+import { COUNTER_KEYS, COUNTER_NAV } from "@/lib/pos/shortcuts"
+
+// Rendered from the shared key map, so the sheet can only ever show what the keys really do —
+// this list and the bindings used to be maintained separately and had drifted apart.
+const MAP_GROUPS = ['Line', 'Sale', 'Ticket', 'Pelbu']
 
 const GROUPS = [
+  ...MAP_GROUPS.map(title => ({
+    title,
+    shortcuts: COUNTER_KEYS
+      .filter(entry => entry.group === title)
+      .map(entry => ({ key: entry.combo, label: entry.label, stub: entry.todo })),
+  })),
   {
-    title: 'Functional',
-    shortcuts: [
-      { key: 'F1',        label: 'Help overlay' },
-      { key: 'F2',        label: 'Clear / new transaction' },
-      { key: 'F3',        label: 'Search / add item' },
-      { key: 'F4',        label: 'New cart (hold current)' },
-      { key: 'F5',        label: 'Previous cart' },
-      { key: 'F6',        label: 'Customer select' },
-      { key: 'F8',        label: 'Sales person' },
-      { key: 'F9',        label: 'Change qty (selected row)' },
-      { key: 'F10',       label: 'Tender / payment' },
-      { key: 'Enter',     label: 'Change qty (selected row)' },
-      { key: 'Ctrl+A',    label: 'Add product (open search)' },
-      { key: 'Ctrl+R',    label: 'Remove selected row' },
-      { key: 'Ctrl+D',    label: 'Bill discount (all lines)' },
-      { key: 'Ctrl+C',    label: 'Complimentary (manager)' },
-      { key: 'Ctrl+E',    label: 'Return / refund' },
-      { key: 'Alt+Q',     label: 'Save as order / quotation' },
-      { key: 'Alt+M',     label: 'Post to market' },
-      { key: 'Alt+D',     label: 'Delivery address' },
-      { key: 'Ctrl+M',    label: 'Discount on selected row' },
-      { key: 'Tab / ⇧Tab', label: 'Next / previous cart' },
-      { key: 'Ctrl+1–9',  label: 'Jump to cart by number' },
-      { key: '↑ ↓',       label: 'Navigate rows' },
-      { key: 'Delete',    label: 'Remove selected row' },
-      { key: 'Any key',   label: 'Open product search' },
-    ],
+    title: 'Moving around',
+    shortcuts: COUNTER_NAV.map(nav => ({ key: nav.combo, label: nav.label })),
   },
   {
-    title: 'Manager',
+    title: 'In payment sheet',
     shortcuts: [
-      { key: 'Ctrl+⇧X', label: 'Cash In/Out (manager)' },
-      { key: 'Ctrl+⇧Z', label: 'Z-Report (manager)' },
-    ],
-  },
-  {
-    title: 'In payment modal',
-    shortcuts: [
-      { key: '1–5',     label: 'Select payment method' },
-      { key: 'E',       label: 'Exact amount (CASH)' },
-      { key: 'R',       label: 'Round to Nu.5 (CASH)' },
+      { key: '1–3',      label: 'Select payment method' },
+      { key: 'E',        label: 'Exact amount (CASH)' },
+      { key: 'R',        label: 'Round to Nu.5 (CASH)' },
       { key: 'Ctrl+1–5', label: 'Add denomination (CASH)' },
     ],
   },
@@ -85,7 +64,7 @@ export function HelpOverlay({ open, onClose }) {
               </h3>
               <div className="grid grid-cols-2 gap-x-4">
                 {group.shortcuts.map(s => (
-                  <div key={s.key + s.label} className={`flex items-center gap-3 py-1.5 border-b border-border/40 ${group.stub ? 'opacity-50' : ''}`}>
+                  <div key={s.key + s.label} className={`flex items-center gap-3 py-1.5 border-b border-border/40 ${s.stub ? 'opacity-50' : ''}`}>
                     <span className="text-xs font-mono font-bold px-2 py-0.5 bg-muted border border-border rounded text-foreground shrink-0 min-w-[64px] text-center">
                       {s.key}
                     </span>
