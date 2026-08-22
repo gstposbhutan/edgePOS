@@ -1,5 +1,6 @@
 # Pelbu POS web app. The Supabase stack runs separately
 # (currently infra/supabase on the box; slim droplet profile planned).
+name: pelbu-pos
 services:
   pos:
     build: { context: ., dockerfile: Dockerfile }

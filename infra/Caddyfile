@@ -1,0 +1,69 @@
+# NEXUS BHUTAN — public HTTPS front door (auto Let's Encrypt/ZeroSSL)
+{
+	email shawn.manuel@stirrup.works
+	servers {
+		metrics
+	}
+}
+
+# Shared security headers for the user-facing apps.
+(sec) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+		-X-Powered-By
+	}
+}
+
+app.pelbu.com {
+	import sec
+	encode zstd gzip
+	reverse_proxy localhost:3007
+}
+
+supabase.pelbu.com {
+	encode zstd gzip
+	@api path /auth/v1/* /rest/v1/* /storage/v1/* /realtime/v1/* /graphql/v1/*
+	handle @api {
+		reverse_proxy localhost:8000
+	}
+	handle {
+		respond "Not Found" 404
+	}
+}
+
+grafana.pelbu.com {
+	encode zstd gzip
+	reverse_proxy localhost:3003
+}
+
+status.pelbu.com {
+	encode zstd gzip
+	reverse_proxy localhost:3004
+}
+
+# Prometheus metrics for scraping — host-only (SG blocks 9180 externally)
+:9180 {
+	metrics /metrics
+}
+
+travel.pelbu.com {
+	import sec
+	encode zstd gzip
+	reverse_proxy localhost:3005
+}
+
+hotel.pelbu.com {
+	import sec
+	encode zstd gzip
+	reverse_proxy localhost:3006
+}
+
+pos.pelbu.com {
+	import sec
+	encode zstd gzip
+	reverse_proxy localhost:3100
+}

@@ -17,6 +17,9 @@ test-results/
 # DB dumps + financial-data samples — never commit
 backups/
 
+# live Supabase stack config copied from the box (contains secrets) — disk-only
+infra-supabase-live/
+
 # Per-user Claude Code permissions / settings
 .claude/settings.local.json
 
