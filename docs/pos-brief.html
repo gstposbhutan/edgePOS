@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>POS brief — cheaper than Yeti, camera on the till</title>
+  <style>
+    :root {
+      --ink: #1a211e;
+      --mute: #5c6560;
+      --paper: #f6f3ec;
+      --card: #fff;
+      --line: #d9d4ca;
+      --pine: #2e4a52;
+      --gold: #d9920a;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 16px/1.5 "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--paper); }
+    header {
+      background: var(--pine);
+      color: #f4f1ea;
+      padding: 1.4rem 1.5rem 1.5rem;
+      border-bottom: 3px solid var(--gold);
+    }
+    header p { margin: 0.4rem 0 0; color: #d0ddd8; max-width: 46rem; }
+    h1 { margin: 0; font-size: 1.45rem; font-weight: 650; }
+    main { max-width: 840px; margin: 0 auto; padding: 1.4rem 1.5rem 2rem; }
+    h2 { font-size: 1.05rem; margin: 1.5rem 0 0.45rem; }
+    .want {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--gold);
+      padding: 0.9rem 1rem;
+      margin: 0 0 1.1rem;
+    }
+    .box { background: var(--card); border: 1px solid var(--line); padding: 0.85rem 1rem; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; font-size: 0.7rem; color: var(--mute); text-transform: uppercase; letter-spacing: 0.04em; padding-bottom: 0.3rem; }
+    td { padding: 0.4rem 0.45rem 0.4rem 0; border-top: 1px solid var(--line); vertical-align: top; font-size: 0.92rem; }
+    .grid { display: grid; gap: 0.75rem; grid-template-columns: 1fr 1fr; }
+    @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+    .card { background: var(--card); border: 1px solid var(--line); padding: 0.85rem 1rem; }
+    .card h3 { margin: 0 0 0.35rem; font-size: 0.95rem; }
+    .pad {
+      background: repeating-linear-gradient(-12deg, #2f9e4f 0 12px, #1e7a38 12px 13px);
+      min-height: 200px;
+      border-radius: 4px;
+      padding: 1rem;
+      display: grid;
+      grid-template-columns: 1.1fr 0.75fr 0.75fr;
+      gap: 0.55rem;
+      align-items: end;
+    }
+    .item {
+      background: #f3eee4;
+      border: 1px solid #c9b89a;
+      text-align: center;
+      padding: 0.5rem 0.3rem;
+      font-size: 0.8rem;
+    }
+    .item strong { display: block; }
+    ol { padding-left: 1.2rem; }
+    footer { margin-top: 1.6rem; font-size: 0.82rem; color: var(--mute); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>What we want built</h1>
+    <p>A Bhutan shop POS that is <strong>cheaper than YetiPOS</strong>, runs for <strong>10 shops</strong>, and uses a camera over a green pad so staff can bill like a shopkeeper looking at the counter. Please use the stack below.</p>
+  </header>
+  <main>
+    <div class="want">
+      <strong>Target:</strong> Nu 500 per shop per month (YetiPOS lists Nu 999–1,499). Hardware for the camera is once (~Nu 7,000–11,000 per pad). After that, looking at the pad stays inside that Nu 500 — so the camera work runs on the till PC.
+    </div>
+
+    <h2>Use this for hosting</h2>
+    <div class="box">
+      <table>
+        <thead>
+          <tr><th>Use</th><th>Why it fits 10 shops</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>DigitalOcean droplet (small), or Vercel / Netlify / Cloudflare hobby or free tier</td><td>YetiPOS itself sits on DigitalOcean (yetipos.app). Ten shops are a small app. A $4–6 droplet or a free/hobby web host is the right size. Account in our name.</td></tr>
+          <tr><td>Database on the same cheap host or the project we already have</td><td>One database, ten orgs/shops. Keep GST serials and stock per shop.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Use this for the camera (shopkeeper eye)</h2>
+    <p>Staff put goods on a green cloth. Camera looks down from a pipe. The till names the SKU, the unit (Case / Pcs / Pack), the qty, then the shop’s rates. Owner photographs packs once; after that a cashier can sell.</p>
+    <div class="pad" style="margin:0.6rem 0 0.8rem">
+      <div class="item"><strong>1 Case</strong>Amul Taaza carton</div>
+      <div class="item"><strong>3 bottles</strong>milk, barcode under</div>
+      <div class="item"><strong>3 pkt</strong>small pouches</div>
+    </div>
+    <div class="box">
+      <table>
+        <thead>
+          <tr><th>Step</th><th>Use</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>1 See</td><td>Matte green pad + even LED light + locked 4K USB camera, 60–90 cm up. Cut objects off the green (chroma).</td></tr>
+          <tr><td>2 Barcode if it faces up</td><td>On-device decoder: browser BarcodeDetector, ZXing, or Google ML Kit. Stays on the PC.</td></tr>
+          <tr><td>3 Name the product</td><td>Match the crop to <em>this shop’s</em> product photos (CLIP / SigLIP embeddings, stored locally). Same catalog as the POS.</td></tr>
+          <tr><td>4 Unit</td><td>Big box → Case. Bottle → Pcs. Small pouch → Pack. Then count blobs (1, 3, 3).</td></tr>
+          <tr><td>5 How much</td><td>Existing POS rates (piece / pack / carton). Camera does not invent Nu.</td></tr>
+          <tr><td>6 If unsure</td><td>Show top 3 on screen; cashier taps. Optional extra: Google Cloud Vision <strong>Product Search</strong> on <em>our</em> Google project, only for those unsure stills (few per day), catalog = this shop’s photos.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Spread items on the pad (same as asking a person to look). 1,000+ glances a day stay on the till so the monthly fee can stay at Nu 500.</p>
+
+    <h2>Use this for the till (beat Yeti on the floor)</h2>
+    <div class="grid">
+      <div class="card">
+        <h3>Counter</h3>
+        <p>Barcode focus, qty, Pcs/Pack/Case, GST tax invoice, cash and Bhutan QR on one bill. Keyboard-friendly. Big total. Cashier finishes a sale without a phone call.</p>
+      </div>
+      <div class="card">
+        <h3>Stock and units</h3>
+        <p>Case takes carton pieces. Sale blocked when qty × unit is more than on-hand. Rates from product master so staff do not need the owner at the counter.</p>
+      </div>
+    </div>
+    <ul>
+      <li>One ticket screen: lines, unit, qty, Nu, pay.</li>
+      <li>Messages the cashier can read: unknown barcode, need stock, camera unsure.</li>
+      <li>Works on a cheap PC; owner can check on a phone.</li>
+      <li>Camera proposal visible before it becomes a line; cashier can accept or tap another SKU.</li>
+    </ul>
+
+    <h2>Price vs YetiPOS</h2>
+    <div class="box">
+      <table>
+        <thead>
+          <tr><th></th><th>YetiPOS (public)</th><th>What we want</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Monthly</td><td>Nu 999–1,499</td><td><strong>Nu 500</strong> / shop, 10 shops</td></tr>
+          <tr><td>Host</td><td>DigitalOcean</td><td>DigitalOcean small droplet or free/hobby web host</td></tr>
+          <tr><td>Carton / pack / piece</td><td>Yes</td><td>Yes, plus pad chooses the unit by size</td></tr>
+          <tr><td>Camera pad</td><td>—</td><td>Green pad, local look, three-line glance</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Hardware (once per pad)</h2>
+    <p>4K USB camera, two 5000 K LED bars, matte green A2 cloth, rigid pipe 60–90 cm. Till PC we already have. Optional USB scale later. One pad per shop first (10 kits); extra pads only if two counters must look at the same time.</p>
+
+    <h2>Please build, in this order</h2>
+    <ol>
+      <li>App live on the cheap/free host above, our account, 10 shops.</li>
+      <li>Till: scan, units, GST bill, pay — cashier alone.</li>
+      <li>Pad v0: green mat, local match + barcode, demo 1 Case + 3 bottles + 3 pkt (or top-3 tap).</li>
+      <li>Short video of a full sale. Monthly cost sheet: host (hobby/droplet) + camera Nu 0.</li>
+    </ol>
+
+    <footer>
+      Product brief for the builder. Yeti prices and DigitalOcean DNS for yetipos.app are public. Google Product Search list price is public (~$4.50 / 1,000 after a small free tier) — use it only for unsure stills so ten shops stay on Nu 500.
+    </footer>
+  </main>
+</body>
+</html>

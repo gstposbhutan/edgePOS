@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>The Nu 500 Answer</title>
+  <style>
+    :root {
+      --ink: #1a211e;
+      --mute: #5c6560;
+      --paper: #f6f3ec;
+      --card: #ffffff;
+      --line: #d9d4ca;
+      --pine: #2e4a52;
+      --pine-deep: #243b42;
+      --gold: #d9920a;
+      --leaf: #1e7a38;
+      --leaf-soft: #e7f2ea;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 16px/1.55 "Segoe UI", system-ui, -apple-system, sans-serif;
+      color: var(--ink);
+      background: var(--paper);
+    }
+    header {
+      background: var(--pine);
+      color: #f4f1ea;
+      padding: 1.5rem 1.5rem 1.7rem;
+      border-bottom: 3px solid var(--gold);
+    }
+    .head-inner { max-width: 840px; margin: 0 auto; }
+    .eyebrow {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: #c8a75e;
+      margin: 0 0 0.5rem;
+    }
+    h1 { margin: 0; font-size: 1.5rem; font-weight: 650; text-wrap: balance; }
+    header p.lede { margin: 0.55rem 0 0; color: #d0ddd8; max-width: 46rem; }
+    main { max-width: 840px; margin: 0 auto; padding: 1.5rem 1.5rem 2.2rem; }
+    h2 { font-size: 1.06rem; margin: 1.8rem 0 0.5rem; }
+    h2 + p { margin-top: 0.2rem; }
+    p { margin: 0.6rem 0; }
+    .answer {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--gold);
+      padding: 0.95rem 1.05rem;
+      margin: 0.2rem 0 0.4rem;
+    }
+    .answer p { margin: 0.35rem 0; }
+    .box {
+      background: var(--card);
+      border: 1px solid var(--line);
+      padding: 0.85rem 1rem;
+      overflow-x: auto;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      text-align: left;
+      font-size: 0.7rem;
+      color: var(--mute);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0 0.5rem 0.35rem 0;
+    }
+    td {
+      padding: 0.45rem 0.5rem 0.45rem 0;
+      border-top: 1px solid var(--line);
+      vertical-align: top;
+      font-size: 0.92rem;
+    }
+    td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    th.num { text-align: right; }
+    .ok { color: var(--leaf); font-weight: 650; white-space: nowrap; }
+    .new { color: var(--gold); font-weight: 650; white-space: nowrap; }
+    .off { color: var(--mute); font-weight: 650; white-space: nowrap; }
+    ul.plain { padding-left: 1.2rem; margin: 0.6rem 0; }
+    ul.plain li { margin: 0.3rem 0; }
+    .bar {
+      display: flex;
+      height: 2.2rem;
+      border: 1px solid var(--line);
+      background: var(--card);
+      margin: 0.7rem 0 0.35rem;
+    }
+    .bar .seg-host {
+      flex: 0 0 22%;
+      background: var(--pine);
+      color: #f4f1ea;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.78rem;
+    }
+    .bar .seg-service {
+      flex: 1;
+      background: var(--leaf-soft);
+      color: var(--ink);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.78rem;
+      border-left: 2px solid var(--gold);
+    }
+    .bar-caption { font-size: 0.8rem; color: var(--mute); margin: 0 0 0.4rem; }
+    .grid { display: grid; gap: 0.75rem; grid-template-columns: 1fr 1fr; margin: 0.7rem 0; }
+    @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+    .card { background: var(--card); border: 1px solid var(--line); padding: 0.85rem 1rem; }
+    .card h3 { margin: 0 0 0.35rem; font-size: 0.95rem; }
+    .card p { margin: 0.3rem 0; font-size: 0.92rem; }
+    strong { font-weight: 650; }
+    footer {
+      margin-top: 2rem;
+      padding-top: 0.8rem;
+      border-top: 1px solid var(--line);
+      font-size: 0.82rem;
+      color: var(--mute);
+    }
+    a { color: var(--pine); }
+    a:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="head-inner">
+      <p class="eyebrow">Reply to your brief · “Cheaper than Yeti, camera on the till” · 22 August 2026</p>
+      <h1>What you’re really asking for</h1>
+      <p class="lede">Short answer: <strong>yes — Nu 500 per shop works.</strong> To keep that promise honest, here is what sits behind it: what already exists, where the money actually goes, and where the real work is.</p>
+    </div>
+  </header>
+  <main>
+
+    <div class="answer">
+      <p><strong>Three things to hold while reading:</strong></p>
+      <p>1. The till you described is <strong>largely built already</strong> — steps 1 and 2 of your build order are deployment and polish, not new construction.</p>
+      <p>2. At 10 shops, servers are cheap. The Nu 500 is mostly buying <strong>the keeping</strong> — updates, backups, GST changes, someone to call — not the hosting.</p>
+      <p>3. The camera pad is <strong>the real project</strong>. It is very doable, and we have a head start — but it is an assistant the cashier confirms, and its accuracy is won on the counter as much as in code.</p>
+    </div>
+
+    <h2>1 · The till: mostly already on the shelf</h2>
+    <p>Everything in your “beat Yeti on the floor” section exists in our POS today and has been running through real sales:</p>
+    <div class="box">
+      <table>
+        <thead>
+          <tr><th>You asked for</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Barcode-focused, keyboard-friendly sale screen; one ticket: lines, unit, qty, Nu, pay</td><td class="ok">✓ built</td></tr>
+          <tr><td>Pcs / Pack / Case, with a case breaking into carton pieces</td><td class="ok">✓ built</td></tr>
+          <tr><td>GST tax invoice (5% Bhutan GST, exempt items handled), per-shop invoice serials</td><td class="ok">✓ built</td></tr>
+          <tr><td>Cash and Bhutan QR (the national QR standard) on one bill</td><td class="ok">✓ built</td></tr>
+          <tr><td>Sale blocked when qty × unit is more than on-hand — even if two tills sell at once</td><td class="ok">✓ built</td></tr>
+          <tr><td>Rates from the product master; cashier sells without phoning the owner</td><td class="ok">✓ built</td></tr>
+          <tr><td>Owner checks stock and sales on a phone</td><td class="ok">✓ built</td></tr>
+          <tr><td>Pad chooses the unit by size; counts items on the mat</td><td class="new">→ new (pad)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>That is why the Nu 500 price is possible at all: you are not paying us to build a POS from zero, you are paying to run and refine one that exists.</p>
+
+    <h2>2 · Where the Nu 500 actually goes</h2>
+    <p>Ten shops × Nu 500 = <strong>Nu 5,000 per month</strong>. Here is that envelope, honestly divided:</p>
+    <div class="bar" role="img" aria-label="Bar showing roughly Nu 1,100 of the monthly Nu 5,000 going to hosting and the rest to the running service">
+      <div class="seg-host">hosting ≈ Nu 1,100</div>
+      <div class="seg-service">the keeping — updates, backups, GST changes, support, paying back the pad work</div>
+    </div>
+    <p class="bar-caption">The server is the small slice. The service is the product.</p>
+    <div class="box">
+      <table>
+        <thead>
+          <tr><th>Monthly item</th><th class="num">Cost</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Small DigitalOcean droplet, in <strong>your</strong> account, with automatic weekly backups</td><td class="num">≈ Nu 900–1,300</td></tr>
+          <tr><td>Domain + DNS (Cloudflare free plan)</td><td class="num">Nu 0</td></tr>
+          <tr><td>Receipt / report email (free tier at this volume)</td><td class="num">Nu 0</td></tr>
+          <tr><td>Camera glances — all 10 shops, 1,000+ a day, on the till PC</td><td class="num">Nu 0</td></tr>
+          <tr><td>Google Product Search, <em>only</em> for the few unsure stills a day (optional)</td><td class="num">a few Nu / day</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>One thing we will push back on, in your interest: <strong>do not run 10 shops’ billing on a free or hobby tier.</strong> Free tiers put idle apps to sleep, cap usage without warning, and keep no backups you control. A till that hesitates at 6pm on a Saturday costs more than Nu 1,100. The small droplet — still exactly the hosting class YetiPOS uses — is the right floor, and it fits the envelope with room to spare.</p>
+
+    <h2>3 · The camera pad: the real project</h2>
+    <p>This is the part of your brief that is genuinely new, and the part your Nu 500 must ultimately pay back. Your instinct is right on the two points that matter most: the work runs <strong>on the till PC</strong> (so glances cost nothing monthly), and <strong>the camera never invents prices</strong> — it only proposes, and the cashier confirms. We hold you to both.</p>
+    <p>We also start ahead: our POS already does on-till product recognition — matching camera crops against the shop’s own product photos, stored locally. The green pad makes that <em>easier</em>, not harder: a plain background, fixed height, even light.</p>
+    <div class="grid">
+      <div class="card">
+        <h3>What the pad will honestly do</h3>
+        <p>Cut goods off the green, read a barcode when it faces up, match each item to <em>this shop’s</em> photos, guess the unit by size (Case / Pcs / Pack), count what’s on the mat, and put a proposal on screen — your 1 Case + 3 bottles + 3 pkt scene is exactly the v0 demo.</p>
+      </div>
+      <div class="card">
+        <h3>Where it will ask for a tap</h3>
+        <p>Look-alike pouches, glare, torn or brand-new packaging. Then it shows the top 3 and the cashier taps one — a second, not a search. Each tap teaches the shop’s catalog, so the pad gets sharper with use.</p>
+      </div>
+      <div class="card">
+        <h3>“Photograph packs once” is a real job</h3>
+        <p>Each shop’s owner photographs every pack — a few angles each — before the pad can name it, and re-shoots when a brand changes its packaging. Plan an afternoon per shop at the start. We will make the capture flow fast, but the discipline is the shop’s.</p>
+      </div>
+      <div class="card">
+        <h3>Accuracy is won on the counter</h3>
+        <p>Matte green kept clean, both LED bars on, camera locked at its height. A shop that respects the setup gets a pad that feels like a shopkeeper’s eye; a shop that doesn’t gets top-3 taps all day. The hardware list in your brief is correct — Nu 7,000–11,000 once per pad.</p>
+      </div>
+    </div>
+
+    <h2>4 · What stays out — so Nu 500 stays in</h2>
+    <p>Our platform also contains things your brief does not ask for: wholesale and distributor desks, delivery-rider dispatch, a public online marketplace, face recognition for regulars. For your 10 shops <strong>these stay switched off</strong>. That is not a cut in quality — it is what keeps the server small, the support load light, and the price at Nu 500. If you ever want one of them, it is priced as its own conversation, not smuggled into the monthly fee.</p>
+
+    <h2>5 · Your build order, answered</h2>
+    <div class="box">
+      <table>
+        <thead>
+          <tr><th>You said</th><th>Our reply</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1 · App live on the cheap host, our account, 10 shops</td>
+            <td>First milestone. Droplet in your DigitalOcean account, our deployment, ten shops with their own GST serials and stock on one database.</td>
+          </tr>
+          <tr>
+            <td>2 · Till: scan, units, GST bill, pay — cashier alone</td>
+            <td>Demo-ready from day one (see section 1); we then fit it to your shops’ real catalogs and invoice formats.</td>
+          </tr>
+          <tr>
+            <td>3 · Pad v0: green mat, local match + barcode, the three-line demo</td>
+            <td>The engineering heart of the project — built and tuned at one pilot shop first, then rolled to the other nine.</td>
+          </tr>
+          <tr>
+            <td>4 · Video of a full sale + monthly cost sheet</td>
+            <td>Delivered from the pilot shop: one uncut sale, counter to printed GST bill, plus the live cost sheet (it will look like section 2).</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>6 · What we need from you to start</h2>
+    <ul class="plain">
+      <li>A DigitalOcean account in your name with billing set up (we do the rest).</li>
+      <li>The 10 shop names, licenses and TPN/GST details for invoice serials.</li>
+      <li>Product lists per shop if you have them — otherwise we build the catalog at the pilot shop’s counter.</li>
+      <li><strong>One pilot shop</strong> willing to host the first pad and an afternoon of pack photography.</li>
+      <li>One pad kit purchased to your own hardware list (camera, two LED bars, mat, pipe).</li>
+    </ul>
+
+    <footer>
+      Prepared by the Pelbu team in reply to “POS brief — cheaper than Yeti, camera on the till”. Figures in Nu; hosting estimates at current DigitalOcean list prices including backup add-on. Nothing here commits you — it is meant to make the decision clear.
+    </footer>
+  </main>
+</body>
+</html>
