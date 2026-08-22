@@ -6,7 +6,7 @@ import { Logo } from '@/components/ui/logo'
 import { Button } from '@/components/ui/button'
 import { NAV } from '@/lib/marketing/content'
 import { getUser, getRoleClaims } from '@/lib/auth'
-import { ROLE_HOME, AUTH_URL } from '@/lib/hosts'
+import { ROLE_HOME } from '@/lib/hosts'
 import { Menu, X, LayoutDashboard } from 'lucide-react'
 
 export function MarketingNav() {
@@ -45,10 +45,10 @@ export function MarketingNav() {
     }
     return (
       <div className={wrap}>
-        <Link href={`${AUTH_URL}/login`} className={stacked ? 'flex-1' : ''}>
+        <Link href="/login" className={stacked ? 'flex-1' : ''}>
           <Button variant={stacked ? 'outline' : 'ghost'} size={stacked ? 'default' : 'sm'} className={stacked ? 'w-full' : ''}>Log in</Button>
         </Link>
-        <Link href={`${AUTH_URL}/sell`} className={stacked ? 'flex-1' : ''}>
+        <Link href="/sell" className={stacked ? 'flex-1' : ''}>
           <Button size={stacked ? 'default' : 'sm'} className={stacked ? 'w-full' : ''}>Get started</Button>
         </Link>
       </div>

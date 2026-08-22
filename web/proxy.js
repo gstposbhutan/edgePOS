@@ -1,21 +1,24 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
-import { AUTH_URL, ROLE_HOME } from '@/lib/hosts'
+import { LOGIN_URL, ROLE_HOME } from '@/lib/hosts'
 
-// Public (no auth): consumer marketplace, rider portal login, offline page, customer payment upload.
-const PUBLIC_ROUTES = ['/shop', '/rider/login', '/offline', '/pay']
+// Public (no auth): login + password reset, consumer marketplace, rider portal login,
+// offline page, customer payment upload.
+const PUBLIC_ROUTES = ['/login', '/shop', '/rider/login', '/offline', '/pay']
 
-// Next.js 16 proxy convention (replaces middleware.js). Role-routes the monolith; login/signup live
-// in the auth app (app.pelbu.com), so those + unauthenticated hits redirect there (shared SSO cookie).
+// Next.js 16 proxy convention (replaces middleware.js). Role-routes the monolith; login and
+// password reset render locally (the separate auth app is retired), so unauthenticated hits
+// go to this app's own /login.
 export async function proxy(request) {
   const { pathname } = request.nextUrl
   // Behind Caddy the internal request.url is localhost:PORT; use the configured public URL (or the
-  // forwarded host) so redirect targets and the login return-URL point at pos.pelbu.com, not localhost.
+  // forwarded host) so redirect targets point at pos.pelbu.com, not localhost.
   const ORIGIN = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
 
-  // Auth entry pages live in the auth app.
-  if (pathname === '/login' || pathname === '/signup' || pathname.startsWith('/signup/')) {
-    return NextResponse.redirect(`${AUTH_URL}/login`)
+  // Legacy signup links: business accounts are admin-created since meeting D7 (2026-08-11),
+  // and customers sign up on the login page's customer tab.
+  if (pathname === '/signup' || pathname.startsWith('/signup/')) {
+    return NextResponse.redirect(new URL(LOGIN_URL, ORIGIN))
   }
 
   // Pass through public routes + Next internals.
@@ -49,26 +52,22 @@ export async function proxy(request) {
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  // No session → central login on the auth app, preserving the intended destination.
+  // No session → local login, preserving the intended destination (same-app path, not a full
+  // URL, so the redirect param can never point off-site).
   if (!user) {
-    const back = new URL(pathname + request.nextUrl.search, ORIGIN).toString()
-    return NextResponse.redirect(`${AUTH_URL}/login?redirect=${encodeURIComponent(back)}`)
+    const back = pathname + request.nextUrl.search
+    return NextResponse.redirect(new URL(`${LOGIN_URL}?redirect=${encodeURIComponent(back)}`, ORIGIN))
   }
 
   const role = user.app_metadata?.role || user.user_metadata?.role
 
-  // Super-admin console lives in the auth app.
-  if (role === 'SUPER_ADMIN' && (pathname === '/' || pathname.startsWith('/admin'))) {
-    return NextResponse.redirect(`${AUTH_URL}/admin`)
-  }
-
   // Root → the role's home.
   if (pathname === '/') {
-    const home = ROLE_HOME[role] || '/pos'
-    return NextResponse.redirect(/^https?:/.test(home) ? home : new URL(home, ORIGIN))
+    return NextResponse.redirect(new URL(ROLE_HOME[role] || '/pos', ORIGIN))
   }
 
-  // Console confinement — each commercial role stays in its own console.
+  // Console confinement — each commercial role stays in its own console. SUPER_ADMIN roams free
+  // (their platform surface lives under /pos/licenses).
   if ((role === 'DISTRIBUTOR' || role === 'WHOLESALER') && pathname.startsWith('/pos')) {
     return NextResponse.redirect(new URL(role === 'DISTRIBUTOR' ? '/distributor' : '/wholesaler', ORIGIN))
   }

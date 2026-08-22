@@ -1,17 +1,16 @@
-// This app (pos.pelbu.com) hosts every role console EXCEPT the super-admin platform console, which
-// lives in the auth app (app.pelbu.com) alongside centralized SSO + marketing. Login/signup happen
-// there too; unauthenticated users are bounced to app.pelbu.com/login.
-//
-// Override in dev with NEXT_PUBLIC_AUTH_URL (e.g. http://localhost:3007).
-const AUTH = process.env.NEXT_PUBLIC_AUTH_URL || 'https://app.pelbu.com'
+// Standalone host map. The former auth app (app.pelbu.com) is retired — this app now hosts
+// every surface itself: login/password-reset, all role consoles, the consumer shop, and the
+// super-admin platform tools. Every destination is a same-app relative path; the proxy
+// resolves them against NEXT_PUBLIC_APP_URL (the app's own public URL) where needed.
+export const LOGIN_URL = '/login'
 
-export const AUTH_URL = AUTH
-export const LOGIN_URL = `${AUTH}/login`
+// Consumer marketplace storefront.
+export const MARKETPLACE_URL = '/shop'
 
-// Role homes. Every console lives in THIS app (relative paths) except SUPER_ADMIN, whose console is
-// in the auth app (absolute, cross-subdomain — the shared sb-pelbu-auth cookie carries the session).
+// Where each role lands after login. SUPER_ADMIN's platform console is the reactivated
+// license/admin surface (see app/pos/licenses + app/api/admin/*).
 export const ROLE_HOME = {
-  SUPER_ADMIN: `${AUTH}/admin`,
+  SUPER_ADMIN: '/pos/licenses',
   DISTRIBUTOR: '/distributor',
   WHOLESALER: '/wholesaler',
   RETAILER: '/pos',

@@ -21,12 +21,11 @@ const COLS = [
     ],
   },
   {
+    // Business accounts (retailer/wholesaler/distributor) are admin-created — meeting D7.
     heading: 'Get started',
     links: [
-      { label: 'Open a retail shop', href: '/signup/retailer' },
-      { label: 'Wholesaler account', href: '/signup/wholesaler' },
-      { label: 'Distributor account', href: '/signup/distributor' },
       { label: 'Log in', href: '/login' },
+      { label: 'Request a business account', href: '/contact' },
     ],
   },
 ]
