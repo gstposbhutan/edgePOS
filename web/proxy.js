@@ -2,9 +2,13 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import { LOGIN_URL, ROLE_HOME } from '@/lib/hosts'
 
-// Public (no auth): login + password reset, consumer marketplace, rider portal login,
-// offline page, customer payment upload.
-const PUBLIC_ROUTES = ['/login', '/shop', '/rider/login', '/offline', '/pay']
+// Public (no auth): login + password reset, the marketing site, consumer marketplace,
+// rider portal login, offline page, customer payment upload. The root `/` is also public
+// (marketing home) but handled below so signed-in users still land on their console.
+const PUBLIC_ROUTES = [
+  '/login', '/features', '/sell', '/about', '/contact', '/terms',
+  '/shop', '/rider/login', '/offline', '/pay',
+]
 
 // Next.js 16 proxy convention (replaces middleware.js). Role-routes the monolith; login and
 // password reset render locally (the separate auth app is retired), so unauthenticated hits
@@ -52,9 +56,11 @@ export async function proxy(request) {
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  // No session → local login, preserving the intended destination (same-app path, not a full
-  // URL, so the redirect param can never point off-site).
+  // No session → the marketing home at `/`, local login everywhere else, preserving the
+  // intended destination (same-app path, not a full URL, so the redirect param can never
+  // point off-site).
   if (!user) {
+    if (pathname === '/') return response
     const back = pathname + request.nextUrl.search
     return NextResponse.redirect(new URL(`${LOGIN_URL}?redirect=${encodeURIComponent(back)}`, ORIGIN))
   }
