@@ -23,7 +23,7 @@ export const COUNTER_KEYS: KeyEntry[] = [
   // ── Line editing ────────────────────────────────────────────────────────────────────────
   { id: "qtyUp",        combo: "F3",     match: { key: "F3" },                 label: "Add Quantity",    rail: 1, group: "Line" },
   { id: "qtyDown",      combo: "F4",     match: { key: "F4" },                 label: "Less Quantity",   rail: 1, group: "Line" },
-  { id: "rate",         combo: "F5",     match: { key: "F5" },                 label: "Rate Change",     rail: 1, group: "Line", todo: true },
+  { id: "rate",         combo: "F5",     match: { key: "F5" },                 label: "Rate Change",     rail: 1, group: "Line" },
   { id: "qtyFocus",     combo: "Alt+Q",  match: { key: "q", alt: true },       label: "Qty",                      group: "Line" },
   { id: "unitSheet",    combo: "Alt+U",  match: { key: "u", alt: true },       label: "Unit",                     group: "Line", todo: true },
   { id: "itemDiscount", combo: "Ctrl+M", match: { key: "m", ctrl: true },      label: "Item Discount",   rail: 1, group: "Line" },

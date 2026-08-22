@@ -5,6 +5,10 @@ import { Trash2 } from "lucide-react";
 import type { CartItem } from "@/hooks/use-cart";
 import type { Product } from "@/hooks/use-products";
 
+/** Which cell the inline editor is sitting on. The spec's Enter cycle walks qty → rate;
+ *  its middle step (unit) needs pack/case factors the terminal does not carry yet. */
+export type EditField = "qty" | "rate";
+
 interface CartTableProps {
   items: CartItem[];
   /** Live products list — used to resolve each line's current_stock for the Stock column. */
@@ -12,12 +16,17 @@ interface CartTableProps {
   selectedRow: number;
   onSelectRow: (index: number) => void;
   onUpdateQty: (itemId: string, qty: number) => void;
+  /** F5 / the Enter cycle's second step — set a per-line rate. */
+  onOverridePrice?: (itemId: string, unitPrice: number) => void;
   onRemoveItem: (itemId: string) => void;
+  /** Editing finished — the screen puts the caret back in the barcode row. */
+  onEditEnd?: () => void;
   /**
-   * Imperative handle the page keyboard handler calls to start inline qty editing
-   * on a row (Enter / F9). Set in an effect so we never mutate the ref during render.
+   * Imperative handle the page keyboard handler calls to start inline editing on a row
+   * (Enter / F9 for qty, F5 for rate). Set in an effect so we never mutate the ref
+   * during render.
    */
-  onEditRequest?: MutableRefObject<((index: number) => void) | null>;
+  onEditRequest?: MutableRefObject<((index: number, field?: EditField) => void) | null>;
   /** id → name for the sales team, to label each line's salesperson (per-line #3). */
   salespeopleById?: Record<string, string>;
 }
@@ -38,38 +47,68 @@ export function CartTable({
   selectedRow,
   onSelectRow,
   onUpdateQty,
+  onOverridePrice,
   onRemoveItem,
+  onEditEnd,
   onEditRequest,
   salespeopleById = {},
 }: CartTableProps) {
   const [editingRow, setEditingRow] = useState<number | null>(null);
+  const [editField, setEditField] = useState<EditField>("qty");
   const editInputRef = useRef<HTMLInputElement>(null);
   const committedRef = useRef(false);
   const itemsRef = useRef(items);
   useEffect(() => { itemsRef.current = items; }, [items]);
 
-  const startEdit = useCallback((index: number) => {
+  const startEdit = useCallback((index: number, field: EditField = "qty") => {
     if (itemsRef.current[index] == null) return;
     committedRef.current = false;
+    setEditField(field);
     setEditingRow(index);
     setTimeout(() => editInputRef.current?.select(), 20);
   }, []);
 
+  const commit = useCallback((index: number) => {
+    const raw = editInputRef.current?.value ?? "";
+    const item = itemsRef.current[index];
+    if (!item) return;
+    if (editField === "qty") {
+      const qty = parseInt(raw, 10);
+      if (!isNaN(qty) && qty > 0) onUpdateQty(item.id, qty);
+    } else {
+      const rate = parseFloat(raw);
+      // A rate of 0 is a giveaway, which goes through Complimentary so it is logged — a
+      // silent zero here would bypass that.
+      if (!isNaN(rate) && rate > 0) onOverridePrice?.(item.id, rate);
+    }
+  }, [editField, onUpdateQty, onOverridePrice]);
+
   const confirmEdit = useCallback((index: number) => {
     if (committedRef.current) return;
     committedRef.current = true;
-    const qty = parseInt(editInputRef.current?.value ?? "", 10);
-    const item = itemsRef.current[index];
-    if (item && !isNaN(qty) && qty > 0) {
-      onUpdateQty(item.id, qty);
-    }
+    commit(index);
     setEditingRow(null);
-  }, [onUpdateQty]);
+    onEditEnd?.();
+  }, [commit, onEditEnd]);
+
+  // Enter walks the line: qty, then rate, then back to the barcode row (spec WF-05).
+  const advanceEdit = useCallback((index: number) => {
+    if (committedRef.current) return;
+    committedRef.current = true;
+    commit(index);
+    if (editField === "qty" && onOverridePrice) {
+      startEdit(index, "rate");
+    } else {
+      setEditingRow(null);
+      onEditEnd?.();
+    }
+  }, [commit, editField, onOverridePrice, startEdit, onEditEnd]);
 
   const cancelEdit = useCallback(() => {
     committedRef.current = true;
     setEditingRow(null);
-  }, []);
+    onEditEnd?.();
+  }, [onEditEnd]);
 
   // Expose the imperative edit-start handle. Done in an effect so we never mutate the
   // ref during render, which avoids React 19 Strict Mode issues.
@@ -89,8 +128,8 @@ export function CartTable({
       e.stopPropagation();
       e.nativeEvent.stopImmediatePropagation();
     }
-    if (e.key === "Enter") confirmEdit(index);
-    if (e.key === "Tab") confirmEdit(index);
+    if (e.key === "Enter") advanceEdit(index);   // qty → rate → done
+    if (e.key === "Tab") confirmEdit(index);     // commit and leave the line
     if (e.key === "Escape") cancelEdit();
   }
 
@@ -132,9 +171,9 @@ export function CartTable({
             // fall back to the expanded product on the cart line; "—" when untracked.
             const liveStock = products.find((p) => p.id === item.product)?.current_stock;
             const stock = typeof liveStock === "number" ? liveStock : item.expand?.product?.current_stock;
-            // Unit: the terminal sells pieces or weight today. Pcs/Pack/Case needs a unit on the
-            // cart line (Alt+U unit sheet), which is not built yet.
-            const unit = item.expand?.product?.sold_by_weight ? "Kg" : "Pcs";
+            // The product's own unit. Pcs/Pack/Case switching (Alt+U) additionally needs pack
+            // and case factors, which the terminal's catalog does not carry yet.
+            const unit = item.expand?.product?.unit || (item.expand?.product?.sold_by_weight ? "Kg" : "Pcs");
             const taxName = item.gst_exempt ? "Exempt" : "GST 5%";
 
             return (
@@ -163,7 +202,7 @@ export function CartTable({
                   {stock != null ? stock : "—"}
                 </td>
                 <td className="px-2 py-2 text-center">
-                  {isEditing ? (
+                  {isEditing && editField === "qty" ? (
                     <input
                       // Keyed so React re-mounts the input whenever editing moves to a
                       // different row, ensuring defaultValue reads fresh. Uncontrolled —
@@ -194,15 +233,33 @@ export function CartTable({
                 {/* Amount carries the rate underneath, and the pre-discount rate struck through
                     when a line discount applies — the spec has no separate Disc column. */}
                 <td className="px-4 py-2.5 text-right tabular-nums">
-                  <span className="font-semibold text-primary">Nu. {item.total.toFixed(2)}</span>
-                  <span className="block text-[10px] text-muted-foreground">
-                    {item.discount > 0 && (
-                      <span className="line-through mr-1">Nu. {item.unit_price.toFixed(2)}</span>
-                    )}
-                    <span className={item.discount > 0 ? "text-emerald-600 font-medium" : ""}>
-                      @ Nu. {finalRate.toFixed(2)}
-                    </span>
-                  </span>
+                  {isEditing && editField === "rate" ? (
+                    <input
+                      key={`rate-edit-${item.id}`}
+                      ref={editInputRef}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      defaultValue={item.unit_price}
+                      onKeyDown={(e) => handleEditKeyDown(e, i)}
+                      onBlur={() => { if (!committedRef.current) confirmEdit(i); }}
+                      className="w-24 px-1 py-0.5 text-sm text-right border border-primary rounded bg-background outline-none"
+                      onClick={(e) => e.stopPropagation()}
+                      autoFocus
+                    />
+                  ) : (
+                    <>
+                      <span className="font-semibold text-primary">Nu. {item.total.toFixed(2)}</span>
+                      <span className="block text-[10px] text-muted-foreground">
+                        {item.discount > 0 && (
+                          <span className="line-through mr-1">Nu. {item.unit_price.toFixed(2)}</span>
+                        )}
+                        <span className={item.discount > 0 ? "text-emerald-600 font-medium" : ""}>
+                          @ Nu. {finalRate.toFixed(2)}
+                        </span>
+                      </span>
+                    </>
+                  )}
                 </td>
                 <td className="px-2 py-2">
                   <button

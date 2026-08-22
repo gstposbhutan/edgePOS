@@ -22,7 +22,7 @@ import type { PriceListMode } from "@/lib/price-list";
 import { LAYOUT_PRESETS, SCREEN_LG, CART_WIDTH } from "@/lib/constants";
 import { ProductGrid } from "@/components/pos/product-grid";
 import { CartPanel } from "@/components/pos/cart-panel";
-import { CartTable } from "@/components/pos/keyboard/cart-table";
+import { CartTable, type EditField } from "@/components/pos/keyboard/cart-table";
 import { ProductSearchModal } from "@/components/pos/keyboard/product-search-modal";
 import { ListingFooter } from "@/components/pos/keyboard/listing-footer";
 import { BarcodeRow, BARCODE_INPUT_ID } from "@/components/pos/keyboard/barcode-row";
@@ -210,7 +210,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
   // Listing-mode cart row selection + inline-qty-edit handle (mirrors web's
   // selectedRow + editRowRef). Unused in grid mode.
   const [selectedRow, setSelectedRow] = useState(0);
-  const editRowRef = useRef<((index: number) => void) | null>(null);
+  const editRowRef = useRef<((index: number, field?: EditField) => void) | null>(null);
   const [showSearch, setShowSearch] = useState(false);
   const [searchSeed, setSearchSeed] = useState("");
 
@@ -629,6 +629,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
     // undefined in grid mode, where they report that instead.
     onFocusSearch: inputMode === "listing" ? () => openSearch("") : undefined,
     onChangeQty: inputMode === "listing" ? () => editRowRef.current?.(selectedRow) : undefined,
+    onRateChange: inputMode === "listing" ? () => editRowRef.current?.(selectedRow, "rate") : undefined,
     onQtyDelta: inputMode === "listing"
       ? (delta: number) => {
           const line = items[selectedRow];
@@ -985,6 +986,8 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
             onSelectRow={setSelectedRow}
             onUpdateQty={(itemId, qty) => updateQty(itemId, qty)}
             onRemoveItem={removeItem}
+            onOverridePrice={(itemId, price) => overridePrice(itemId, price)}
+            onEditEnd={() => document.getElementById(BARCODE_INPUT_ID)?.focus()}
             onEditRequest={editRowRef}
             salespeopleById={salespeopleById}
           />

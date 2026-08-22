@@ -1,0 +1,124 @@
+import { test, expect, ensureLoggedIn, OWNER } from "./app-fixture";
+
+const PB = "http://127.0.0.1:8090";
+const BARCODE = "70000000001";
+
+// The ticket line end-to-end: scan into the always-focused barcode row, then work the line with
+// the RanceLab keys (F3 add quantity, F5 rate change) and the Enter cycle. Also pins the grid's
+// column order (spec WF-01), which a cashier reads positionally.
+async function seedProduct() {
+  const auth = await fetch(`${PB}/api/collections/_superusers/auth-with-password`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identity: OWNER.email, password: OWNER.password }),
+  }).then((r) => r.json());
+  const headers = { "Content-Type": "application/json", Authorization: auth.token };
+
+  const existing = await fetch(
+    `${PB}/api/collections/products/records?filter=${encodeURIComponent(`barcode="${BARCODE}"`)}`,
+    { headers },
+  ).then((r) => r.json()).catch(() => ({ items: [] }));
+  // Reuse the row if it is already there — deleting and re-creating would orphan a cart line
+  // that points at the old product id.
+  if (existing.items?.length) return;
+
+  const res = await fetch(`${PB}/api/collections/products/records`, {
+    method: "POST", headers,
+    body: JSON.stringify({
+      name: "E2E Red Rice 1kg",
+      sku: "E2E-RICE-1",
+      barcode: BARCODE,
+      unit: "Pcs",
+      mrp: 120,
+      cost_price: 80,
+      sale_price: 100,
+      wholesale_price: 90,
+      current_stock: 25,
+      reorder_point: 5,
+      is_active: true,
+    }),
+  });
+  if (!res.ok) throw new Error("seed product failed: " + (await res.text()));
+
+  // Don't type the code until the catalog can actually answer for it.
+  for (let i = 0; i < 40; i++) {
+    const found = await fetch(
+      `${PB}/api/collections/products/records?filter=${encodeURIComponent(`barcode="${BARCODE}"`)}`,
+      { headers },
+    ).then((r) => r.json()).catch(() => ({ items: [] }));
+    if (found.items?.length) return;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  throw new Error("seeded product never became readable");
+}
+
+// The terminal's cart lives in PocketBase and outlives the app, so a previous run's lines
+// would still be on the ticket. Start every run from an empty one.
+async function clearTicket() {
+  const auth = await fetch(`${PB}/api/collections/_superusers/auth-with-password`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identity: OWNER.email, password: OWNER.password }),
+  }).then((r) => r.json());
+  const headers = { "Content-Type": "application/json", Authorization: auth.token };
+  const rows = await fetch(`${PB}/api/collections/cart_items/records?perPage=200`, { headers })
+    .then((r) => r.json()).catch(() => ({ items: [] }));
+  for (const row of rows.items || []) {
+    await fetch(`${PB}/api/collections/cart_items/records/${row.id}`, { method: "DELETE", headers }).catch(() => {});
+  }
+}
+
+test.describe("ticket line (Electron)", () => {
+  test("scan adds a line, the grid reads in RanceLab order, and F3/F4/F5 work it", async ({ appPage }) => {
+    await seedProduct();
+    await clearTicket();
+    await ensureLoggedIn(appPage);
+    // Pick up the emptied cart rather than the previous run's lines.
+    await appPage.reload({ waitUntil: "domcontentloaded" });
+    await appPage.keyboard.press("Escape").catch(() => {});
+    await expect(appPage.locator("#pos-barcode")).toBeVisible({ timeout: 15000 });
+
+    await appPage.keyboard.type(BARCODE);
+    await appPage.keyboard.press("Enter");
+    await expect(appPage.getByText("E2E Red Rice 1kg")).toBeVisible({ timeout: 15000 });
+
+    // Column order is the spec's, left to right.
+    const headers = appPage.locator("table thead th");
+    await expect(headers.nth(0)).toHaveText("Srl");
+    await expect(headers.nth(1)).toHaveText("Product Name");
+    await expect(headers.nth(2)).toHaveText("Product Code");
+    await expect(headers.nth(3)).toHaveText("Stock");
+    await expect(headers.nth(4)).toHaveText("Qty");
+    await expect(headers.nth(5)).toHaveText("Unit");
+    await expect(headers.nth(6)).toHaveText("Sale Tax Price Name");
+    await expect(headers.nth(7)).toHaveText("Amount");
+
+    // The line carries its code, the product's own unit and the tax name.
+    await expect(appPage.getByText("E2E-RICE-1")).toBeVisible();
+    await expect(appPage.locator("tbody tr").first().locator("td").nth(5)).toHaveText("Pcs");
+    await expect(appPage.locator("tbody tr").first().locator("td").nth(6)).toHaveText("GST 5%");
+
+    const qtyCell = appPage.locator("tbody tr").first().locator("td").nth(4);
+    await expect(qtyCell).toContainText("1");
+
+    // F3 = Add Quantity (RanceLab). Our old map had F3 on search.
+    await appPage.keyboard.press("F3");
+    await expect(qtyCell).toContainText("2", { timeout: 10000 });
+
+    // F4 = Less Quantity, back down again.
+    await appPage.keyboard.press("F4");
+    await expect(qtyCell).toContainText("1", { timeout: 10000 });
+
+    // F5 = Rate Change: opens an editor on the Amount cell; Enter commits and hands the
+    // caret back to the barcode row.
+    await appPage.keyboard.press("F5");
+    const rateInput = appPage.locator('tbody input[type="number"]');
+    await expect(rateInput).toBeVisible({ timeout: 10000 });
+    await rateInput.fill("55");
+    await appPage.keyboard.press("Enter");
+
+    await expect(appPage.locator("tbody tr").first()).toContainText("55.00", { timeout: 10000 });
+    await expect.poll(
+      () => appPage.evaluate(() => document.activeElement?.id),
+      { timeout: 10000 },
+    ).toBe("pos-barcode");
+  });
+});

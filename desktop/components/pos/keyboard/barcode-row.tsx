@@ -44,10 +44,12 @@ export function BarcodeRow({ disabled, onSubmit }: BarcodeRowProps) {
         placeholder="Scan or type"
         // Keep the caret here between sales: anything the cashier types is a product, and a
         // scanner has no way to click into a field. A sheet takes focus while it is open.
-        // The deferred re-focus must not fire once this row is gone: blur also happens when the
-        // screen navigates away, and grabbing focus back then fights the new page.
-        onBlur={() => {
-          if (disabled) return;
+        // Reclaim the caret only when focus was dropped, never when another control took it:
+        // relatedTarget is the element receiving focus, so a non-null value means the cashier
+        // opened the qty or rate editor and stealing it back would close that editor instantly.
+        // The deferred call also has to survive navigation, which blurs this row before it goes.
+        onBlur={(e) => {
+          if (disabled || e.relatedTarget) return;
           setTimeout(() => {
             if (alive.current && ref.current?.isConnected) ref.current.focus();
           }, 0);

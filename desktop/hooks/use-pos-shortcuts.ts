@@ -39,6 +39,7 @@ interface PosShortcutsInput {
   onChangeQty?: () => void;
   onQtyDelta?: (delta: number) => void;
   onItemDiscount?: () => void;
+  onRateChange?: () => void;
 }
 
 export function usePosShortcuts(input: PosShortcutsInput) {
@@ -82,6 +83,7 @@ export function usePosShortcuts(input: PosShortcutsInput) {
       qtyUp:         input.onQtyDelta ? () => input.onQtyDelta!(1)  : needsListing("Add quantity"),
       qtyDown:       input.onQtyDelta ? () => input.onQtyDelta!(-1) : needsListing("Less quantity"),
       qtyFocus:      input.onChangeQty ?? needsListing("Change qty"),
+      rate:          input.onRateChange ?? needsListing("Rate change"),
       itemDiscount:  input.onItemDiscount ?? needsListing("Item discount"),
       complimentary: () => {
         if (!input.isManager) { toast("Complimentary is manager-only"); return; }
