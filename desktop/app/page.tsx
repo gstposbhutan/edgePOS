@@ -45,6 +45,7 @@ import { HandoverModal } from "@/components/pos/handover-modal";
 import { HeldCartsModal } from "@/components/pos/held-carts-modal";
 import { HelpOverlay } from "@/components/pos/help-overlay";
 import { WeightEntryModal } from "@/components/pos/weight-entry-modal";
+import { AmountPromptModal, type AmountPromptRequest } from "@/components/pos/amount-prompt-modal";
 import { printLabel } from "@/lib/print-label";
 import { loadLabelConfig } from "@/lib/label-config";
 import { useShifts } from "@/hooks/use-shifts";
@@ -165,6 +166,8 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
   // Alt+P — the tier the ticket prices at. Persisted so a wholesale counter does not have to
   // re-pick it every morning.
   const [priceListMode, setPriceListMode] = useState<PriceListMode>("RETAIL");
+  // Replaces window.prompt, which throws in Electron and so broke both discount shortcuts.
+  const [amountPrompt, setAmountPrompt] = useState<AmountPromptRequest | null>(null);
   useEffect(() => {
     setPriceListMode(parsePriceListMode(localStorage.getItem("pos_price_list")));
   }, []);
@@ -223,7 +226,8 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
 
   const anyModalOpen =
     showScanner || showPayment || showCustomer || showReceipt || showZReport ||
-    showShiftModal !== null || showHandover || showHeldCarts || showHelp || showSearch;
+    showShiftModal !== null || showHandover || showHeldCarts || showHelp || showSearch ||
+    amountPrompt !== null;
 
   const { validateStock, confirmPayment, saveQuotation } = useCheckout({
     pb,
@@ -678,13 +682,18 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
           else updateQty(line.id, next);
         }
       : undefined,
+    askAmount: setAmountPrompt,
     onItemDiscount: inputMode === "listing"
       ? () => {
           const line = items[selectedRow];
           if (!line) { toast("Select a product line first"); return; }
-          const raw = window.prompt("Discount per unit on this line (Nu.):");
-          if (raw === null) return;
-          applyDiscount(line.id, Math.max(0, parseFloat(raw) || 0));
+          setAmountPrompt({
+            title: "Item discount",
+            label: `Discount per unit on ${line.name}`,
+            suffix: "Nu.",
+            initial: String(line.discount || ""),
+            onSubmit: (v) => applyDiscount(line.id, Math.max(0, v)),
+          });
         }
       : undefined,
   });
@@ -1198,6 +1207,8 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
         order={lastOrder}
         settings={settings}
       />
+
+      <AmountPromptModal request={amountPrompt} onClose={() => setAmountPrompt(null)} />
 
       <ZReportModal
         open={showZReport}

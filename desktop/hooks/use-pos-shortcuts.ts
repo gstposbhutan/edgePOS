@@ -42,6 +42,14 @@ interface PosShortcutsInput {
   onRateChange?: () => void;
   onPriceList?: () => void;
   onReprintLast?: () => void;
+  /** Ask the cashier for a number. Replaces window.prompt, which throws in Electron. */
+  askAmount?: (request: {
+    title: string;
+    label: string;
+    suffix?: string;
+    initial?: string;
+    onSubmit: (value: number) => void;
+  }) => void;
 }
 
 export function usePosShortcuts(input: PosShortcutsInput) {
@@ -56,18 +64,27 @@ export function usePosShortcuts(input: PosShortcutsInput) {
     // Ctrl+Shift+B — invoice/bill-level discount: a single pre-GST amount off the net bill (NOT
     // distributed across lines). Enter a % of the taxable base; it's stored on the cart and GST
     // is then computed on the discounted net.
+    //
+    // This used window.prompt, which Electron does not implement — it throws — so the shortcut
+    // failed outright in the packaged app while working in a browser.
     const billDiscount = () => {
       if (input.items.length === 0) {
         toast("Cart is empty — add items first");
         return;
       }
-      const raw = window.prompt("Invoice discount (%) off the bill, before GST:");
-      if (raw === null) return;
-      const pct = Math.min(100, Math.max(0, parseFloat(raw) || 0));
-      const taxable = input.items.reduce((s, it) => s + Math.max(0, it.unit_price - (it.discount || 0)) * it.quantity, 0);
-      const amount = parseFloat(((taxable * pct) / 100).toFixed(2));
-      input.applyBillDiscount(amount);
-      toast.success(pct > 0 ? `Invoice discount ${pct}% (Nu. ${amount.toFixed(2)}) applied` : "Invoice discount cleared");
+      if (!input.askAmount) { toast("Invoice discount is unavailable here"); return; }
+      input.askAmount({
+        title: "Invoice discount",
+        label: "Percent off the bill, before GST",
+        suffix: "%",
+        onSubmit: (value) => {
+          const pct = Math.min(100, Math.max(0, value));
+          const taxable = input.items.reduce((s, it) => s + Math.max(0, it.unit_price - (it.discount || 0)) * it.quantity, 0);
+          const amount = parseFloat(((taxable * pct) / 100).toFixed(2));
+          input.applyBillDiscount(amount);
+          toast.success(pct > 0 ? `Invoice discount ${pct}% (Nu. ${amount.toFixed(2)}) applied` : "Invoice discount cleared");
+        },
+      });
     };
 
     // A line-scoped key pressed in grid mode, which has no selected row.

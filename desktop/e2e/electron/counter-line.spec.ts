@@ -141,4 +141,41 @@ test.describe("ticket line (Electron)", () => {
     // First match is the till bar; the confirmation toast carries the word too.
     await expect(appPage.getByText(/Wholesale/).first()).toBeVisible({ timeout: 10000 });
   });
+
+  // Both discount shortcuts called window.prompt, which Electron does not implement — it throws
+  // — so they failed outright in the packaged app while working in a browser. They now use a
+  // real modal, and this proves the numbers actually land on the ticket.
+  test("Ctrl+M discounts the line and Ctrl+Shift+B discounts the bill", async ({ appPage }) => {
+    await seedProduct();
+    await resetTicket();
+    await ensureLoggedIn(appPage);
+    await appPage.reload({ waitUntil: "domcontentloaded" });
+    await expect(appPage.locator("#pos-barcode")).toBeVisible({ timeout: 15000 });
+    await expect(appPage.locator("tbody tr")).toHaveCount(0, { timeout: 15000 });
+    await waitForActiveCart();
+    await appPage.locator("#pos-barcode").fill(BARCODE);
+    await appPage.locator("#pos-barcode").press("Enter");
+    await expect(appPage.locator("tbody").getByText("E2E Red Rice 1kg")).toBeVisible({ timeout: 15000 });
+
+    // Ctrl+M works on the HIGHLIGHTED line, so select it explicitly rather than relying on
+    // where the selection happened to be left.
+    await appPage.locator("tbody tr").first().click();
+
+    // Nu. 10 off each unit: the rate drops to 90 and the line totals 94.50 with 5% GST.
+    await appPage.keyboard.press("Control+m");
+    // The field itself, not the title — "Item Discount" is also a footer-rail button.
+    await expect(appPage.locator("#amount-prompt")).toBeVisible({ timeout: 10000 });
+    await appPage.locator("#amount-prompt").fill("10");
+    await appPage.keyboard.press("Enter");
+    await expect(appPage.locator("tbody tr").first()).toContainText("90.00", { timeout: 10000 });
+    await expect(appPage.locator("tbody tr").first()).toContainText("94.50");
+
+    // 10% off the discounted bill, before GST: Nu. 9.00 off a Nu. 90 taxable base.
+    await appPage.keyboard.press("Control+Shift+B");
+    await expect(appPage.locator("#amount-prompt")).toBeVisible({ timeout: 10000 });
+    await appPage.locator("#amount-prompt").fill("10");
+    await appPage.keyboard.press("Enter");
+    await expect(appPage.getByText(/Invoice disc/i)).toBeVisible({ timeout: 10000 });
+    await expect(appPage.getByText("−Nu. 9.00")).toBeVisible({ timeout: 10000 });
+  });
 });

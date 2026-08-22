@@ -20,10 +20,15 @@ interface RegisteredShortcut {
 }
 
 function matchesCombo(event: KeyboardEvent, combo: KeyCombo): boolean {
-  // Alt rewrites the character on macOS (Alt+L arrives as "¬"), so letter combos taken with
-  // Alt are matched on the physical key as well as the glyph.
-  const physical = combo.alt && combo.key.length === 1 ? `Key${combo.key.toUpperCase()}` : null;
-  if (event.key !== combo.key && event.code !== combo.key && (!physical || event.code !== physical)) return false;
+  // Letter combos can't be compared literally: Shift makes event.key uppercase ("B" for
+  // Ctrl+Shift+B) and Option rewrites it entirely on macOS (Alt+L arrives as "¬"). Match the
+  // letter case-insensitively and accept the physical key, which survives both.
+  if (combo.key.length === 1) {
+    const letter = combo.key.toLowerCase();
+    if (event.key.toLowerCase() !== letter && event.code !== `Key${letter.toUpperCase()}`) return false;
+  } else if (event.key !== combo.key && event.code !== combo.key) {
+    return false;
+  }
   if ((combo.ctrl ?? false) !== event.ctrlKey) return false;
   if ((combo.shift ?? false) !== event.shiftKey) return false;
   if ((combo.alt ?? false) !== event.altKey) return false;
