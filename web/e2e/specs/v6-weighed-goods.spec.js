@@ -15,7 +15,7 @@ test.describe('Weighed goods', () => {
 
   test('weigh modal sets a fractional quantity + weight-based total', async ({ page }) => {
     // Open search, find the weighed product, add it → weigh modal opens.
-    await page.keyboard.press('F3')
+    await page.keyboard.press('F8')
     const modal = page.locator('[data-testid="keyboard-product-search-modal"]')
     await expect(modal).toBeVisible()
     await page.locator('[data-testid="keyboard-product-search-input"]').fill('11000 Bottle')

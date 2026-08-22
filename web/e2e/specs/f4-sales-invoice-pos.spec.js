@@ -4,7 +4,7 @@ test.use({ storageState: 'e2e/storage/manager-auth.json' })
 
 // Shared helper: open F3 product search and add the first match for the query.
 async function addProductViaSearch(page, query) {
-  await page.keyboard.press('F3')
+  await page.keyboard.press('F8')
 
   const modal = page.locator('.fixed.inset-0').last()
   await expect(modal).toBeVisible()

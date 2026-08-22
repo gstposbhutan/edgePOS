@@ -25,7 +25,7 @@ test.use({ storageState: 'e2e/storage/manager-auth.json' }) // RETAILER MANAGER
 
 // Add a product from the F3 keyboard search — reused for the closing ONLINE checkout.
 async function addProduct(page, query = 'Druk') {
-  await page.keyboard.press('F3'); await beat(page)
+  await page.keyboard.press('F8'); await beat(page)
   const modal = page.locator('[data-testid="keyboard-product-search-modal"]')
   const search = modal.locator('[data-testid="keyboard-product-search-input"]')
   await search.click()

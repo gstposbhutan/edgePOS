@@ -24,7 +24,7 @@ test.use({ storageState: 'e2e/storage/cashier-auth.json' })   // RETAILER CASHIE
 
 // Add a product from the F3 keyboard search — reused for the cash and online sales.
 async function addProduct(page, query = 'Druk') {
-  await page.keyboard.press('F3'); await beat(page)
+  await page.keyboard.press('F8'); await beat(page)
   const modal = page.locator('[data-testid="keyboard-product-search-modal"]')
   const search = modal.locator('[data-testid="keyboard-product-search-input"]')
   await search.click()

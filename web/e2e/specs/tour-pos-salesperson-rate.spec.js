@@ -7,7 +7,7 @@ test.use({ storageState: 'e2e/storage/manager-auth.json' })
 
 async function openSearch(page, query) {
   await page.locator('body').click({ position: { x: 4, y: 4 } })
-  await page.keyboard.press('F3')
+  await page.keyboard.press('F8')
   const modal = page.locator('[data-testid="keyboard-product-search-modal"]')
   await expect(modal).toBeVisible()
   await page.locator('[data-testid="keyboard-product-search-input"]').pressSequentially(query, { delay: 90 })
@@ -44,7 +44,7 @@ test('TOUR — POS: rate tiers and per-line salesperson', async ({ page }) => {
 
   // 3) Attribute the selected line to a salesperson (F8).
   await caption(page, { step: 3, title: 'Credit a salesperson (F8)', text: 'Press F8 to attribute the selected line to the staff member who sold it.' })
-  await page.keyboard.press('F8')
+  await page.keyboard.press('F6')
   await expect(page.getByText('Select Sales Person')).toBeVisible()
   await page.locator('[data-testid="salesperson-option"]').filter({ hasText: 'Cashier' }).click({ force: true })
   await expect(page.getByText('Select Sales Person')).not.toBeVisible(); await beat(page, 2000)

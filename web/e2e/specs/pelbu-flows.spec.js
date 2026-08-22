@@ -12,7 +12,7 @@ test.describe('Pelbu P4 — six net-new flows', () => {
   // Add a product to the cart so the item-gated flows (quotation, complimentary,
   // market) can open. Returns once a cart line total is visible.
   async function addAProduct(page) {
-    await page.keyboard.press('F3')
+    await page.keyboard.press('F8')
     const input = page.locator('[data-testid="keyboard-product-search-input"]')
     await expect(input).toBeVisible({ timeout: 5000 })
     await input.fill('Druk')
@@ -24,8 +24,8 @@ test.describe('Pelbu P4 — six net-new flows', () => {
     await expect(page.getByText(/→?\s*Nu\.\s*\d+\.\d{2}/).first()).toBeVisible({ timeout: 8000 })
   }
 
-  test('F8 opens the salesperson picker', async ({ page }) => {
-    await page.keyboard.press('F8')
+  test('F6 opens the salesperson picker', async ({ page }) => {
+    await page.keyboard.press('F6')
     await expect(page.getByText(/Select Sales Person/)).toBeVisible({ timeout: 5000 })
     await page.keyboard.press('Escape')
   })

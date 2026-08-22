@@ -16,7 +16,7 @@ test.describe('Per-line salesperson + rate', () => {
   async function openSearch(page, query) {
     // Blur any focused cart input, then open search with F3 (robust across re-renders) and type.
     await page.locator('body').click({ position: { x: 4, y: 4 } })
-    await page.keyboard.press('F3')
+    await page.keyboard.press('F8')
     const modal = page.locator('[data-testid="keyboard-product-search-modal"]')
     await expect(modal).toBeVisible()
     await page.locator('[data-testid="keyboard-product-search-input"]').fill(query)
@@ -33,7 +33,7 @@ test.describe('Per-line salesperson + rate', () => {
     await expect(firstRow).toBeVisible()
 
     // F8 assigns a salesperson to THAT selected line (per-product, not invoice-level).
-    await page.keyboard.press('F8')
+    await page.keyboard.press('F6')
     await expect(page.getByText('Select Sales Person')).toBeVisible()
     await page.locator('[data-testid="salesperson-option"]').filter({ hasText: 'Cashier' }).click({ force: true })
     await expect(page.getByText('Select Sales Person')).not.toBeVisible()

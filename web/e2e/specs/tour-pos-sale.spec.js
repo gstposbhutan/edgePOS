@@ -21,7 +21,7 @@ test('TOUR — POS: ring up a cash sale', async ({ page }) => {
 
   // 2) Search a product (F3) and add it — typed one letter at a time.
   await caption(page, { step: 2, title: 'Find a product', text: 'Press F3 to search, type the name, then pick the match.' })
-  await page.keyboard.press('F3'); await beat(page)
+  await page.keyboard.press('F8'); await beat(page)
   const modal = page.locator('.fixed.inset-0').last()
   const search = modal.getByPlaceholder(/Search product name or SKU/)
   await search.click()

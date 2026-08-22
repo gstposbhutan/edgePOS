@@ -6,7 +6,7 @@ const { clearCart } = require('./v2-helpers')
 test.use({ storageState: 'e2e/storage/manager-auth.json' })
 
 async function searchAdd(page, query) {
-  await page.keyboard.press('F3')
+  await page.keyboard.press('F8')
   const modal = page.locator('[data-testid="keyboard-product-search-modal"]')
   await expect(modal).toBeVisible()
   await page.locator('[data-testid="keyboard-product-search-input"]').pressSequentially(query, { delay: 90 })

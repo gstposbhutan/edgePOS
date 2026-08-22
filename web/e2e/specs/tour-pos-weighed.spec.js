@@ -21,7 +21,7 @@ test('TOUR — POS: sell a weighed item', async ({ page }) => {
 
   // 2) Find a weighed product.
   await caption(page, { step: 1, title: 'Find a weighed product', text: 'Press F3 and search — this item is priced per unit (per kg).' })
-  await page.keyboard.press('F3')
+  await page.keyboard.press('F8')
   const modal = page.locator('[data-testid="keyboard-product-search-modal"]')
   await expect(modal).toBeVisible()
   await page.locator('[data-testid="keyboard-product-search-input"]').pressSequentially('11000 Bottle', { delay: 90 }); await beat(page)
