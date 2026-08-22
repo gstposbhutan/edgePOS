@@ -30,9 +30,10 @@ Phase 2).
   --build pos` at repo root), verified 200 locally + through Caddy. The suite is STOPPED:
   `pelbu-pos-1` (old monorepo build), `pelbu-auth-1` (:3007 / app.pelbu.com),
   `pelbu-travel-1` (:3005), `pelbu-pms-1` (:3006), and the `sync-worker` zombie.
-  ⚠ **Consequence until Phase 2 ships: no browser login page** (it lived in the auth app).
+  Consequence until Phase 2 ships: no browser login page (it lived in the auth app).
   Existing sessions keep working (GoTrue session refresh is in the Supabase stack, still up)
-  and `POST /api/auth/login` works for API login — but Phase 2 item 1 is now URGENT.
+  and `POST /api/auth/login` works for API login. **Shawn: the platform is down for
+  maintenance — no urgency**; Phase 2 proceeds in its normal order.
   ⚠ app.pelbu.com is dead → installed desktop terminals' update-check/license-register too
   (see Phase 2 item 4). Still running: `pelbu-supabase-*` stack (Kong 127.0.0.1:8000, db 5432)
   + edgePOS-era monitoring containers (grafana/status vhosts). Caddy snapshot committed at
