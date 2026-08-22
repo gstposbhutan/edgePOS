@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   ScanLine, ClipboardList, BookOpen, Package, ShoppingCart, Wallet, Landmark,
-  Clock, Users, Store, Settings, MonitorDown, PanelLeftClose, PanelLeftOpen,
+  Clock, Users, Store, Settings, MonitorDown, FileBarChart, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react'
 import { Logo } from '@/components/ui/logo'
 
@@ -18,8 +18,9 @@ const NAV = [
   { href: '/pos/inventory', label: 'Inventory',     icon: Package,       show: r => r !== 'CASHIER' },
   { href: '/pos/purchases', label: 'Purchases',     icon: ShoppingCart,  show: r => r !== 'CASHIER' },
   { href: '/pos/khata',     label: 'Khata',         icon: Wallet,        show: r => r !== 'CASHIER' },
-  { href: '/pos/registers', label: 'Cash Registers', icon: Landmark,     show: r => r !== 'CASHIER' },
-  { href: '/pos/shifts',    label: 'Shifts',        icon: Clock,         show: r => ['MANAGER', 'OWNER', 'ADMIN'].includes(r) },
+  { href: '/pos/registers', label: 'Cash Registers', icon: Landmark,     show: r => r !== 'CASHIER', needsShifts: true },
+  { href: '/pos/shifts',    label: 'Shifts',        icon: Clock,         show: r => ['MANAGER', 'OWNER', 'ADMIN'].includes(r), needsShifts: true },
+  { href: '/pos/reports',   label: 'GST Report',    icon: FileBarChart,  show: r => ['MANAGER', 'OWNER', 'ADMIN'].includes(r) },
   { href: '/pos/team',      label: 'Team',          icon: Users,         show: r => r === 'OWNER' },
   { href: '/pos/stores',    label: 'Stores',        icon: Store,         show: r => r === 'OWNER' },
   { href: '/pos/settings',  label: 'Settings',      icon: Settings,      show: r => ['MANAGER', 'OWNER', 'ADMIN'].includes(r) },
@@ -29,11 +30,13 @@ const NAV = [
 export function PosSidebar() {
   const pathname = usePathname()
   const [subRole, setSubRole] = useState(null)
+  const [shiftsEnabled, setShiftsEnabled] = useState(false)
   const [collapsed, setCollapsed] = useState(true)
 
   useEffect(() => {
     try { const s = localStorage.getItem('pos_sidebar_collapsed'); if (s != null) setCollapsed(s === '1') } catch {}
     fetch('/api/auth/session').then(r => r.ok ? r.json() : null).then(d => setSubRole(d?.user?.subRole || 'CASHIER')).catch(() => setSubRole('CASHIER'))
+    fetch('/api/pos/entities').then(r => r.ok ? r.json() : null).then(d => setShiftsEnabled(!!d?.entity?.shifts_enabled)).catch(() => {})
   }, [])
 
   function toggle() {
@@ -41,7 +44,7 @@ export function PosSidebar() {
   }
 
   if (subRole === null) return <aside className="w-14 shrink-0 border-r border-border bg-background" />
-  const items = NAV.filter(i => i.show(subRole))
+  const items = NAV.filter(i => i.show(subRole) && (!i.needsShifts || shiftsEnabled))
 
   return (
     <aside className={`${collapsed ? 'w-14' : 'w-52'} shrink-0 border-r border-border bg-background flex flex-col transition-[width] duration-150`}>

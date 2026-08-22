@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { Search, Star, Loader2, Building2, Phone, MapPin, RefreshCw } from "lucide-react"
+import { Search, Star, Loader2, Building2, Phone, MapPin, RefreshCw, Link2, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -12,8 +12,10 @@ import { Badge } from "@/components/ui/badge"
  *     ones you want to keep (GET /api/console/browse, POST/DELETE /api/console/favourites)
  *   • saved mode  — your favourites with an un-star action (GET /api/console/favourites)
  *
- * Favouriting is optimistic: the star flips immediately and only rolls back if the request
- * fails, so the list stays snappy on a slow link.
+ * Rows carry two independent flags from the API: `is_favourite` (a private bookmark) and, when the
+ * pair forms a real commercial relationship (`linkable`), `is_linked` — an active supply link in the
+ * B2B junction. The star bookmarks; the "Connect" action creates/removes the supply link (and, for a
+ * new link, auto-provisions the B2B khata). Both are optimistic and roll back on failure.
  *
  * Props:
  *   mode        — 'browse' | 'saved'
@@ -22,11 +24,12 @@ import { Badge } from "@/components/ui/badge"
  *   subtitle    — short caption under the heading
  */
 export function EntityBrowser({ mode, targetRole, title, subtitle }) {
-  const [rows,    setRows]    = useState([])
-  const [loading, setLoading] = useState(true)
-  const [search,  setSearch]  = useState('')
-  const [busyId,  setBusyId]  = useState(null) // entity id mid-favourite (disables its star)
-  const reqId = useRef(0)                       // guards against out-of-order search responses
+  const [rows,     setRows]     = useState([])
+  const [loading,  setLoading]  = useState(true)
+  const [search,   setSearch]   = useState('')
+  const [busyId,   setBusyId]   = useState(null)  // entity id mid-favourite (disables its star)
+  const [linkBusy, setLinkBusy] = useState(null)  // entity id mid-connect (disables its Connect btn)
+  const reqId = useRef(0)                          // guards against out-of-order search responses
 
   const load = useCallback(async (term) => {
     const myReq = ++reqId.current
@@ -88,6 +91,26 @@ export function EntityBrowser({ mode, targetRole, title, subtitle }) {
     }
   }
 
+  async function toggleLink(row) {
+    const wasLinked = row.is_linked
+    setLinkBusy(row.id)
+    setRows(prev => prev.map(r => r.id === row.id ? { ...r, is_linked: !wasLinked } : r))
+    try {
+      const res = wasLinked
+        ? await fetch(`/api/console/links?target_entity_id=${encodeURIComponent(row.id)}`, { method: 'DELETE' })
+        : await fetch('/api/console/links', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ target_entity_id: row.id }),
+          })
+      if (!res.ok) throw new Error('request failed')
+    } catch {
+      setRows(prev => prev.map(r => r.id === row.id ? { ...r, is_linked: wasLinked } : r))
+    } finally {
+      setLinkBusy(null)
+    }
+  }
+
   const emptyMsg = mode === 'saved'
     ? 'Nothing saved yet — star a business while browsing to keep it here.'
     : search.trim()
@@ -141,7 +164,9 @@ export function EntityBrowser({ mode, targetRole, title, subtitle }) {
                 row={row}
                 showRole={mode === 'saved'}
                 busy={busyId === row.id}
+                linkBusy={linkBusy === row.id}
                 onToggle={() => toggleFavourite(row)}
+                onToggleLink={() => toggleLink(row)}
               />
             ))}
           </div>
@@ -151,7 +176,7 @@ export function EntityBrowser({ mode, targetRole, title, subtitle }) {
   )
 }
 
-function EntityRow({ row, showRole, busy, onToggle }) {
+function EntityRow({ row, showRole, busy, linkBusy, onToggle, onToggleLink }) {
   return (
     <div className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors">
       {/* Logo / monogram */}
@@ -175,6 +200,24 @@ function EntityRow({ row, showRole, busy, onToggle }) {
           {row.tpn_gstin && <span>TPN: {row.tpn_gstin}</span>}
         </div>
       </div>
+
+      {/* Connect (supply link) — only for pairs that form a real commercial relationship */}
+      {row.linkable && (
+        <Button
+          variant={row.is_linked ? 'secondary' : 'outline'}
+          size="sm"
+          onClick={onToggleLink}
+          disabled={linkBusy}
+          title={row.is_linked ? 'Connected — click to disconnect' : 'Connect as a supplier/buyer'}
+          className={`shrink-0 ${row.is_linked ? 'text-emerald' : ''}`}
+        >
+          {linkBusy
+            ? <Loader2 className="h-4 w-4 animate-spin" />
+            : row.is_linked
+              ? <><Check className="h-4 w-4 mr-1" /> Connected</>
+              : <><Link2 className="h-4 w-4 mr-1" /> Connect</>}
+        </Button>
+      )}
 
       {/* Favourite toggle */}
       <button

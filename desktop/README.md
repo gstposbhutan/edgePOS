@@ -26,12 +26,17 @@ cd desktop
 # Production stack — builds static app + runs PocketBase + runs setup
 docker compose up -d
 
-# Open http://localhost:3000 and sign in:
+# Open http://localhost:3000 and sign in with the internal super-admin:
 # Email: admin@pos.local
-# Password: admin12345
+# Password: admin12345   (dev default — override with SEED_USER_PASS / NEXUS_SUPERADMIN_PASS)
 ```
 
-The `setup` container runs automatically on first start — adds all collection fields, sets access rules, and seeds default data. Data persists in the `pb_data` Docker volume.
+`admin@pos.local` is the internal **super_admin** (Pelbu support) login — it has full
+access and is NOT a store user. On a real terminal the store's own users
+(owner/manager/cashier) are mirrored from the web on license activation/bootstrap
+and are never seeded locally.
+
+The `setup` container runs automatically on first start — adds all collection fields, sets access rules, and seeds the internal super-admin. Data persists in the `pb_data` Docker volume.
 
 For development with hot reload:
 
@@ -79,9 +84,11 @@ npm run dev
 npm run electron:dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) and sign in with:
+Open [http://localhost:3000](http://localhost:3000) and sign in with the internal super-admin:
 - **Email**: `admin@pos.local`
-- **Password**: `admin12345`
+- **Password**: `admin12345` (dev default — set `SEED_USER_PASS` / `NEXUS_SUPERADMIN_PASS` for real terminals)
+
+Store users (owner/manager/cashier) aren't seeded — they sync from the web on activation.
 
 ## 🖨️ Thermal Printer Setup (Optional)
 

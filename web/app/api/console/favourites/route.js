@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/supabase/server'
+import { linkLookup } from '@/lib/console/supply-links'
 
 // The caller's saved entities (their "Saved" list). Everything here is scoped to
 // actor_entity_id = the signed-in entity, so one vendor never sees another's bookmarks.
@@ -27,6 +28,30 @@ export async function GET() {
     const favourites = (data ?? [])
       .filter(f => f.target) // skip rows whose target was deleted out from under us
       .map(f => ({ favourite_id: f.id, created_at: f.created_at, ...f.target }))
+
+    // Mark which saved rows are also active supply links. Favourites can be a mix of roles
+    // (a distributor saves both wholesalers and retailers), and each linkable role maps to a
+    // different junction — so group the ids by junction and look each group up once.
+    const groups = new Map() // lk.table -> { lk, ids }
+    for (const f of favourites) {
+      const lk = linkLookup(ctx.role, f.role)
+      f.linkable = !!lk
+      f.is_linked = false
+      if (lk) {
+        const g = groups.get(lk.table) || { lk, ids: [] }
+        g.ids.push(f.id)
+        groups.set(lk.table, g)
+      }
+    }
+    for (const { lk, ids } of groups.values()) {
+      const { data: links } = await supabase
+        .from(lk.table)
+        .select(lk.other)
+        .eq(lk.self, entityId).eq('active', true).is('category_id', null)
+        .in(lk.other, ids)
+      const linked = new Set((links ?? []).map(l => l[lk.other]))
+      for (const f of favourites) if (f.linkable && linked.has(f.id)) f.is_linked = true
+    }
 
     return NextResponse.json({ favourites })
   } catch (err) {

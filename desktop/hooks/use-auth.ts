@@ -63,13 +63,16 @@ export function useAuth() {
   const hasRole = useCallback(
     (roles: UserRole[]) => {
       if (!user) return false;
+      if (user.role === "super_admin") return true; // internal staff: access everything
       return roles.includes(user.role);
     },
     [user]
   );
 
-  const isOwner = user?.role === "owner";
-  const isManager = user?.role === "manager" || user?.role === "owner";
+  // super_admin (internal support) sits above owner and satisfies every role check.
+  const isSuperAdmin = user?.role === "super_admin";
+  const isOwner = user?.role === "owner" || isSuperAdmin;
+  const isManager = user?.role === "manager" || isOwner;
   const isCashier = user?.role === "cashier" || isManager;
 
   return {
@@ -79,6 +82,7 @@ export function useAuth() {
     switchUser,
     signOut,
     hasRole,
+    isSuperAdmin,
     isOwner,
     isManager,
     isCashier,

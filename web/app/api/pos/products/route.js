@@ -1,5 +1,17 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/supabase/server'
+import { earliestExpiryByProduct, hasOlderBatch } from '@/lib/products/fefo'
+
+// Attach FEFO context to batch-lookup rows so the barcode/search add path warns the same way the
+// sellable list does when a cashier picks a batch that isn't the soonest-expiring.
+async function enrichResults(results, supabase, entityId) {
+  if (!results?.length) return results || []
+  const earliest = await earliestExpiryByProduct(supabase, entityId, results.map(r => r.products?.id))
+  return results.map(r => {
+    const first = earliest.get(r.products?.id) || null
+    return { ...r, earliest_batch_expiry: first, has_older_batch: hasOlderBatch(r.expires_at, first) }
+  })
+}
 
 export async function GET(request) {
   const ctx = await getAuthContext()
@@ -15,7 +27,7 @@ export async function GET(request) {
 
   const supabase = ctx.supabase
 
-  const selectFields = 'id, batch_number, expires_at, mrp, selling_price, quantity, products!inner(id, name, sku, unit, mrp, selling_price, wholesale_price, distributor_price, sold_by_weight)'
+  const selectFields = 'id, batch_number, expires_at, mrp, selling_price, quantity, products!inner(id, name, sku, unit, mrp, selling_price, wholesale_price, distributor_price, sold_by_weight, gst_exempt, stock_rotation)'
 
   // Price-ladder lookup for a set of product ids (used by the POS price-list
   // re-pricer). Returns the product's mrp / wholesale / distributor so the cart
@@ -73,7 +85,7 @@ export async function GET(request) {
       .limit(1)
 
     if (byBarcode?.[0]) {
-      return NextResponse.json({ results: byBarcode })
+      return NextResponse.json({ results: await enrichResults(byBarcode, supabase, entityId) })
     }
 
     // Fallback: match by product SKU
@@ -87,7 +99,7 @@ export async function GET(request) {
       .order('expires_at', { ascending: true, nullsFirst: false })
       .limit(1)
 
-    return NextResponse.json({ results: bySku ?? [] })
+    return NextResponse.json({ results: await enrichResults(bySku, supabase, entityId) })
   }
 
   // Text search
@@ -104,7 +116,7 @@ export async function GET(request) {
     .limit(9)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ results: data ?? [] })
+  return NextResponse.json({ results: await enrichResults(data, supabase, entityId) })
 }
 
 /** POST /api/pos/products — batch lookup for multiple productIds */

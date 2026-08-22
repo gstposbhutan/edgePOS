@@ -40,8 +40,10 @@ export async function POST(request) {
     if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { userId, role, supabase } = ctx
-    if (role !== 'SUPER_ADMIN' && role !== 'RETAILER') {
-      return NextResponse.json({ error: 'Only owners can create stores' }, { status: 403 })
+    // Meeting 2026-08-11 (D7): shop creation is ADMIN-ONLY — owners no longer self-create stores
+    // (this also enforces the 1-shop-per-owner base package). Vendors are onboarded by a super-admin.
+    if (role !== 'SUPER_ADMIN') {
+      return NextResponse.json({ error: 'Shop creation is admin-only — please contact your Pelbu administrator.' }, { status: 403 })
     }
 
     const { name, tpn_gstin, whatsapp_no } = await request.json()

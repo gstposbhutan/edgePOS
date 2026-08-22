@@ -22,12 +22,9 @@ export async function GET(request, { params }) {
     const { data: products, error: productsError } = await supabase
       .from('products')
       .select(`
-        id, name, mrp, unit, image_url,
-        product_categories (
-          categories (id, name)
-        )
+        id, name, mrp, unit, image_url, category
       `)
-      .eq('entity_id', entity.id)
+      .eq('created_by', entity.id)   // products are owned via created_by, not entity_id (pre-existing bug)
       .eq('is_active', true)
       .eq('visible_on_web', true)
       .gt('current_stock', 0)
@@ -37,11 +34,11 @@ export async function GET(request, { params }) {
       return NextResponse.json({ error: 'Failed to load products' }, { status: 500 })
     }
 
-    // Group products by category
+    // Group products by their HSN category (single-select on the product; the redundant
+    // category-tag join was retired in the category consolidation — Phase 1).
     const categoryMap = new Map()
     for (const product of (products ?? [])) {
-      const cats = product.product_categories ?? []
-      const catName = cats.length > 0 ? cats[0].categories?.name : 'Other'
+      const catName = (product.category && product.category.trim()) ? product.category.trim() : 'Other'
       if (!categoryMap.has(catName)) categoryMap.set(catName, [])
       categoryMap.get(catName).push({
         id: product.id,

@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
-import { getAuthContext } from '@/lib/supabase/server'
+import { getRiderContext } from '@/lib/supabase/server'
 
 export async function POST(request, { params }) {
   try {
-    const ctx = await getAuthContext()
+    const ctx = await getRiderContext()
     if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id: orderId } = await params

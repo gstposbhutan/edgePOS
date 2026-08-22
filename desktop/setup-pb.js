@@ -6,16 +6,18 @@ const PB_URL = process.env.PB_URL || 'http://127.0.0.1:8090';
 // rotated in any real deployment (PB_ADMIN_EMAIL / PB_ADMIN_PASS).
 const ADMIN_EMAIL = process.env.PB_ADMIN_EMAIL || 'admin@pos.local';
 const ADMIN_PASS = process.env.PB_ADMIN_PASS || 'admin12345';
-// Seed POS application user (role: owner). Override via SEED_USER_EMAIL / SEED_USER_PASS.
+// Seed the internal super-admin user (role: super_admin). Override via SEED_USER_EMAIL / SEED_USER_PASS.
 const SEED_USER_EMAIL = process.env.SEED_USER_EMAIL || 'admin@pos.local';
 const SEED_USER_PASS = process.env.SEED_USER_PASS || 'admin12345';
 const USING_DEFAULT_SECRETS = !process.env.PB_ADMIN_PASS || !process.env.SEED_USER_PASS;
 
 const AUTH_RULE = "@request.auth.id != ''";
 // Role-scoped rules. The `users` auth collection has a `role` select
-// (owner | manager | cashier), so rules can reference @request.auth.role.
-const MANAGER_RULE = "@request.auth.id != '' && (@request.auth.role = 'owner' || @request.auth.role = 'manager')";
-const OWNER_RULE = "@request.auth.id != '' && @request.auth.role = 'owner'";
+// (super_admin | owner | manager | cashier), so rules can reference
+// @request.auth.role. super_admin is the internal Pelbu support login and
+// satisfies every rule (full access, above owner).
+const MANAGER_RULE = "@request.auth.id != '' && (@request.auth.role = 'super_admin' || @request.auth.role = 'owner' || @request.auth.role = 'manager')";
+const OWNER_RULE = "@request.auth.id != '' && (@request.auth.role = 'super_admin' || @request.auth.role = 'owner')";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -106,7 +108,7 @@ async function setup() {
   await addField(pb, 'users', { name: 'name', type: 'text', required: false });
   await addField(pb, 'users', {
     name: 'role', type: 'select', required: true,
-    values: ['owner', 'manager', 'cashier'],
+    values: ['super_admin', 'owner', 'manager', 'cashier'],
     options: { default: 'cashier' },
   });
 
@@ -144,6 +146,7 @@ async function setup() {
     { name: 'image_embedding', type: 'text', required: false },
     { name: 'is_active', type: 'bool', required: false, options: { default: true } },
     { name: 'sold_by_weight', type: 'bool', required: false, options: { default: false } },
+    { name: 'gst_exempt', type: 'bool', required: false, options: { default: false } },
     { name: 'category', type: 'relation', target: 'categories', required: false },
     { name: 'entity_id', type: 'relation', target: 'entities', required: false },
     { name: 'created_by', type: 'relation', target: 'users', required: false },
@@ -184,6 +187,7 @@ async function setup() {
     { name: 'unit_price', type: 'number', required: true, options: { default: 0 } },
     { name: 'discount', type: 'number', required: false, options: { default: 0 } },
     { name: 'gst_5', type: 'number', required: false, options: { default: 0 } },
+    { name: 'gst_exempt', type: 'bool', required: false, options: { default: false } },
     { name: 'total', type: 'number', required: false, options: { default: 0 } },
   ]);
 
@@ -255,6 +259,13 @@ async function setup() {
     { name: 'gst_rate', type: 'number', required: false, options: { default: 5 } },
     { name: 'entity_id', type: 'relation', target: 'entities', required: false },
     { name: 'store_entity_id', type: 'text', required: false },
+    { name: 'nqrc_enabled', type: 'bool', required: false, options: { default: false } },
+    { name: 'nqrc_merchant_name', type: 'text', required: false },
+    { name: 'nqrc_merchant_city', type: 'text', required: false },
+    { name: 'nqrc_account_id', type: 'text', required: false },
+    { name: 'nqrc_psp_guid', type: 'text', required: false },
+    { name: 'nqrc_mcc', type: 'text', required: false },
+    { name: 'nqrc_account_tag', type: 'text', required: false },
   ]);
 
   // ── shifts ─────────────────────────────────────────────────────────────────
@@ -462,20 +473,23 @@ async function setup() {
     console.error('\n⚠️  Could not enable Batch API:', e.message);
   }
 
-  // ── Seed owner user ──────────────────────────────────────────────────────
+  // ── Seed internal super-admin user ───────────────────────────────────────
+  // admin@pos.local is the Pelbu SUPPORT login (role: super_admin) — not a store
+  // user. Store users (owner/manager/cashier) are mirrored from the cloud on
+  // bootstrap, never seeded here.
   try {
     await pb.collection('users').create({
       email: SEED_USER_EMAIL,
       password: SEED_USER_PASS,
       passwordConfirm: SEED_USER_PASS,
-      name: 'Owner',
-      role: 'owner',
+      name: 'Pelbu Support',
+      role: 'super_admin',
       verified: true,
     });
-    console.log(`\n👤 Created owner user ${SEED_USER_EMAIL}`);
+    console.log(`\n👤 Created internal super-admin ${SEED_USER_EMAIL}`);
   } catch (e) {
     if (e.message?.includes('already exists') || e.data?.email?.code === 'validation_not_unique') {
-      console.log(`\n👤 Owner user already exists (${SEED_USER_EMAIL})`);
+      console.log(`\n👤 Super-admin user already exists (${SEED_USER_EMAIL})`);
     } else {
       console.error('\n❌ Error creating user:', e.message);
     }

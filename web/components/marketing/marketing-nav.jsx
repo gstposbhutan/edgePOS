@@ -6,17 +6,8 @@ import { Logo } from '@/components/ui/logo'
 import { Button } from '@/components/ui/button'
 import { NAV } from '@/lib/marketing/content'
 import { getUser, getRoleClaims } from '@/lib/auth'
+import { ROLE_HOME, AUTH_URL } from '@/lib/hosts'
 import { Menu, X, LayoutDashboard } from 'lucide-react'
-
-// Where each role's "home" lives (mirrors proxy.js ROLE_HOME).
-const ROLE_HOME = {
-  SUPER_ADMIN: '/admin',
-  DISTRIBUTOR: '/distributor',
-  WHOLESALER: '/wholesaler',
-  RETAILER: '/pos',
-  RIDER: '/rider',
-  CUSTOMER: '/shop',
-}
 
 export function MarketingNav() {
   const [open, setOpen] = useState(false)
@@ -54,10 +45,10 @@ export function MarketingNav() {
     }
     return (
       <div className={wrap}>
-        <Link href="/login" className={stacked ? 'flex-1' : ''}>
+        <Link href={`${AUTH_URL}/login`} className={stacked ? 'flex-1' : ''}>
           <Button variant={stacked ? 'outline' : 'ghost'} size={stacked ? 'default' : 'sm'} className={stacked ? 'w-full' : ''}>Log in</Button>
         </Link>
-        <Link href="/sell" className={stacked ? 'flex-1' : ''}>
+        <Link href={`${AUTH_URL}/sell`} className={stacked ? 'flex-1' : ''}>
           <Button size={stacked ? 'default' : 'sm'} className={stacked ? 'w-full' : ''}>Get started</Button>
         </Link>
       </div>
@@ -67,7 +58,7 @@ export function MarketingNav() {
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
       <nav className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
-        <Link href="/" className="flex items-center" aria-label="Pelbu home">
+        <Link href="/shop" className="flex items-center" aria-label="Pelbu marketplace">
           <Logo variant="horizontal" className="h-8 w-auto" />
         </Link>
 

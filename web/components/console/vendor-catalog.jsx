@@ -321,7 +321,7 @@ function OpenPackageModal({ pkg, onOpen, onDone, onClose }) {
   }
 
   return (
-    <Dialog open={!!pkg}>
+    <Dialog open={!!pkg} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="font-serif">Open {pkg.name}</DialogTitle>
@@ -367,7 +367,8 @@ function OpenPackageModal({ pkg, onOpen, onDone, onClose }) {
 }
 
 function ProductRow({ product, isDistributor, onEdit, onToggle }) {
-  const cats  = (product.product_categories ?? []).map(pc => pc.categories?.name).filter(Boolean)
+  // Taxonomy is the product's HSN category/subcategory (tag tables retired — category consolidation).
+  const cats  = [product.category, product.subcategory].filter(Boolean)
   const wholesale = product.wholesale_price != null ? parseFloat(product.wholesale_price) : null
   const mrp       = product.mrp != null ? parseFloat(product.mrp) : null
   const distPrice = product.distributor_price != null ? parseFloat(product.distributor_price) : null

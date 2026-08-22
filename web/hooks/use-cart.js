@@ -176,9 +176,38 @@ export function useCart(entityId, createdBy, priceListMode = 'RETAIL', onStockCa
               : c
           ))
           if (data.stockCapped) onStockCap?.(data.item.name ?? item?.name, data.available)
+          // Report the cap so callers can auto-split the overflow across other batches (FEFO/FIFO).
+          return { item: data.item, capped: !!data.stockCapped, available: data.available }
         }
       }
     } catch { /* silently fail */ }
+    return null
+  }, [items, activeIndex, onStockCap])
+
+  // Explicit batch override: switch a line to a specific batch (re-prices to that batch's price
+  // server-side, caps qty to it). Returns { capped, available } like updateQty.
+  const changeBatch = useCallback(async (itemId, batchId) => {
+    const item = items.find(i => i.id === itemId)
+    try {
+      const res = await fetch('/api/pos/cart/items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'change_batch', itemId, batchId }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.item) {
+          setCarts(prev => prev.map((c, i) =>
+            i === activeIndex
+              ? { ...c, cart_items: c.cart_items.map(ci => ci.id === itemId ? data.item : ci) }
+              : c
+          ))
+          if (data.stockCapped) onStockCap?.(data.item.name ?? item?.name, data.available)
+          return { item: data.item, capped: !!data.stockCapped, available: data.available }
+        }
+      }
+    } catch { /* silently fail */ }
+    return null
   }, [items, activeIndex, onStockCap])
 
   const applyDiscount = useCallback(async (itemId, input) => {
@@ -381,6 +410,6 @@ export function useCart(entityId, createdBy, priceListMode = 'RETAIL', onStockCa
     holdCart,
     switchCart,
     cancelCart,
-    addItem, updateQty, applyDiscount, overridePrice, repriceCart, removeItem, clearCart, setCustomerIdentity, applyBillDiscount, setLineSalesperson,
+    addItem, updateQty, changeBatch, applyDiscount, overridePrice, repriceCart, removeItem, clearCart, setCustomerIdentity, applyBillDiscount, setLineSalesperson,
   }
 }

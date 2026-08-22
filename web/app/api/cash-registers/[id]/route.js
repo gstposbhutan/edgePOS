@@ -19,6 +19,11 @@ export async function PATCH(request, { params }) {
     if (updates.default_opening_float < 0) return NextResponse.json({ error: 'Opening float must be >= 0' }, { status: 400 })
   }
   if (body.is_active !== undefined) updates.is_active = !!body.is_active
+  if (body.mode !== undefined) {
+    const mode = String(body.mode).trim().toUpperCase()
+    if (!['POS', 'BACK_OFFICE'].includes(mode)) return NextResponse.json({ error: 'mode must be POS or BACK_OFFICE' }, { status: 400 })
+    updates.mode = mode
+  }
 
   if (Object.keys(updates).length === 0) return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
 
@@ -27,7 +32,7 @@ export async function PATCH(request, { params }) {
     .update(updates)
     .eq('id', id)
     .eq('entity_id', entityId)
-    .select('id, name, default_opening_float, is_active, created_at')
+    .select('id, name, default_opening_float, is_active, created_at, mode')
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

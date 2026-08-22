@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/supabase/server'
+import { lineGst } from '@/lib/gst'
 
 export async function GET() {
   try {
@@ -80,7 +81,7 @@ export async function POST(request) {
     // Get product details
     const { data: product, error: productError } = await supabase
       .from('products')
-      .select('id, name, sku, mrp, created_by, current_stock')
+      .select('id, name, sku, mrp, created_by, current_stock, gst_exempt')
       .eq('id', productId)
       .eq('is_active', true)
       .single()
@@ -130,8 +131,8 @@ export async function POST(request) {
 
     if (existingItem) {
       const newQuantity = existingItem.quantity + quantity
-      const gst = (parseFloat(product.mrp) * 0.05 * newQuantity).toFixed(2)
-      const total = (parseFloat(product.mrp) * newQuantity + parseFloat(gst)).toFixed(2)
+      const gst = lineGst(parseFloat(product.mrp) * newQuantity, product.gst_exempt)
+      const total = (parseFloat(product.mrp) * newQuantity + gst).toFixed(2)
 
       const { error: updateError } = await supabase
         .from('cart_items')
@@ -144,8 +145,8 @@ export async function POST(request) {
 
       if (updateError) throw updateError
     } else {
-      const gst = (parseFloat(product.mrp) * 0.05 * quantity).toFixed(2)
-      const total = (parseFloat(product.mrp) * quantity + parseFloat(gst)).toFixed(2)
+      const gst = lineGst(parseFloat(product.mrp) * quantity, product.gst_exempt)
+      const total = (parseFloat(product.mrp) * quantity + gst).toFixed(2)
 
       const { error: insertError } = await supabase
         .from('cart_items')

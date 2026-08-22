@@ -292,6 +292,23 @@ export default function OrderDetailPage() {
           </div>
         </div>
 
+        {/* No rider available — vendor can cancel or wait */}
+        {order.order_type === 'MARKETPLACE' && order.dispatch_state === 'UNDELIVERABLE' && ['CONFIRMED', 'PROCESSING'].includes(order.status) && (
+          <div className="p-3 rounded-lg border border-tibetan/30 bg-tibetan/10 space-y-2">
+            <p className="text-xs font-semibold text-tibetan uppercase tracking-wide flex items-center gap-1.5">
+              <AlertTriangle className="h-3.5 w-3.5" /> No delivery rider available
+            </p>
+            <p className="text-xs text-muted-foreground">
+              We couldn't assign a rider to this order (all available riders declined it). You can cancel it, or wait for a rider to come online.
+            </p>
+            {canCancel && (
+              <Button variant="outline" size="sm" onClick={() => setShowCancel(true)}>
+                <XCircle className="h-3.5 w-3.5 mr-1.5" /> Cancel order
+              </Button>
+            )}
+          </div>
+        )}
+
         {/* Pickup OTP — vendor gives this to rider at collection */}
         {order.order_type === 'MARKETPLACE' && order.pickup_otp && ['CONFIRMED', 'PROCESSING'].includes(order.status) && (
           <div className="p-3 rounded-lg border border-gold/30 bg-gold/5 space-y-2">

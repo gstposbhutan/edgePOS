@@ -76,16 +76,18 @@ export default function AdminStoresPage() {
   const [loading,   setLoading]   = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [subRole,   setSubRole]   = useState(null)
+  const [role,      setRole]      = useState(null)
 
   useEffect(() => {
     async function init() {
       const user = await getUser()
       if (!user) { router.push('/login'); return }
 
-      const { role, subRole: sr } = getRoleClaims(user)
+      const { role: r, subRole: sr } = getRoleClaims(user)
       // Allow OWNER retailers and admin roles
-      if (role === 'RETAILER' && sr !== 'OWNER') { router.push('/pos'); return }
+      if (r === 'RETAILER' && sr !== 'OWNER') { router.push('/pos'); return }
       setSubRole(sr)
+      setRole(r)
 
       const res = await fetch('/api/admin/stores')
       const data = await res.json()
@@ -114,16 +116,19 @@ export default function AdminStoresPage() {
           <h1 className="text-lg font-bold flex items-center gap-2"><Store className="h-5 w-5" /> My Stores</h1>
           <p className="text-sm text-muted-foreground">{stores.length} store{stores.length !== 1 ? 's' : ''}</p>
         </div>
-        <Button onClick={() => setModalOpen(true)} className="ml-auto gap-2">
-          <Plus className="h-4 w-4" /> Add Store
-        </Button>
+        {/* Shop creation is admin-only (meeting 2026-08-11 D7) — owners view/switch, admins add. */}
+        {role === 'SUPER_ADMIN' && (
+          <Button onClick={() => setModalOpen(true)} className="ml-auto gap-2">
+            <Plus className="h-4 w-4" /> Add Store
+          </Button>
+        )}
       </header>
 
       <main className="p-6 max-w-4xl mx-auto">
         {stores.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground">
             <Store className="h-12 w-12 mx-auto mb-3 opacity-20" />
-            <p className="text-sm">No stores yet. Create your first store.</p>
+            <p className="text-sm">{role === 'SUPER_ADMIN' ? 'No stores yet. Create your first store.' : 'No stores yet. Contact your administrator to set one up.'}</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">

@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs'
 import { createServiceClient } from '@/lib/supabase/server'
 
 // POST /api/auth/email-otp/check — verify an email OTP WITHOUT creating/logging in a user.
-// Used for in-store identity checks (e.g. authorising a credit sale). MOCK_WHATSAPP=true
+// Used for in-store identity checks (e.g. authorising a credit sale). MOCK_OTP=true
 // accepts the universal 123456.
 export async function POST(request) {
   try {
@@ -15,7 +15,7 @@ export async function POST(request) {
     }
     if (code.length !== 6) return NextResponse.json({ error: 'Enter the 6-digit code' }, { status: 400 })
 
-    if (process.env.MOCK_WHATSAPP === 'true' && code === '123456') {
+    if (process.env.MOCK_OTP === 'true' && code === '123456') {
       return NextResponse.json({ success: true })
     }
 

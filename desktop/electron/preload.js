@@ -31,6 +31,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
     getMachineId: () => ipcRenderer.invoke("system:get-machine-id"),
   },
 
+  // Terminal mode: "POS" (rings cash sales) vs "BACK_OFFICE" (stock + online orders, no cash sale).
+  // From the license/bootstrap; the main process pushes updates on the "terminal:mode" event.
+  terminal: {
+    getMode: () => ipcRenderer.invoke("terminal:get-mode"),
+    onMode: (callback) => {
+      const listener = (_, data) => callback(data);
+      ipcRenderer.on("terminal:mode", listener);
+      return () => ipcRenderer.removeListener("terminal:mode", listener);
+    },
+  },
+
   // Sync
   sync: {
     getStatus: () => ipcRenderer.invoke("sync:get-status"),
@@ -46,6 +57,42 @@ contextBridge.exposeInMainWorld("electronAPI", {
   pb: {
     getUrl: () => ipcRenderer.invoke("pb:get-url"),
     setUrl: (url) => ipcRenderer.invoke("pb:set-url", url),
+  },
+
+  // Online (marketplace) orders — main polls the cloud, mirrors to local PB, and notifies on new.
+  onlineOrders: {
+    action: (id, action, reason) => ipcRenderer.invoke("online-orders:action", { id, action, reason }),
+    refresh: () => ipcRenderer.invoke("online-orders:refresh"),
+    onNew: (callback) => {
+      const listener = (_, data) => callback(data);
+      ipcRenderer.on("online-orders:new", listener);
+      return () => ipcRenderer.removeListener("online-orders:new", listener);
+    },
+    onChanged: (callback) => {
+      const listener = (_, data) => callback(data);
+      ipcRenderer.on("online-orders:changed", listener);
+      return () => ipcRenderer.removeListener("online-orders:changed", listener);
+    },
+  },
+
+  b2bOrders: {
+    action: (id, status, reason) => ipcRenderer.invoke("b2b-orders:action", { id, status, reason }),
+    refresh: () => ipcRenderer.invoke("b2b-orders:refresh"),
+    onNew: (callback) => {
+      const listener = (_, data) => callback(data);
+      ipcRenderer.on("b2b-orders:new", listener);
+      return () => ipcRenderer.removeListener("b2b-orders:new", listener);
+    },
+    onChanged: (callback) => {
+      const listener = (_, data) => callback(data);
+      ipcRenderer.on("b2b-orders:changed", listener);
+      return () => ipcRenderer.removeListener("b2b-orders:changed", listener);
+    },
+  },
+
+  // Payment receipt OCR — relay a captured frame to the cloud vision endpoint to read the journal no.
+  payment: {
+    extractJournal: (payload) => ipcRenderer.invoke("payment:extract-journal", payload),
   },
 
   // Events

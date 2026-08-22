@@ -22,7 +22,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
  */
 export function StockGateModal({ open, shortfalls, entityId, onRestock, onRemoveItem, onClose }) {
   return (
-    <Dialog open={open}>
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <div className="flex items-center gap-2 mb-1">

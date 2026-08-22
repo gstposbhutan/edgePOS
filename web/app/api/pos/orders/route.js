@@ -97,9 +97,10 @@ export async function POST(request) {
     return NextResponse.json({ order: quote })
   }
 
-  // Which register/terminal rang this sale: the most-recent ACTIVE shift for the
-  // entity. (Proper multi-register web attribution would need the client to pass
-  // the active shift/register id; most-recent is the server-side best-effort.)
+  // The web is a back office: a register (a physical terminal) is NEVER attached to a web-rung
+  // order — register_id is stamped only by the desktop terminal that rings the sale. We still
+  // look up the most-recent ACTIVE shift so an (optional) web cash drawer keeps reconciling: the
+  // sale is tracked to that shift below, but the order row itself carries no register_id.
   const { data: shift } = await supabase
     .from('shifts')
     .select('id, register_id')
@@ -117,7 +118,7 @@ export async function POST(request) {
       order_no:       orderNo,
       status:         'PENDING_PAYMENT',
       seller_id:      ctx.entityId,
-      register_id:    shift?.register_id ?? null,
+      register_id:    null,   // web = back office; registers attach to orders on the desktop only
       buyer_whatsapp: customerWhatsapp ?? null,
       buyer_hash:     buyerHash ?? null,
       items,

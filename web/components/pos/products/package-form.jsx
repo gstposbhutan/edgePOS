@@ -126,7 +126,7 @@ export function PackageForm({ open, pkg, allProducts, categories, saving, vendor
   const packageGst = form.mrp ? (parseFloat(form.mrp) * 0.05 / 1.05).toFixed(2) : null
 
   return (
-    <Dialog open={open}>
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-serif">{isEdit ? 'Edit Package' : 'Create Package'}</DialogTitle>
@@ -263,22 +263,7 @@ export function PackageForm({ open, pkg, allProducts, categories, saving, vendor
             )}
           </div>
 
-          {/* Categories */}
-          {(categories ?? []).length > 0 && (
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">Categories</label>
-              <div className="flex flex-wrap gap-2">
-                {categories.map(cat => (
-                  <button key={cat.id} type="button"
-                    onClick={() => setCatIds(prev => prev.includes(cat.id) ? prev.filter(c => c !== cat.id) : [...prev, cat.id])}
-                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-all
-                      ${catIds.includes(cat.id) ? 'bg-primary text-primary-foreground border-transparent' : 'border-border text-muted-foreground hover:border-primary/50'}`}>
-                    {cat.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* Category tags removed — HSN category/subcategory is the taxonomy (Phase 2) */}
 
           {error && <p className="text-xs text-tibetan">{error}</p>}
 

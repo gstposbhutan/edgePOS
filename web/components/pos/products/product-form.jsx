@@ -5,14 +5,17 @@ import { Loader2, Sparkles, ImagePlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { HsnPicker } from "./hsn-picker"
+import { BrandPicker } from "./brand-picker"
 
 const UNITS = ['pcs', 'kg', 'g', 'litre', 'ml', 'btl', 'box', 'pack', 'dozen', 'pair', 'set', 'roll', 'sheet', 'bag', 'can', 'tube', 'sachet']
 
 const EMPTY_FORM = {
-  name: '', sku: '', hsn_code: '', unit: 'pcs',
-  wholesale_price: '', mrp: '', selling_price: '',
+  name: '', sku: '', hsn_code: '', brand: '', unit: 'pcs',
+  wholesale_price: '', mrp: '', selling_price: '', cost_price: '',
   current_stock: '0', image_url: '', reorder_point: '10',
-  sold_by_weight: false, video_url: '', specifications: {},
+  sold_by_weight: false, gst_exempt: false, video_url: '', specifications: {},
+  stock_rotation: 'FIFO',
 }
 
 /**
@@ -36,6 +39,7 @@ export function ProductForm({ open, product, categories, saving, onSave, onClose
   const [uploading,    setUploading]    = useState(false)
   const [specTemplate, setSpecTemplate] = useState([])   // [{key,label,type,options}] for product.category
   const [aiBusy,       setAiBusy]       = useState(null)  // 'enrich' | 'image' | null
+  const [nextSku,      setNextSku]      = useState('')    // auto-number preview (new products)
 
   // Populate form when editing
   useEffect(() => {
@@ -44,6 +48,7 @@ export function ProductForm({ open, product, categories, saving, onSave, onClose
         name:            product.name ?? '',
         sku:             product.sku ?? '',
         hsn_code:        product.hsn_code ?? '',
+        brand:           product.brand ?? '',
         unit:            product.unit ?? 'pcs',
         wholesale_price: String(product.wholesale_price ?? ''),
         mrp:             String(product.mrp ?? ''),
@@ -52,12 +57,12 @@ export function ProductForm({ open, product, categories, saving, onSave, onClose
         image_url:       product.image_url ?? '',
         reorder_point:   String(product.reorder_point ?? '10'),
         sold_by_weight:  product.sold_by_weight ?? false,
+        gst_exempt:      product.gst_exempt ?? false,
         video_url:       product.video_url ?? '',
         specifications:  product.specifications && typeof product.specifications === 'object' ? product.specifications : {},
+        stock_rotation:  product.stock_rotation ?? 'FIFO',
       })
-      setSelectedCats(
-        (product.product_categories ?? []).map(pc => pc.category_id)
-      )
+      setSelectedCats([])
     } else {
       setForm(EMPTY_FORM)
       setSelectedCats([])
@@ -73,15 +78,26 @@ export function ProductForm({ open, product, categories, saving, onSave, onClose
     setForm(prev => ({ ...prev, specifications: { ...prev.specifications, [key]: value } }))
   }
 
-  // Load the admin-defined custom-property template for this product's category.
+  // Preview the SKU that will be auto-assigned if left blank (new products only).
+  useEffect(() => {
+    if (!open || isEdit) { setNextSku(''); return }
+    fetch('/api/products/next-sku')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setNextSku(d?.sku || ''))
+      .catch(() => setNextSku(''))
+  }, [open, isEdit])
+
+  // Load the admin-defined custom-property template for this product's category (+ subcategory).
   useEffect(() => {
     const cat = product?.category
+    const sub = product?.subcategory
     if (!open || !cat) { setSpecTemplate([]); return }
-    fetch(`/api/property-templates?category=${encodeURIComponent(cat)}`)
+    const qs = `category=${encodeURIComponent(cat)}${sub ? `&subcategory=${encodeURIComponent(sub)}` : ''}`
+    fetch(`/api/property-templates?${qs}`)
       .then(r => r.ok ? r.json() : { properties: [] })
       .then(d => setSpecTemplate(Array.isArray(d.properties) ? d.properties : []))
       .catch(() => setSpecTemplate([]))
-  }, [open, product?.category])
+  }, [open, product?.category, product?.subcategory])
 
   // AI: enrich metadata for the (existing) product, then reflect the returned fields in the form.
   async function runEnrich() {
@@ -140,6 +156,9 @@ export function ProductForm({ open, product, categories, saving, onSave, onClose
 
     if (!form.name.trim())     return setError('Product name is required')
     if (!form.hsn_code.trim()) return setError('HSN code is required for GST compliance')
+    if (!isEdit && !(parseFloat(form.selling_price) > 0)) return setError('Enter a selling price greater than 0')
+    if (!isEdit && form.stock_rotation === 'FEFO' && parseInt(form.current_stock) > 0 && !form.expires_at)
+      return setError('FEFO products need an expiry date on the opening batch (below).')
 
     const { error: saveError } = await onSave(form, selectedCats)
     if (saveError) setError(saveError)
@@ -154,8 +173,8 @@ export function ProductForm({ open, product, categories, saving, onSave, onClose
   }
 
   return (
-    <Dialog open={open}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-[80vw] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-serif">{isEdit ? 'Edit Product' : 'Add New Product'}</DialogTitle>
           <DialogDescription>
@@ -164,35 +183,44 @@ export function ProductForm({ open, product, categories, saving, onSave, onClose
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 mt-2">
-          {/* Name + SKU */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2 space-y-1.5">
-              <label className="text-sm font-medium text-foreground">Product Name <span className="text-tibetan">*</span></label>
-              <Input
-                placeholder="e.g. Wai Wai Noodles 75g"
-                value={form.name}
-                onChange={e => set('name', e.target.value)}
-                required
-                autoFocus={!isEdit}
-              />
-            </div>
+          {/* Name */}
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-foreground">Product Name <span className="text-tibetan">*</span></label>
+            <Input
+              placeholder="e.g. Wai Wai Noodles 75g"
+              value={form.name}
+              onChange={e => set('name', e.target.value)}
+              required
+              autoFocus={!isEdit}
+            />
+          </div>
+
+          {/* SKU + Brand/Manufacturer */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-foreground">SKU</label>
               <Input
-                placeholder="e.g. WWN-075"
+                placeholder={!isEdit && nextSku ? `Auto: ${nextSku}` : 'e.g. WWN-075'}
                 value={form.sku}
                 onChange={e => set('sku', e.target.value)}
               />
+              {!isEdit && (
+                <p className="text-[10px] text-muted-foreground">
+                  {nextSku ? <>Leave blank to auto-number → <span className="font-mono">{nextSku}</span></> : 'Leave blank to auto-number'}
+                </p>
+              )}
             </div>
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">HSN Code <span className="text-tibetan">*</span></label>
-              <Input
-                placeholder="e.g. 1902"
-                value={form.hsn_code}
-                onChange={e => set('hsn_code', e.target.value)}
-                required
-              />
+              <label className="text-sm font-medium text-foreground">Brand / Manufacturer</label>
+              <BrandPicker value={form.brand} onChange={v => set('brand', v)} />
             </div>
+          </div>
+
+          {/* HSN code — searchable/filterable picker; category & GST derive from it on save */}
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-foreground">HSN Code <span className="text-tibetan">*</span></label>
+            <HsnPicker value={form.hsn_code} onChange={(code) => set('hsn_code', code)} required />
+            <p className="text-[10px] text-muted-foreground">Category, subcategory & GST are set automatically from the selected HSN code.</p>
           </div>
 
           {/* Prices + stock — read-only, managed via stock receipts and movements */}
@@ -223,6 +251,42 @@ export function ProductForm({ open, product, categories, saving, onSave, onClose
             </div>
           )}
 
+          {/* Pricing — editable on create so a new product is never saved with a zero/blank price */}
+          {!isEdit && (
+            <div className="p-3 bg-muted/30 rounded-lg border border-border space-y-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Pricing</p>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground">{form.sold_by_weight ? `Selling rate / ${form.unit}` : 'Selling price'} <span className="text-tibetan">*</span></label>
+                  <Input
+                    type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00"
+                    value={form.selling_price}
+                    onChange={e => set('selling_price', e.target.value)}
+                  />
+                  <p className="text-[10px] text-muted-foreground">What the customer pays</p>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground">MRP</label>
+                  <Input
+                    type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00"
+                    value={form.mrp}
+                    onChange={e => set('mrp', e.target.value)}
+                  />
+                  <p className="text-[10px] text-muted-foreground">Max retail price</p>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground">Cost</label>
+                  <Input
+                    type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00"
+                    value={form.cost_price}
+                    onChange={e => set('cost_price', e.target.value)}
+                  />
+                  <p className="text-[10px] text-muted-foreground">What you pay to buy it</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Unit + Opening stock (new products only) */}
           <div className={`grid gap-3 ${isEdit ? 'grid-cols-1' : 'grid-cols-2'}`}>
             <div className="space-y-1.5">
@@ -249,7 +313,8 @@ export function ProductForm({ open, product, categories, saving, onSave, onClose
             )}
           </div>
 
-          {/* Sold by weight / measure */}
+          {/* Sold-by-weight + GST-exempt — paired 2-up on desktop to cut the form's height */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="flex items-start gap-2 p-3 rounded-lg border border-border bg-muted/20">
             <input
               id="sold_by_weight"
@@ -264,6 +329,46 @@ export function ProductForm({ open, product, categories, saving, onSave, onClose
                 Cashier enters the amount in <strong>{form.unit}</strong> at checkout (e.g. 1.5 {form.unit}); the price is the rate per {form.unit}. Use for loose goods — rice, sugar, vegetables, fruit, oil.
               </span>
             </label>
+          </div>
+
+          {/* GST exempt */}
+          <div className="flex items-start gap-2 p-3 rounded-lg border border-border bg-muted/20">
+            <input
+              id="gst_exempt"
+              type="checkbox"
+              checked={!!form.gst_exempt}
+              onChange={e => set('gst_exempt', e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-input accent-primary"
+            />
+            <label htmlFor="gst_exempt" className="text-sm cursor-pointer">
+              <span className="font-medium text-foreground">GST exempt</span>
+              <span className="block text-[10px] text-muted-foreground">
+                No 5% GST on this product — it sells tax-free on every channel.
+              </span>
+            </label>
+          </div>
+
+          </div>
+
+          {/* Stock rotation (FEFO/FIFO) */}
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-foreground">Stock rotation</label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {[
+                { m: 'NONE', l: 'None', t: 'No rotation — cashier bills any batch. No warning.' },
+                { m: 'FIFO', l: 'FIFO', t: 'Oldest stock sells first. Expiry optional.' },
+                { m: 'FEFO', l: 'FEFO', t: 'Soonest-expiry first. Expiry required on every batch.' },
+              ].map(({ m, l, t }) => (
+                <button
+                  type="button" key={m}
+                  onClick={() => set('stock_rotation', m)}
+                  className={`rounded-lg border px-3 py-2 text-left transition-colors ${form.stock_rotation === m ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'}`}
+                >
+                  <span className="text-sm font-medium text-foreground">{l}</span>
+                  <span className="block text-[10px] text-muted-foreground">{t}</span>
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Reorder point */}
@@ -297,8 +402,10 @@ export function ProductForm({ open, product, categories, saving, onSave, onClose
                   <Input type="date" value={form.manufactured_at} onChange={e => set('manufactured_at', e.target.value)} className="h-7 text-xs" />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-foreground">Expiry Date</label>
-                  <Input type="date" value={form.expires_at} onChange={e => set('expires_at', e.target.value)} className="h-7 text-xs" />
+                  <label className="text-xs font-medium text-foreground">Expiry Date {form.stock_rotation === 'FEFO' && <span className="text-tibetan">*</span>}</label>
+                  <Input type="date" value={form.expires_at} onChange={e => set('expires_at', e.target.value)}
+                    className={`h-7 text-xs ${form.stock_rotation === 'FEFO' && !form.expires_at ? 'border-tibetan' : ''}`} />
+                  {form.stock_rotation === 'FEFO' && <p className="text-[10px] text-tibetan">Required for FEFO products.</p>}
                 </div>
               </div>
             </div>
@@ -389,30 +496,7 @@ export function ProductForm({ open, product, categories, saving, onSave, onClose
             </div>
           )}
 
-          {/* Categories */}
-          {categories.length > 0 && (
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">Categories</label>
-              <div className="flex flex-wrap gap-2">
-                {categories.map(cat => (
-                  <button
-                    key={cat.id}
-                    type="button"
-                    onClick={() => toggleCat(cat.id)}
-                    className={`
-                      px-3 py-1 rounded-full text-xs font-medium border transition-all
-                      ${selectedCats.includes(cat.id)
-                        ? 'bg-primary text-primary-foreground border-transparent'
-                        : 'border-border text-muted-foreground hover:border-primary/50'
-                      }
-                    `}
-                  >
-                    {cat.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* Category tags removed — a product's taxonomy is its HSN category/subcategory (Phase 2) */}
 
           {/* GST preview */}
           {form.mrp && !isNaN(parseFloat(form.mrp)) && (
@@ -434,7 +518,8 @@ export function ProductForm({ open, product, categories, saving, onSave, onClose
 
           {error && <p className="text-xs text-tibetan">{error}</p>}
 
-          <div className="flex gap-2 pt-1">
+          {/* Sticky footer — Save/Cancel always reachable without scrolling to the bottom */}
+          <div className="sticky bottom-0 -mx-4 -mb-4 mt-1 px-4 py-3 bg-popover border-t border-border flex gap-2">
             <Button type="button" variant="outline" onClick={handleClose} className="flex-1">
               Cancel
             </Button>

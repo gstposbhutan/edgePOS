@@ -5,11 +5,22 @@ import { RefreshCw, Inbox, ChevronDown, ChevronRight, Loader2, Package } from "l
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 
+// What the seller can do next from a given status (mirrors the /api/console/orders/[id] state machine).
+const NEXT_ACTIONS = {
+  CONFIRMED:  [{ to: 'PROCESSING', label: 'Start processing' }, { to: 'DISPATCHED', label: 'Mark dispatched' }, { to: 'CANCELLED', label: 'Cancel', danger: true }],
+  PROCESSING: [{ to: 'DISPATCHED', label: 'Mark dispatched' }, { to: 'CANCELLED', label: 'Cancel', danger: true }],
+  DISPATCHED: [{ to: 'DELIVERED', label: 'Mark delivered' }],
+  DELIVERED:  [{ to: 'COMPLETED', label: 'Mark completed' }],
+}
+// Post-fulfilment statuses that can be refunded (returns stock both sides + reverses khata).
+const REFUNDABLE = ['DISPATCHED', 'DELIVERED', 'COMPLETED']
+
 /**
  * Incoming-orders section for the distributor / wholesaler consoles. Lists the orders where this
  * entity is the seller (everything from /api/console/orders is already scoped to seller_id =
  * the caller's entity). Each row shows the buyer, order no., total, status and date, and expands
- * to the line items. Read-only for v1 — no status changes here.
+ * to the line items with the seller's fulfilment actions (process → dispatch → deliver → complete,
+ * or cancel). Cancelling returns stock on both sides and reverses the buyer's khata.
  */
 export function IncomingOrders() {
   const [rows,     setRows]     = useState([])
@@ -17,6 +28,7 @@ export function IncomingOrders() {
   const [error,    setError]    = useState(null)
   const [filter,   setFilter]   = useState('')      // status filter ('' = all)
   const [openId,   setOpenId]   = useState(null)    // expanded order id
+  const [acting,   setActing]   = useState(null)    // order id mid-action
 
   const load = useCallback(async (status) => {
     setLoading(true)
@@ -36,6 +48,53 @@ export function IncomingOrders() {
   }, [])
 
   useEffect(() => { load(filter) }, [load, filter])
+
+  const act = useCallback(async (order, to) => {
+    let reason = null
+    if (to === 'CANCELLED') {
+      reason = window.prompt(`Cancel order ${order.order_no}? This returns stock and reverses any credit.\n\nReason (optional):`, '')
+      if (reason === null) return   // dismissed the prompt
+    }
+    setActing(order.id)
+    setError(null)
+    try {
+      const res = await fetch(`/api/console/orders/${order.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: to, reason: reason || undefined }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Action failed')
+      await load(filter)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setActing(null)
+    }
+  }, [load, filter])
+
+  // itemIds omitted → full refund; provided → refund just those lines.
+  const refund = useCallback(async (order, itemIds) => {
+    const scope = itemIds ? `${itemIds.length} line${itemIds.length === 1 ? '' : 's'} of` : 'all of'
+    const reason = window.prompt(`Refund ${scope} order ${order.order_no}? This returns the stock on both sides and reverses any credit.\n\nReason (optional):`, '')
+    if (reason === null) return
+    setActing(order.id)
+    setError(null)
+    try {
+      const res = await fetch(`/api/console/orders/${order.id}/refund`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reason || undefined, item_ids: itemIds || undefined }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Refund failed')
+      await load(filter)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setActing(null)
+    }
+  }, [load, filter])
 
   return (
     <div className="space-y-4">
@@ -57,6 +116,7 @@ export function IncomingOrders() {
           <option value="DELIVERED">Delivered</option>
           <option value="COMPLETED">Completed</option>
           <option value="CANCELLED">Cancelled</option>
+          <option value="REFUNDED">Refunded</option>
         </select>
         <Button variant="ghost" size="icon-sm" onClick={() => load(filter)} title="Refresh">
           <RefreshCw className="h-4 w-4" />
@@ -86,6 +146,9 @@ export function IncomingOrders() {
                 order={o}
                 open={openId === o.id}
                 onToggle={() => setOpenId(openId === o.id ? null : o.id)}
+                acting={acting === o.id}
+                onAction={act}
+                onRefund={refund}
               />
             ))}
           </div>
@@ -103,18 +166,49 @@ const STATUS_STYLES = {
   DELIVERED:  'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20',
   COMPLETED:  'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20',
   CANCELLED:  'bg-tibetan/10 text-tibetan border border-tibetan/20',
+  REFUNDED:   'bg-tibetan/10 text-tibetan border border-tibetan/20',
 }
 
 function money(v) {
   return `Nu. ${parseFloat(v ?? 0).toFixed(2)}`
 }
 
-function OrderRow({ order, open, onToggle }) {
+function OrderRow({ order, open, onToggle, acting, onAction, onRefund }) {
   const items = Array.isArray(order.items) ? order.items : []
   const statusClass = STATUS_STYLES[order.status] || STATUS_STYLES.DRAFT
+  const actions = NEXT_ACTIONS[order.status] || []
+  const canRefund = REFUNDABLE.includes(order.status)
+
+  const [refundLines, setRefundLines] = useState(null)  // order_items (with ids) for line-level refund
+  const [selected, setSelected] = useState(() => new Set())
+
+  // For a refundable order, load its lines (with ids) on expand so a subset can be picked.
+  useEffect(() => {
+    if (!open || !canRefund) return
+    let alive = true
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/console/orders/${order.id}`)
+        const data = await res.json()
+        if (!alive || !res.ok) return
+        const active = (data.items || []).filter(l => l.status === 'ACTIVE')
+        setRefundLines(active)
+        setSelected(new Set(active.map(l => l.id)))
+      } catch { /* fall back to full-refund button only */ }
+    })()
+    return () => { alive = false }
+  }, [open, canRefund, order.id])
+
+  const toggleLine = (id) => setSelected(prev => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
+  const allSelected = refundLines && selected.size === refundLines.length
+  const someSelected = selected.size > 0
 
   return (
-    <div className={!order.status || order.status === 'CANCELLED' ? 'opacity-70' : ''}>
+    <div className={!order.status || order.status === 'CANCELLED' || order.status === 'REFUNDED' ? 'opacity-70' : ''}>
       <button
         onClick={onToggle}
         className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors text-left"
@@ -139,7 +233,26 @@ function OrderRow({ order, open, onToggle }) {
 
       {open && (
         <div className="px-4 pb-4 pl-11 space-y-2">
-          {items.length === 0 ? (
+          {canRefund && refundLines ? (
+            // Refundable: show ACTIVE lines with a checkbox so a subset can be refunded.
+            refundLines.length === 0 ? (
+              <p className="text-xs text-muted-foreground">Nothing left to refund on this order.</p>
+            ) : (
+              <div className="rounded-lg border border-border divide-y divide-border">
+                {refundLines.map(l => (
+                  <label key={l.id} className="flex items-center gap-3 px-3 py-2 cursor-pointer">
+                    <input type="checkbox" checked={selected.has(l.id)} onChange={() => toggleLine(l.id)} className="h-3.5 w-3.5 accent-tibetan" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-foreground truncate">{l.name}</p>
+                      {l.sku && <p className="text-[10px] text-muted-foreground">{l.sku}</p>}
+                    </div>
+                    <p className="text-xs text-muted-foreground whitespace-nowrap">{l.quantity} × {money(l.unit_price)}</p>
+                    <p className="text-xs font-medium w-20 text-right">{money(l.total)}</p>
+                  </label>
+                ))}
+              </div>
+            )
+          ) : items.length === 0 ? (
             <p className="text-xs text-muted-foreground">No line items recorded.</p>
           ) : (
             <div className="rounded-lg border border-border divide-y divide-border">
@@ -165,6 +278,49 @@ function OrderRow({ order, open, onToggle }) {
             <span className="text-muted-foreground">GST (5%) <span className="text-foreground font-medium">{money(order.gst_total)}</span></span>
             <span className="text-muted-foreground">Total <span className="text-primary font-bold">{money(order.grand_total)}</span></span>
           </div>
+
+          {/* Fulfilment actions (seller) */}
+          {(actions.length > 0 || canRefund) && (
+            <div className="flex flex-wrap justify-end gap-2 pt-2 border-t border-border">
+              {acting ? (
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Working…</span>
+              ) : (
+                <>
+                  {actions.map(a => (
+                    <Button
+                      key={a.to}
+                      size="sm"
+                      variant={a.danger ? 'outline' : 'default'}
+                      className={a.danger ? 'text-tibetan border-tibetan/30 hover:bg-tibetan/10' : ''}
+                      onClick={() => onAction(order, a.to)}
+                    >
+                      {a.label}
+                    </Button>
+                  ))}
+                  {canRefund && refundLines && someSelected && !allSelected && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-tibetan border-tibetan/30 hover:bg-tibetan/10"
+                      onClick={() => onRefund(order, [...selected])}
+                    >
+                      Refund selected ({selected.size})
+                    </Button>
+                  )}
+                  {canRefund && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-tibetan border-tibetan/30 hover:bg-tibetan/10"
+                      onClick={() => onRefund(order)}
+                    >
+                      Refund all
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

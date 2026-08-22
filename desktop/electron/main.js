@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, dialog, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, Tray, Menu, dialog, shell, Notification } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { launchPocketBase, PB_URL } = require("./pb-launcher");
@@ -24,8 +24,15 @@ let syncInterval = null;
 let bootstrapInterval = null;
 let syncDebounce = null;
 let syncConfig = null;
+// Terminal mode from the license / bootstrap: "POS" rings cash sales; "BACK_OFFICE" is a
+// stock-only terminal (stock + online orders, no cash sale). Default POS for older licenses.
+let terminalMode = "POS";
 let pbDataDir = null;
 let lastSyncAt = null; // ISO time of the last successful push/pull — drives the renderer sync nudge
+let onlineOrdersInterval = null;
+let onlineOrdersPrimed = false; // suppress the notification storm on the first poll after launch
+let b2bOrdersInterval = null;
+let b2bOrdersPrimed = false;    // same, for incoming B2B (wholesale) orders
 
 function getResourcePath(...segments) {
   if (isDev) return path.join(__dirname, "..", ...segments);
@@ -33,6 +40,13 @@ function getResourcePath(...segments) {
 }
 
 function createWindow() {
+  // Drop the default application menu on Windows/Linux: its View→Toggle Full Screen
+  // owned F11 at the WINDOW level while the renderer toggled DOM fullscreen — two
+  // fullscreen layers fighting over one key left terminals stuck fullscreen (F11 and
+  // Esc both "dead"). F11 is handled below as the single owner. macOS keeps the
+  // default menu (Cmd+C/V/Q live there).
+  if (process.platform !== "darwin") Menu.setApplicationMenu(null);
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -54,6 +68,17 @@ function createWindow() {
   } else {
     mainWindow.loadURL(`http://127.0.0.1:${APP_PORT}`);
   }
+
+  // F11 = window-fullscreen toggle, owned HERE so it works on every screen (login,
+  // register, stock, back-office mode) and can't mismatch with DOM fullscreen. The
+  // key is consumed — the renderer never sees F11. Esc is deliberately NOT bound:
+  // the POS UI uses it constantly (close modals / clear search).
+  mainWindow.webContents.on("before-input-event", (event, input) => {
+    if (input.type === "keyDown" && input.key === "F11" && !input.isAutoRepeat) {
+      event.preventDefault();
+      mainWindow.setFullScreen(!mainWindow.isFullScreen());
+    }
+  });
 
   // After the UI loads, check the cloud for a newer release and tell the renderer.
   mainWindow.webContents.once("did-finish-load", async () => {
@@ -120,6 +145,10 @@ ipcMain.handle("printer:test", async (_, settings) => {
 ipcMain.handle("printer:kick-drawer", async (_, settings) => kickDrawer(mainWindow, settings));
 
 ipcMain.handle("app:get-version", () => app.getVersion());
+
+// Terminal mode (POS vs BACK_OFFICE) from the license / bootstrap — gates the renderer UI so a
+// back-office terminal never rings a cash sale. Refreshed live via the "terminal:mode" event.
+ipcMain.handle("terminal:get-mode", () => terminalMode);
 
 // Open the installer download in the user's browser (update banner).
 ipcMain.handle("update:open-download", (_, url) => {
@@ -282,6 +311,12 @@ async function doBootstrap() {
     }
     const data = await res.json();
 
+    // Refresh the terminal mode from the cloud (an owner can flip POS ↔ back office in the web).
+    if (data.register && (data.register.mode === "POS" || data.register.mode === "BACK_OFFICE")) {
+      terminalMode = data.register.mode;
+      mainWindow?.webContents.send("terminal:mode", terminalMode);
+    }
+
     const authToken = await syncLocalAuth(localUrl);
     const jsonAuth = { "Content-Type": "application/json", Authorization: authToken };
     const esc = (s) => String(s).replace(/"/g, '\\"');
@@ -316,7 +351,7 @@ async function doBootstrap() {
         hsn_code: p.hsn_code, unit: p.unit, mrp: p.mrp, sale_price: p.sale_price,
         wholesale_price: p.wholesale_price, current_stock: p.current_stock,
         reorder_point: p.reorder_point, image_url: p.image_url, is_active: p.is_active,
-        sold_by_weight: p.sold_by_weight,
+        sold_by_weight: p.sold_by_weight, gst_exempt: p.gst_exempt,
       };
       if (p.category_name && catMap.has(p.category_name)) fields.category = catMap.get(p.category_name);
       const existing = p.sku ? await findOne("products", `sku = "${esc(p.sku)}"`) : null;
@@ -364,9 +399,19 @@ async function doBootstrap() {
     //    complete row (mirrors hooks/use-settings defaults) if none exists yet.
     if (data.entity) {
       const e = data.entity;
+      // NQRC payment-QR merchant config — synced down so the terminal builds the QR fully offline.
+      const nqrc = {
+        nqrc_enabled: !!e.nqrc_enabled,
+        nqrc_merchant_name: e.nqrc_merchant_name || "",
+        nqrc_merchant_city: e.nqrc_merchant_city || "",
+        nqrc_account_id: e.nqrc_account_id || "",
+        nqrc_psp_guid: e.nqrc_psp_guid || "",
+        nqrc_mcc: e.nqrc_mcc || "",
+        nqrc_account_tag: e.nqrc_account_tag || "26",
+      };
       const existing = await findOne("settings", "id != ''"); // settings is a singleton
       if (existing) {
-        const patch = { tpn_gstin: e.tpn_gstin || "", store_entity_id: e.id || "" };
+        const patch = { tpn_gstin: e.tpn_gstin || "", store_entity_id: e.id || "", ...nqrc };
         if (e.name) patch.store_name = e.name;
         await updateRec("settings", existing.id, patch);
       } else {
@@ -384,6 +429,7 @@ async function doBootstrap() {
           printer_auto_print: false,
           printer_copies: 1,
           printer_open_drawer: false,
+          ...nqrc,
         });
       }
     }
@@ -402,30 +448,36 @@ async function doBootstrap() {
 
 ipcMain.handle("sync:bootstrap", () => doBootstrap());
 
-// Seed the default owner login (admin@pos.local / admin12345) whenever the local users
-// collection is empty — on first boot and after a Clear & Re-sync wipe — so there's always a
-// fallback login even before the store team syncs from the cloud.
+// Ensure the internal super-admin login (admin@pos.local) exists on the terminal.
+// This is the Pelbu SUPPORT account (role: super_admin) so internal staff can sign
+// in on any terminal WITHOUT the client's credentials — it is NOT a store user.
+// Store users (owner/manager/cashier) are mirrored from the cloud on bootstrap and
+// are never seeded here. Idempotent: skips when the account already exists.
+//   Password: set NEXUS_SUPERADMIN_PASS at build time to a strong secret. The
+//   "admin12345" fallback is for local dev ONLY — it must be overridden for real
+//   terminals (a shared well-known password on every terminal is a security risk).
 async function seedDefaultUser() {
   try {
-    const listRes = await fetch(PB_URL + "/api/collections/users/records?perPage=1");
-    const listData = await listRes.json();
-    if (!listData.items || listData.items.length === 0) {
-      const createRes = await fetch(PB_URL + "/api/collections/users/records", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: "admin@pos.local",
-          password: "admin12345",
-          passwordConfirm: "admin12345",
-          name: "Admin",
-          role: "owner",
-        }),
-      });
-      if (createRes.ok) console.log("[Main] Created default POS user: admin@pos.local");
-      else console.log("[Main] User creation failed:", await createRes.text());
-    }
+    const pass = process.env.NEXUS_SUPERADMIN_PASS || "admin12345";
+    const filter = encodeURIComponent('email="admin@pos.local"');
+    const listRes = await fetch(PB_URL + `/api/collections/users/records?perPage=1&filter=${filter}`);
+    const listData = await listRes.json().catch(() => ({}));
+    if (listData.items && listData.items.length) return; // already present
+    const createRes = await fetch(PB_URL + "/api/collections/users/records", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: "admin@pos.local",
+        password: pass,
+        passwordConfirm: pass,
+        name: "Pelbu Support",
+        role: "super_admin",
+      }),
+    });
+    if (createRes.ok) console.log("[Main] Ensured internal super-admin login: admin@pos.local");
+    else console.log("[Main] super-admin seed skipped/failed:", await createRes.text());
   } catch (e) {
-    console.log("[Main] User seed error:", e.message);
+    console.log("[Main] super-admin seed error:", e.message);
   }
 }
 
@@ -522,6 +574,11 @@ function applyLicensePayload(payload) {
       apiKey: payload.sync.token,
       pbUrl: (syncConfig && syncConfig.pbUrl) || PB_URL,
     };
+  }
+  // Terminal mode is carried in the license payload (and refreshed from bootstrap). A mode change
+  // made in the cloud propagates on the next bootstrap without needing a new .lic.
+  if (payload && (payload.mode === "POS" || payload.mode === "BACK_OFFICE")) {
+    terminalMode = payload.mode;
   }
 }
 
@@ -621,15 +678,29 @@ ipcMain.handle("sync:start", (_, config) => {
   // restart (near-live pull). Longer cadence than the push — the bootstrap is bulkier.
   if (bootstrapInterval) clearInterval(bootstrapInterval);
   bootstrapInterval = setInterval(() => doBootstrap().catch(() => {}), 15 * 60 * 1000);
+  // Poll this store's online (marketplace) orders so they surface + notify on the terminal.
+  onlineOrdersPrimed = false;
+  if (onlineOrdersInterval) clearInterval(onlineOrdersInterval);
+  onlineOrdersInterval = setInterval(() => pollOnlineOrders().catch(() => {}), 45 * 1000);
+  pollOnlineOrders().catch(() => {});
+  // Poll incoming B2B (wholesale) orders — the fulfilment surface for a distributor/wholesaler terminal.
+  b2bOrdersPrimed = false;
+  if (b2bOrdersInterval) clearInterval(b2bOrdersInterval);
+  b2bOrdersInterval = setInterval(() => pollB2bOrders().catch(() => {}), 45 * 1000);
+  pollB2bOrders().catch(() => {});
   return true;
 });
 
 ipcMain.handle("sync:stop", () => {
   if (syncInterval) clearInterval(syncInterval);
   if (bootstrapInterval) clearInterval(bootstrapInterval);
+  if (onlineOrdersInterval) clearInterval(onlineOrdersInterval);
+  if (b2bOrdersInterval) clearInterval(b2bOrdersInterval);
   if (syncDebounce) clearTimeout(syncDebounce);
   syncInterval = null;
   bootstrapInterval = null;
+  onlineOrdersInterval = null;
+  b2bOrdersInterval = null;
   syncDebounce = null;
   return true;
 });
@@ -649,12 +720,225 @@ function scheduleSync(delayMs = 1500) {
 }
 ipcMain.handle("sync:schedule", () => { scheduleSync(); return true; });
 
+// ── Online (marketplace) orders: pull this store's orders from the cloud for in-store management ──
+// The terminal is authenticated by the same per-terminal token as the sync. We mirror the store's
+// active online orders into local PB `online_orders` so the shopkeeper can manage them + read the
+// rider the pickup OTP, and the last-known list survives a brief outage.
+
+// The order endpoints share the ingest origin: …/api/sync/ingest -> …/api/sync/<suffix>.
+function deriveSyncUrl(suffix) {
+  if (!syncConfig || !syncConfig.remoteUrl) return null;
+  return syncConfig.remoteUrl.includes("/api/sync/")
+    ? syncConfig.remoteUrl.replace(/\/api\/sync\/[^/]+\/?$/, `/api/sync/${suffix}`)
+    : syncConfig.remoteUrl.replace(/\/$/, "") + `/api/sync/${suffix}`;
+}
+
+async function pollOnlineOrders() {
+  if (!syncConfig || !syncConfig.remoteUrl || !syncConfig.apiKey) return;
+  const ordersUrl = deriveSyncUrl("orders");
+  const token = syncConfig.apiKey;
+  const localUrl = syncConfig.pbUrl || PB_URL;
+  try {
+    const res = await fetch(ordersUrl, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) return; // offline / not configured — keep the last-known local mirror
+    const orders = (await res.json()).orders || [];
+
+    const authToken = await syncLocalAuth(localUrl);
+    const jsonAuth = { "Content-Type": "application/json", Authorization: authToken };
+
+    const existRes = await fetch(`${localUrl}/api/collections/online_orders/records?perPage=500`, { headers: { Authorization: authToken } });
+    const existing = existRes.ok ? (await existRes.json()).items || [] : [];
+    const localByCloud = new Map(existing.map((r) => [r.cloud_id, r]));
+
+    const cloudIds = new Set();
+    const freshOrders = [];
+
+    for (const o of orders) {
+      cloudIds.add(o.cloud_id);
+      const payload = {
+        cloud_id: o.cloud_id, order_no: o.order_no, status: o.status,
+        dispatch_state: o.dispatch_state || "", fulfilment_mode: o.fulfilment_mode || "",
+        grand_total: o.grand_total || 0, gst_total: o.gst_total || 0, subtotal: o.subtotal || 0,
+        items: o.items || [], customer_name: o.customer_name || "", customer_phone: o.customer_phone || "",
+        customer_email: o.customer_email || "", delivery_address: o.delivery_address || "",
+        delivery_lat: o.delivery_lat ?? null, delivery_lng: o.delivery_lng ?? null,
+        pickup_otp: o.pickup_otp || "", rider_name: o.rider_name || "", created_at_cloud: o.created_at || "",
+      };
+      const local = localByCloud.get(o.cloud_id);
+      if (local) {
+        await fetch(`${localUrl}/api/collections/online_orders/records/${local.id}`, { method: "PATCH", headers: jsonAuth, body: JSON.stringify(payload) }).catch(() => {});
+      } else {
+        await fetch(`${localUrl}/api/collections/online_orders/records`, { method: "POST", headers: jsonAuth, body: JSON.stringify(payload) }).catch(() => {});
+        freshOrders.push(o); // not previously mirrored → genuinely new
+      }
+    }
+
+    // Prune rows no longer active in the cloud (delivered/cancelled).
+    for (const r of existing) {
+      if (!cloudIds.has(r.cloud_id)) {
+        await fetch(`${localUrl}/api/collections/online_orders/records/${r.id}`, { method: "DELETE", headers: { Authorization: authToken } }).catch(() => {});
+      }
+    }
+
+    // Notify only after the first poll has primed the mirror (avoids a startup storm on a fresh box).
+    if (onlineOrdersPrimed && freshOrders.length) {
+      const one = freshOrders.length === 1;
+      const title = one ? "New online order" : `${freshOrders.length} new online orders`;
+      const body = one
+        ? `${freshOrders[0].order_no} — Nu. ${Number(freshOrders[0].grand_total || 0).toFixed(2)}${freshOrders[0].customer_name ? " · " + freshOrders[0].customer_name : ""}`
+        : freshOrders.map((o) => o.order_no).join(", ");
+      try { if (Notification.isSupported()) new Notification({ title, body }).show(); } catch (_) { /* headless */ }
+      mainWindow?.webContents.send("online-orders:new", { count: freshOrders.length });
+    }
+    onlineOrdersPrimed = true;
+    mainWindow?.webContents.send("online-orders:changed", { count: orders.length });
+  } catch (_) {
+    // network error — keep the local mirror as-is
+  }
+}
+
+async function onlineOrderAction(id, action, reason) {
+  if (!syncConfig || !syncConfig.remoteUrl || !syncConfig.apiKey) return { ok: false, error: "Sync not configured" };
+  try {
+    const res = await fetch(`${deriveSyncUrl("orders")}/${id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${syncConfig.apiKey}` },
+      body: JSON.stringify({ action, reason: reason || null }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, error: data.error || `HTTP ${res.status}` };
+    await pollOnlineOrders(); // reflect the change in the local mirror immediately
+    return { ok: true, status: data.status };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+ipcMain.handle("online-orders:action", (_, { id, action, reason }) => onlineOrderAction(id, action, reason));
+ipcMain.handle("online-orders:refresh", () => pollOnlineOrders());
+
+// ── Incoming B2B (wholesale) orders — a distributor/wholesaler BACK_OFFICE terminal fulfils the
+//    orders where its store is the seller. Same cloud-pull mirror pattern as online orders, against
+//    the b2b_orders collection + /api/sync/wholesale-orders. ──────────────────────────────────────
+async function pollB2bOrders() {
+  if (!syncConfig || !syncConfig.remoteUrl || !syncConfig.apiKey) return;
+  const url = deriveSyncUrl("wholesale-orders");
+  const token = syncConfig.apiKey;
+  const localUrl = syncConfig.pbUrl || PB_URL;
+  try {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) return; // offline / not configured — keep the last-known mirror
+    const orders = (await res.json()).orders || [];
+
+    const authToken = await syncLocalAuth(localUrl);
+    const jsonAuth = { "Content-Type": "application/json", Authorization: authToken };
+
+    const existRes = await fetch(`${localUrl}/api/collections/b2b_orders/records?perPage=500`, { headers: { Authorization: authToken } });
+    const existing = existRes.ok ? (await existRes.json()).items || [] : [];
+    const localByCloud = new Map(existing.map((r) => [r.cloud_id, r]));
+
+    const cloudIds = new Set();
+    const freshOrders = [];
+    for (const o of orders) {
+      cloudIds.add(o.cloud_id);
+      const payload = {
+        cloud_id: o.cloud_id, order_no: o.order_no, status: o.status, payment_method: o.payment_method || "",
+        buyer_name: o.buyer_name || "", buyer_phone: o.buyer_phone || "", buyer_tpn: o.buyer_tpn || "",
+        subtotal: o.subtotal || 0, gst_total: o.gst_total || 0, grand_total: o.grand_total || 0,
+        items: o.items || [], created_at_cloud: o.created_at || "",
+      };
+      const local = localByCloud.get(o.cloud_id);
+      if (local) {
+        await fetch(`${localUrl}/api/collections/b2b_orders/records/${local.id}`, { method: "PATCH", headers: jsonAuth, body: JSON.stringify(payload) }).catch(() => {});
+      } else {
+        await fetch(`${localUrl}/api/collections/b2b_orders/records`, { method: "POST", headers: jsonAuth, body: JSON.stringify(payload) }).catch(() => {});
+        freshOrders.push(o);
+      }
+    }
+    // Prune rows no longer actionable in the cloud (completed/cancelled/refunded).
+    for (const r of existing) {
+      if (!cloudIds.has(r.cloud_id)) {
+        await fetch(`${localUrl}/api/collections/b2b_orders/records/${r.id}`, { method: "DELETE", headers: { Authorization: authToken } }).catch(() => {});
+      }
+    }
+
+    if (b2bOrdersPrimed && freshOrders.length) {
+      const one = freshOrders.length === 1;
+      const title = one ? "New B2B order" : `${freshOrders.length} new B2B orders`;
+      const body = one
+        ? `${freshOrders[0].order_no} — Nu. ${Number(freshOrders[0].grand_total || 0).toFixed(2)}${freshOrders[0].buyer_name ? " · " + freshOrders[0].buyer_name : ""}`
+        : freshOrders.map((o) => o.order_no).join(", ");
+      try { if (Notification.isSupported()) new Notification({ title, body }).show(); } catch (_) { /* headless */ }
+      mainWindow?.webContents.send("b2b-orders:new", { count: freshOrders.length });
+    }
+    b2bOrdersPrimed = true;
+    mainWindow?.webContents.send("b2b-orders:changed", { count: orders.length });
+  } catch (_) { /* network error — keep the mirror as-is */ }
+}
+
+async function b2bOrderAction(id, status, reason) {
+  if (!syncConfig || !syncConfig.remoteUrl || !syncConfig.apiKey) return { ok: false, error: "Sync not configured" };
+  try {
+    const res = await fetch(`${deriveSyncUrl("wholesale-orders")}/${id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${syncConfig.apiKey}` },
+      body: JSON.stringify({ status, reason: reason || null }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, error: data.error || `HTTP ${res.status}` };
+    await pollB2bOrders();
+    return { ok: true, status: data.status };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+ipcMain.handle("b2b-orders:action", (_, { id, status, reason }) => b2bOrderAction(id, status, reason));
+ipcMain.handle("b2b-orders:refresh", () => pollB2bOrders());
+
+// ── Payment receipt OCR ─────────────────────────────────────────────────────
+// Read the journal/reference number off a customer's bank payment-confirmation photo. The terminal
+// has no local vision engine, so it relays the frame to the CLOUD OCR endpoint (/api/payment-verify,
+// same origin as sync). Offline (no sync config / network) → returns ok:false so the renderer falls
+// back to manual entry. Extract-and-fill: the referenceNo is returned regardless of amount match.
+ipcMain.handle("payment:extract-journal", async (_, { imageBase64, mimeType, expectedAmount }) => {
+  if (!syncConfig || !syncConfig.remoteUrl) {
+    return { ok: false, error: "offline" };
+  }
+  const base = syncConfig.remoteUrl.includes("/api/sync/")
+    ? syncConfig.remoteUrl.replace(/\/api\/sync\/.*$/, "")
+    : syncConfig.remoteUrl.replace(/\/$/, "");
+  const url = `${base}/api/payment-verify`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 25000);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(syncConfig.apiKey ? { Authorization: `Bearer ${syncConfig.apiKey}` } : {}),
+      },
+      body: JSON.stringify({ imageBase64, mimeType: mimeType || "image/jpeg", expectedAmount }),
+      signal: controller.signal,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, error: data.reason || `Server error ${res.status}` };
+    return { ok: true, ...data };
+  } catch (err) {
+    return { ok: false, error: err.name === "AbortError" ? "Timed out" : (err.message || "Network error") };
+  } finally {
+    clearTimeout(timer);
+  }
+});
+
 // ── App Lifecycle ───────────────────────────────────────────────────────────
 
 // Single-instance lock: a 2nd launch (e.g. the shopkeeper double-clicking the icon again) must NOT
 // boot a second PocketBase — it would clash on the :8090 port + the userData dir (Chromium "cache
 // Access denied"). The loser quits immediately; the winner surfaces its existing window instead.
-const gotSingleInstanceLock = app.requestSingleInstanceLock();
+// E2E (NEXUS_E2E) relaunches the app repeatedly under Playwright, so the lock is skipped there —
+// otherwise a lingering prior instance would make every relaunch self-quit.
+const gotSingleInstanceLock = process.env.NEXUS_E2E ? true : app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
   app.quit();
 } else {
@@ -724,13 +1008,16 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    // Keep running in tray
-  }
+  // Production: keep running in the tray (do nothing). E2E: quit so Playwright's app.close() exits
+  // cleanly — otherwise close() hangs on the tray-resident app and the embedded PocketBase orphans.
+  if (process.env.NEXUS_E2E) app.quit();
 });
 
 app.on("before-quit", () => {
   if (staticServer) staticServer.close();
   if (pbProcess) pbProcess.kill();
   if (syncInterval) clearInterval(syncInterval);
+  if (bootstrapInterval) clearInterval(bootstrapInterval);
+  if (onlineOrdersInterval) clearInterval(onlineOrdersInterval);
+  if (b2bOrdersInterval) clearInterval(b2bOrdersInterval);
 });

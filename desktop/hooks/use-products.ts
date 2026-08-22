@@ -29,6 +29,8 @@ export interface Product {
   // Weighed-at-counter goods: cashier enters a measure (in `unit`) at checkout and
   // `sale_price` is the per-unit rate. See docs/label-maker-plan.md §1A.
   sold_by_weight?: boolean;
+  // GST-exempt goods: rung at 0% instead of the flat 5%. See migration 022.
+  gst_exempt?: boolean;
   category: string;
   expand?: { category?: Category };
 }

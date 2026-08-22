@@ -42,7 +42,7 @@ export function RefundModal({ open, order, items, userId, onRequest, onClose }) 
   }
 
   return (
-    <Dialog open={open}>
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <div className="flex items-center gap-2 mb-1">

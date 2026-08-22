@@ -120,4 +120,28 @@ async function generateImageUrl({ name, description }) {
   return data?.data?.[0]?.url || null
 }
 
-module.exports = { aiConfigured, enrichProduct, generateImageUrl, resolveHsn, CONDITIONS }
+/**
+ * Download a freshly generated image, retrying through the brief window where the image CDN
+ * (mfile.z.ai) returns a 404 JSON before the file propagates (observed ~0–2s after generation).
+ * The first attempt is immediate; subsequent ones back off by `delayMs`. Returns { buffer, mime },
+ * or throws if the file never becomes a real image within the retry budget.
+ */
+async function fetchGeneratedImage(url, { tries = 6, delayMs = 2000 } = {}) {
+  let last = 'no attempt'
+  for (let i = 0; i < tries; i++) {
+    if (i > 0) await new Promise(r => setTimeout(r, delayMs))
+    try {
+      const res = await fetch(url)
+      const mime = res.headers.get('content-type') || ''
+      if (res.ok && mime.startsWith('image/')) {
+        return { buffer: Buffer.from(await res.arrayBuffer()), mime }
+      }
+      last = `${res.status} ${mime || 'no content-type'}`
+    } catch (e) {
+      last = e.message
+    }
+  }
+  throw new Error(`generated image not retrievable after ${tries} tries (${last})`)
+}
+
+module.exports = { aiConfigured, enrichProduct, generateImageUrl, fetchGeneratedImage, resolveHsn, CONDITIONS }

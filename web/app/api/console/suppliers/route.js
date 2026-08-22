@@ -22,7 +22,7 @@ export async function GET() {
 
     const { data: links, error } = await supabase
       .from('distributor_wholesalers')
-      .select('distributor_id, is_primary, active, category_id, categories(name)')
+      .select('distributor_id, is_primary, active, category_id')
       .eq('wholesaler_id', entityId)
       .eq('active', true)
 
@@ -41,7 +41,7 @@ export async function GET() {
         name: byId[l.distributor_id]?.name || 'Unknown',
         whatsapp_no: byId[l.distributor_id]?.whatsapp_no || '',
         is_primary: l.is_primary,
-        category: l.categories?.name || '',
+        category: '',   // tag category retired (category consolidation) — links are whole-catalog
       }))
     }
 

@@ -1,3 +1,19 @@
+# deps / builds
+node_modules/
+.next/
+dist/
+*.tsbuildinfo
+
+# secrets — never commit env files
+.env
+.env.*
+!.env.example
+
+# test / recording output
+web/e2e/recordings/
+playwright-report/
+test-results/
+
 # Per-user Claude Code permissions / settings
 .claude/settings.local.json
 

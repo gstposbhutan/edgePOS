@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { createServiceClient } from '@/lib/supabase/server'
+import { createServiceClient, getAuthContext } from '@/lib/supabase/server'
 
 const OWNER_PERMISSIONS = [
   'pos:sale', 'inventory:read', 'inventory:write',
@@ -12,6 +10,14 @@ const OWNER_PERMISSIONS = [
 
 export async function POST(request) {
   try {
+    // Meeting 2026-08-11 (D7): vendor shops are created by an ADMINISTRATOR, not self-service.
+    // This endpoint now requires a super-admin caller (it doubles as the admin "create vendor +
+    // owner" tool); public self-registration is no longer allowed.
+    const gate = await getAuthContext()
+    if (!gate || gate.role !== 'SUPER_ADMIN') {
+      return NextResponse.json({ error: 'Vendor shops are created by an administrator.' }, { status: 403 })
+    }
+
     const body = await request.json()
     const { role, name, whatsapp_no, tpn_gstin, email, password, full_name } = body
 
@@ -116,41 +122,9 @@ export async function POST(request) {
       } catch { /* owner_stores optional / not ready */ }
     }
 
-    // 5. Establish session via httpOnly cookie (BFF pattern)
-    const cookieStore = await cookies()
-    let response = NextResponse.json({ success: true, role })
-
-    const sbUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
-    const sbKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    if (!sbUrl || !sbKey) {
-      // Account created but can't set session cookie — redirect to login
-      return NextResponse.json({ success: true, role, warning: 'Account created. Please sign in.' })
-    }
-
-    const sessionClient = createServerClient(sbUrl, sbKey, {
-      cookieOptions: { name: 'sb-edgepos-auth-token' },
-      cookies: {
-        getAll: () => cookieStore.getAll(),
-        setAll: (cookiesToSet) => {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            response.cookies.set(name, value, options)
-          })
-        },
-      },
-    })
-
-    // Sign in with the newly created credentials to establish a session
-    const { error: sessionErr } = await sessionClient.auth.signInWithPassword({
-      email: email.trim().toLowerCase(),
-      password,
-    })
-
-    if (sessionErr) {
-      // Account was created successfully, just can't auto-session
-      return NextResponse.json({ success: true, role, warning: 'Account created. Please sign in.' })
-    }
-
-    return response
+    // 5. Admin-created — do NOT establish a vendor session (the super-admin caller stays signed
+    //    in). The new owner signs in themselves with the credentials just created.
+    return NextResponse.json({ success: true, role, entity_id: entity.id })
   } catch (err) {
     console.error('Vendor signup error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

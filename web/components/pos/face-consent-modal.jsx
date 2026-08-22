@@ -123,7 +123,7 @@ export function FaceConsentModal({ open, entityId, onEnroll, onClose }) {
   }
 
   return (
-    <Dialog open={open}>
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle className="font-serif flex items-center gap-2">

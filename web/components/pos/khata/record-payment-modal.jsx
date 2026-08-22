@@ -61,7 +61,7 @@ export function RecordPaymentModal({ open, onClose, onRecord, outstandingBalance
   }
 
   return (
-    <Dialog open={open}>
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent showCloseButton={false}>
         <DialogHeader>
           <DialogTitle className="font-serif">Record Payment</DialogTitle>

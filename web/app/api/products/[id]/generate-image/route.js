@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/supabase/server'
-import { aiConfigured, generateImageUrl } from '@/lib/ai/product-ai'
+import { aiConfigured, generateImageUrl, fetchGeneratedImage } from '@/lib/ai/product-ai'
 import { uploadProductImage, isStorageConfigured } from '@/lib/storage/s3'
 
 export const runtime = 'nodejs'
@@ -28,11 +28,9 @@ export async function POST(request, { params }) {
     const tempUrl = await generateImageUrl({ name: product.name, description: product.description })
     if (!tempUrl) return NextResponse.json({ error: 'Image generation returned nothing' }, { status: 502 })
 
-    // Re-host the generated image on our CDN (z.ai URLs are temporary).
-    const imgRes = await fetch(tempUrl)
-    if (!imgRes.ok) return NextResponse.json({ error: 'Could not fetch generated image' }, { status: 502 })
-    const mime = imgRes.headers.get('content-type') || 'image/png'
-    const buffer = Buffer.from(await imgRes.arrayBuffer())
+    // Re-host the generated image on our CDN (z.ai URLs are temporary, and the CDN 404s for a
+    // second or two right after generation — fetchGeneratedImage retries through that window).
+    const { buffer, mime } = await fetchGeneratedImage(tempUrl)
     const { url } = await uploadProductImage(buffer, mime)
 
     const { data: updated, error: upErr } = await supabase

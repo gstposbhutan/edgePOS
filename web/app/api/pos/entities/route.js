@@ -40,7 +40,7 @@ export async function GET(request) {
   if (entityId) {
     const { data, error } = await supabase
       .from('entities')
-      .select('id, name, tpn_gstin')
+      .select('id, name, tpn_gstin, shifts_enabled')
       .eq('id', entityId)
       .single()
 
@@ -48,10 +48,10 @@ export async function GET(request) {
     return NextResponse.json({ entity: data })
   }
 
-  // Get current entity info
+  // Get current entity info (+ vendor feature flags the POS shell reads, e.g. shifts_enabled)
   const { data, error } = await supabase
     .from('entities')
-    .select('id, name, tpn_gstin')
+    .select('id, name, tpn_gstin, shifts_enabled')
     .eq('id', ctx.entityId)
     .single()
 

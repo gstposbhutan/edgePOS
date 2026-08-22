@@ -1,0 +1,18 @@
+{
+  "name": "edgepos",
+  "private": true,
+  "version": "2.0.0",
+  "workspaces": [
+    "web",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @pelbu/pos",
+    "build": "npm run build -w @pelbu/pos",
+    "start": "npm run start -w @pelbu/pos",
+    "lint": "npm run lint -w @pelbu/pos"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -1,32 +1,33 @@
 name: Desktop Release
 
-# Builds the Pelbu POS Windows installer and publishes it to GitHub Releases.
-# Trigger by pushing a tag like v1.0.0, or run manually from the Actions tab.
+# Builds the Pelbu POS Windows installer (Electron + PocketBase + Next export)
+# and publishes it to the cloud update feed — WITHOUT any AWS credentials.
 #
-# Building NSIS requires a real Windows toolchain (Wine on ARM Linux does not
-# work), so this runs on a native windows-latest runner.
+# The GitHub runner is off-box, so it can't use the EC2 instance role. Instead of
+# `aws s3 cp` (which would need stored AWS keys), the runner POSTs the built .exe
+# to the box, which uploads it to S3 via its instance role and registers the
+# release. So the only secrets this pipeline needs are APP_URL + RELEASE_INGEST_TOKEN.
+#
+# Lives on the isolated `desktop` branch (main is SilverPine's travel site).
+# Cut a release: `git tag desktop-vX.Y.Z && git push origin desktop desktop-vX.Y.Z`.
+# Building NSIS needs a real Windows toolchain, so this runs on windows-latest.
 
 on:
   push:
     tags:
-      - 'v*'
+      - 'desktop-v*'
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to build (informational; the build uses desktop/package.json version)'
+        description: 'Informational only; the build uses desktop/package.json version'
         required: false
 
 permissions:
-  contents: write   # needed to create/update GitHub Releases
+  contents: read
 
 jobs:
   build-windows:
     runs-on: windows-latest
-    env:
-      S3_BUCKET: edgepos-images-430286912237-ap-south-2-an
-      S3_PREFIX: releases
-      CDN_BASE: https://img.pelbu.com
-      AWS_REGION: ap-south-2
     defaults:
       run:
         working-directory: desktop
@@ -46,57 +47,36 @@ jobs:
 
       - name: Build Windows installer
         # electron:build:win = fetch pocketbase.exe (win32) + next build + electron-builder --win (NSIS).
-        # --publish never: we distribute via S3 + the register API, not GitHub Releases, so
-        # electron-builder must not try to publish (it otherwise auto-publishes on a git tag and
-        # demands GH_TOKEN).
+        # --publish never: distribution is via the box upload endpoint below, not GitHub Releases.
         run: npm run electron:build:win -- --publish never
 
-      - name: Resolve version + artifact
+      - name: Resolve version + artifact + channel
         id: meta
         shell: bash
         run: |
-          VERSION=$(node -p "require('./package.json').version")
-          EXE=$(ls release/*.exe | head -1)
-          echo "version=$VERSION"            >> "$GITHUB_OUTPUT"
-          echo "exe=$EXE"                     >> "$GITHUB_OUTPUT"
-          echo "name=$(basename "$EXE")"      >> "$GITHUB_OUTPUT"
-          echo "size=$(stat -c%s "$EXE")"     >> "$GITHUB_OUTPUT"
-          echo "sha256=$(sha256sum "$EXE" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+          echo "exe=$(ls release/*.exe | head -1)"                      >> "$GITHUB_OUTPUT"
+          # Tags containing -beta/-rc publish to the beta channel; terminals only
+          # query stable, so beta releases are invisible to production terminals.
+          case "${GITHUB_REF_NAME:-}" in
+            *beta*|*rc*) echo "channel=beta"   >> "$GITHUB_OUTPUT" ;;
+            *)           echo "channel=stable" >> "$GITHUB_OUTPUT" ;;
+          esac
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Upload installer to S3
-        shell: bash
-        run: |
-          aws s3 cp "${{ steps.meta.outputs.exe }}" \
-            "s3://${S3_BUCKET}/${S3_PREFIX}/${{ steps.meta.outputs.version }}/${{ steps.meta.outputs.name }}" \
-            --content-type application/octet-stream \
-            --cache-control "public, max-age=31536000, immutable"
-
-      - name: Register release in app (publishes it)
+      - name: Upload installer + publish (keyless — box writes to S3 via instance role)
         shell: bash
         env:
           APP_URL: ${{ secrets.APP_URL }}
           RELEASE_INGEST_TOKEN: ${{ secrets.RELEASE_INGEST_TOKEN }}
         run: |
-          DOWNLOAD_URL="${CDN_BASE}/${S3_PREFIX}/${{ steps.meta.outputs.version }}/${{ steps.meta.outputs.name }}"
-          jq -n \
-            --arg v   "${{ steps.meta.outputs.version }}" \
-            --arg url "$DOWNLOAD_URL" \
-            --arg name "${{ steps.meta.outputs.name }}" \
-            --argjson size ${{ steps.meta.outputs.size }} \
-            --arg sha "${{ steps.meta.outputs.sha256 }}" \
-            --arg notes "Automated build from ${GITHUB_REF_NAME:-manual}" \
-            '{version:$v, channel:"stable", platform:"win", download_url:$url, file_name:$name, file_size:$size, sha256:$sha, notes:$notes, publish:true}' \
-          | curl -fsS -X POST "${APP_URL}/api/desktop/releases/register" \
-              -H "x-release-token: ${RELEASE_INGEST_TOKEN}" \
-              -H "Content-Type: application/json" \
-              --data @-
+          curl -fsS -X POST "${APP_URL}/api/desktop/releases/upload" \
+            -H "x-release-token: ${RELEASE_INGEST_TOKEN}" \
+            -F "file=@${{ steps.meta.outputs.exe }}" \
+            -F "version=${{ steps.meta.outputs.version }}" \
+            -F "channel=${{ steps.meta.outputs.channel }}" \
+            -F "platform=win" \
+            -F "notes=Automated build from ${GITHUB_REF_NAME:-manual}" \
+            -F "publish=true"
 
       - name: Upload installer as workflow artifact (backup)
         uses: actions/upload-artifact@v4

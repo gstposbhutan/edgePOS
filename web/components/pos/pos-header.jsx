@@ -128,7 +128,7 @@ export function PosHeader({ storeName, cashierName, customer, syncing, onEnrollF
 
         {['MANAGER', 'OWNER'].includes(userSubRole) && (
           <Button variant="ghost" size="icon-sm" onClick={onRestock} title="Restock from Wholesaler" data-testid="restock-btn">
-            <ShoppingBag className="h-4 w-4" />
+            <ShoppingBag className="h-5 w-5" />
           </Button>
         )}
 
@@ -138,28 +138,29 @@ export function PosHeader({ storeName, cashierName, customer, syncing, onEnrollF
           title="Switch to Keyboard Mode (F9)"
           onClick={() => { localStorage.setItem('pos_layout_mode', 'keyboard'); router.push('/pos') }}
         >
-          <Keyboard className="h-4 w-4" />
+          <Keyboard className="h-5 w-5" />
         </Button>
 
         {['MANAGER', 'OWNER', 'ADMIN'].includes(userSubRole) && (
           <>
             {onCashAdj && (
               <Button variant="ghost" size="icon-sm" onClick={onCashAdj} title="Cash In/Out">
-                <Banknote className="h-4 w-4" />
+                <Banknote className="h-5 w-5" />
               </Button>
             )}
             {onZReport && (
               <Button variant="ghost" size="icon-sm" onClick={onZReport} title="Z-Report">
-                <ReceiptText className="h-4 w-4" />
+                <ReceiptText className="h-5 w-5" />
               </Button>
             )}
           </>
         )}
 
-        <ShiftStatusBadge shift={shift} onStart={onStartShift} onEnd={onEndShift} />
+        {/* Shift badge only when the host wires shift handlers (per-vendor shifts toggle) */}
+        {onStartShift && <ShiftStatusBadge shift={shift} onStart={onStartShift} onEnd={onEndShift} />}
 
         <Button variant="ghost" size="icon-sm" onClick={handleSignOut} title="Sign out">
-          <LogOut className="h-4 w-4" />
+          <LogOut className="h-5 w-5" />
         </Button>
       </div>
 

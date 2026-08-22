@@ -356,7 +356,7 @@ function PackageRow({ pkg, canManage, onEdit, onDeactivate }) {
 }
 
 function ProductRow({ product, canManage, onEdit, onToggle, onTogglePkgOnly, onToggleWeb }) {
-  const cats  = (product.product_categories ?? []).map(pc => pc.categories?.name).filter(Boolean)
+  const cats  = [product.category, product.subcategory].filter(Boolean)   // HSN category tree (Phase 1)
   const price = parseFloat(product.mrp ?? 0)
   const cost  = parseFloat(product.wholesale_price ?? 0)
   const stock = product.current_stock ?? 0

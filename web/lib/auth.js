@@ -25,49 +25,6 @@ export async function signIn(email, password) {
 }
 
 /**
- * Send a WhatsApp OTP to the given phone number.
- * @param {string} phone - E.164 format (e.g. +97517123456)
- * @returns {Promise<{ success: boolean, error: string|null }>}
- */
-export async function sendWhatsAppOtp(phone) {
-  const res = await fetch('/api/auth/whatsapp/send', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ phone }),
-  })
-  const data = await res.json()
-  if (!res.ok) return { success: false, error: data.error }
-  return { success: true, error: null }
-}
-
-/**
- * Verify a WhatsApp OTP and sign in.
- * @param {string} phone
- * @param {string} otp - 6-digit code
- * @returns {Promise<{ user: object|null, error: string|null }>}
- */
-export async function signInWithWhatsApp(phone, otp) {
-  const res = await fetch('/api/auth/whatsapp/verify', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ phone, otp }),
-  })
-  const data = await res.json()
-
-  if (!res.ok) return { user: null, error: data.error }
-  if (!data.success) return { user: null, error: 'Verification failed' }
-
-  // If server returned temp credentials, use signInWithPassword
-  if (data.needs_signin) {
-    const loginRes = await signIn(data.email, data.temp_password)
-    return loginRes
-  }
-
-  // Session was set server-side — fetch it via the session endpoint
-  return getUser()
-}
-
-/**
  * Sign out the current user via BFF.
  * @returns {Promise<void>}
  */
@@ -172,11 +129,4 @@ export function hasPermission(user, permission) {
 /**
  * Role home routes — where each role lands after login.
  */
-export const ROLE_HOME = {
-  SUPER_ADMIN:  '/admin',
-  DISTRIBUTOR:  '/distributor',
-  WHOLESALER:   '/wholesaler',
-  RETAILER:     '/pos',
-  RIDER:        '/rider',
-  CUSTOMER:     '/shop',
-}
+export { ROLE_HOME } from './hosts'

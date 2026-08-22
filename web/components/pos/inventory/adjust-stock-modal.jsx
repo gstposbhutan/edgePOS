@@ -101,7 +101,7 @@ export function AdjustStockModal({ open, product, entityId, onAdjust, onReceive,
   }
 
   return (
-    <Dialog open={open}>
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-serif">Adjust Stock</DialogTitle>

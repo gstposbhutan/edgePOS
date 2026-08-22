@@ -1,0 +1,10 @@
+# Pelbu POS web app. The Supabase stack runs separately
+# (currently infra/supabase on the box; slim droplet profile planned).
+services:
+  pos:
+    build: { context: ., dockerfile: Dockerfile }
+    image: pelbu-pos
+    env_file: [./web/.env]
+    environment: { PORT: "3100" }
+    ports: ["127.0.0.1:3100:3100"]
+    restart: unless-stopped

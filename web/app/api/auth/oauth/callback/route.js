@@ -19,7 +19,7 @@ export async function GET(request) {
   const response = NextResponse.redirect(`${origin}${redirect}`)
 
   const ssr = createServerClient(url, key, {
-    cookieOptions: { name: 'sb-edgepos-auth-token' },
+    cookieOptions: { name: 'sb-pelbu-auth', path: '/', sameSite: 'lax', domain: process.env.NEXT_PUBLIC_COOKIE_DOMAIN || undefined },
     cookies: {
       getAll: () => cookieStore.getAll(),
       setAll: (toSet) => toSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options)),

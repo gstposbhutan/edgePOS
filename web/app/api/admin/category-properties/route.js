@@ -32,19 +32,15 @@ export async function GET(request) {
 
       properties = hsnProps || []
     } else {
-      // Legacy category_id based lookup
+      // Category-id lookup. Category TAGS are retired (category consolidation), so we no longer
+      // embed the `categories` table or filter by distributor ownership.
       let query = supabase
         .from('category_properties')
-        .select('*, categories(id, name)')
+        .select('*')
         .order('sort_order', { ascending: true })
 
       if (categoryId) {
         query = query.eq('category_id', categoryId)
-      }
-
-      // If DISTRIBUTOR, only show properties for their categories
-      if (ctx.role === 'DISTRIBUTOR') {
-        query = query.over('categories', 'distributor_id', ctx.entityId)
       }
 
       const { data, error } = await query
@@ -88,19 +84,6 @@ export async function POST(request) {
     }
 
     const { supabase } = ctx
-
-    // For DISTRIBUTOR, verify they own this category
-    if (ctx.role === 'DISTRIBUTOR') {
-      const { data: category } = await supabase
-        .from('categories')
-        .select('distributor_id')
-        .eq('id', category_id)
-        .single()
-
-      if (!category || category.distributor_id !== ctx.entityId) {
-        return NextResponse.json({ error: 'Unauthorized for this category' }, { status: 403 })
-      }
-    }
 
     // Generate slug from name if not provided
     const finalSlug = slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '_')

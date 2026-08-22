@@ -15,7 +15,7 @@ export async function GET(request) {
   const roleFilter = new URL(request.url).searchParams.get('role')
   let q = ctx.supabase
     .from('entities')
-    .select('id, name, role, tpn_gstin, whatsapp_no, address, credit_limit, is_active, is_featured, created_at')
+    .select('id, name, role, tpn_gstin, whatsapp_no, address, credit_limit, is_active, is_featured, created_at, nqrc_enabled, nqrc_merchant_name, nqrc_merchant_city, nqrc_account_id, nqrc_psp_guid, nqrc_mcc, nqrc_account_tag')
     .order('role', { ascending: true })
     .order('name', { ascending: true })
   if (roleFilter) q = q.eq('role', roleFilter)

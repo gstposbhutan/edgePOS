@@ -36,7 +36,7 @@ export async function POST(request) {
     }
 
     const supabase = createServiceClient()
-    const mock = process.env.MOCK_WHATSAPP === 'true'
+    const mock = process.env.MOCK_OTP === 'true'
 
     // Verify the email OTP.
     if (!(mock && otp === '123456')) {
@@ -73,7 +73,7 @@ export async function POST(request) {
     const cookieStore = await cookies()
     const response = NextResponse.json({ success: true })
     const ssr = createServerClient(url, key, {
-      cookieOptions: { name: 'sb-edgepos-auth-token' },
+      cookieOptions: { name: 'sb-pelbu-auth', path: '/', sameSite: 'lax', domain: process.env.NEXT_PUBLIC_COOKIE_DOMAIN || undefined },
       cookies: {
         getAll: () => cookieStore.getAll(),
         setAll: (toSet) => toSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options)),

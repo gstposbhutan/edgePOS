@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { CartTable }          from "@/components/pos/keyboard/cart-table"
+import { BatchPickerModal }   from "@/components/pos/batch-picker-modal"
 import { ProductSearchModal } from "@/components/pos/keyboard/product-search-modal"
 import { PaymentModal }       from "@/components/pos/keyboard/payment-modal"
 import { HelpOverlay }        from "@/components/pos/keyboard/help-overlay"
@@ -42,6 +43,7 @@ export default function KeyboardPosPage() {
 
   const [user,         setUser]         = useState(null)
   const [entity,       setEntity]       = useState(null)
+  const shiftsEnabled = !!entity?.shifts_enabled   // per-vendor toggle — shift/drawer UI is hidden unless the owner enabled it
   const [subRole,      setSubRole]      = useState('CASHIER')
   const [selectedRow,  setSelectedRow]  = useState(0)
   const editRowRef = useRef(null)
@@ -50,9 +52,11 @@ export default function KeyboardPosPage() {
   const [paymentOpen,   setPaymentOpen]   = useState(false)
   const [helpOpen,      setHelpOpen]      = useState(false)
   const [checkoutErr,   setCheckoutErr]   = useState(null)
+  const [checkoutWarn,  setCheckoutWarn]  = useState(null)   // non-blocking (e.g. FEFO older-batch)
   const [creditOtpOpen, setCreditOtpOpen] = useState(false)
   const pendingPayment  = useRef(null)
   const [lastOrderNo,  setLastOrderNo]  = useState(null)
+  const [replacingOrderNo, setReplacingOrderNo] = useState(null)   // set after a "Return & replace" — reminds the cashier to ring the replacement
   const [showReceipt,  setShowReceipt]  = useState(false)
   const [receiptOrder, setReceiptOrder] = useState(null)
   const [receiptItems, setReceiptItems] = useState([])
@@ -70,6 +74,7 @@ export default function KeyboardPosPage() {
   const [salesPersonName, setSalesPersonName] = useState(null)
   const [salespeopleById, setSalespeopleById] = useState({})      // id → name, to label each cart line's salesperson
   const [weighProduct, setWeighProduct] = useState(null)          // sold_by_weight product awaiting a weight
+  const [batchPickItem, setBatchPickItem] = useState(null)        // cart line whose batch is being overridden
   const [showQuotation, setShowQuotation] = useState(false)
   const [showComp, setShowComp] = useState(false)
   const [showExchange, setShowExchange] = useState(false)
@@ -149,7 +154,7 @@ export default function KeyboardPosPage() {
     cartId, items, customer,
     subtotal, gstTotal, grandTotal, billDiscount, taxableSubtotal,
     carts, activeIndex,
-    addItem, updateQty, removeItem, clearCart, setCustomerIdentity, applyDiscount, applyBillDiscount,
+    addItem, updateQty, changeBatch, removeItem, clearCart, setCustomerIdentity, applyDiscount, applyBillDiscount,
     repriceCart, setLineSalesperson,
     holdCart, switchCart, cancelCart,
   } = useCart(entity?.id, user?.id, 'RETAIL', (name, avail) => showToast(`Only ${avail} in stock`))
@@ -189,8 +194,8 @@ export default function KeyboardPosPage() {
 
       // --- Manager shortcuts ---
       const isManager = ['MANAGER', 'OWNER', 'ADMIN'].includes(subRole)
-      if (e.ctrlKey && e.shiftKey && (e.key === 'z' || e.key === 'Z') && isManager) { e.preventDefault(); setShowZReport(true); return }
-      if (e.ctrlKey && e.shiftKey && (e.key === 'x' || e.key === 'X') && isManager) { e.preventDefault(); setShowCashAdj(true); return }   // Cash In/Out (relocated off F8)
+      if (e.ctrlKey && e.shiftKey && (e.key === 'z' || e.key === 'Z') && isManager && shiftsEnabled) { e.preventDefault(); setShowZReport(true); return }
+      if (e.ctrlKey && e.shiftKey && (e.key === 'x' || e.key === 'X') && isManager && shiftsEnabled) { e.preventDefault(); setShowCashAdj(true); return }   // Cash In/Out (relocated off F8)
 
       // --- Ctrl modifiers ---
       if (e.ctrlKey && !e.shiftKey) {
@@ -200,7 +205,7 @@ export default function KeyboardPosPage() {
         if (k === 'r') { e.preventDefault(); voidSelected(); return }                                                       // Remove selected row
         if (k === 'd') { e.preventDefault(); if (items.length > 0) setShowBillDiscount(true); return }                      // Bill discount (all lines)
         if (k === 'c') { e.preventDefault(); if (isManager && items.length > 0) setShowComp(true); else showToast(isManager ? 'Add items first' : 'Complimentary is manager-only'); return }   // Complimentary (manager)
-        if (k === 'e') { e.preventDefault(); setShowExchange(true); return }                                                  // Exchange (return from past order)
+        if (k === 'e') { e.preventDefault(); setShowExchange(true); return }                                                  // Return / refund (from a past order)
       }
 
       // --- Alt modifiers (all stubs) ---
@@ -245,7 +250,7 @@ export default function KeyboardPosPage() {
     // checkoutErr must be a dep: handleNewTransaction (F2) reads it to block
     // clearing on a stock error. Without it, the out-of-stock branch (no item
     // added → items unchanged → effect not re-run) leaves a stale closure.
-  }, [searchOpen, paymentOpen, helpOpen, showCustomerPanel, showDiscount, showBillDiscount, showInvoiceSearch, showSalesPerson, showQuotation, showComp, showExchange, showMarket, showDelivery, showHandover, showReceipt, items, selectedRow, carts, activeIndex, subRole, checkoutErr])
+  }, [searchOpen, paymentOpen, helpOpen, showCustomerPanel, showDiscount, showBillDiscount, showInvoiceSearch, showSalesPerson, showQuotation, showComp, showExchange, showMarket, showDelivery, showHandover, showReceipt, items, selectedRow, carts, activeIndex, subRole, checkoutErr, shiftsEnabled])
 
   function showToast(msg) {
     setToastMsg(msg)
@@ -276,6 +281,7 @@ export default function KeyboardPosPage() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Save failed')
       setLastOrderNo(data.order.order_no)
+      setReplacingOrderNo(null)
       await clearCart()
       setSelectedRow(0)
       setShowQuotation(false)
@@ -305,6 +311,7 @@ export default function KeyboardPosPage() {
     clearCart()
     setSelectedRow(0)
     setCheckoutErr(null)
+    setCheckoutWarn(null)
   }
 
   function handleCancelCart(index) {
@@ -317,39 +324,118 @@ export default function KeyboardPosPage() {
     router.push('/pos/touch')
   }
 
-  function handleProductAdd(product, qty = 1, mode) {
+  async function handleProductAdd(product, qty = 1, mode) {
     const batchQty = product.available_stock ?? Infinity
     // Lines start with no salesperson; the cashier assigns one per line via F8 (per-product #3).
 
     // Weighed goods: route through the weigh modal (enter the measured amount) instead of qty 1.
     if (product.sold_by_weight) { setWeighProduct(product); return }
 
+    // One batch can't cover the quantity → auto-split across batches in FEFO/FIFO order.
+    // Each sub-line keeps its own batch selling price (old stock sells at its old price).
     if (product.batch_id && qty > batchQty) {
+      try {
+        const res = await fetch(`/api/pos/allocate?product=${product.id}&qty=${qty}`)
+        const data = await res.json()
+        if (res.ok && data.allocation?.length) {
+          for (const row of data.allocation) {
+            addItem({
+              ...product,
+              batch_id:        row.batch_id,
+              batch_number:    row.batch_number,
+              selling_price:   row.selling_price,
+              expires_at:      row.expires_at,
+              available_stock: row.quantity,
+              quantity:        row.quantity,
+            }, mode)
+          }
+          setSelectedRow(items.length)
+          if (data.insufficient) {
+            setCheckoutErr(`Only ${qty - data.short} of ${qty} units in stock for "${product.name}". Added what's available.`)
+            setCheckoutWarn(null)
+          } else {
+            setCheckoutErr(null)
+            setCheckoutWarn(
+              data.allocation.length > 1
+                ? `Split "${product.name}" (${qty}) across ${data.allocation.length} batches${data.rotation === 'NONE' ? '.' : ` — ${data.rotation}, oldest first.`}`
+                : null
+            )
+          }
+          return
+        }
+      } catch { /* fall through to single-batch behaviour */ }
+
+      // Fallback (allocation unavailable): add what the picked batch holds.
       if (batchQty > 0) {
         addItem({ ...product, quantity: batchQty }, mode)
         setSelectedRow(items.length)
-        setCheckoutErr(
-          `Only ${batchQty} units available in batch "${product.batch_number || product.batch_id.slice(0, 8)}". ` +
-          `Added ${batchQty}. Search the product again to add remaining ${qty - batchQty} from another batch.`
-        )
+        setCheckoutErr(`Only ${batchQty} units available in batch "${product.batch_number || product.batch_id.slice(0, 8)}". Added ${batchQty}.`)
       } else {
         setCheckoutErr(`Batch "${product.batch_number || product.batch_id.slice(0, 8)}" is out of stock.`)
       }
+      return
+    }
+
+    // Fits within the chosen batch.
+    addItem({ ...product, quantity: qty }, mode)
+    setSelectedRow(items.length)
+
+    // FEFO rotation nudge (non-blocking): the cashier picked a batch that isn't the soonest-expiring.
+    if (product.stock_rotation === 'FEFO' && product.has_older_batch && product.expires_at) {
+      const older = product.earliest_batch_expiry
+        ? new Date(product.earliest_batch_expiry).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+        : null
+      setCheckoutWarn(
+        `FEFO: "${product.name}" — an older batch${older ? ` (expires ${older})` : ''} should sell first. Added anyway; switch batches if you can.`
+      )
     } else {
-      addItem({ ...product, quantity: qty }, mode)
-      setSelectedRow(items.length)
+      setCheckoutWarn(null)
     }
   }
 
-  async function handlePaymentConfirm({ method, received, journalNo }) {
+  // Increasing a batch line past its stock → cap it (server does) and auto-split the overflow
+  // across the product's other batches (FEFO/FIFO, oldest first), each new line at its batch price.
+  async function handleQtyChange(itemId, newQty) {
+    const item = items.find(i => i.id === itemId)
+    if (!item?.batch_id || !item?.product_id) { updateQty(itemId, newQty); return }
+
+    const result = await updateQty(itemId, newQty)   // server clamps to this batch's stock
+    if (!result?.capped || result.available == null || newQty <= result.available) return
+
+    const overflow = newQty - result.available
+    try {
+      const res = await fetch(`/api/pos/allocate?product=${item.product_id}&qty=${overflow}&exclude=${item.batch_id}`)
+      const data = await res.json()
+      if (res.ok && data.allocation?.length) {
+        const p = data.product
+        for (const row of data.allocation) {
+          addItem({
+            id: p.id, product_id: p.id, name: p.name, sku: p.sku, unit: p.unit,
+            sold_by_weight: p.sold_by_weight, gst_exempt: p.gst_exempt,
+            mrp: p.mrp, wholesale_price: p.wholesale_price, distributor_price: p.distributor_price,
+            selling_price: row.selling_price, batch_id: row.batch_id, batch_number: row.batch_number,
+            expires_at: row.expires_at, available_stock: row.quantity, quantity: row.quantity,
+          })
+        }
+        setCheckoutWarn(`Split "${item.name}" across batches${data.rotation === 'NONE' ? '.' : ` — ${data.rotation}, oldest first.`}`)
+      }
+      if (data.insufficient) setCheckoutErr(`Not enough stock across batches for "${item.name}".`)
+    } catch { /* leave the line capped */ }
+  }
+
+  async function handlePaymentConfirm({ method, received, journalNo, creditAccount }) {
     setPaymentOpen(false)
     setCheckoutErr(null)
 
     if (!cartId || items.length === 0) return
 
     if (method === 'CREDIT') {
-      pendingPayment.current = { method, received, journalNo }
-      setCreditOtpOpen(true)
+      // Customer is picked/added inline in the payment modal now (no separate OTP step) —
+      // put the sale on their khata by stamping the order's buyer to the account's phone.
+      if (!creditAccount) { setCheckoutErr('Select a credit customer'); return }
+      setCustomerIdentity({ whatsapp: creditAccount.debtor_phone, buyerHash: null })
+      setSelectedCustomer(creditAccount)
+      await processPayment({ method, received, journalNo, buyerWhatsapp: creditAccount.debtor_phone })
       return
     }
 
@@ -378,7 +464,7 @@ export default function KeyboardPosPage() {
     }
   }
 
-  async function processPayment({ method, received, journalNo }) {
+  async function processPayment({ method, received, journalNo, buyerWhatsapp }) {
     // Shifts are optional — a cashier can sell without an open shift (opening a shift for cash
     // reconciliation is opt-in, not a gate on checkout).
     try {
@@ -397,7 +483,7 @@ export default function KeyboardPosPage() {
           billDiscount,
           paymentMethod: method,
           paymentRef: journalNo || null,
-          customerWhatsapp: customer?.whatsapp ?? null,
+          customerWhatsapp: buyerWhatsapp ?? customer?.whatsapp ?? null,
           buyerHash: customer?.buyerHash ?? null,
           cartId,
           invoiceDate: isAdmin && dateOverride ? dateOverride : undefined,
@@ -410,6 +496,7 @@ export default function KeyboardPosPage() {
       if (!res.ok) throw new Error(data.error || 'Order failed')
 
       setLastOrderNo(data.order.order_no)
+      setReplacingOrderNo(null)
       await clearCart()
       setSelectedRow(0)
       refreshInvoiceHeader()        // bump the displayed next invoice no
@@ -547,7 +634,7 @@ export default function KeyboardPosPage() {
           >
             <Hand className="h-4 w-4" />
           </Button>
-          {['MANAGER', 'OWNER', 'ADMIN'].includes(subRole) && (
+          {shiftsEnabled && ['MANAGER', 'OWNER', 'ADMIN'].includes(subRole) && (
             <div className="flex items-center gap-0.5 mr-1">
               <Button variant="ghost" size="icon-sm" title="Cash In/Out [Ctrl+Shift+X]" onClick={() => setShowCashAdj(true)} className="text-muted-foreground hover:text-foreground">
                 <Wallet className="h-4 w-4" />
@@ -557,7 +644,7 @@ export default function KeyboardPosPage() {
               </Button>
             </div>
           )}
-          <ShiftStatusBadge shift={shift} onStart={() => setShowStartShift(true)} onEnd={() => setShowEndShift(true)} />
+          {shiftsEnabled && <ShiftStatusBadge shift={shift} onStart={() => setShowStartShift(true)} onEnd={() => setShowEndShift(true)} />}
           <Button variant="ghost" size="icon-sm" onClick={handleSignOut} title="Sign out">
             <LogOut className="h-4 w-4" />
           </Button>
@@ -570,9 +657,23 @@ export default function KeyboardPosPage() {
         </div>
       )}
 
+      {replacingOrderNo && (
+        <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/30 text-sm text-amber-700 font-medium shrink-0 flex items-center justify-between gap-3">
+          <span>↔ Replacing {replacingOrderNo} — add the replacement item(s) and check out. The price difference is settled at payment.</span>
+          <button onClick={() => setReplacingOrderNo(null)} className="text-amber-700/70 hover:text-amber-700 text-xs underline shrink-0">dismiss</button>
+        </div>
+      )}
+
       {checkoutErr && (
         <div className="px-4 py-2 bg-tibetan/10 border-b border-tibetan/30 text-sm text-tibetan shrink-0">
           {checkoutErr}
+        </div>
+      )}
+
+      {checkoutWarn && (
+        <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/30 text-sm text-amber-700 dark:text-amber-400 shrink-0 flex items-start justify-between gap-3">
+          <span>⚠ {checkoutWarn}</span>
+          <button onClick={() => setCheckoutWarn(null)} className="shrink-0 text-xs underline opacity-80 hover:opacity-100">Dismiss</button>
         </div>
       )}
 
@@ -620,8 +721,9 @@ export default function KeyboardPosPage() {
 
       <CartTable
         items={items}
-        onUpdateQty={(itemId, qty) => updateQty(itemId, qty)}
+        onUpdateQty={handleQtyChange}
         onRemoveItem={removeItem}
+        onChangeBatch={setBatchPickItem}
         selectedRow={selectedRow}
         onSelectRow={setSelectedRow}
         onEditRequest={editRowRef}
@@ -652,6 +754,16 @@ export default function KeyboardPosPage() {
       <PaymentModal
         open={paymentOpen}
         grandTotal={grandTotal}
+        accounts={accounts}
+        onCreateCustomer={async ({ name, phone }) => {
+          const { account, error } = await createAccount({
+            party_type: 'CONSUMER',
+            debtor_name: name,
+            debtor_phone: phone,
+            credit_limit: 1000,
+          })
+          return { account, error }
+        }}
         onConfirm={handlePaymentConfirm}
         onClose={() => setPaymentOpen(false)}
       />
@@ -784,6 +896,17 @@ export default function KeyboardPosPage() {
         />
       )}
 
+      {batchPickItem && (
+        <BatchPickerModal
+          open
+          productId={batchPickItem.product_id}
+          productName={batchPickItem.name}
+          currentBatchId={batchPickItem.batch_id}
+          onSelect={(batchId) => changeBatch(batchPickItem.id, batchId)}
+          onClose={() => setBatchPickItem(null)}
+        />
+      )}
+
       {showQuotation && (
         <QuotationConfirmModal
           itemCount={items.length}
@@ -805,7 +928,12 @@ export default function KeyboardPosPage() {
       )}
 
       {showExchange && (
-        <ExchangeModal userId={user?.id} onToast={showToast} onClose={() => setShowExchange(false)} />
+        <ExchangeModal
+          userId={user?.id}
+          onToast={showToast}
+          onClose={() => setShowExchange(false)}
+          onReplace={(o) => { clearCart(); setSelectedRow(0); setCheckoutErr(null); setReplacingOrderNo(o.order_no) }}
+        />
       )}
 
       {showMarket && items.length > 0 && (

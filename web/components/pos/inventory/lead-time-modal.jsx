@@ -50,7 +50,7 @@ export function LeadTimeModal({ open, onClose, onSave, prediction }) {
   const productName = prediction?.products?.name ?? 'this product'
 
   return (
-    <Dialog open={open}>
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent showCloseButton={false}>
         <DialogHeader>
           <DialogTitle className="font-serif">Set Lead Time</DialogTitle>

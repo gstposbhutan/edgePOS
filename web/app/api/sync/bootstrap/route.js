@@ -29,7 +29,7 @@ export async function GET(request) {
   const tokenHash = createHash('sha256').update(token).digest('hex')
   const { data: cred, error: credError } = await supabase
     .from('terminal_tokens')
-    .select('id, entity_id')
+    .select('id, entity_id, register_id')
     .eq('token_hash', tokenHash)
     .eq('is_active', true)
     .maybeSingle()
@@ -39,18 +39,18 @@ export async function GET(request) {
   const entityId = cred.entity_id
 
   // Store profile + this store's active catalog (+ category) + its khata accounts.
-  const [entityRes, productsRes, categoriesRes, khataRes, storeUsersRes] = await Promise.all([
+  const [entityRes, productsRes, khataRes, storeUsersRes] = await Promise.all([
     supabase
       .from('entities')
-      .select('id, name, role, tpn_gstin, whatsapp_no')
+      .select('id, name, role, tpn_gstin, whatsapp_no, nqrc_enabled, nqrc_merchant_name, nqrc_merchant_city, nqrc_account_id, nqrc_psp_guid, nqrc_mcc, nqrc_account_tag')
       .eq('id', entityId)
       .maybeSingle(),
     supabase
       .from('products')
       .select(`
         id, name, sku, barcode, qr_code, hsn_code, unit, mrp, selling_price,
-        wholesale_price, current_stock, reorder_point, image_url, is_active, sold_by_weight,
-        product_categories(categories(name))
+        wholesale_price, current_stock, reorder_point, image_url, is_active, sold_by_weight, gst_exempt,
+        category, subcategory
       `)
       .eq('created_by', entityId)
       .eq('is_active', true)
@@ -60,10 +60,6 @@ export async function GET(request) {
       .eq('product_type', 'SINGLE')
       .eq('sold_as_package_only', false),
     supabase
-      .from('categories')
-      .select('id, name')
-      .order('name'),
-    supabase
       .from('khata_accounts')
       .select('debtor_name, debtor_phone, credit_limit, outstanding_balance, party_type, credit_term_days, status')
       .eq('creditor_entity_id', entityId),
@@ -72,6 +68,17 @@ export async function GET(request) {
   ])
 
   if (productsRes.error) return NextResponse.json({ error: productsRes.error.message }, { status: 500 })
+
+  // Store-user mirror feeds the terminal's LOGIN — a silent failure here means
+  // "owner can't sign in on the terminal" with no trace anywhere. Log loudly
+  // (the terminal still gets the rest of the bootstrap).
+  if (storeUsersRes.error) {
+    console.error('[sync/bootstrap] store-users fetch FAILED (terminal logins will not mirror):', storeUsersRes.error.message)
+  } else if (!storeUsersRes.data?.length) {
+    console.warn(`[sync/bootstrap] store-users EMPTY for entity ${entityId} — no web logins will work on this terminal (check user_profiles.sub_role + auth passwords)`)
+  } else {
+    console.log(`[sync/bootstrap] mirroring ${storeUsersRes.data.length} store user(s) to terminal (entity ${entityId})`)
+  }
 
   // Shape products for PocketBase: selling_price → sale_price; first category name (PB
   // products.category is single-select). Nulls coalesced so the terminal can insert directly.
@@ -90,8 +97,15 @@ export async function GET(request) {
     image_url: p.image_url || '',
     is_active: p.is_active ?? true,
     sold_by_weight: p.sold_by_weight ?? false,
-    category_name: p.product_categories?.[0]?.categories?.name ?? null,
+    gst_exempt: p.gst_exempt ?? false,
+    category_name: p.category ?? null,   // HSN category (category-tag join retired — Phase 1)
   }))
+
+  // Category list for the terminal = the distinct HSN categories present in this store's catalog.
+  // (The `pos.categories` tag table is retired — category consolidation Phase 2.5.)
+  const categories = [...new Set((productsRes.data ?? []).map((p) => p.category).filter(Boolean))]
+    .sort()
+    .map((name) => ({ name }))
 
   // Liveness marker (best-effort).
   await supabase
@@ -99,11 +113,21 @@ export async function GET(request) {
     .update({ last_seen_at: new Date().toISOString() })
     .eq('id', cred.id)
 
+  // This terminal's register + mode (POS vs BACK_OFFICE). Pushed down so a mode change made in
+  // the web propagates to the terminal on the next bootstrap, without re-issuing the .lic.
+  let register = null
+  if (cred.register_id) {
+    const { data: reg } = await supabase
+      .from('cash_registers').select('id, name, mode').eq('id', cred.register_id).maybeSingle()
+    if (reg) register = { id: reg.id, name: reg.name, mode: reg.mode || 'POS' }
+  }
+
   return NextResponse.json({
     ok: true,
     entityId,
     entity: entityRes.data ?? null,
-    categories: categoriesRes.data ?? [],
+    register,
+    categories,
     products,
     khata: khataRes.data ?? [],
     // Team members to mirror into local PB auth (email, name, role, bcrypt hash).

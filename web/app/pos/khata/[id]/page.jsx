@@ -247,7 +247,7 @@ export default function KhataDetailPage() {
       />
 
       {/* Set Limit Dialog */}
-      <Dialog open={showLimit}>
+      <Dialog open={showLimit} onOpenChange={(v) => !v && setShowLimit(false)}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
             <DialogTitle className="font-serif">Set Credit Limit</DialogTitle>

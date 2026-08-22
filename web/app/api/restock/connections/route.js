@@ -10,7 +10,7 @@ export async function GET(request) {
     const supabase = ctx.supabase
     const { data: connections, error: connErr } = await supabase
       .from('retailer_wholesalers')
-      .select('wholesaler_id, is_primary, active, category_id, categories(name)')
+      .select('wholesaler_id, is_primary, active, category_id')
       .eq('retailer_id', retailerId)
       .eq('active', true)
 
@@ -36,7 +36,7 @@ export async function GET(request) {
         name: wholesalerMap[c.wholesaler_id]?.name || 'Unknown',
         whatsapp_no: wholesalerMap[c.wholesaler_id]?.whatsapp_no || '',
         is_primary: c.is_primary,
-        category: c.categories?.name || '',
+        category: '',   // tag category retired (category consolidation) — links are whole-catalog
       }))
     }
 

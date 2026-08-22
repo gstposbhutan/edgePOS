@@ -149,22 +149,6 @@ export async function POST(request, { params }) {
       })
       .eq('id', orderId)
 
-    // Send receipt via WhatsApp (fire-and-forget)
-    const gatewayUrl = process.env.NEXT_PUBLIC_WHATSAPP_GATEWAY_URL || 'http://localhost:3001'
-    if (order.buyer_whatsapp) {
-      fetch(`${gatewayUrl}/api/send-receipt`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phoneNumber: order.buyer_whatsapp,
-          invoiceId: orderId,
-          orderNo: order.order_no,
-          entityName: order.entities?.name,
-          grandTotal: order.grand_total,
-        }),
-      }).catch(() => {})
-    }
-
     return NextResponse.json({
       success: true,
       order_no: order.order_no,

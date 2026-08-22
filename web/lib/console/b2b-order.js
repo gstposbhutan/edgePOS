@@ -1,0 +1,489 @@
+import { resolveLink, ensureKhataAccount } from '@/lib/console/supply-links'
+import { ownedWarehouse, warehouseOnHand, primaryWarehouse } from '@/lib/console/inventory'
+import { lineGst } from '@/lib/gst'
+
+// Shared B2B order engine for the vendor consoles. One set of validation/pricing/receiving helpers
+// backs every seller/buyer flow:
+//   • createB2BOrder   — immediate sale (WHOLESALE, confirmed now): deduct seller stock, debit khata
+//                        on credit, receive into the buyer's inventory. Buy-side restock uses this too.
+//   • createSalesOrder — a Sales Order or Quotation (SALES_ORDER, DRAFT): a priced commitment/quote
+//                        with NO stock or khata movement until it's invoiced.
+//   • convertSalesOrderToInvoice — turn a Sales Order into a Sales Invoice (SALES_INVOICE, confirmed):
+//                        deduct seller stock + debit khata (via triggers) + receive into the buyer.
+// Keeping it in one place means the flows can't drift.
+
+// Price ladders per rate tier (first positive column wins). A seller can sell a line at any tier —
+// Retail (mrp), Wholesale (wholesale_price) or Distributor (distributor_price) — mirroring the POS
+// per-line rate tier. Each ladder falls back so a missing column still yields a price.
+const RATE_LADDERS = {
+  RETAIL:      p => [p.mrp, p.wholesale_price, p.distributor_price],
+  WHOLESALE:   p => [p.wholesale_price, p.mrp],
+  DISTRIBUTOR: p => [p.distributor_price, p.wholesale_price, p.mrp],
+}
+
+/** A seller's natural (default) rate tier: distributors sell at distributor rate, wholesalers at wholesale. */
+export function defaultRateTier(sellerRole) {
+  return sellerRole === 'DISTRIBUTOR' ? 'DISTRIBUTOR' : 'WHOLESALE'
+}
+
+/** Unit price for a product at a given rate tier. */
+export function priceForTier(p, tier) {
+  const ladder = (RATE_LADDERS[tier] || RATE_LADDERS.WHOLESALE)(p)
+  for (const c of ladder) {
+    const n = parseFloat(c)
+    if (Number.isFinite(n) && n > 0) return n
+  }
+  return 0
+}
+
+// Best B2B unit price for a seller at their natural tier (back-compat wrapper).
+export function b2bPriceForSeller(p, sellerRole) {
+  return priceForTier(p, defaultRateTier(sellerRole))
+}
+
+/**
+ * Provision (or reuse) the buyer's own mirror of a seller product, recursively for packages, and
+ * return the buyer's product id. Idempotent: SINGLE/PACKAGE products dedupe on products.source_product_id
+ * (per buyer), package definitions on product_packages.source_package_id.
+ * @returns {Promise<{ productId: string|null, error?: string }>}
+ */
+export async function ensureBuyerMirror(supabase, sellerProductId, buyerId) {
+  const { data: existing, error: existErr } = await supabase
+    .from('products')
+    .select('id')
+    .eq('created_by', buyerId)
+    .eq('source_product_id', sellerProductId)
+    .limit(1)
+    .maybeSingle()
+  if (existErr) return { productId: null, error: existErr.message }
+  if (existing?.id) return { productId: existing.id }
+
+  const { data: seller, error: sellerErr } = await supabase
+    .from('products')
+    .select('id, name, sku, hsn_code, unit, mrp, wholesale_price, product_type, image_url')
+    .eq('id', sellerProductId)
+    .maybeSingle()
+  if (sellerErr) return { productId: null, error: sellerErr.message }
+  if (!seller) return { productId: null, error: `Seller product ${sellerProductId} not found` }
+
+  const sellPrice = (p) => {
+    for (const c of [p?.wholesale_price, p?.mrp]) {
+      const n = parseFloat(c)
+      if (Number.isFinite(n) && n > 0) return n
+    }
+    return seller.wholesale_price ?? null
+  }
+
+  const { data: mirror, error: mirrorErr } = await supabase
+    .from('products')
+    .insert({
+      name: seller.name, sku: seller.sku || null, hsn_code: seller.hsn_code || '9999',
+      unit: seller.unit || 'pcs', mrp: seller.mrp, wholesale_price: sellPrice(seller),
+      image_url: seller.image_url || null, product_type: seller.product_type, is_active: true,
+      created_by: buyerId, source_product_id: sellerProductId,
+    })
+    .select('id')
+    .single()
+  if (mirrorErr) return { productId: null, error: mirrorErr.message }
+
+  if (seller.product_type !== 'PACKAGE') return { productId: mirror.id }
+
+  const { data: sellerPkg, error: pkgErr } = await supabase
+    .from('product_packages')
+    .select('id, name, package_type, barcode, qr_code, wholesale_price, mrp, hsn_code, package_items(product_id, quantity)')
+    .eq('product_id', sellerProductId)
+    .maybeSingle()
+  if (pkgErr) return { productId: null, error: pkgErr.message }
+  if (!sellerPkg) return { productId: mirror.id }
+
+  let buyerPkgId
+  const { data: existingPkg } = await supabase
+    .from('product_packages')
+    .select('id')
+    .eq('created_by', buyerId)
+    .eq('source_package_id', sellerPkg.id)
+    .limit(1)
+    .maybeSingle()
+  if (existingPkg?.id) {
+    buyerPkgId = existingPkg.id
+  } else {
+    const { data: buyerPkg, error: buyerPkgErr } = await supabase
+      .from('product_packages')
+      .insert({
+        product_id: mirror.id, name: sellerPkg.name, package_type: sellerPkg.package_type,
+        wholesale_price: sellPrice(sellerPkg), mrp: sellerPkg.mrp, hsn_code: sellerPkg.hsn_code,
+        is_active: true, stocked_as_unit: true, source_package_id: sellerPkg.id, created_by: buyerId,
+      })
+      .select('id')
+      .single()
+    if (buyerPkgErr) return { productId: null, error: buyerPkgErr.message }
+    buyerPkgId = buyerPkg.id
+    await supabase.from('entity_packages').insert({ entity_id: buyerId, package_id: buyerPkgId, is_default: false })
+    for (const it of sellerPkg.package_items ?? []) {
+      const child = await ensureBuyerMirror(supabase, it.product_id, buyerId)
+      if (child.error) return { productId: null, error: child.error }
+      const { error: piErr } = await supabase.from('package_items').insert({ package_id: buyerPkgId, product_id: child.productId, quantity: it.quantity })
+      if (piErr) return { productId: null, error: piErr.message }
+    }
+  }
+  return { productId: mirror.id }
+}
+
+// ── Internal shared helpers ────────────────────────────────────────────────────────────────────
+
+// Resolve seller/buyer entities and verify an active supply link with the CALLER as the seller
+// (upstream/creditor). Returns { ok, sellerEnt, buyerEnt, link } or a { ok:false, status, error }.
+async function resolveB2B(supabase, sellerId, buyerId) {
+  if (!buyerId) return { ok: false, status: 400, error: 'buyer is required' }
+  if (buyerId === sellerId) return { ok: false, status: 400, error: 'Seller and buyer cannot be the same entity' }
+  const [{ data: sellerEnt }, { data: buyerEnt }] = await Promise.all([
+    supabase.from('entities').select('id, role').eq('id', sellerId).maybeSingle(),
+    supabase.from('entities').select('id, role, name').eq('id', buyerId).maybeSingle(),
+  ])
+  if (!sellerEnt) return { ok: false, status: 400, error: 'Seller entity not found' }
+  if (!buyerEnt) return { ok: false, status: 404, error: 'Buyer entity not found' }
+  const link = resolveLink(sellerEnt.role, sellerId, buyerEnt.role, buyerId)
+  if (!link || link.seller !== sellerId) return { ok: false, status: 400, error: `A ${sellerEnt.role} cannot sell to a ${buyerEnt.role}` }
+  const { data: activeLink } = await supabase.from(link.table).select('id').match(link.key).eq('active', true).limit(1)
+  if (!activeLink?.length) return { ok: false, status: 403, error: 'No active supply link with this buyer — connect first' }
+  return { ok: true, sellerEnt, buyerEnt, link }
+}
+
+// Validate a cart against the seller's catalog and price it by the seller's tier. Returns
+// { ok, orderItems, subtotal, gstTotal, grandTotal } or { ok:false, status, error }.
+async function priceB2BCart(supabase, sellerId, sellerRole, items) {
+  if (!Array.isArray(items) || items.length === 0) return { ok: false, status: 400, error: 'items[] is required' }
+
+  const productIds = [...new Set(items.map(i => i.product_id))]
+  const { data: products, error: prodErr } = await supabase
+    .from('products')
+    .select('id, name, sku, distributor_price, wholesale_price, mrp, current_stock, hsn_code, gst_exempt, product_type, product_packages(id, name, package_type, stocked_as_unit, is_active)')
+    .in('id', productIds)
+    .eq('created_by', sellerId)
+    .eq('is_active', true)
+  if (prodErr) return { ok: false, status: 500, error: 'Failed to fetch products' }
+
+  const pkgDefsOf = (p) => { const d = p?.product_packages; return Array.isArray(d) ? d : (d ? [d] : []) }
+  const productMap = Object.fromEntries((products || []).map(p => [p.id, p]))
+
+  for (const item of items) {
+    const p = productMap[item.product_id]
+    if (!p) return { ok: false, status: 400, error: `Product ${item.product_id} not in your catalog` }
+    if (!item.quantity || item.quantity < 1) return { ok: false, status: 400, error: 'Quantity must be >= 1' }
+    if (item.package_id) {
+      const def = pkgDefsOf(p).find(d => d.id === item.package_id)
+      if (!def || !def.is_active || !def.stocked_as_unit) return { ok: false, status: 400, error: `Package ${item.package_id} is not sellable` }
+    }
+  }
+
+  const fallbackTier = defaultRateTier(sellerRole)
+  let subtotal = 0
+  const orderItems = items.map(item => {
+    const p = productMap[item.product_id]
+    const def = item.package_id ? pkgDefsOf(p).find(d => d.id === item.package_id) : null
+    // Per-line rate tier (Retail/Wholesale/Distributor), defaulting to the seller's own tier.
+    const tier = RATE_LADDERS[String(item.rate_tier || '').toUpperCase()] ? item.rate_tier.toUpperCase() : fallbackTier
+    const unitPrice = priceForTier(p, tier)
+    const qty = item.quantity
+    const gst5 = lineGst(unitPrice * qty, p.gst_exempt)   // 0 for GST-exempt products
+    const total = parseFloat((unitPrice * qty + gst5).toFixed(2))
+    subtotal += unitPrice * qty
+    return {
+      product_id: p.id, package_id: def ? def.id : null, package_name: def ? (def.name || p.name) : null,
+      package_type: def ? def.package_type : null, sku: p.sku, name: p.name, quantity: qty,
+      unit_price: unitPrice, discount: 0, gst_5: gst5, gst_exempt: !!p.gst_exempt, total, status: 'ACTIVE',
+    }
+  })
+  const gstTotal = parseFloat(orderItems.reduce((s, i) => s + i.gst_5, 0).toFixed(2))
+  const grandTotal = parseFloat((subtotal + gstTotal).toFixed(2))
+  return { ok: true, orderItems, subtotal, gstTotal, grandTotal }
+}
+
+// Next order number in a per-year series (WHL / SO / SI).
+async function nextOrderNo(supabase, prefix) {
+  const year = new Date().getFullYear()
+  const { data: last } = await supabase
+    .from('orders').select('order_no').like('order_no', `${prefix}-${year}-%`)
+    .order('created_at', { ascending: false }).limit(1)
+  let serial = 1
+  if (last?.length) {
+    const m = last[0].order_no.match(new RegExp(`${prefix}-\\d+-(\\d+)`))
+    if (m) serial = parseInt(m[1]) + 1
+  }
+  return `${prefix}-${year}-${String(serial).padStart(4, '0')}`
+}
+
+// Shape order_items JSONB the way the orders.items snapshot stores it.
+function itemsSnapshot(orderItems) {
+  return orderItems.map(i => ({
+    product_id: i.product_id, package_id: i.package_id, package_name: i.package_name,
+    package_type: i.package_type, sku: i.sku, name: i.name, qty: i.quantity,
+    rate: i.unit_price, discount: i.discount, gst_5: i.gst_5, total: i.total,
+  }))
+}
+
+// Receive an order's lines into the buyer's own stock (mirror + RESTOCK), idempotent on
+// (reference_id, product_id, entity). The goods land in the buyer's primary warehouse when the buyer
+// is a tier with warehouses (destWarehouseId), else entity-level. Returns warnings (empty on success).
+async function receiveIntoBuyer(supabase, order, orderItems, buyerId, destWarehouseId) {
+  const warnings = []
+  for (const item of orderItems) {
+    try {
+      const { productId, error: mirrorErr } = await ensureBuyerMirror(supabase, item.product_id, buyerId)
+      if (mirrorErr || !productId) { warnings.push(`mirror ${item.name}: ${mirrorErr || 'no product'}`); continue }
+      const { data: prior } = await supabase
+        .from('inventory_movements').select('id')
+        .eq('reference_id', order.id).eq('product_id', productId).eq('entity_id', buyerId).eq('movement_type', 'RESTOCK')
+        .limit(1)
+      if (prior?.length) continue
+      const { error: mvErr } = await supabase.from('inventory_movements').insert({
+        product_id: productId, entity_id: buyerId, warehouse_id: destWarehouseId || null,
+        movement_type: 'RESTOCK', quantity: item.quantity,
+        reference_id: order.id, package_id: item.package_id || null,
+        package_qty: item.package_id ? item.quantity : null, notes: `Received on order ${order.order_no}`,
+      })
+      if (mvErr) warnings.push(`restock ${item.name}: ${mvErr.message}`)
+    } catch (e) {
+      warnings.push(`receive ${item.name}: ${e.message}`)
+    }
+  }
+  return warnings
+}
+
+// Validate an optional source warehouse for a seller and check per-line on-hand. Returns
+// { ok:true, warehouseId } (warehouseId null = sell entity-level) or { ok:false, status, error }.
+async function resolveSourceWarehouse(supabase, sellerId, sourceWarehouseId, orderItems) {
+  if (!sourceWarehouseId) return { ok: true, warehouseId: null }
+  const wh = await ownedWarehouse(supabase, sellerId, sourceWarehouseId)
+  if (!wh) return { ok: false, status: 400, error: 'Source warehouse not found' }
+  // Aggregate required qty per product (a product could appear on more than one line).
+  const need = {}
+  for (const it of orderItems) need[it.product_id] = (need[it.product_id] || 0) + it.quantity
+  for (const [productId, qty] of Object.entries(need)) {
+    const onHand = await warehouseOnHand(supabase, sellerId, sourceWarehouseId, productId)
+    if (onHand < qty) {
+      const nm = orderItems.find(i => i.product_id === productId)?.name || productId
+      return { ok: false, status: 400, error: `Only ${onHand} of "${nm}" in ${wh.name}` }
+    }
+  }
+  return { ok: true, warehouseId: sourceWarehouseId }
+}
+
+// Insert order_items rows for an order.
+async function insertOrderItems(supabase, orderId, orderItems) {
+  const rows = orderItems.map(i => ({ id: crypto.randomUUID(), order_id: orderId, ...i }))
+  return supabase.from('order_items').insert(rows)
+}
+
+// ── Public creators ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Immediate B2B sale: create + confirm a WHOLESALE order from sellerId to buyerId. Deducts the
+ * seller's stock, debits the buyer's khata on CREDIT, and receives the goods into the buyer.
+ * @returns {Promise<{ ok:true, order, warning? } | { ok:false, status, error, order? }>}
+ */
+export async function createB2BOrder({ supabase, sellerId, buyerId, items, userId, paymentMethod = 'CREDIT', sourceWarehouseId = null }) {
+  const method = String(paymentMethod || 'CREDIT').toUpperCase()
+  if (!['CREDIT', 'CASH'].includes(method)) return { ok: false, status: 400, error: 'payment_method must be CREDIT or CASH' }
+
+  const ctx = await resolveB2B(supabase, sellerId, buyerId)
+  if (!ctx.ok) return ctx
+  if (method === 'CREDIT') {
+    const khata = await ensureKhataAccount(supabase, { seller: sellerId, buyer: buyerId, createdBy: userId })
+    if (khata.error) return { ok: false, status: 500, error: `Could not prepare credit account: ${khata.error}` }
+  }
+  const priced = await priceB2BCart(supabase, sellerId, ctx.sellerEnt.role, items)
+  if (!priced.ok) return priced
+
+  // Optional source warehouse: sell from a specific depot (checks its on-hand). Null = entity-level.
+  const src = await resolveSourceWarehouse(supabase, sellerId, sourceWarehouseId, priced.orderItems)
+  if (!src.ok) return src
+  // The goods land in the buyer's primary warehouse if the buyer keeps warehouses (a tier), else entity-level.
+  const destWarehouseId = await primaryWarehouse(supabase, buyerId)
+
+  const orderNo = await nextOrderNo(supabase, 'WHL')
+  const { data: order, error: orderErr } = await supabase
+    .from('orders')
+    .insert({
+      order_type: 'WHOLESALE', order_no: orderNo, status: 'DRAFT', seller_id: sellerId, buyer_id: buyerId,
+      warehouse_id: src.warehouseId, items: itemsSnapshot(priced.orderItems), subtotal: priced.subtotal,
+      gst_total: priced.gstTotal, grand_total: priced.grandTotal, payment_method: method, created_by: userId,
+    })
+    .select('id, order_no, status, grand_total')
+    .single()
+  if (orderErr) return { ok: false, status: 500, error: 'Failed to create order' }
+
+  const { error: itemsErr } = await insertOrderItems(supabase, order.id, priced.orderItems)
+  if (itemsErr) return { ok: false, status: 200, error: 'Order created but items failed', order }
+
+  const { error: confirmErr } = await supabase.from('orders').update({ status: 'CONFIRMED' }).eq('id', order.id)
+  if (confirmErr) return { ok: false, status: 400, error: confirmErr.message, order }
+  order.status = 'CONFIRMED'
+
+  const warnings = await receiveIntoBuyer(supabase, order, priced.orderItems, buyerId, destWarehouseId)
+  return warnings.length ? { ok: true, order, warning: `Some lines not received: ${warnings.join('; ')}` } : { ok: true, order }
+}
+
+/**
+ * Create a Sales Order (or Quotation) from sellerId to buyerId: a priced DRAFT SALES_ORDER with NO
+ * stock or khata movement. Invoice it later with convertSalesOrderToInvoice.
+ * @returns {Promise<{ ok:true, order } | { ok:false, status, error }>}
+ */
+export async function createSalesOrder({ supabase, sellerId, buyerId, items, userId, paymentMethod = 'CREDIT', isQuotation = false, sourceWarehouseId = null }) {
+  const method = String(paymentMethod || 'CREDIT').toUpperCase()
+  if (!['CREDIT', 'CASH'].includes(method)) return { ok: false, status: 400, error: 'payment_method must be CREDIT or CASH' }
+
+  const ctx = await resolveB2B(supabase, sellerId, buyerId)
+  if (!ctx.ok) return ctx
+  const priced = await priceB2BCart(supabase, sellerId, ctx.sellerEnt.role, items)
+  if (!priced.ok) return priced
+
+  // A source warehouse is just recorded on the SO here (no stock moves until it's invoiced); validate ownership.
+  if (sourceWarehouseId) {
+    const wh = await ownedWarehouse(supabase, sellerId, sourceWarehouseId)
+    if (!wh) return { ok: false, status: 400, error: 'Source warehouse not found' }
+  }
+
+  const orderNo = await nextOrderNo(supabase, isQuotation ? 'QT' : 'SO')
+  const { data: order, error: orderErr } = await supabase
+    .from('orders')
+    .insert({
+      order_type: 'SALES_ORDER', order_no: orderNo, status: 'DRAFT', is_quotation: !!isQuotation,
+      seller_id: sellerId, buyer_id: buyerId, warehouse_id: sourceWarehouseId, items: itemsSnapshot(priced.orderItems),
+      subtotal: priced.subtotal, gst_total: priced.gstTotal, grand_total: priced.grandTotal,
+      payment_method: method, created_by: userId,
+    })
+    .select('id, order_no, status, grand_total, is_quotation')
+    .single()
+  if (orderErr) return { ok: false, status: 500, error: 'Failed to create sales order' }
+
+  const { error: itemsErr } = await insertOrderItems(supabase, order.id, priced.orderItems)
+  if (itemsErr) return { ok: false, status: 200, error: 'Sales order created but items failed', order }
+  return { ok: true, order }
+}
+
+// Sum how much of each SO line has already been invoiced, keyed by product+package, across the SO's
+// non-cancelled SALES_INVOICE children.
+async function invoicedQtyBySoLine(supabase, soId) {
+  const { data: children } = await supabase
+    .from('orders').select('id').eq('sales_order_id', soId).eq('order_type', 'SALES_INVOICE').neq('status', 'CANCELLED')
+  const ids = (children ?? []).map(c => c.id)
+  const map = {}
+  if (!ids.length) return map
+  const { data: rows } = await supabase
+    .from('order_items').select('product_id, package_id, quantity').in('order_id', ids).eq('status', 'ACTIVE')
+  for (const r of rows ?? []) {
+    const key = `${r.product_id}:${r.package_id || ''}`
+    map[key] = (map[key] || 0) + r.quantity
+  }
+  return map
+}
+
+const soKey = (i) => `${i.product_id}:${i.package_id || ''}`
+
+/**
+ * Convert a Sales Order into a Sales Invoice. Fulfils ALL remaining lines by default, or only the
+ * `lines` [{ product_id, package_id?, quantity }] passed (partial fulfilment — invoice some now, the
+ * rest later). Creates a CONFIRMED SALES_INVOICE that deducts the seller's stock, debits the buyer's
+ * khata on CREDIT, and receives the goods into the buyer; the SO moves to PARTIALLY_FULFILLED, or
+ * CONFIRMED once everything is invoiced. Re-runnable until fully invoiced.
+ * @returns {Promise<{ ok:true, invoice, so_status, warning? } | { ok:false, status, error, invoice? }>}
+ */
+export async function convertSalesOrderToInvoice({ supabase, sellerId, soId, userId, lines }) {
+  const { data: so, error: soErr } = await supabase
+    .from('orders')
+    .select('id, order_no, status, seller_id, buyer_id, payment_method, is_quotation, warehouse_id')
+    .eq('id', soId).eq('order_type', 'SALES_ORDER').maybeSingle()
+  if (soErr || !so) return { ok: false, status: 404, error: 'Sales order not found' }
+  if (so.seller_id !== sellerId) return { ok: false, status: 403, error: 'Not your sales order' }
+  if (!['DRAFT', 'PARTIALLY_FULFILLED'].includes(so.status)) return { ok: false, status: 409, error: `Sales order is already ${so.status}` }
+  if (!so.buyer_id) return { ok: false, status: 400, error: 'Sales order has no buyer' }
+
+  const { data: soItems, error: liErr } = await supabase
+    .from('order_items')
+    .select('product_id, package_id, package_name, package_type, sku, name, quantity, unit_price, discount, gst_exempt')
+    .eq('order_id', soId).eq('status', 'ACTIVE')
+  if (liErr) return { ok: false, status: 500, error: 'Failed to read sales-order lines' }
+  if (!soItems?.length) return { ok: false, status: 400, error: 'Sales order has no active lines' }
+
+  // Remaining = ordered − already invoiced, per line.
+  const invoiced = await invoicedQtyBySoLine(supabase, soId)
+  const remainingOf = (i) => i.quantity - (invoiced[soKey(i)] || 0)
+
+  // Decide what to invoice now.
+  let toInvoice
+  if (Array.isArray(lines) && lines.length) {
+    const wantByKey = {}
+    for (const l of lines) wantByKey[`${l.product_id}:${l.package_id || ''}`] = parseInt(l.quantity, 10) || 0
+    toInvoice = []
+    for (const i of soItems) {
+      const want = wantByKey[soKey(i)]
+      if (!want || want <= 0) continue
+      const rem = remainingOf(i)
+      if (want > rem) return { ok: false, status: 400, error: `Only ${rem} of "${i.name}" left to invoice` }
+      toInvoice.push({ line: i, qty: want })
+    }
+  } else {
+    toInvoice = soItems.filter(i => remainingOf(i) > 0).map(i => ({ line: i, qty: remainingOf(i) }))
+  }
+  if (!toInvoice.length) return { ok: false, status: 400, error: 'Nothing left to invoice on this sales order' }
+
+  const method = so.payment_method || 'CREDIT'
+  if (method === 'CREDIT') {
+    const khata = await ensureKhataAccount(supabase, { seller: sellerId, buyer: so.buyer_id, createdBy: userId })
+    if (khata.error) return { ok: false, status: 500, error: `Could not prepare credit account: ${khata.error}` }
+  }
+
+  // Build invoice lines at the SO's agreed unit price, GST recomputed for the invoiced quantity.
+  const orderItems = toInvoice.map(({ line, qty }) => {
+    const unitPrice = parseFloat(line.unit_price)
+    const gst5 = lineGst(unitPrice * qty, line.gst_exempt)   // carry the SO line's exemption
+    return {
+      product_id: line.product_id, package_id: line.package_id, package_name: line.package_name,
+      package_type: line.package_type, sku: line.sku, name: line.name, quantity: qty,
+      unit_price: unitPrice, discount: 0, gst_5: gst5, gst_exempt: !!line.gst_exempt,
+      total: parseFloat((unitPrice * qty + gst5).toFixed(2)), status: 'ACTIVE',
+    }
+  })
+  const subtotal = orderItems.reduce((s, i) => s + i.unit_price * i.quantity, 0)
+  const gstTotal = parseFloat(orderItems.reduce((s, i) => s + i.gst_5, 0).toFixed(2))
+  const grandTotal = parseFloat((subtotal + gstTotal).toFixed(2))
+
+  // Source warehouse carried from the SO: check this invoice's quantities are on hand there (null =
+  // entity-level). Goods land in the buyer's primary warehouse if the buyer is a tier.
+  const src = await resolveSourceWarehouse(supabase, sellerId, so.warehouse_id, orderItems)
+  if (!src.ok) return src
+  const destWarehouseId = await primaryWarehouse(supabase, so.buyer_id)
+
+  const invNo = await nextOrderNo(supabase, 'SI')
+  const { data: invoice, error: invErr } = await supabase
+    .from('orders')
+    .insert({
+      order_type: 'SALES_INVOICE', order_no: invNo, status: 'DRAFT', seller_id: sellerId, buyer_id: so.buyer_id,
+      sales_order_id: soId, warehouse_id: src.warehouseId, items: itemsSnapshot(orderItems), subtotal: parseFloat(subtotal.toFixed(2)),
+      gst_total: gstTotal, grand_total: grandTotal, payment_method: method, created_by: userId,
+    })
+    .select('id, order_no, status, grand_total')
+    .single()
+  if (invErr) return { ok: false, status: 500, error: 'Failed to create invoice' }
+
+  const { error: itemsErr } = await insertOrderItems(supabase, invoice.id, orderItems)
+  if (itemsErr) return { ok: false, status: 200, error: 'Invoice created but items failed', invoice }
+
+  // Confirm — fires deduct_stock_on_sales_invoice + the per-tier khata debit on CREDIT.
+  const { error: confirmErr } = await supabase.from('orders').update({ status: 'CONFIRMED' }).eq('id', invoice.id)
+  if (confirmErr) return { ok: false, status: 400, error: confirmErr.message, invoice }
+  invoice.status = 'CONFIRMED'
+
+  const warnings = await receiveIntoBuyer(supabase, invoice, orderItems, so.buyer_id, destWarehouseId)
+
+  // Fully invoiced now? Fold this invoice's quantities into the running total and check every line.
+  for (const { line, qty } of toInvoice) invoiced[soKey(line)] = (invoiced[soKey(line)] || 0) + qty
+  const fullyInvoiced = soItems.every(i => (invoiced[soKey(i)] || 0) >= i.quantity)
+  const soStatus = fullyInvoiced ? 'CONFIRMED' : 'PARTIALLY_FULFILLED'
+  await supabase.from('orders').update({ status: soStatus }).eq('id', soId)
+
+  const out = { ok: true, invoice, so_status: soStatus }
+  if (warnings.length) out.warning = `Some lines not received: ${warnings.join('; ')}`
+  return out
+}

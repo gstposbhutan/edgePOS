@@ -7,14 +7,15 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
 /**
- * Ctrl+E — Exchange (v1: return-from-past-order). Search a past sale, pick the
+ * Ctrl+E — Return / refund (from a past order). Search a past sale, pick the
  * items to return, and request a refund for them (POST /api/pos/orders/[id]/refund,
- * which sets the order to REFUND_REQUESTED and restores stock via trigger). The
- * replacement is then rung as a separate normal sale — v1 does NOT net the two.
+ * which sets the order to REFUND_REQUESTED and restores stock via trigger). There
+ * is deliberately NO "exchange" for a different item — per the 2026-08-11 decision,
+ * swapping for a different product is done by cancelling + ringing a new sale.
  *
  * @param {{ userId: string, onToast: (msg: string) => void, onClose: () => void }} props
  */
-export function ExchangeModal({ userId, onToast, onClose }) {
+export function ExchangeModal({ userId, onToast, onClose, onReplace }) {
   const router = useRouter()
   const [phase, setPhase] = useState('search')          // 'search' | 'review'
   const [q, setQ] = useState('')
@@ -62,7 +63,12 @@ export function ExchangeModal({ userId, onToast, onClose }) {
     setBusy(false)
   }
 
-  async function submitReturn() {
+  // `replace` = after the return, ring the replacement item(s) as a new sale.
+  // The two legs (return money back + new-sale charge) net to the price
+  // difference, so a same/variant item at the same OR a different price settles
+  // correctly through the existing GST/stock/payment paths. No exchange for a
+  // different item is special-cased — the cashier just adds whatever item they want.
+  async function submitReturn(replace = false) {
     const refundItems = Object.entries(selected)
       .filter(([, qty]) => qty > 0)
       .map(([order_item_id, quantity]) => ({ order_item_id, quantity: Number(quantity) }))
@@ -72,12 +78,18 @@ export function ExchangeModal({ userId, onToast, onClose }) {
       const res = await fetch(`/api/pos/orders/${order.id}/refund`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refundItems, reason: 'Exchange / return', requestedBy: userId }),
+        body: JSON.stringify({ refundItems, reason: replace ? 'Replacement — return leg' : 'Return / refund', requestedBy: userId }),
       })
       if (res.ok) {
-        onToast?.(`Return requested for ${order.order_no}`)
-        onClose()
-        router.push(`/pos/orders/${order.id}`)
+        if (replace && onReplace) {
+          onToast?.(`Returned ${order.order_no} — ring the replacement item(s)`)
+          onClose()
+          onReplace(order)   // parent starts a fresh sale + shows a "replacing" banner
+        } else {
+          onToast?.(`Return requested for ${order.order_no}`)
+          onClose()
+          router.push(`/pos/orders/${order.id}`)
+        }
       } else {
         const d = await res.json().catch(() => ({}))
         onToast?.(d.error || 'Return failed')
@@ -94,7 +106,7 @@ export function ExchangeModal({ userId, onToast, onClose }) {
             {phase === 'review' && (
               <button onClick={() => { setPhase('search'); setOrder(null); setItems([]) }} className="text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" /></button>
             )}
-            <h3 className="text-sm font-semibold">{phase === 'search' ? 'Exchange — find the original sale' : `Return items · ${order?.order_no ?? ''}`}</h3>
+            <h3 className="text-sm font-semibold">{phase === 'search' ? 'Return — find the original sale' : `Return items · ${order?.order_no ?? ''}`}</h3>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
         </div>
@@ -131,9 +143,16 @@ export function ExchangeModal({ userId, onToast, onClose }) {
         )}
 
         {phase === 'review' && (
-          <div className="px-4 py-2.5 border-t border-border flex justify-end gap-2">
+          <div className="px-4 py-2.5 border-t border-border flex items-center justify-between gap-2">
             <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-            <Button size="sm" disabled={busy || !Object.values(selected).some(v => v > 0)} onClick={submitReturn}>{busy ? 'Requesting…' : 'Request return'}</Button>
+            <div className="flex gap-2">
+              {onReplace && (
+                <Button variant="outline" size="sm" disabled={busy || !Object.values(selected).some(v => v > 0)} onClick={() => submitReturn(true)} title="Return these items, then ring the replacement (same or a different item) as a new sale — the price difference is settled at checkout">
+                  {busy ? '…' : 'Return & replace'}
+                </Button>
+              )}
+              <Button size="sm" disabled={busy || !Object.values(selected).some(v => v > 0)} onClick={() => submitReturn(false)}>{busy ? 'Requesting…' : 'Refund'}</Button>
+            </div>
           </div>
         )}
       </div>

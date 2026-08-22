@@ -2,6 +2,10 @@
 // /sell, /about, /contact). Kept as plain data so pages/components stay presentational.
 // Imagery lives in /public/marketing (AI-generated via scripts/gen-marketing-images.js).
 
+// The marketing site itself lives in the auth app (app.pelbu.com); the consumer /shop nav here links
+// out to it for the marketing pages, and keeps Marketplace in-app.
+import { AUTH_URL } from '../hosts'
+
 // Pelbu is built and operated by Innovates Bhutan. Details sourced from innovates.bt.
 export const COMPANY = {
   name: 'Innovates Bhutan',
@@ -36,11 +40,11 @@ export const TEAM = {
 }
 
 export const NAV = [
-  { label: 'Features', href: '/features' },
-  { label: 'Sell on Pelbu', href: '/sell' },
+  { label: 'Features', href: `${AUTH_URL}/features` },
+  { label: 'Sell on Pelbu', href: `${AUTH_URL}/sell` },
   { label: 'Marketplace', href: '/shop' },
-  { label: 'About', href: '/about' },
-  { label: 'Contact', href: '/contact' },
+  { label: 'About', href: `${AUTH_URL}/about` },
+  { label: 'Contact', href: `${AUTH_URL}/contact` },
 ]
 
 // The four product pillars — used by the /features hub and each deep-dive page.

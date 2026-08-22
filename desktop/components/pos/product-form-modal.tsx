@@ -32,6 +32,7 @@ export interface ProductFormData {
   reorder_point: number;
   category: string;
   sold_by_weight: boolean;
+  gst_exempt: boolean;
 }
 
 const EMPTY_FORM: ProductFormData = {
@@ -49,6 +50,7 @@ const EMPTY_FORM: ProductFormData = {
   reorder_point: 10,
   category: "",
   sold_by_weight: false,
+  gst_exempt: false,
 };
 
 interface ProductFormModalProps {
@@ -82,6 +84,7 @@ export function ProductFormModal({ open, onClose, product, categories, onSave }:
           reorder_point: product.reorder_point || 10,
           category: product.category || "",
           sold_by_weight: product.sold_by_weight || false,
+          gst_exempt: product.gst_exempt || false,
         });
       } else {
         setForm(EMPTY_FORM);
@@ -133,7 +136,7 @@ export function ProductFormModal({ open, onClose, product, categories, onSave }:
     }
   };
 
-  const gstAmount = (form.sale_price || form.mrp || 0) * 0.05;
+  const gstAmount = form.gst_exempt ? 0 : (form.sale_price || form.mrp || 0) * 0.05;
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -220,6 +223,20 @@ export function ProductFormModal({ open, onClose, product, categories, onSave }:
             </span>
           </label>
 
+          {/* GST exempt */}
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.gst_exempt}
+              onChange={(e) => setForm((prev) => ({ ...prev, gst_exempt: e.target.checked }))}
+              className="h-4 w-4"
+            />
+            <span>
+              GST exempt
+              <span className="text-muted-foreground"> — rung at 0% instead of the flat 5%</span>
+            </span>
+          </label>
+
           {/* Category */}
           <div className="space-y-1.5">
             <Label>Category</Label>
@@ -289,7 +306,7 @@ export function ProductFormModal({ open, onClose, product, categories, onSave }:
             {/* GST Preview */}
             {form.sale_price > 0 && (
               <div className="flex items-center gap-2 text-xs bg-muted/50 rounded-md p-2">
-                <Badge variant="secondary" className="text-xs">GST 5%</Badge>
+                <Badge variant="secondary" className="text-xs">{form.gst_exempt ? "GST exempt" : "GST 5%"}</Badge>
                 <span className="text-muted-foreground">
                   MRP Nu. {(form.mrp || 0).toFixed(2)} — GST Nu. {gstAmount.toFixed(2)} — Customer pays Nu. {form.sale_price.toFixed(2)}
                 </span>

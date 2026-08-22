@@ -55,7 +55,7 @@ export function CancelModal({ open, order, items = [], subRole, userId, onCancel
   }
 
   return (
-    <Dialog open={open}>
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent>
         <DialogHeader>
           <div className="flex items-center gap-2 mb-1">

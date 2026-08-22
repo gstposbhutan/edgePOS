@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/supabase/server'
 import { createHash, randomBytes } from 'node:crypto'
+import { lineGst } from '@/lib/gst'
 
 // GET — customer's own MARKETPLACE orders
 export async function GET(request) {
@@ -21,7 +22,7 @@ export async function GET(request) {
       .from('orders')
       .select(`
         id, order_no, order_source, status, grand_total, gst_total, subtotal,
-        payment_method, delivery_address, created_at, updated_at,
+        payment_method, delivery_address, fulfilment_mode, dispatch_state, created_at, updated_at,
         seller_id, entities!seller_id(id, name, whatsapp_no)
       `)
       .eq('buyer_whatsapp', customerPhone)
@@ -133,7 +134,7 @@ export async function POST(request) {
     const productIds = items.map(i => i.product_id)
     const { data: products, error: productsError } = await supabase
       .from('products')
-      .select('id, name, sku, mrp, current_stock, is_active')
+      .select('id, name, sku, mrp, current_stock, is_active, gst_exempt')
       .in('id', productIds)
 
     if (productsError) throw productsError
@@ -169,7 +170,7 @@ export async function POST(request) {
       const product = productMap[item.product_id]
       const unitPrice = parseFloat(product.mrp)
       const qty = item.quantity
-      const gst5 = parseFloat((unitPrice * qty * 0.05).toFixed(2))
+      const gst5 = lineGst(unitPrice * qty, product.gst_exempt)   // 0 for GST-exempt products
       const total = parseFloat((unitPrice * qty + gst5).toFixed(2))
       subtotal += unitPrice * qty
       return {
@@ -180,12 +181,13 @@ export async function POST(request) {
         unit_price: unitPrice,
         discount: 0,
         gst_5: gst5,
+        gst_exempt: !!product.gst_exempt,
         total,
         status: 'ACTIVE',
       }
     })
 
-    const gstTotal = parseFloat((subtotal * 0.05).toFixed(2))
+    const gstTotal = parseFloat(orderItems.reduce((s, i) => s + i.gst_5, 0).toFixed(2))
     const grandTotal = parseFloat((subtotal + gstTotal).toFixed(2))
 
     // Generate order number
@@ -240,18 +242,6 @@ export async function POST(request) {
     await supabase.from('order_items').insert(
       orderItems.map(item => ({ order_id: order.id, ...item }))
     )
-
-    // Notify customer (fire-and-forget)
-    const gatewayUrl = process.env.NEXT_PUBLIC_WHATSAPP_GATEWAY_URL || 'http://localhost:3001'
-    fetch(`${gatewayUrl}/api/send-order-confirmation`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        phoneNumber: phone,
-        orders: [{ order_no: order.order_no, seller_name: vendor.name, grand_total: grandTotal }],
-        totalAmount: grandTotal,
-      }),
-    }).catch(() => {})
 
     return NextResponse.json({
       order: { id: order.id, order_no: order.order_no, grand_total: grandTotal, status: 'CONFIRMED' },

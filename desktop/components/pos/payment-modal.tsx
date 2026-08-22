@@ -18,9 +18,12 @@ import {
   Landmark,
   AlertTriangle,
   Coins,
+  Camera,
 } from "lucide-react";
 import type { Customer } from "@/hooks/use-customers";
 import { PAYMENT_METHOD, PAYMENT_CHANNEL, type PaymentMethod, type PaymentChannel } from "@/lib/constants";
+import { ReceiptScanModal, type ScanMeta } from "@/components/pos/receipt-scan-modal";
+import { PaymentQr } from "@/components/pos/payment-qr";
 
 interface PaymentModalProps {
   open: boolean;
@@ -48,12 +51,15 @@ export function PaymentModal({ open, onClose, grandTotal, customer, onConfirm }:
   const [tendered, setTendered] = useState<number>(grandTotal);
   const [error, setError] = useState("");
   const [receivedParts, setReceivedParts] = useState<number[]>([]);
+  const [showScan, setShowScan] = useState(false);
+  const [scanHint, setScanHint] = useState<ScanMeta | null>(null);
 
   const selected = METHODS.find((m) => m.id === selectedId) ?? METHODS[0];
   const method = selected.method;
   const channel = selected.channel;
   const isCash = method === PAYMENT_METHOD.CASH;
   const isCredit = method === PAYMENT_METHOD.CREDIT;
+  const isOnline = method === PAYMENT_METHOD.ONLINE;
 
   useEffect(() => {
     if (open) {
@@ -61,6 +67,8 @@ export function PaymentModal({ open, onClose, grandTotal, customer, onConfirm }:
       setReceivedParts([]);
       setError("");
       setReference("");
+      setShowScan(false);
+      setScanHint(null);
     }
   }, [open, grandTotal]);
 
@@ -238,18 +246,37 @@ export function PaymentModal({ open, onClose, grandTotal, customer, onConfirm }:
             </div>
           )}
 
+          {/* Online: show the payment QR first (customer scans & pays), then capture the journal number */}
+          {isOnline && <PaymentQr amount={grandTotal} />}
+
           {/* Reference for non-cash payments */}
           {!isCash && (
             <div className="space-y-2">
-              <Label>Reference / Journal No</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label>Reference / Journal No</Label>
+                {isOnline && (
+                  <Button type="button" variant="outline" size="sm" className="h-8" onClick={() => setShowScan(true)}>
+                    <Camera className="h-4 w-4 mr-1.5" /> Scan receipt
+                  </Button>
+                )}
+              </div>
               <Input
                 placeholder={
                   isCredit ? "Optional note" : "Enter transaction reference"
                 }
                 value={reference}
-                onChange={(e) => setReference(e.target.value)}
+                onChange={(e) => { setReference(e.target.value); setScanHint(null); }}
                 className="h-11"
               />
+              {isOnline && scanHint && (
+                <p className={`text-xs ${scanHint.amountMatches ? "text-emerald-500" : "text-amber-500"}`}>
+                  {scanHint.amountMatches
+                    ? `Scanned — Nu. ${scanHint.extractedAmount} matches the bill.`
+                    : scanHint.extractedAmount != null
+                      ? `Scanned — found Nu. ${scanHint.extractedAmount}, bill is Nu. ${grandTotal.toFixed(2)}. Please verify.`
+                      : `Scanned — please verify the number.`}
+                </p>
+              )}
             </div>
           )}
 
@@ -287,6 +314,13 @@ export function PaymentModal({ open, onClose, grandTotal, customer, onConfirm }:
             </Button>
           </div>
         </div>
+
+        <ReceiptScanModal
+          open={showScan}
+          expectedAmount={grandTotal}
+          onClose={() => setShowScan(false)}
+          onExtracted={(ref, meta) => { setReference(ref); setScanHint(meta); setShowScan(false); }}
+        />
       </DialogContent>
     </Dialog>
   );

@@ -1,28 +1,26 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
+import { AUTH_URL, ROLE_HOME } from '@/lib/hosts'
 
-// Routes that don't require authentication
-const PUBLIC_ROUTES = ['/login', '/signup', '/offline', '/shop', '/rider/login',
-  // Public marketing site (root home, feature pages, vendor onboarding, company)
-  '/', '/features', '/sell', '/about', '/contact', '/terms',
-  '/marketing']   // static AI-generated marketing imagery under public/marketing
+// Public (no auth): consumer marketplace, rider portal login, offline page, customer payment upload.
+const PUBLIC_ROUTES = ['/shop', '/rider/login', '/offline', '/pay']
 
-// Role → home route mapping
-const ROLE_HOME = {
-  SUPER_ADMIN:  '/admin',
-  DISTRIBUTOR:  '/distributor',  // per-role console (re-term 2026-06-08)
-  WHOLESALER:   '/wholesaler',
-  RETAILER:     '/pos',
-  RIDER:        '/rider',
-  CUSTOMER:     '/shop',         // public marketplace
-}
-
+// Next.js 16 proxy convention (replaces middleware.js). Role-routes the monolith; login/signup live
+// in the auth app (app.pelbu.com), so those + unauthenticated hits redirect there (shared SSO cookie).
 export async function proxy(request) {
   const { pathname } = request.nextUrl
+  // Behind Caddy the internal request.url is localhost:PORT; use the configured public URL (or the
+  // forwarded host) so redirect targets and the login return-URL point at pos.pelbu.com, not localhost.
+  const ORIGIN = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
 
-  // Pass through public routes and Next.js internals
+  // Auth entry pages live in the auth app.
+  if (pathname === '/login' || pathname === '/signup' || pathname.startsWith('/signup/')) {
+    return NextResponse.redirect(`${AUTH_URL}/login`)
+  }
+
+  // Pass through public routes + Next internals.
   if (
-    PUBLIC_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/')) ||
+    PUBLIC_ROUTES.some((r) => pathname === r || pathname.startsWith(r + '/')) ||
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api') ||
     pathname === '/favicon.ico'
@@ -37,53 +35,48 @@ export async function proxy(request) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     {
       cookieOptions: {
-        name: 'sb-edgepos-auth-token',
+        name: 'sb-pelbu-auth',
+        path: '/',
+        sameSite: 'lax',
+        ...(process.env.NEXT_PUBLIC_COOKIE_DOMAIN ? { domain: process.env.NEXT_PUBLIC_COOKIE_DOMAIN } : {}),
       },
       cookies: {
         getAll: () => request.cookies.getAll(),
-        setAll: (cookiesToSet) => {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            response.cookies.set(name, value, options)
-          })
-        },
+        setAll: (list) => list.forEach(({ name, value, options }) => response.cookies.set(name, value, options)),
       },
-    }
+    },
   )
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  // No valid user → redirect to login
+  // No session → central login on the auth app, preserving the intended destination.
   if (!user) {
-    const loginUrl = new URL('/login', request.url)
-    loginUrl.searchParams.set('redirect', pathname)
-    return NextResponse.redirect(loginUrl)
+    const back = new URL(pathname + request.nextUrl.search, ORIGIN).toString()
+    return NextResponse.redirect(`${AUTH_URL}/login?redirect=${encodeURIComponent(back)}`)
   }
 
-  const role = user.user_metadata?.role || user.app_metadata?.role
+  const role = user.app_metadata?.role || user.user_metadata?.role
 
-  // Redirect root to role home
+  // Super-admin console lives in the auth app.
+  if (role === 'SUPER_ADMIN' && (pathname === '/' || pathname.startsWith('/admin'))) {
+    return NextResponse.redirect(`${AUTH_URL}/admin`)
+  }
+
+  // Root → the role's home.
   if (pathname === '/') {
-    return NextResponse.redirect(new URL(ROLE_HOME[role] || '/pos', request.url))
+    const home = ROLE_HOME[role] || '/pos'
+    return NextResponse.redirect(/^https?:/.test(home) ? home : new URL(home, ORIGIN))
   }
 
-  // /admin is SUPER_ADMIN only — every other role goes to its own console (no shared routes)
-  if (pathname.startsWith('/admin') && role !== 'SUPER_ADMIN') {
-    return NextResponse.redirect(new URL(ROLE_HOME[role] || '/pos', request.url))
-  }
-
-  // DISTRIBUTOR + WHOLESALER have their own consoles — keep them out of /pos too
+  // Console confinement — each commercial role stays in its own console.
   if ((role === 'DISTRIBUTOR' || role === 'WHOLESALER') && pathname.startsWith('/pos')) {
-    return NextResponse.redirect(new URL(ROLE_HOME[role], request.url))
+    return NextResponse.redirect(new URL(role === 'DISTRIBUTOR' ? '/distributor' : '/wholesaler', ORIGIN))
   }
-
-  // Riders can only access /rider routes
   if (role === 'RIDER' && !pathname.startsWith('/rider')) {
-    return NextResponse.redirect(new URL('/rider', request.url))
+    return NextResponse.redirect(new URL('/rider', ORIGIN))
   }
-
-  // Customers stay in the marketplace
   if (role === 'CUSTOMER' && !pathname.startsWith('/shop')) {
-    return NextResponse.redirect(new URL('/shop', request.url))
+    return NextResponse.redirect(new URL('/shop', ORIGIN))
   }
 
   return response
@@ -93,5 +86,4 @@ export const config = {
   matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 }
 
-// Next.js 16 proxy convention (replaces middleware.js)
 export default proxy

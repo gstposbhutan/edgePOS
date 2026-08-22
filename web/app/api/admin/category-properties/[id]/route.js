@@ -12,21 +12,15 @@ export async function GET(request, { params }) {
 
     const { supabase } = ctx
 
+    // Category TAGS retired — no longer embed the `categories` table (category consolidation).
     const { data, error } = await supabase
       .from('category_properties')
-      .select('*, categories(id, name)')
+      .select('*')
       .eq('id', params.id)
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     if (!data) return NextResponse.json({ error: 'Property not found' }, { status: 404 })
-
-    // For DISTRIBUTOR, verify they own this category
-    if (ctx.role === 'DISTRIBUTOR') {
-      if (data.categories?.distributor_id !== ctx.entityId) {
-        return NextResponse.json({ error: 'Unauthorized for this category' }, { status: 403 })
-      }
-    }
 
     return NextResponse.json({ property: data })
   } catch (err) {
@@ -46,22 +40,15 @@ export async function PATCH(request, { params }) {
 
     const { supabase } = ctx
 
-    // First, verify ownership
+    // Verify the property exists (category-tag ownership check retired — category consolidation).
     const { data: existingProp } = await supabase
       .from('category_properties')
-      .select('*, categories(id, name, distributor_id)')
+      .select('id')
       .eq('id', params.id)
       .single()
 
     if (!existingProp) {
       return NextResponse.json({ error: 'Property not found' }, { status: 404 })
-    }
-
-    // For DISTRIBUTOR, verify they own this category
-    if (ctx.role === 'DISTRIBUTOR') {
-      if (existingProp.categories?.distributor_id !== ctx.entityId) {
-        return NextResponse.json({ error: 'Unauthorized for this category' }, { status: 403 })
-      }
     }
 
     const body = await request.json()
@@ -109,22 +96,15 @@ export async function DELETE(request, { params }) {
 
     const { supabase } = ctx
 
-    // First, verify ownership
+    // Verify the property exists (category-tag ownership check retired — category consolidation).
     const { data: existingProp } = await supabase
       .from('category_properties')
-      .select('*, categories(id, name, distributor_id)')
+      .select('id')
       .eq('id', params.id)
       .single()
 
     if (!existingProp) {
       return NextResponse.json({ error: 'Property not found' }, { status: 404 })
-    }
-
-    // For DISTRIBUTOR, verify they own this category
-    if (ctx.role === 'DISTRIBUTOR') {
-      if (existingProp.categories?.distributor_id !== ctx.entityId) {
-        return NextResponse.json({ error: 'Unauthorized for this category' }, { status: 403 })
-      }
     }
 
     const { error } = await supabase

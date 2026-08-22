@@ -39,7 +39,7 @@ export async function POST(request, { params }) {
 
     const { entityId, supabase } = ctx
     const body = await request.json()
-    const { formData, componentItems, categoryIds } = body
+    const { formData, componentItems } = body
 
     // Model-B (vendor) packages opt in via stocked_as_unit: each level keeps its own sealed
     // on-hand in current_stock, and the picked opening_stock seeds it. Retailer packages omit
@@ -98,12 +98,7 @@ export async function POST(request, { params }) {
       if (itemsError) return NextResponse.json({ error: itemsError.message }, { status: 500 })
     }
 
-    // 4. Assign categories
-    if (categoryIds?.length > 0) {
-      await supabase.from('product_categories').insert(
-        categoryIds.map(cid => ({ product_id: product.id, category_id: cid }))
-      )
-    }
+    // 4. Category tags retired — a package's taxonomy is its HSN category/subcategory (category consolidation).
 
     // 5. Associate with entity
     await supabase.from('entity_packages').insert({
@@ -155,7 +150,7 @@ export async function PATCH(request, { params }) {
 
     const supabase = ctx.supabase
     const body = await request.json()
-    const { packageId, productId, formData, componentItems, categoryIds } = body
+    const { packageId, productId, formData, componentItems } = body
 
     // Update product listing
     await supabase.from('products').update({
@@ -192,13 +187,7 @@ export async function PATCH(request, { params }) {
       )
     }
 
-    // Replace categories
-    await supabase.from('product_categories').delete().eq('product_id', productId)
-    if (categoryIds?.length > 0) {
-      await supabase.from('product_categories').insert(
-        categoryIds.map(cid => ({ product_id: productId, category_id: cid }))
-      )
-    }
+    // Category tags retired — taxonomy is the product's HSN category/subcategory (category consolidation).
 
     return NextResponse.json({ success: true })
   } catch (err) {

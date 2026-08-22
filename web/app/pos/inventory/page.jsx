@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Package, AlertTriangle, XCircle, History, RefreshCw, TrendingUp, FileText, Camera, Layers, PackagePlus } from "lucide-react"
+import { ArrowLeft, Package, AlertTriangle, XCircle, History, RefreshCw, TrendingUp, FileText, Camera, Layers, PackagePlus, Trash2, Loader2 } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -39,6 +40,7 @@ export default function InventoryPage() {
   const [reviewingDraft,  setReviewingDraft]  = useState(null)
   const [receiveOpen,     setReceiveOpen]     = useState(false)
   const [userId,          setUserId]          = useState(null)
+  const [isOwner,         setIsOwner]         = useState(false)
   const [search,          setSearch]          = useState('')
 
   // Load entity on mount
@@ -50,6 +52,7 @@ export default function InventoryPage() {
       if (sr === 'CASHIER') return router.push('/pos')
       setEntityId(eid)
       setUserId(user.id)
+      setIsOwner(sr === 'OWNER')
     }
     load()
   }, [])
@@ -252,7 +255,7 @@ export default function InventoryPage() {
         )}
 
         {activeTab === 'batches' && (
-          <BatchesTab batches={batches} onRefresh={fetchBatches} entityId={entityId} />
+          <BatchesTab batches={batches} onRefresh={fetchBatches} entityId={entityId} isOwner={isOwner} />
         )}
 
         {activeTab === 'drafts' && (
@@ -325,8 +328,25 @@ export default function InventoryPage() {
 }
 
 // ── Batches Tab ───────────────────────────────────────────────────────────────
-function BatchesTab({ batches, onRefresh, entityId }) {
+function BatchesTab({ batches, onRefresh, entityId, isOwner }) {
   useEffect(() => { if (entityId) onRefresh() }, [entityId])
+
+  const [deletingId, setDeletingId] = useState(null)
+  async function deleteBatch(batch) {
+    const qty = Number(batch.quantity) || 0
+    const msg = qty > 0
+      ? `Delete batch ${batch.batch_number}? This removes its ${qty} ${batch.products?.unit || 'unit'}(s) from stock and can't be undone.`
+      : `Delete batch ${batch.batch_number}?`
+    if (!window.confirm(msg)) return
+    setDeletingId(batch.id)
+    try {
+      const res = await fetch(`/api/inventory/batches/${batch.id}`, { method: 'DELETE' })
+      const d = await res.json().catch(() => ({}))
+      if (res.ok) { toast.success(`Batch ${batch.batch_number} deleted`); onRefresh() }
+      else toast.error(d.error || 'Could not delete batch')
+    } catch { toast.error('Network error') }
+    finally { setDeletingId(null) }
+  }
 
   const STATUS_STYLE = {
     ACTIVE:   'text-emerald-600 bg-emerald-500/10 border-emerald-500/20',
@@ -358,6 +378,7 @@ function BatchesTab({ batches, onRefresh, entityId }) {
             <th className="text-right px-4 py-2 font-medium">Selling</th>
             <th className="text-left px-4 py-2 font-medium">Exp Date</th>
             <th className="text-left px-4 py-2 font-medium">Status</th>
+            {isOwner && <th className="text-right px-4 py-2 font-medium sr-only">Actions</th>}
           </tr>
         </thead>
         <tbody>
@@ -391,6 +412,21 @@ function BatchesTab({ batches, onRefresh, entityId }) {
                     {batch.status}
                   </span>
                 </td>
+                {isOwner && (
+                  <td className="px-4 py-2.5 text-right">
+                    {batch.status !== 'RECALLED' && (
+                      <button
+                        type="button"
+                        onClick={() => deleteBatch(batch)}
+                        disabled={deletingId === batch.id}
+                        title="Delete batch"
+                        className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-tibetan hover:bg-tibetan/10 disabled:opacity-50"
+                      >
+                        {deletingId === batch.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                      </button>
+                    )}
+                  </td>
+                )}
               </tr>
             )
           })}

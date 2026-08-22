@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/supabase/server'
+import { lineGst } from '@/lib/gst'
 
 /** POST /api/wholesale/orders — create a purchase order */
 export async function POST(request) {
@@ -35,7 +36,7 @@ export async function POST(request) {
   const productIds = items.map(i => i.product_id)
   const { data: products, error: prodErr } = await supabase
     .from('products')
-    .select('id, name, sku, wholesale_price, current_stock, hsn_code')
+    .select('id, name, sku, wholesale_price, current_stock, hsn_code, gst_exempt')
     .in('id', productIds)
     .eq('created_by', wholesaler_id)
     .eq('is_active', true)
@@ -61,7 +62,7 @@ export async function POST(request) {
     const unitPrice = parseFloat(p.wholesale_price)
     const qty = item.quantity
     const discount = 0
-    const gst5 = parseFloat((unitPrice * qty * 0.05).toFixed(2))
+    const gst5 = lineGst(unitPrice * qty, p.gst_exempt)   // 0 for GST-exempt products
     const total = parseFloat((unitPrice * qty + gst5).toFixed(2))
     subtotal += unitPrice * qty
 
@@ -73,12 +74,13 @@ export async function POST(request) {
       unit_price: unitPrice,
       discount,
       gst_5: gst5,
+      gst_exempt: !!p.gst_exempt,
       total,
       status: 'ACTIVE',
     }
   })
 
-  const gstTotal = parseFloat((subtotal * 0.05).toFixed(2))
+  const gstTotal = parseFloat(orderItems.reduce((s, i) => s + i.gst_5, 0).toFixed(2))
   const grandTotal = parseFloat((subtotal + gstTotal).toFixed(2))
 
   // Generate order number

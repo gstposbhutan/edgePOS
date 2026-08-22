@@ -11,7 +11,7 @@ import { Trash2 } from "lucide-react"
  * server can't clobber what the cashier is typing. Commit reads the current
  * DOM value at the moment Enter / Tab is pressed.
  */
-export function CartTable({ items, onUpdateQty, onRemoveItem, selectedRow, onSelectRow, onEditRequest, salespeopleById = {} }) {
+export function CartTable({ items, onUpdateQty, onRemoveItem, onChangeBatch, selectedRow, onSelectRow, onEditRequest, salespeopleById = {} }) {
   const [editingRow, setEditingRow]   = useState(null)
   const editInputRef                  = useRef(null)
   const committedRef                  = useRef(false)
@@ -158,6 +158,14 @@ export function CartTable({ items, onUpdateQty, onRemoveItem, selectedRow, onSel
                   <p className="text-[10px] font-mono text-muted-foreground">
                     {subParts.length ? subParts.join(' · ') : '—'}
                   </p>
+                  {item.batch_id && onChangeBatch && (
+                    <button
+                      onClick={e => { e.stopPropagation(); onChangeBatch(item) }}
+                      className="text-[10px] text-primary hover:underline"
+                    >
+                      ⇄ change batch
+                    </button>
+                  )}
                   {item.salesperson_id && (
                     <p className="text-[10px] font-medium text-gold">
                       👤 {salespeopleById[item.salesperson_id] || 'Salesperson'}

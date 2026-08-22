@@ -22,6 +22,9 @@ function mapBatch(b) {
     batch_id:        b.id,
     batch_number:    b.batch_number,
     expires_at:      b.expires_at,
+    stock_rotation:        b.products.stock_rotation,
+    has_older_batch:       b.has_older_batch,
+    earliest_batch_expiry: b.earliest_batch_expiry,
   }
 }
 

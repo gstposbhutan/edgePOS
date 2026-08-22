@@ -73,7 +73,10 @@ export function getPBUrl(): string {
   return localStorage.getItem('pb_url') || DEFAULT_URL;
 }
 
-export type UserRole = 'owner' | 'manager' | 'cashier';
+// 'super_admin' is the internal Pelbu support login (seeded locally as
+// admin@pos.local, never synced from the cloud). owner/manager/cashier are the
+// store's own users, mirrored from the web on bootstrap.
+export type UserRole = 'super_admin' | 'owner' | 'manager' | 'cashier';
 
 export interface PBUser {
   id: string;

@@ -34,7 +34,7 @@ export default function WholesalerRetailersPage() {
         mode="browse"
         targetRole="RETAILER"
         title="Retailers"
-        subtitle="Browse every active retailer · star the ones you supply"
+        subtitle="Browse every active retailer · connect the ones you supply, star the rest"
       />
     </ConsoleShell>
   )

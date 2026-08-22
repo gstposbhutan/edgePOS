@@ -19,6 +19,14 @@ export interface Settings {
   printer_auto_print: boolean;
   printer_copies: number;
   printer_open_drawer: boolean;
+  // NQRC payment-QR merchant config (synced down from the cloud entity via bootstrap).
+  nqrc_enabled?: boolean;
+  nqrc_merchant_name?: string;
+  nqrc_merchant_city?: string;
+  nqrc_account_id?: string;
+  nqrc_psp_guid?: string;
+  nqrc_mcc?: string;
+  nqrc_account_tag?: string;
 }
 
 async function fetchSettings(): Promise<Settings> {

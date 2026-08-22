@@ -16,6 +16,22 @@ export async function GET(request) {
     if (!supabase) return NextResponse.json({ error: 'Database not configured' }, { status: 503 })
 
     const { searchParams } = new URL(request.url)
+
+    // Facets mode — distinct chapters + categories for the picker's filter dropdowns.
+    // hsn_master is small (~900 rows); fetch the two columns and dedupe in JS.
+    if (searchParams.get('facets')) {
+      const { data, error } = await supabase
+        .from('hsn_master')
+        .select('chapter, category')
+        .eq('is_active', true)
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      const chapters = [...new Set((data || []).map(r => r.chapter).filter(Boolean))]
+        .sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true }))
+      const categories = [...new Set((data || []).map(r => r.category).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b))
+      return NextResponse.json({ chapters, categories })
+    }
+
     const query = searchParams.get('q') || ''
     const chapter = searchParams.get('chapter')
     const category = searchParams.get('category')

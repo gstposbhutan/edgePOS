@@ -35,7 +35,7 @@ export function CustomerIdModal({ open, onIdentify, onClose }) {
   }
 
   return (
-    <Dialog open={open}>
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent showCloseButton={false}>
         <DialogHeader>
           <DialogTitle className="font-serif">Identify Customer</DialogTitle>

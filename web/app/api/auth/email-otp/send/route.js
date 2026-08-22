@@ -4,7 +4,7 @@ import { createServiceClient } from '@/lib/supabase/server'
 import { sendEmail } from '@/lib/email/notify'
 
 // POST /api/auth/email-otp/send — customer email-OTP login/signup: generate a 6-digit code, store it
-// hashed, and email it via SendGrid. MOCK_WHATSAPP=true short-circuits to the universal 123456.
+// hashed, and email it via SendGrid. MOCK_OTP=true short-circuits to the universal 123456.
 const OTP_TTL_MIN = 10
 
 export async function POST(request) {
@@ -16,7 +16,7 @@ export async function POST(request) {
     }
 
     const supabase = createServiceClient()
-    const mock = process.env.MOCK_WHATSAPP === 'true'
+    const mock = process.env.MOCK_OTP === 'true'
     const otp = mock ? '123456' : String(Math.floor(100000 + Math.random() * 900000))
     const otp_hash = await bcrypt.hash(otp, 10)
 

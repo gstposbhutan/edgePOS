@@ -82,10 +82,10 @@ export function usePosShortcuts(input: PosShortcutsInput) {
         else stub("Change qty — tap +/- or # on any line")(e);
       }),
       registerShortcut("global", { key: "F10" }, () => input.handleCheckout()),        // Tender
-      registerShortcut("global", { key: "F11" }, () => {                               // fullscreen (utility, kept)
-        if (document.fullscreenElement) document.exitFullscreen();
-        else document.documentElement.requestFullscreen();
-      }),
+      // F11 (fullscreen) is owned by the Electron main process (before-input-event →
+      // window fullscreen, every screen) — the renderer never sees the key. In plain-
+      // browser mode the browser's native F11 applies. No DOM-fullscreen handler here:
+      // two fullscreen layers fighting over F11 left terminals stuck fullscreen.
       registerShortcut("global", { key: "Escape" }, () => {
         if (input.showPayment) input.setShowPayment(false);
         else if (input.showHeldCarts) input.setShowHeldCarts(false);

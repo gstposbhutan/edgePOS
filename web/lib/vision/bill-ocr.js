@@ -91,7 +91,9 @@ async function extractWithGemini(imageBase64, mimeType) {
 }
 
 async function extractWithZhipu(imageBase64, mimeType) {
-  const ZhipuAI = (await import('zhipuai')).default
+  // ZhipuAI is a NAMED export (no default) — same crash as server-payment-ocr.
+  const zhipuMod = await import('zhipuai')
+  const ZhipuAI = zhipuMod.ZhipuAI ?? zhipuMod.default?.ZhipuAI ?? zhipuMod.default
   const client = new ZhipuAI({ apiKey: process.env.ZHIPU_API_KEY })
 
   const response = await client.chat.completions.create({

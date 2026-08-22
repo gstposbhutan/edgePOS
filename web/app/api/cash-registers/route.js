@@ -11,7 +11,7 @@ export async function GET(request) {
   const { entityId, supabase } = ctx
   const { data: registers, error } = await supabase
     .from('cash_registers')
-    .select('id, name, default_opening_float, is_active, created_at')
+    .select('id, name, default_opening_float, is_active, created_at, mode, machine_id, license:licenses!licenses_register_id_fkey(id, lic_id, is_active, expires_at)')
     .eq('entity_id', entityId)
     .order('created_at', { ascending: true })
 

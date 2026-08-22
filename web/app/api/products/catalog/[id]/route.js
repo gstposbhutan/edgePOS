@@ -17,24 +17,25 @@ export async function PATCH(request, { params }) {
         name:            formData.name.trim(),
         sku:             formData.sku?.trim() || null,
         hsn_code:        formData.hsn_code.trim(),
+        brand:           formData.brand?.trim() || null,
+        ...(formData.stock_rotation ? { stock_rotation: ['FEFO','FIFO','NONE'].includes(formData.stock_rotation) ? formData.stock_rotation : 'FIFO' } : {}),
         unit:            formData.unit || 'pcs',
         image_url:       formData.image_url?.trim() || null,
         reorder_point:   parseInt(formData.reorder_point) || 10,
         sold_by_weight:  !!formData.sold_by_weight,
+        gst_exempt:      !!formData.gst_exempt,
         video_url:       formData.video_url?.trim() || null,
         ...(formData.specifications !== undefined ? { specifications: formData.specifications || {} } : {}),
       })
       .eq('id', id)
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-    // Replace category assignments
-    await supabase.from('product_categories').delete().eq('product_id', id)
-    if (categoryIds?.length > 0) {
-      await supabase.from('product_categories').insert(
-        categoryIds.map(cid => ({ product_id: id, category_id: cid }))
-      )
+    if (error) {
+      if (error.code === '23514') return NextResponse.json({ error: error.message }, { status: 409 })  // FEFO/rotation guard
+      return NextResponse.json({ error: error.message }, { status: 500 })
     }
+
+    // Category TAGS retired (Phase 2) — no longer written/replaced on edit. Existing tag rows are
+    // left untouched during the bake-in (tables dropped in Phase 3).
 
     return NextResponse.json({ success: true })
   } catch (err) {

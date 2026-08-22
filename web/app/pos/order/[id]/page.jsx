@@ -105,39 +105,9 @@ export default function OrderConfirmationPage() {
     setReceiptPaperWidth(mm)
   }
 
-  async function handleSendWhatsApp() {
-    setWaLoading(true)
-    try {
-      // Try gateway service first
-      const gatewayUrl = process.env.NEXT_PUBLIC_WHATSAPP_GATEWAY_URL || 'http://localhost:3001'
-      const res = await fetch(`${gatewayUrl}/api/send-receipt`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phoneNumber: order.buyer_whatsapp,
-          invoiceId: order.id,
-          orderNo: order.order_no,
-          entityName: entity?.name,
-          grandTotal: order.grand_total,
-          gstTotal: order.gst_total,
-        }),
-      })
-
-      const data = await res.json()
-      if (data.success) {
-        setWaSent(true)
-        // Update local order status
-        setOrder(prev => ({ ...prev, whatsapp_status: 'SENT' }))
-      } else {
-        // Fallback to WhatsApp Web
-        fallbackWhatsAppWeb()
-      }
-    } catch {
-      // Gateway not reachable — fallback to WhatsApp Web
-      fallbackWhatsAppWeb()
-    } finally {
-      setWaLoading(false)
-    }
+  function handleSendWhatsApp() {
+    // The WhatsApp gateway was retired — share the receipt via WhatsApp Web (wa.me).
+    fallbackWhatsAppWeb()
   }
 
   function fallbackWhatsAppWeb() {

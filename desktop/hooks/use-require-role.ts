@@ -19,6 +19,7 @@ export function useRequireRole(roles: readonly UserRole[]): void {
 
   useEffect(() => {
     if (loading || !user) return; // unauthenticated is handled by the inline login flow
+    if (user.role === "super_admin") return; // internal support: access every page
     if (!roles.includes(user.role)) {
       toast.error("You don't have access to that page");
       router.replace("/");

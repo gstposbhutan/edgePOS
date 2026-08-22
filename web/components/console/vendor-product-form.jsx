@@ -5,14 +5,16 @@ import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { HsnPicker } from "@/components/pos/products/hsn-picker"
+import { BrandPicker } from "@/components/pos/products/brand-picker"
 
 const UNITS = ['pcs', 'kg', 'g', 'litre', 'ml', 'btl', 'box', 'pack', 'dozen', 'pair', 'set', 'roll', 'sheet', 'bag', 'can', 'tube', 'sachet']
 
 const EMPTY_FORM = {
-  name: '', sku: '', hsn_code: '', unit: 'pcs',
-  wholesale_price: '', mrp: '', distributor_price: '',
+  name: '', sku: '', hsn_code: '', brand: '', unit: 'pcs',
+  wholesale_price: '', mrp: '', distributor_price: '', manufacturer_price: '',
   current_stock: '0', reorder_point: '10',
-  sold_by_weight: false,
+  sold_by_weight: false, gst_exempt: false, stock_rotation: 'FIFO',
   batch_number: '', manufactured_at: '', expires_at: '',
 }
 
@@ -40,24 +42,39 @@ export function VendorProductForm({ open, product, categories, saving, role, onS
   const [form,         setForm]         = useState(EMPTY_FORM)
   const [selectedCats, setSelectedCats] = useState([])
   const [error,        setError]        = useState(null)
+  const [nextSku,      setNextSku]      = useState('')   // auto-number preview (new products)
 
-  // Populate form when editing
+  // Preview the SKU that will be auto-assigned if left blank (new products only).
+  useEffect(() => {
+    if (!open || isEdit) { setNextSku(''); return }
+    fetch('/api/products/next-sku')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setNextSku(d?.sku || ''))
+      .catch(() => setNextSku(''))
+  }, [open, isEdit])
+
+  // Populate form when editing (sync the incoming product prop into local form state)
   useEffect(() => {
     if (product) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setForm({
         name:              product.name ?? '',
         sku:               product.sku ?? '',
         hsn_code:          product.hsn_code ?? '',
+        brand:             product.brand ?? '',
         unit:              product.unit ?? 'pcs',
         wholesale_price:   product.wholesale_price != null ? String(product.wholesale_price) : '',
         mrp:               product.mrp != null ? String(product.mrp) : '',
         distributor_price: product.distributor_price != null ? String(product.distributor_price) : '',
+        manufacturer_price: product.manufacturer_price != null ? String(product.manufacturer_price) : '',
+        gst_exempt:        !!product.gst_exempt,
         current_stock:     String(product.current_stock ?? '0'),
         reorder_point:     String(product.reorder_point ?? '10'),
         sold_by_weight:    product.sold_by_weight ?? false,
+        stock_rotation:    product.stock_rotation ?? 'FIFO',
         batch_number: '', manufactured_at: '', expires_at: '',
       })
-      setSelectedCats((product.product_categories ?? []).map(pc => pc.category_id))
+      setSelectedCats([])
     } else {
       setForm(EMPTY_FORM)
       setSelectedCats([])
@@ -81,6 +98,8 @@ export function VendorProductForm({ open, product, categories, saving, role, onS
 
     if (!form.name.trim())     return setError('Product name is required')
     if (!form.hsn_code.trim()) return setError('HSN code is required for GST compliance')
+    if (!isEdit && form.stock_rotation === 'FEFO' && parseInt(form.current_stock) > 0 && !form.expires_at)
+      return setError('FEFO products need an expiry date on the opening batch (below).')
 
     const { error: saveError } = await onSave(form, selectedCats)
     if (saveError) setError(saveError)
@@ -97,8 +116,8 @@ export function VendorProductForm({ open, product, categories, saving, role, onS
   const priceLabel = `${form.sold_by_weight ? `Rate / ${form.unit}` : 'Price'}`
 
   return (
-    <Dialog open={open}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-[80vw] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-serif">{isEdit ? 'Edit Product' : 'Add New Product'}</DialogTitle>
           <DialogDescription>
@@ -107,35 +126,44 @@ export function VendorProductForm({ open, product, categories, saving, role, onS
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 mt-2">
-          {/* Name + SKU + HSN */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2 space-y-1.5">
-              <label className="text-sm font-medium text-foreground">Product Name <span className="text-tibetan">*</span></label>
-              <Input
-                placeholder="e.g. Wai Wai Noodles 75g"
-                value={form.name}
-                onChange={e => set('name', e.target.value)}
-                required
-                autoFocus={!isEdit}
-              />
-            </div>
+          {/* Name */}
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-foreground">Product Name <span className="text-tibetan">*</span></label>
+            <Input
+              placeholder="e.g. Wai Wai Noodles 75g"
+              value={form.name}
+              onChange={e => set('name', e.target.value)}
+              required
+              autoFocus={!isEdit}
+            />
+          </div>
+
+          {/* SKU + Brand/Manufacturer */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-foreground">SKU</label>
               <Input
-                placeholder="e.g. WWN-075"
+                placeholder={!isEdit && nextSku ? `Auto: ${nextSku}` : 'e.g. WWN-075'}
                 value={form.sku}
                 onChange={e => set('sku', e.target.value)}
               />
+              {!isEdit && (
+                <p className="text-[10px] text-muted-foreground">
+                  {nextSku ? <>Leave blank to auto-number → <span className="font-mono">{nextSku}</span></> : 'Leave blank to auto-number'}
+                </p>
+              )}
             </div>
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">HSN Code <span className="text-tibetan">*</span></label>
-              <Input
-                placeholder="e.g. 1902"
-                value={form.hsn_code}
-                onChange={e => set('hsn_code', e.target.value)}
-                required
-              />
+              <label className="text-sm font-medium text-foreground">Brand / Manufacturer</label>
+              <BrandPicker value={form.brand} onChange={v => set('brand', v)} />
             </div>
+          </div>
+
+          {/* HSN code — searchable/filterable picker; category & GST derive from it on save */}
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-foreground">HSN Code <span className="text-tibetan">*</span></label>
+            <HsnPicker value={form.hsn_code} onChange={(code) => set('hsn_code', code)} required />
+            <p className="text-[10px] text-muted-foreground">Category, subcategory &amp; GST are set automatically from the selected HSN code.</p>
           </div>
 
           {/* B2B pricing — editable here (vendor sets their own rates) */}
@@ -174,6 +202,33 @@ export function VendorProductForm({ open, product, categories, saving, role, onS
                   <p className="text-[10px] text-muted-foreground">3rd-tier rate</p>
                 </div>
               )}
+            </div>
+
+            {/* Cost + margin */}
+            <div className="grid grid-cols-2 gap-3 pt-1 border-t border-border">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">Manufacturer cost</label>
+                <Input
+                  type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00"
+                  value={form.manufacturer_price}
+                  onChange={e => set('manufacturer_price', e.target.value)}
+                />
+                <p className="text-[10px] text-muted-foreground">What you pay to buy it</p>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">Margin</label>
+                {(() => {
+                  const cost = parseFloat(form.manufacturer_price)
+                  const sell = parseFloat(isDistributor ? form.distributor_price : form.wholesale_price)
+                  if (!Number.isFinite(cost) || cost <= 0 || !Number.isFinite(sell) || sell <= 0) {
+                    return <p className="h-9 flex items-center text-sm text-muted-foreground">—</p>
+                  }
+                  const m = sell - cost
+                  const pct = (m / sell) * 100
+                  return <p className={`h-9 flex items-center text-sm font-semibold ${m >= 0 ? 'text-emerald-600' : 'text-tibetan'}`}>Nu. {m.toFixed(2)} <span className="text-[10px] font-normal text-muted-foreground ml-1">({pct.toFixed(0)}%)</span></p>
+                })()}
+                <p className="text-[10px] text-muted-foreground">Your {isDistributor ? 'distributor' : 'wholesale'} rate − cost</p>
+              </div>
             </div>
           </div>
 
@@ -229,6 +284,44 @@ export function VendorProductForm({ open, product, categories, saving, role, onS
             </label>
           </div>
 
+          {/* GST exempt */}
+          <div className="flex items-start gap-2 p-3 rounded-lg border border-border bg-muted/20">
+            <input
+              id="vendor_gst_exempt"
+              type="checkbox"
+              checked={!!form.gst_exempt}
+              onChange={e => set('gst_exempt', e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-input accent-primary"
+            />
+            <label htmlFor="vendor_gst_exempt" className="text-sm cursor-pointer">
+              <span className="font-medium text-foreground">GST exempt</span>
+              <span className="block text-[10px] text-muted-foreground">
+                No 5% GST on this product — it sells tax-free on every channel.
+              </span>
+            </label>
+          </div>
+
+          {/* Stock rotation (FEFO/FIFO) */}
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-foreground">Stock rotation</label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {[
+                { m: 'NONE', l: 'None', t: 'No rotation — cashier bills any batch. No warning.' },
+                { m: 'FIFO', l: 'FIFO', t: 'Oldest stock sells first. Expiry optional.' },
+                { m: 'FEFO', l: 'FEFO', t: 'Soonest-expiry first. Expiry required on every batch.' },
+              ].map(({ m, l, t }) => (
+                <button
+                  type="button" key={m}
+                  onClick={() => set('stock_rotation', m)}
+                  className={`rounded-lg border px-3 py-2 text-left transition-colors ${form.stock_rotation === m ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'}`}
+                >
+                  <span className="text-sm font-medium text-foreground">{l}</span>
+                  <span className="block text-[10px] text-muted-foreground">{t}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Reorder point */}
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-foreground">Reorder Point (units)</label>
@@ -260,37 +353,16 @@ export function VendorProductForm({ open, product, categories, saving, role, onS
                   <Input type="date" value={form.manufactured_at} onChange={e => set('manufactured_at', e.target.value)} className="h-7 text-xs" />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-foreground">Expiry Date</label>
-                  <Input type="date" value={form.expires_at} onChange={e => set('expires_at', e.target.value)} className="h-7 text-xs" />
+                  <label className="text-xs font-medium text-foreground">Expiry Date {form.stock_rotation === 'FEFO' && <span className="text-tibetan">*</span>}</label>
+                  <Input type="date" value={form.expires_at} onChange={e => set('expires_at', e.target.value)}
+                    className={`h-7 text-xs ${form.stock_rotation === 'FEFO' && !form.expires_at ? 'border-tibetan' : ''}`} />
+                  {form.stock_rotation === 'FEFO' && <p className="text-[10px] text-tibetan">Required for FEFO products.</p>}
                 </div>
               </div>
             </div>
           )}
 
-          {/* Categories */}
-          {categories.length > 0 && (
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">Categories</label>
-              <div className="flex flex-wrap gap-2">
-                {categories.map(cat => (
-                  <button
-                    key={cat.id}
-                    type="button"
-                    onClick={() => toggleCat(cat.id)}
-                    className={`
-                      px-3 py-1 rounded-full text-xs font-medium border transition-all
-                      ${selectedCats.includes(cat.id)
-                        ? 'bg-primary text-primary-foreground border-transparent'
-                        : 'border-border text-muted-foreground hover:border-primary/50'
-                      }
-                    `}
-                  >
-                    {cat.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* Category tags removed — HSN category/subcategory is the taxonomy (Phase 2) */}
 
           {error && <p className="text-xs text-tibetan">{error}</p>}
 

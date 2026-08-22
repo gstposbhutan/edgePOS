@@ -18,7 +18,7 @@ export async function PATCH(request, { params }) {
 
     const { id } = await params
     const { entityId, supabase } = ctx
-    const { formData, categoryIds } = await request.json()
+    const { formData } = await request.json()
 
     if (!formData?.name?.trim()) return NextResponse.json({ error: 'Product name is required' }, { status: 400 })
     if (!formData?.hsn_code?.trim()) return NextResponse.json({ error: 'HSN code is required' }, { status: 400 })
@@ -29,10 +29,14 @@ export async function PATCH(request, { params }) {
         name:              formData.name.trim(),
         sku:               formData.sku?.trim() || null,
         hsn_code:          formData.hsn_code.trim(),
+        brand:             formData.brand?.trim() || null,
+        ...(formData.stock_rotation ? { stock_rotation: ['FEFO','FIFO','NONE'].includes(formData.stock_rotation) ? formData.stock_rotation : 'FIFO' } : {}),
         unit:              formData.unit || 'pcs',
         wholesale_price:   numOrNull(formData.wholesale_price),
         mrp:               numOrNull(formData.mrp),
         distributor_price: numOrNull(formData.distributor_price),
+        manufacturer_price: numOrNull(formData.manufacturer_price),
+        gst_exempt:        !!formData.gst_exempt,
         reorder_point:     parseInt(formData.reorder_point) || 10,
         sold_by_weight:    !!formData.sold_by_weight,
       })
@@ -40,18 +44,15 @@ export async function PATCH(request, { params }) {
       .eq('created_by', entityId)
       .select('id')
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) {
+      if (error.code === '23514') return NextResponse.json({ error: error.message }, { status: 409 })  // FEFO/rotation guard
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
     if (!updated || updated.length === 0) {
       return NextResponse.json({ error: 'Product not found' }, { status: 404 })
     }
 
-    // Replace category assignments
-    await supabase.from('product_categories').delete().eq('product_id', id)
-    if (categoryIds?.length > 0) {
-      await supabase.from('product_categories').insert(
-        categoryIds.map(cid => ({ product_id: id, category_id: cid }))
-      )
-    }
+    // Category tags retired — taxonomy is the product's HSN category/subcategory (category consolidation).
 
     return NextResponse.json({ success: true })
   } catch (err) {

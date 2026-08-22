@@ -101,7 +101,7 @@ export function ScanBillModal({ open, entityId, createdBy, onDraftCreated, onClo
   }
 
   return (
-    <Dialog open={open}>
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="sm:max-w-md p-0 overflow-hidden">
         <div className="bg-obsidian text-white">
 

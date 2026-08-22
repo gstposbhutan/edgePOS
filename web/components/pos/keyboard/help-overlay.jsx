@@ -20,7 +20,7 @@ const GROUPS = [
       { key: 'Ctrl+R',    label: 'Remove selected row' },
       { key: 'Ctrl+D',    label: 'Bill discount (all lines)' },
       { key: 'Ctrl+C',    label: 'Complimentary (manager)' },
-      { key: 'Ctrl+E',    label: 'Exchange / return' },
+      { key: 'Ctrl+E',    label: 'Return / refund' },
       { key: 'Alt+Q',     label: 'Save as order / quotation' },
       { key: 'Alt+M',     label: 'Post to market' },
       { key: 'Alt+D',     label: 'Delivery address' },

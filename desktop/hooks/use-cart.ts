@@ -20,6 +20,7 @@ export interface CartItem {
   discount: number;
   gst_5: number;
   total: number;
+  gst_exempt?: boolean;
   salesperson_id?: string | null;
   expand?: { product?: Product };
 }
@@ -100,7 +101,7 @@ export function useCart(priceListMode: PriceListMode = "RETAIL") {
   const billDiscount = Math.max(0, Number((cart as { bill_discount?: number } | null)?.bill_discount ?? 0) || 0);
 
   const totals = calcCartTotals(
-    items.map((i) => ({ unitPrice: i.unit_price, discount: i.discount, quantity: i.quantity })),
+    items.map((i) => ({ unitPrice: i.unit_price, discount: i.discount, quantity: i.quantity, gstExempt: !!i.gst_exempt })),
     undefined,
     billDiscount,
   );
@@ -154,17 +155,19 @@ export function useCart(priceListMode: PriceListMode = "RETAIL") {
           if (newQty < wanted) toast.error(`Only ${stock} in stock`);
           if (newQty === existing.quantity) return existing; // already at the cap — nothing to write
           const { gstAmount, total } = calcItemTotals({
-            unitPrice: existing.unit_price, discount: existing.discount, quantity: newQty,
+            unitPrice: existing.unit_price, discount: existing.discount, quantity: newQty, gstExempt: existing.gst_exempt,
           });
           await pb.collection("cart_items").update(existing.id, { quantity: newQty, gst_5: gstAmount, total }, PB_REQ);
           return existing; // onSuccess will refetch, so return value isn't critical
         }
       }
       const quantity = isWeighed ? weight! : 1;
-      const { gstAmount, total } = calcItemTotals({ unitPrice, discount: 0, quantity });
+      const gstExempt = !!product.gst_exempt;
+      const { gstAmount, total } = calcItemTotals({ unitPrice, discount: 0, quantity, gstExempt });
       return pb.collection("cart_items").create({
         cart: cart.id, product: product.id, name: product.name, sku: product.sku,
         quantity, unit_price: unitPrice, discount: 0, gst_5: gstAmount, total,
+        gst_exempt: gstExempt,
         salesperson_id: salespersonId ?? null,
       }, PB_REQ) as unknown as CartItem;
     },
@@ -218,7 +221,7 @@ export function useCart(priceListMode: PriceListMode = "RETAIL") {
         toast.error(`Only ${stock} in stock`);
       }
       const { gstAmount, total } = calcItemTotals({
-        unitPrice: item.unit_price, discount: item.discount, quantity: qty,
+        unitPrice: item.unit_price, discount: item.discount, quantity: qty, gstExempt: item.gst_exempt,
       });
       await pb.collection("cart_items").update(itemId, { quantity: qty, gst_5: gstAmount, total }, PB_REQ);
       return null;
@@ -242,7 +245,7 @@ export function useCart(priceListMode: PriceListMode = "RETAIL") {
       if (!item) throw new Error("Item not found");
       const clamped = Math.min(Math.max(0, discountPerUnit), item.unit_price);
       const { gstAmount, total } = calcItemTotals({
-        unitPrice: item.unit_price, discount: clamped, quantity: item.quantity,
+        unitPrice: item.unit_price, discount: clamped, quantity: item.quantity, gstExempt: item.gst_exempt,
       });
       await pb.collection("cart_items").update(itemId, { discount: clamped, gst_5: gstAmount, total }, PB_REQ);
     },
@@ -282,7 +285,7 @@ export function useCart(priceListMode: PriceListMode = "RETAIL") {
       if (!item) throw new Error("Item not found");
       const price = Math.max(0, newUnitPrice);
       const { gstAmount, total } = calcItemTotals({
-        unitPrice: price, discount: item.discount, quantity: item.quantity,
+        unitPrice: price, discount: item.discount, quantity: item.quantity, gstExempt: item.gst_exempt,
       });
       await pb.collection("cart_items").update(itemId, { unit_price: price, gst_5: gstAmount, total }, PB_REQ);
     },

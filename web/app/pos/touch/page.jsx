@@ -6,6 +6,7 @@ import { PosHeader }       from "@/components/pos/pos-header"
 import { ProductPanel }    from "@/components/pos/product-panel"
 import { WeightEntryModal } from "@/components/pos/weight-entry-modal"
 import { CartPanel }       from "@/components/pos/cart-panel"
+import { BatchPickerModal } from "@/components/pos/batch-picker-modal"
 import { CustomerIdModal }  from "@/components/pos/customer-id-modal"
 import { CustomerOtpModal } from "@/components/pos/customer-otp-modal"
 import { QuotationConfirmModal } from "@/components/pos/keyboard/quotation-confirm-modal"
@@ -33,6 +34,7 @@ export default function PosPage() {
 
   const [user,              setUser]              = useState(null)
   const [entity,            setEntity]            = useState(null)
+  const shiftsEnabled = !!entity?.shifts_enabled   // per-vendor toggle — hide shift/drawer UI unless enabled
   const [subRole,           setSubRole]           = useState('CASHIER')
   const [activeEntityId,    setActiveEntityId]    = useState(null)
   const [paymentMethod,     setPaymentMethod]     = useState(null)
@@ -41,14 +43,25 @@ export default function PosPage() {
   const [salespeopleById,   setSalespeopleById]   = useState({})     // id → name, per-line salesperson labels (#3)
   const [salespersonItemId, setSalespersonItemId] = useState(null)   // cart line awaiting a salesperson pick
   const [weighProduct,      setWeighProduct]      = useState(null)    // sold_by_weight product awaiting a weight
+  const [batchPickItem,     setBatchPickItem]     = useState(null)    // cart line whose batch is being overridden
 
   // Weighed goods go through the weigh modal; everything else adds directly.
   function handleAddItem(product) {
     if (product?.sold_by_weight) { setWeighProduct(product); return }
     addItem(product)
+    // FEFO nudge (non-blocking): cashier added a batch that isn't the soonest-expiring.
+    if (product?.stock_rotation === 'FEFO' && product?.has_older_batch && product?.expires_at) {
+      const older = product.earliest_batch_expiry
+        ? new Date(product.earliest_batch_expiry).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+        : null
+      setCheckoutWarn(`FEFO: "${product.name}" — an older batch${older ? ` (expires ${older})` : ''} should sell first. Added anyway; switch batches if you can.`)
+    } else {
+      setCheckoutWarn(null)
+    }
   }
   const [checkoutLoading,   setCheckoutLoading]   = useState(false)
   const [checkoutError,     setCheckoutError]     = useState(null)
+  const [checkoutWarn,      setCheckoutWarn]      = useState(null)   // non-blocking (FEFO older-batch)
   const [stockShortfalls,   setStockShortfalls]   = useState([])
   const [cameraActive,      setCameraActive]      = useState(false)
   const [faceActive,        setFaceActive]        = useState(true)
@@ -121,13 +134,43 @@ export default function PosPage() {
     cartId, items, customer, loading: cartLoading,
     subtotal, discountTotal, taxableSubtotal, gstTotal, grandTotal, billDiscount,
     carts, activeIndex,
-    addItem, updateQty, applyDiscount, overridePrice, removeItem, clearCart, setCustomerIdentity, applyBillDiscount,
+    addItem, updateQty, changeBatch, applyDiscount, overridePrice, removeItem, clearCart, setCustomerIdentity, applyBillDiscount,
     setLineSalesperson,
     holdCart, switchCart, cancelCart,
   } = useCart(entity?.id, user?.id, 'RETAIL', (name, avail) => showToast(`Only ${avail} in stock`))
 
   const { products, loading: productsLoading, search } = useProducts(entity?.id)
   const { lookupAccount, createAccount } = useKhata(entity?.id)
+
+  // Increasing a batch line past its stock → cap it (server does) and auto-split the overflow
+  // across the product's other batches (FEFO/FIFO, oldest first), each new line at its batch price.
+  async function handleQtyChange(itemId, newQty) {
+    const item = items.find(i => i.id === itemId)
+    if (!item?.batch_id || !item?.product_id) { updateQty(itemId, newQty); return }
+
+    const result = await updateQty(itemId, newQty)   // server clamps to this batch's stock
+    if (!result?.capped || result.available == null || newQty <= result.available) return
+
+    const overflow = newQty - result.available
+    try {
+      const res = await fetch(`/api/pos/allocate?product=${item.product_id}&qty=${overflow}&exclude=${item.batch_id}`)
+      const data = await res.json()
+      if (res.ok && data.allocation?.length) {
+        const p = data.product
+        for (const row of data.allocation) {
+          addItem({
+            id: p.id, product_id: p.id, name: p.name, sku: p.sku, unit: p.unit,
+            sold_by_weight: p.sold_by_weight, gst_exempt: p.gst_exempt,
+            mrp: p.mrp, wholesale_price: p.wholesale_price, distributor_price: p.distributor_price,
+            selling_price: row.selling_price, batch_id: row.batch_id, batch_number: row.batch_number,
+            expires_at: row.expires_at, available_stock: row.quantity, quantity: row.quantity,
+          })
+        }
+        setCheckoutWarn(`Split "${item.name}" across batches${data.rotation === 'NONE' ? '.' : ` — ${data.rotation}, oldest first.`}`)
+      }
+      if (data.insufficient) setCheckoutError(`Not enough stock across batches for "${item.name}".`)
+    } catch { /* leave the line capped */ }
+  }
 
   // Per-line rate tier: re-price a cart line at the chosen tier (retail default). Mirrors the
   // keyboard product-search toggle — the tier applies to that line only.
@@ -311,6 +354,7 @@ export default function PosPage() {
       if (!res.ok) throw new Error(data.error || 'Save failed')
       setShowQuotation(false)
       await clearCart()
+      setCheckoutWarn(null)
       setPaymentMethod(null); setJournalNo('')
       router.push(`/pos/order/${data.order.id}`)
     } catch (err) {
@@ -373,27 +417,11 @@ export default function PosPage() {
       const order = data.order
 
       await clearCart()
+      setCheckoutWarn(null)
       setPaymentMethod(null)
       setJournalNo('')
       setKhataAccount(null)
       setOwnerOverride(false)
-
-      // Auto-send receipt via WhatsApp gateway (fire-and-forget)
-      if (customer?.whatsapp) {
-        const gatewayUrl = process.env.NEXT_PUBLIC_WHATSAPP_GATEWAY_URL || 'http://localhost:3001'
-        fetch(`${gatewayUrl}/api/send-receipt`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            phoneNumber: customer.whatsapp,
-            invoiceId: order.id,
-            orderNo: order.order_no,
-            entityName: entity?.name,
-            grandTotal,
-            gstTotal,
-          }),
-        }).catch(() => {}) // ignore failures
-      }
 
       router.push(`/pos/order/${order.id}?success=true`)
 
@@ -465,11 +493,11 @@ export default function PosPage() {
         onSwitchStore={handleSwitchStore}
         shift={shift}
         currentUserId={user?.id}
-        onCloseShiftAndSignOut={() => { pendingSignOutRef.current = true; closedOkRef.current = false; setShowEndShift(true) }}
-        onStartShift={() => setShowStartShift(true)}
-        onEndShift={() => setShowEndShift(true)}
-        onCashAdj={() => setShowCashAdj(true)}
-        onZReport={() => setShowZReport(true)}
+        onCloseShiftAndSignOut={shiftsEnabled ? () => { pendingSignOutRef.current = true; closedOkRef.current = false; setShowEndShift(true) } : undefined}
+        onStartShift={shiftsEnabled ? () => setShowStartShift(true) : undefined}
+        onEndShift={shiftsEnabled ? () => setShowEndShift(true) : undefined}
+        onCashAdj={shiftsEnabled ? () => setShowCashAdj(true) : undefined}
+        onZReport={shiftsEnabled ? () => setShowZReport(true) : undefined}
         faceCamera={
           <FaceCamera
             entityId={entity?.id}
@@ -530,6 +558,12 @@ export default function PosPage() {
               <p className="text-xs text-tibetan">{checkoutError}</p>
             </div>
           )}
+          {checkoutWarn && (
+            <div className="mb-3 p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-start justify-between gap-2">
+              <p className="text-xs text-amber-700 dark:text-amber-400">⚠ {checkoutWarn}</p>
+              <button onClick={() => setCheckoutWarn(null)} className="shrink-0 text-[10px] underline opacity-80 hover:opacity-100">Dismiss</button>
+            </div>
+          )}
           <CartPanel
             items={items}
             subtotal={subtotal}
@@ -543,7 +577,8 @@ export default function PosPage() {
             paymentMethod={paymentMethod}
             userSubRole={subRole}
             khataAccount={khataAccount}
-            onUpdateQty={updateQty}
+            onUpdateQty={handleQtyChange}
+            onChangeBatch={setBatchPickItem}
             onRemoveItem={removeItem}
             onApplyDiscount={applyDiscount}
             onOverridePrice={overridePrice}
@@ -655,6 +690,17 @@ export default function PosPage() {
           product={weighProduct}
           onConfirm={(w) => { addItem(weighProduct, undefined, w); setWeighProduct(null) }}
           onClose={() => setWeighProduct(null)}
+        />
+      )}
+
+      {batchPickItem && (
+        <BatchPickerModal
+          open
+          productId={batchPickItem.product_id}
+          productName={batchPickItem.name}
+          currentBatchId={batchPickItem.batch_id}
+          onSelect={(batchId) => changeBatch(batchPickItem.id, batchId)}
+          onClose={() => setBatchPickItem(null)}
         />
       )}
 

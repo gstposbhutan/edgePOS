@@ -103,7 +103,7 @@ export function ReceiveStockModal({ open, entityId, onReceive, onClose }) {
 
   if (success) {
     return (
-      <Dialog open={open}>
+      <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
         <DialogContent>
           <div className="flex flex-col items-center gap-4 py-6">
             <CheckCircle className="h-14 w-14 text-emerald-500" />
@@ -130,7 +130,7 @@ export function ReceiveStockModal({ open, entityId, onReceive, onClose }) {
   }
 
   return (
-    <Dialog open={open}>
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-serif">Receive Stock</DialogTitle>

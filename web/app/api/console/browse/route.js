@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/supabase/server'
+import { linkLookup } from '@/lib/console/supply-links'
 
 // Network discovery for the vendor consoles. A distributor browses every active WHOLESALER
 // and RETAILER on the platform; a wholesaler browses every active RETAILER. Broad by design
@@ -58,7 +59,26 @@ export async function GET(request) {
       .eq('actor_entity_id', entityId)
     const favSet = new Set((favs ?? []).map(f => f.target_entity_id))
 
-    const rows = (entities ?? []).map(e => ({ ...e, is_favourite: favSet.has(e.id) }))
+    // Mark which rows the caller already has an active whole-catalog supply link with, when this
+    // pair is linkable (distributor→wholesaler, wholesaler→retailer). Distributor→retailer isn't a
+    // supply link, so those rows stay favourite-only (linkable false).
+    const lk = linkLookup(ctx.role, targetRole)
+    let linkedSet = new Set()
+    if (lk && (entities?.length)) {
+      const { data: links } = await supabase
+        .from(lk.table)
+        .select(lk.other)
+        .eq(lk.self, entityId).eq('active', true).is('category_id', null)
+        .in(lk.other, entities.map(e => e.id))
+      linkedSet = new Set((links ?? []).map(l => l[lk.other]))
+    }
+
+    const rows = (entities ?? []).map(e => ({
+      ...e,
+      is_favourite: favSet.has(e.id),
+      linkable: !!lk,
+      is_linked: linkedSet.has(e.id),
+    }))
 
     return NextResponse.json({ entities: rows })
   } catch (err) {

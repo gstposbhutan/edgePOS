@@ -4,6 +4,8 @@ export interface CartItemInput {
   unitPrice: number;
   discount: number;
   quantity: number;
+  // GST-exempt line: 0% instead of the flat rate (rice/sugar/etc.). See migration 022.
+  gstExempt?: boolean;
 }
 
 export interface CartItemTotals {
@@ -15,13 +17,17 @@ export interface CartItemTotals {
 export function calcItemTotals(input: CartItemInput, gstRate: number = DEFAULT_GST_RATE): CartItemTotals {
   const rate = gstRate / 100;
   const taxable = Math.max(0, input.unitPrice - input.discount);
+  // Exempt goods carry no GST: total is just taxable × qty, gstAmount is 0.
+  if (input.gstExempt) {
+    return { taxable, gstAmount: 0, total: parseFloat((taxable * input.quantity).toFixed(2)) };
+  }
   const gstAmount = parseFloat((taxable * rate * input.quantity).toFixed(2));
   const total = parseFloat(((taxable * (1 + rate)) * input.quantity).toFixed(2));
   return { taxable, gstAmount, total };
 }
 
 export function calcCartTotals(
-  items: { unitPrice: number; discount: number; quantity: number }[],
+  items: { unitPrice: number; discount: number; quantity: number; gstExempt?: boolean }[],
   gstRate: number = DEFAULT_GST_RATE,
   billDiscount: number = 0
 ) {

@@ -274,7 +274,7 @@ function WarehouseForm({ open, warehouse, saving, onSave, onClose }) {
   }
 
   return (
-    <Dialog open={open}>
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="font-serif">{isEdit ? 'Edit Warehouse' : 'Add Warehouse'}</DialogTitle>

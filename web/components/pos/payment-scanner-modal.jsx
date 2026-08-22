@@ -96,7 +96,7 @@ export function PaymentScannerModal({ open, paymentMethod, expectedAmount, onVer
   }[paymentMethod] ?? paymentMethod
 
   return (
-    <Dialog open={open}>
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="sm:max-w-md p-0 overflow-hidden">
         <div className="bg-obsidian text-white">
 

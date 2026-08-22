@@ -10,12 +10,12 @@ export async function POST() {
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   if (!url || !key) {
     // Still clear cookies even if server misconfigured
-    response.cookies.delete('sb-edgepos-auth-token')
+    response.cookies.delete('sb-pelbu-auth')
     return response
   }
 
   const supabase = createServerClient(url, key, {
-    cookieOptions: { name: 'sb-edgepos-auth-token' },
+    cookieOptions: { name: 'sb-pelbu-auth', path: '/', sameSite: 'lax', domain: process.env.NEXT_PUBLIC_COOKIE_DOMAIN || undefined },
     cookies: {
       getAll: () => cookieStore.getAll(),
       setAll: (cookiesToSet) => {

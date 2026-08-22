@@ -11,7 +11,7 @@ export async function GET() {
   }
 
   const supabase = createServerClient(url, key, {
-    cookieOptions: { name: 'sb-edgepos-auth-token' },
+    cookieOptions: { name: 'sb-pelbu-auth', path: '/', sameSite: 'lax', domain: process.env.NEXT_PUBLIC_COOKIE_DOMAIN || undefined },
     cookies: {
       getAll: () => cookieStore.getAll(),
       setAll: () => {},

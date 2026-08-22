@@ -80,7 +80,7 @@ export function CustomerOtpModal({ open, initialEmail = '', onVerified, onClose 
   }
 
   return (
-    <Dialog open={open}>
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent showCloseButton={false}>
         <DialogHeader>
           <DialogTitle className="font-serif flex items-center gap-2">

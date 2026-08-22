@@ -34,7 +34,7 @@ export default function DistributorWholesalersPage() {
         mode="browse"
         targetRole="WHOLESALER"
         title="Wholesalers"
-        subtitle="Browse every active wholesaler · star the ones you work with"
+        subtitle="Browse every active wholesaler · connect the ones you supply, star the rest"
       />
     </ConsoleShell>
   )

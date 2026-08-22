@@ -52,7 +52,7 @@ export function AdjustBalanceModal({ open, onClose, onAdjust, outstandingBalance
   }
 
   return (
-    <Dialog open={open}>
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent showCloseButton={false}>
         <DialogHeader>
           <DialogTitle className="font-serif">Adjust Balance</DialogTitle>
