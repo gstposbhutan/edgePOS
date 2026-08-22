@@ -71,7 +71,13 @@ export function useCheckout(input: CheckoutInput) {
       channel: string | null,
       ref: string,
       tendered?: number,
-      onSuccess?: (orderPayload: Record<string, unknown>, orderId: string) => void
+      onSuccess?: (orderPayload: Record<string, unknown>, orderId: string) => void,
+      /**
+       * Split tender: the parts settling this one bill. Empty/omitted means a single payment,
+       * which behaves exactly as before. `method`/`channel`/`ref` still arrive as the primary
+       * (largest) part so every existing caller and the cloud enum stay valid.
+       */
+      payments?: { method: string; channel: string | null; ref: string; amount: number }[]
     ) => {
       const { pb, user, items, products, subtotal, gstTotal, grandTotal, billDiscount, taxExempt, grandTotalExempt, settings, selectedCustomer, clearCart, refreshProducts, clearUndoStack, invoiceDate, isOwner, salespersonId, deliveryAddress, complimentaryReason } = input;
 
@@ -83,12 +89,21 @@ export function useCheckout(input: CheckoutInput) {
       // limit (see web/docs/desktop-web-parity-fix-plan.md P0-1). A limit of
       // <= 0 means "no limit configured" (unlimited) — matches the UI, which
       // renders an unset limit as "—".
-      if (method === PAYMENT_METHOD.CREDIT) {
+      // How much of this bill goes on the khata. On a split that is the credit PART only —
+      // booking the whole bill would overstate the customer's debt by whatever they just paid
+      // in cash.
+      const billTotal = taxExempt ? grandTotalExempt : grandTotal;
+      const creditParts = (payments ?? []).filter((p) => p.method === PAYMENT_METHOD.CREDIT);
+      const creditAmount = payments?.length
+        ? parseFloat(creditParts.reduce((sum, p) => sum + p.amount, 0).toFixed(2))
+        : (method === PAYMENT_METHOD.CREDIT ? billTotal : 0);
+
+      if (creditAmount > 0) {
         if (!selectedCustomer) {
           toast.error("Select a customer for credit (khata) sales");
           return;
         }
-        const saleTotal = taxExempt ? grandTotalExempt : grandTotal;
+        const saleTotal = creditAmount;
         const fresh = await pb
           .collection("khata_accounts")
           .getOne(selectedCustomer.id, PB_REQ)
@@ -154,6 +169,7 @@ export function useCheckout(input: CheckoutInput) {
           payment_method: method,
           payment_channel: channel || "",
           payment_ref: ref || "",
+          payments: payments?.length ? payments : null,
           customer_name: selectedCustomer?.debtor_name || "",
           customer_phone: selectedCustomer?.debtor_phone || "",
           created_by: user.id,
@@ -190,12 +206,12 @@ export function useCheckout(input: CheckoutInput) {
             notes: `Sale: ${orderNo}`,
           });
         }
-        if (method === PAYMENT_METHOD.CREDIT && selectedCustomer) {
-          batch.collection("khata_accounts").update(selectedCustomer.id, { "outstanding_balance+": effectiveGrandTotal });
+        if (creditAmount > 0 && selectedCustomer) {
+          batch.collection("khata_accounts").update(selectedCustomer.id, { "outstanding_balance+": creditAmount });
           batch.collection("khata_transactions").create({
             khata_account: selectedCustomer.id,
             transaction_type: KHATA_TXN.DEBIT,
-            amount: effectiveGrandTotal,
+            amount: creditAmount,
             reference_id: orderId,
             notes: `Purchase on credit — ${orderNo}`,
           });

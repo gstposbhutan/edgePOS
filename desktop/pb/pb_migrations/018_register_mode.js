@@ -8,7 +8,7 @@ migrate(
   (app) => {
     const registers = app.findCollectionByNameOrId("cash_registers");
     const has = (coll, name) => {
-      try { coll.fields.getByName(name); return true; } catch (_) { return false; }
+      try { return !!coll.fields.getByName(name); } catch (_) { return false; }
     };
     if (!has(registers, "mode")) {
       registers.fields.add(new TextField({ name: "mode" }));

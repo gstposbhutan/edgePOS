@@ -8,7 +8,7 @@ migrate(
     for (const col of ["carts", "orders"]) {
       const c = app.findCollectionByNameOrId(col);
       let has = false;
-      try { c.fields.getByName("bill_discount"); has = true; } catch (_) { has = false; }
+      try { has = !!c.fields.getByName("bill_discount"); } catch (_) { has = false; }
       if (!has) c.fields.add(new NumberField({ name: "bill_discount" }));
       app.save(c);
     }

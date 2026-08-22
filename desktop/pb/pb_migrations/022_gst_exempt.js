@@ -9,7 +9,7 @@ migrate(
     for (const col of ["products", "cart_items"]) {
       const c = app.findCollectionByNameOrId(col);
       let exists = false;
-      try { c.fields.getByName("gst_exempt"); exists = true; } catch (_) {}
+      try { exists = !!c.fields.getByName("gst_exempt"); } catch (_) { exists = false; }
       if (!exists) {
         c.fields.add(new BoolField({ name: "gst_exempt" }));
         app.save(c);
@@ -20,7 +20,7 @@ migrate(
     for (const col of ["products", "cart_items"]) {
       const c = app.findCollectionByNameOrId(col);
       let exists = false;
-      try { c.fields.getByName("gst_exempt"); exists = true; } catch (_) {}
+      try { exists = !!c.fields.getByName("gst_exempt"); } catch (_) { exists = false; }
       if (exists) {
         c.fields.removeByName("gst_exempt");
         app.save(c);

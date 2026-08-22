@@ -7,7 +7,7 @@ migrate(
   (app) => {
     const orders = app.findCollectionByNameOrId("orders");
     const has = (coll, name) => {
-      try { coll.fields.getByName(name); return true; } catch (_) { return false; }
+      try { return !!coll.fields.getByName(name); } catch (_) { return false; }
     };
     if (!has(orders, "is_quotation")) {
       orders.fields.add(new BoolField({ name: "is_quotation" }));

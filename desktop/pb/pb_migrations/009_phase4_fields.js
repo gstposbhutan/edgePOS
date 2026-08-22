@@ -10,7 +10,7 @@ migrate(
     const usersId = app.findCollectionByNameOrId("_pb_users_auth_").id;
 
     const has = (coll, name) => {
-      try { coll.fields.getByName(name); return true; } catch (_) { return false; }
+      try { return !!coll.fields.getByName(name); } catch (_) { return false; }
     };
 
     if (!has(orders, "salesperson_id")) {

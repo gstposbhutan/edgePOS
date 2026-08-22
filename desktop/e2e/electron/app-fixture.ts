@@ -62,6 +62,29 @@ async function resetWindow(page: Page) {
   await expect(email.or(shiftBtn).first()).toBeVisible({ timeout: 60_000 });
 }
 
+/**
+ * Clear the ticket: delete the cart LINES and the carts themselves.
+ *
+ * Deleting only the lines leaves the cart records behind, and they pile up — the app picks "the
+ * first ACTIVE cart" it finds, so a heap of empty ones makes which ticket it lands on
+ * nondeterministic. Removing them lets the app open exactly one fresh ticket.
+ */
+export async function resetTicket() {
+  const auth = await fetch(`${PB}/api/collections/_superusers/auth-with-password`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identity: OWNER.email, password: OWNER.password }),
+  }).then((r) => r.json()).catch(() => null);
+  if (!auth?.token) return;
+  const headers = { "Content-Type": "application/json", Authorization: auth.token };
+  for (const collection of ["cart_items", "carts"]) {
+    const rows = await fetch(`${PB}/api/collections/${collection}/records?perPage=500`, { headers })
+      .then((r) => (r.ok ? r.json() : { items: [] })).catch(() => ({ items: [] }));
+    for (const row of rows.items || []) {
+      await fetch(`${PB}/api/collections/${collection}/records/${row.id}`, { method: "DELETE", headers }).catch(() => {});
+    }
+  }
+}
+
 export const test = base.extend<{ appPage: Page }, { electronApp: ElectronApplication; workerWindow: Page }>({
   electronApp: [
     async ({}, use) => {
@@ -94,8 +117,11 @@ export const test = base.extend<{ appPage: Page }, { electronApp: ElectronApplic
     { scope: "worker" },
   ],
 
-  // …but every test gets it reset, so specs stop inheriting each other's screen.
+  // …but every test gets it reset, so specs stop inheriting each other's screen — or each
+  // other's ticket. The ticket is cleared BEFORE the navigation so the app opens exactly one
+  // fresh cart on load; doing it per-spec left whichever specs forgot to inheriting the rest.
   appPage: async ({ workerWindow }, use) => {
+    await resetTicket();
     await resetWindow(workerWindow);
     await use(workerWindow);
   },
@@ -106,6 +132,33 @@ export { expect };
 // Sign in with the seeded owner account. Waits for the app to finish booting first (Electron + PB +
 // static server + hydration can take >15s), then logs in if the login form is showing, and asserts
 // the POS rendered (the always-present shift control — layout/shift-independent).
+/**
+ * Wait until the terminal actually has an open ticket to add to.
+ *
+ * addItem fails with "No active cart" until the app has created or loaded one, and an empty
+ * ticket on screen looks exactly the same either way — so a spec that scans as soon as the
+ * barcode row appears is racing that. Poll PocketBase, which is the thing the app is waiting on.
+ */
+export async function waitForActiveCart(timeoutMs = 20_000) {
+  // Collection rules reject an anonymous read, so this has to authenticate — an unauthenticated
+  // poll returns nothing forever and looks exactly like "the app never opened a ticket".
+  const auth = await fetch(`${PB}/api/collections/_superusers/auth-with-password`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identity: OWNER.email, password: OWNER.password }),
+  }).then((r) => r.json()).catch(() => null);
+  const headers = auth?.token ? { Authorization: auth.token } : undefined;
+
+  const end = Date.now() + timeoutMs;
+  while (Date.now() < end) {
+    const found = await fetch(`${PB}/api/collections/carts/records?filter=${encodeURIComponent('status="ACTIVE"')}&perPage=1`, { headers })
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .catch(() => ({ items: [] }));
+    if (found.items?.length) return;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  throw new Error("no ACTIVE cart appeared — the terminal never opened a ticket");
+}
+
 export async function ensureLoggedIn(page: Page) {
   // Land on the POS root first — a prior test may have navigated the (worker-shared) page elsewhere.
   await page.goto("http://127.0.0.1:3200/").catch(() => {});

@@ -1,4 +1,4 @@
-import { test, expect, ensureLoggedIn, OWNER } from "./app-fixture";
+import { test, expect, ensureLoggedIn, waitForActiveCart, resetTicket, OWNER } from "./app-fixture";
 
 const PB = "http://127.0.0.1:8090";
 const BARCODE = "70000000001";
@@ -51,25 +51,10 @@ async function seedProduct() {
   throw new Error("seeded product never became readable");
 }
 
-// The terminal's cart lives in PocketBase and outlives the app, so a previous run's lines
-// would still be on the ticket. Start every run from an empty one.
-async function clearTicket() {
-  const auth = await fetch(`${PB}/api/collections/_superusers/auth-with-password`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ identity: OWNER.email, password: OWNER.password }),
-  }).then((r) => r.json());
-  const headers = { "Content-Type": "application/json", Authorization: auth.token };
-  const rows = await fetch(`${PB}/api/collections/cart_items/records?perPage=200`, { headers })
-    .then((r) => r.json()).catch(() => ({ items: [] }));
-  for (const row of rows.items || []) {
-    await fetch(`${PB}/api/collections/cart_items/records/${row.id}`, { method: "DELETE", headers }).catch(() => {});
-  }
-}
-
 test.describe("ticket line (Electron)", () => {
   test("scan adds a line, the grid reads in RanceLab order, and F3/F4/F5 work it", async ({ appPage }) => {
     await seedProduct();
-    await clearTicket();
+    await resetTicket();
     await ensureLoggedIn(appPage);
     // Pick up the emptied cart rather than the previous run's lines.
     await appPage.reload({ waitUntil: "domcontentloaded" });
@@ -82,7 +67,9 @@ test.describe("ticket line (Electron)", () => {
     // fill+press on the field itself: waiting only for it to be VISIBLE raced the effect that
     // gives it focus, and the leading characters went nowhere. (counter-barcode covers the
     // focus behaviour itself.)
-    await appPage.locator("#pos-barcode").fill(BARCODE);
+    await waitForActiveCart();
+    await waitForActiveCart();
+  await appPage.locator("#pos-barcode").fill(BARCODE);
     await appPage.locator("#pos-barcode").press("Enter");
     // Scoped to the ticket — the success toast carries the same product name.
     await expect(appPage.locator("tbody").getByText("E2E Red Rice 1kg")).toBeVisible({ timeout: 15000 });
@@ -134,13 +121,15 @@ test.describe("ticket line (Electron)", () => {
   // printout. The seeded product is 100 retail / 90 wholesale.
   test("Alt+P cycles the price list and reprices the ticket", async ({ appPage }) => {
     await seedProduct();
-    await clearTicket();
+    await resetTicket();
     await ensureLoggedIn(appPage);
     await appPage.reload({ waitUntil: "domcontentloaded" });
     await expect(appPage.locator("#pos-barcode")).toBeVisible({ timeout: 15000 });
     await expect(appPage.locator("tbody tr")).toHaveCount(0, { timeout: 15000 });
 
-    await appPage.locator("#pos-barcode").fill(BARCODE);
+    await waitForActiveCart();
+    await waitForActiveCart();
+  await appPage.locator("#pos-barcode").fill(BARCODE);
     await appPage.locator("#pos-barcode").press("Enter");
     await expect(appPage.locator("tbody").getByText("E2E Red Rice 1kg")).toBeVisible({ timeout: 15000 });
     await expect(appPage.locator("tbody tr").first()).toContainText("100.00");

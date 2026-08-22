@@ -1,4 +1,4 @@
-import { test, expect, ensureLoggedIn, OWNER } from "./app-fixture";
+import { test, expect, ensureLoggedIn, waitForActiveCart, resetTicket, OWNER } from "./app-fixture";
 
 const PB = "http://127.0.0.1:8090";
 const BARCODE = "70000000001";
@@ -17,11 +17,6 @@ async function superHeaders() {
 
 async function ensureProductAndEmptyTicket() {
   const headers = await superHeaders();
-  const rows = await fetch(`${PB}/api/collections/cart_items/records?perPage=200`, { headers })
-    .then((r) => r.json()).catch(() => ({ items: [] }));
-  for (const row of rows.items || []) {
-    await fetch(`${PB}/api/collections/cart_items/records/${row.id}`, { method: "DELETE", headers }).catch(() => {});
-  }
   const found = await fetch(
     `${PB}/api/collections/products/records?filter=${encodeURIComponent(`barcode="${BARCODE}"`)}`,
     { headers },
@@ -39,6 +34,7 @@ async function ensureProductAndEmptyTicket() {
 
 test("the tender sheet opens on F10 and is worked from the keyboard", async ({ appPage }) => {
   await ensureProductAndEmptyTicket();
+  await resetTicket();
   await ensureLoggedIn(appPage);
   await appPage.reload({ waitUntil: "domcontentloaded" });
   await appPage.keyboard.press("Escape").catch(() => {});
@@ -49,6 +45,7 @@ test("the tender sheet opens on F10 and is worked from the keyboard", async ({ a
   // toast carries the same product name.
   // fill+press on the field itself: waiting only for it to be VISIBLE raced the effect that
   // gives it focus. (counter-barcode covers the focus behaviour itself.)
+  await waitForActiveCart();
   await appPage.locator("#pos-barcode").fill(BARCODE);
   await appPage.locator("#pos-barcode").press("Enter");
   await expect(appPage.locator("tbody").getByText("E2E Red Rice 1kg")).toBeVisible({ timeout: 15000 });

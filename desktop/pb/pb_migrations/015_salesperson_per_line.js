@@ -7,7 +7,7 @@ migrate(
   (app) => {
     const c = app.findCollectionByNameOrId("cart_items");
     let has = false;
-    try { c.fields.getByName("salesperson_id"); has = true; } catch (_) { has = false; }
+    try { has = !!c.fields.getByName("salesperson_id"); } catch (_) { has = false; }
     if (!has) c.fields.add(new TextField({ name: "salesperson_id" }));
     app.save(c);
   },

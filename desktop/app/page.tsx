@@ -464,7 +464,13 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
   }, [validateStock]);
 
   const handlePaymentConfirm = useCallback(
-    async (method: string, channel: string | null, ref: string, tendered?: number) => {
+    async (
+      method: string,
+      channel: string | null,
+      ref: string,
+      tendered?: number,
+      payments?: { method: string; channel: string | null; ref: string; amount: number }[],
+    ) => {
       await confirmPayment(method, channel, ref, tendered, (orderPayload, _orderId) => {
         setShowPayment(false);
         setLastOrder(orderPayload);
@@ -473,7 +479,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
         // Per-sale attachments — clear so they don't leak onto the next sale.
         setComplimentaryReason(null);
         setDeliveryAddress("");
-      });
+      }, payments);
     },
     [confirmPayment, refreshInvoiceHeader]
   );

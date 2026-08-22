@@ -30,11 +30,17 @@ async function ensureUser(token: string, email: string, password: string, role: 
 async function loginAs(page: Page, email: string, password: string) {
   await page.goto(`${APP}/`, { waitUntil: "domcontentloaded" }).catch(() => {});
   await page.evaluate(() => { try { localStorage.clear(); } catch { /* */ } }).catch(() => {});
-  await page.goto(`${APP}/`, { waitUntil: "domcontentloaded" }).catch(() => {});
-  // The page is shared across the worker, so a sibling test may have left a sheet open over
-  // the login form. Dismiss before waiting on the field (pos-core does the same).
-  await page.keyboard.press("Escape").catch(() => {});
+  // Clearing storage can race the app writing its session straight back on hydration, which
+  // leaves the POS on screen and no login form to fill. Clear-and-reload until the form shows
+  // rather than assuming one pass is enough.
   const emailInput = page.locator('input[type="email"]');
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await page.goto(`${APP}/`, { waitUntil: "domcontentloaded" }).catch(() => {});
+    await page.evaluate(() => { try { localStorage.clear(); sessionStorage.clear(); } catch { /* */ } }).catch(() => {});
+    await page.goto(`${APP}/`, { waitUntil: "domcontentloaded" }).catch(() => {});
+    await page.keyboard.press("Escape").catch(() => {});
+    if (await emailInput.isVisible({ timeout: 15_000 }).catch(() => false)) break;
+  }
   await expect(emailInput).toBeVisible({ timeout: 60_000 });
   await emailInput.fill(email);
   await page.locator('input[type="password"]').fill(password);

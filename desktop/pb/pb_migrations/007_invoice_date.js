@@ -10,7 +10,7 @@ migrate(
   (app) => {
     const orders = app.findCollectionByNameOrId("orders");
     let exists = false;
-    try { orders.fields.getByName("invoice_date"); exists = true; } catch (_) {}
+    try { exists = !!orders.fields.getByName("invoice_date"); } catch (_) { exists = false; }
     if (!exists) {
       orders.fields.add(new DateField({ name: "invoice_date" }));
       app.save(orders);
@@ -19,7 +19,7 @@ migrate(
   (app) => {
     const orders = app.findCollectionByNameOrId("orders");
     let exists = false;
-    try { orders.fields.getByName("invoice_date"); exists = true; } catch (_) {}
+    try { exists = !!orders.fields.getByName("invoice_date"); } catch (_) { exists = false; }
     if (exists) {
       orders.fields.removeByName("invoice_date");
       app.save(orders);

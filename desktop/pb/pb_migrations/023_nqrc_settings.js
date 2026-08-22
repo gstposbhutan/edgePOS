@@ -8,7 +8,7 @@ migrate(
   (app) => {
     const settings = app.findCollectionByNameOrId("settings");
     const has = (name) => {
-      try { settings.fields.getByName(name); return true; } catch (_) { return false; }
+      try { return !!settings.fields.getByName(name); } catch (_) { return false; }
     };
 
     if (!has("nqrc_enabled")) settings.fields.add(new BoolField({ name: "nqrc_enabled" }));

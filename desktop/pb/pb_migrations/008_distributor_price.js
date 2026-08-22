@@ -9,7 +9,7 @@ migrate(
   (app) => {
     const products = app.findCollectionByNameOrId("products");
     let exists = false;
-    try { products.fields.getByName("distributor_price"); exists = true; } catch (_) {}
+    try { exists = !!products.fields.getByName("distributor_price"); } catch (_) { exists = false; }
     if (!exists) {
       products.fields.add(new NumberField({ name: "distributor_price" }));
       app.save(products);
@@ -18,7 +18,7 @@ migrate(
   (app) => {
     const products = app.findCollectionByNameOrId("products");
     let exists = false;
-    try { products.fields.getByName("distributor_price"); exists = true; } catch (_) {}
+    try { exists = !!products.fields.getByName("distributor_price"); } catch (_) { exists = false; }
     if (exists) {
       products.fields.removeByName("distributor_price");
       app.save(products);
