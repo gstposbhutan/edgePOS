@@ -18,7 +18,7 @@ import { useCustomers } from "@/hooks/use-customers";
 import type { Customer } from "@/hooks/use-customers";
 import { getPB } from "@/lib/pb-client";
 import { peekNextOrderNo } from "@/lib/invoice-header";
-import type { PriceListMode } from "@/lib/price-list";
+import { PRICE_LIST_ORDER, PRICE_LIST_LABEL, priceFor, parsePriceListMode, type PriceListMode } from "@/lib/price-list";
 import { LAYOUT_PRESETS, SCREEN_LG, CART_WIDTH } from "@/lib/constants";
 import { ProductGrid } from "@/components/pos/product-grid";
 import { CartPanel } from "@/components/pos/cart-panel";
@@ -162,6 +162,12 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
   const [showHelp, setShowHelp] = useState(false);
   const [showTabletCart, setShowTabletCart] = useState(false);
   const [lastOrder, setLastOrder] = useState<any>(null);
+  // Alt+P — the tier the ticket prices at. Persisted so a wholesale counter does not have to
+  // re-pick it every morning.
+  const [priceListMode, setPriceListMode] = useState<PriceListMode>("RETAIL");
+  useEffect(() => {
+    setPriceListMode(parsePriceListMode(localStorage.getItem("pos_price_list")));
+  }, []);
   const [weighProduct, setWeighProduct] = useState<Product | null>(null);
   const [reconData, setReconData] = useState<ShiftReconciliation | null>(null);
   const [online, setOnline] = useState(true);
@@ -594,6 +600,29 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
     [recallCart, clearCart, addItem, updateQty, products]
   );
 
+  const cyclePriceList = useCallback(() => {
+    const next = PRICE_LIST_ORDER[(PRICE_LIST_ORDER.indexOf(priceListMode) + 1) % PRICE_LIST_ORDER.length];
+    setPriceListMode(next);
+    try { localStorage.setItem("pos_price_list", next); } catch { /* private mode */ }
+    // Existing lines move to the new tier too — a single GST bill priced from two different
+    // lists is exactly the kind of thing a cashier cannot spot on the printout.
+    let repriced = 0;
+    for (const line of items) {
+      const product = products.find((pr) => pr.id === line.product);
+      if (!product) continue;
+      const price = priceFor(product, next);
+      if (price > 0 && price !== line.unit_price) { overridePrice(line.id, price); repriced++; }
+    }
+    toast.success(`Price list: ${PRICE_LIST_LABEL[next]}${repriced ? ` · ${repriced} line${repriced > 1 ? "s" : ""} repriced` : ""}`);
+  }, [priceListMode, items, products, overridePrice]);
+
+  // Ctrl+P / PgUp — show the last bill again. Reprinting must not draw a new GST serial, so this
+  // reopens the receipt already issued rather than starting anything.
+  const reprintLast = useCallback(() => {
+    if (!lastOrder) { toast("No bill to reprint"); return; }
+    setShowReceipt(true);
+  }, [lastOrder]);
+
   const handleNewSale = useCallback(() => {
     setShowReceipt(false);
     setLastOrder(null);
@@ -626,6 +655,8 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
     setShowDeliveryAddress,
     setShowShiftModal,
     storeName: settings?.store_name,
+    onPriceList: cyclePriceList,
+    onReprintLast: reprintLast,
     // The line-scoped keys need a selected row, which only the listing layout has. Left
     // undefined in grid mode, where they report that instead.
     onFocusSearch: inputMode === "listing" ? () => openSearch("") : undefined,
@@ -980,6 +1011,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
             title="Counter"
             buyer={selectedCustomer?.debtor_name}
             taxExempt={taxExempt}
+            priceList={PRICE_LIST_LABEL[priceListMode]}
             hint="F11 Day"
           />
           <BarcodeRow
@@ -1095,7 +1127,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
       <ProductSearchModal
         open={showSearch}
         initialQuery={searchSeed}
-        priceListMode="RETAIL"
+        priceListMode={priceListMode}
         onAdd={(product, mode) => {
           // Move the listing selection to the appended line (weighed goods open the
           // weight modal first, but the cart still grows by one row on confirm).

@@ -128,4 +128,28 @@ test.describe("ticket line (Electron)", () => {
       { timeout: 10000 },
     ).toBe("pos-barcode");
   });
+
+  // Alt+P — the active price tier. Switching it reprices what is already on the ticket, because
+  // one GST bill priced from two different lists is not something a cashier can spot on the
+  // printout. The seeded product is 100 retail / 90 wholesale.
+  test("Alt+P cycles the price list and reprices the ticket", async ({ appPage }) => {
+    await seedProduct();
+    await clearTicket();
+    await ensureLoggedIn(appPage);
+    await appPage.reload({ waitUntil: "domcontentloaded" });
+    await expect(appPage.locator("#pos-barcode")).toBeVisible({ timeout: 15000 });
+    await expect(appPage.locator("tbody tr")).toHaveCount(0, { timeout: 15000 });
+
+    await appPage.locator("#pos-barcode").fill(BARCODE);
+    await appPage.locator("#pos-barcode").press("Enter");
+    await expect(appPage.locator("tbody").getByText("E2E Red Rice 1kg")).toBeVisible({ timeout: 15000 });
+    await expect(appPage.locator("tbody tr").first()).toContainText("100.00");
+
+    await appPage.keyboard.press("Alt+p");
+    // Repriced to the wholesale tier, and the tier is stated on the till bar so the cashier
+    // cannot ring it unknowingly.
+    await expect(appPage.locator("tbody tr").first()).toContainText("90.00", { timeout: 10000 });
+    // First match is the till bar; the confirmation toast carries the word too.
+    await expect(appPage.getByText(/Wholesale/).first()).toBeVisible({ timeout: 10000 });
+  });
 });

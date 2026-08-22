@@ -45,4 +45,20 @@ test.describe("barcode row (Electron)", () => {
     await expect(appPage.getByText(/not found for barcode/i)).toBeVisible({ timeout: 10000 });
     await expect(appPage.locator("#pos-barcode")).toHaveValue("");
   });
+
+  // Regression: the barcode row holds the caret continuously, so the keyboard registry's
+  // "not while typing" guard would have suppressed every Ctrl/Alt command on the counter.
+  // Modifier combos are commands, never typing, and must fire from inside the field.
+  test("modifier shortcuts still fire while the barcode row has focus", async ({ appPage }) => {
+    await ensureLoggedIn(appPage);
+    await appPage.keyboard.press("Escape").catch(() => {});
+    const barcode = appPage.locator("#pos-barcode");
+    await expect(barcode).toBeVisible({ timeout: 15000 });
+    await barcode.click();
+
+    // Alt+L = Products: opens the picker without the caret ever leaving the row first.
+    await appPage.keyboard.press("Alt+l");
+    await expect(appPage.getByPlaceholder(/search/i).first()).toBeVisible({ timeout: 10000 });
+    await appPage.keyboard.press("Escape");
+  });
 });

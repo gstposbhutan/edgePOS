@@ -69,12 +69,18 @@ export function useKeyboardRegistry() {
         target.tagName === "SELECT" ||
         target.isContentEditable;
 
-      // Global F-keys and Escape always fire regardless of focus
+      // Keys that fire regardless of where focus is. This matters more than it looks: the
+      // counter's barcode row holds the caret continuously, so anything gated on "not in an
+      // input" would simply never run there — which silently killed every Ctrl/Alt shortcut.
+      // A modifier combo is a command, never typing. Ctrl+Alt together is excluded because
+      // that is AltGr, which types real characters on several layouts.
+      const isModifierCombo =
+        (event.ctrlKey || event.metaKey || event.altKey) && !(event.ctrlKey && event.altKey);
       const isGlobalKey =
         event.key.startsWith("F") ||
         event.key === "Escape" ||
         event.key === "Tab" ||
-        (event.key === "z" && event.ctrlKey);
+        isModifierCombo;
 
       if (isInput && !isGlobalKey) return;
 
