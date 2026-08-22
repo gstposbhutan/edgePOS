@@ -23,6 +23,18 @@ async function seedOnlineOrder(row: Record<string, unknown>) {
     method: "POST", headers, body: JSON.stringify(row),
   });
   if (!res.ok) throw new Error("seed online_order failed: " + (await res.text()));
+
+  // Don't navigate until the row actually reads back. Going straight to the page raced the
+  // write and intermittently rendered an empty list.
+  for (let i = 0; i < 40; i++) {
+    const found = await fetch(
+      `${PB}/api/collections/online_orders/records?filter=${encodeURIComponent(`cloud_id="${row.cloud_id}"`)}`,
+      { headers },
+    ).then((r) => r.json()).catch(() => ({ items: [] }));
+    if (found.items?.length) return;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  throw new Error(`seeded online_order ${row.cloud_id} never became readable`);
 }
 
 test.describe("desktop online orders (Electron)", () => {

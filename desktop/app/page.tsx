@@ -25,6 +25,7 @@ import { CartPanel } from "@/components/pos/cart-panel";
 import { CartTable } from "@/components/pos/keyboard/cart-table";
 import { ProductSearchModal } from "@/components/pos/keyboard/product-search-modal";
 import { ListingFooter } from "@/components/pos/keyboard/listing-footer";
+import { BarcodeRow, BARCODE_INPUT_ID } from "@/components/pos/keyboard/barcode-row";
 import { BarcodeScanner } from "@/components/pos/barcode-scanner";
 import { PaymentModal } from "@/components/pos/payment-modal";
 import { CustomerModal } from "@/components/pos/customer-modal";
@@ -371,6 +372,17 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
     [findByBarcode, addItem]
   );
 
+  // Enter from the always-focused barcode row. A wedge scanner sends 8+ digits, which go
+  // straight to the catalog; anything else is a cashier typing a name, so it opens the picker
+  // pre-filled rather than reporting "not found".
+  const handleBarcodeEntry = useCallback(
+    (value: string) => {
+      if (/^\d{8,}$/.test(value)) handleScan(value);
+      else openSearch(value);
+    },
+    [handleScan, openSearch]
+  );
+
   const handleAddProduct = useCallback(
     async (product: any, mode?: PriceListMode) => {
       if (product.current_stock <= 0) {
@@ -653,7 +665,16 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (anyModalOpen) return;
       const target = e.target as HTMLElement;
-      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) return;
+      // The barcode row holds focus continuously (spec WF-01), so it is a deliberate
+      // exception: navigation keys still reach the ticket from inside it. Every other field
+      // (the inline qty editor) keeps its keys to itself.
+      const inBarcode = target.id === BARCODE_INPUT_ID;
+      if (!inBarcode && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+
+      const barcodeHasText = inBarcode && (target as HTMLInputElement).value.length > 0;
+      // While there is text in the barcode row, Enter submits it and Delete edits that text —
+      // both belong to the field, not the ticket.
+      if (barcodeHasText && (e.key === "Enter" || e.key === "Delete")) return;
 
       const consume = () => { e.preventDefault(); e.stopImmediatePropagation(); };
 
@@ -683,8 +704,11 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
         return;
       }
 
-      // Type-to-search: a single printable char (no modifiers) opens the search modal.
+      // Typing goes to the barcode row, which already has the caret — that is the whole point
+      // of keeping it focused, and it is what stops a wedge scan losing its first characters.
+      // Only when focus is elsewhere does a printable char fall back to opening the picker.
       if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (inBarcode) return;
         consume();
         openSearch(e.key);
       }
@@ -947,8 +971,13 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
 
       {/* Main Content */}
       {inputMode === "listing" ? (
-        /* Keyboard listing layout: cart table fills the screen, totals + shortcuts below */
+        /* Keyboard listing layout: barcode row, cart table filling the screen, totals +
+           shortcuts below (spec WF-01). */
         <div className="flex-1 flex flex-col overflow-hidden">
+          <BarcodeRow
+            disabled={anyModalOpen}
+            onSubmit={handleBarcodeEntry}
+          />
           <CartTable
             items={items}
             products={products}
