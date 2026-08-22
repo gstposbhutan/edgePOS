@@ -45,7 +45,24 @@ async function ensureOwner() {
 // Launches the REAL Electron app on Linux (headless via xvfb). isDev is true for an unpackaged launch,
 // so the license gate is bypassed; NEXUS_SERVE_BUILT=1 serves the built `out/` on :3200 with the
 // embedded PocketBase on :8090 — the full stack as shipped.
-export const test = base.extend<object, { electronApp: ElectronApplication; appPage: Page }>({
+/**
+ * Put the shared window back to a known state before a test runs.
+ *
+ * The Electron app (and therefore its window) is worker-scoped — relaunching it per test would
+ * cost ~10s each. So the window is reused, and whatever the previous test left on screen used to
+ * be what the next one inherited: an open sheet over the login form, a foreign route, a stale
+ * cart. That made specs fail in combination while passing alone. A hard navigation to the app
+ * root unmounts every sheet and route, so each test starts from the same place.
+ */
+async function resetWindow(page: Page) {
+  await page.goto("http://127.0.0.1:3200/", { waitUntil: "domcontentloaded" }).catch(() => {});
+  const email = page.locator('input[type="email"]');
+  const shiftBtn = page.getByRole("button", { name: /open shift|close shift/i });
+  // Boot is done once either the login form or the POS itself is on screen.
+  await expect(email.or(shiftBtn).first()).toBeVisible({ timeout: 60_000 });
+}
+
+export const test = base.extend<{ appPage: Page }, { electronApp: ElectronApplication; workerWindow: Page }>({
   electronApp: [
     async ({}, use) => {
       const app = await electron.launch({
@@ -67,7 +84,8 @@ export const test = base.extend<object, { electronApp: ElectronApplication; appP
     { scope: "worker" },
   ],
 
-  appPage: [
+  // The window itself is worker-scoped (one app launch per worker)…
+  workerWindow: [
     async ({ electronApp }, use) => {
       const page = await electronApp.firstWindow();
       await page.waitForLoadState("domcontentloaded");
@@ -75,6 +93,12 @@ export const test = base.extend<object, { electronApp: ElectronApplication; appP
     },
     { scope: "worker" },
   ],
+
+  // …but every test gets it reset, so specs stop inheriting each other's screen.
+  appPage: async ({ workerWindow }, use) => {
+    await resetWindow(workerWindow);
+    await use(workerWindow);
+  },
 });
 
 export { expect };
