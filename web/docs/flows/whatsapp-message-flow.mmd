@@ -1,0 +1,50 @@
+sequenceDiagram
+    participant C as Consumer Phone
+    participant WA as WhatsApp
+    participant GW as Gateway :3001
+    participant GEM as Gemini Vision
+    participant DB as Supabase
+    participant ST as Store Staff POS
+
+    Note over C,ST: 1. OTP LOGIN
+    C->>WA: Open login page
+    C->>GW: POST /api/send-otp
+    GW->>WA: OTP delivered
+    WA->>C: Your code is 482916
+    C->>GW: POST /api/auth/whatsapp/verify
+    GW-->>C: Session created
+
+    Note over C,ST: 2. MARKETPLACE ORDER
+    C->>WA: Click Order via WhatsApp on /shop/slug
+    WA->>C: Opens chat with pre-filled message
+
+    Note over C,ST: 3. WHATSAPP ORDERING
+    C->>WA: Sends order message with items and store ref
+    WA->>GW: POST /api/webhook
+    GW->>GW: Parse message
+    GW->>DB: Fuzzy match products
+    GW->>DB: Create DRAFT order
+    GW->>WA: Reply with matched and unmatched summary
+    WA->>C: Order received
+
+    Note over C,ST: 4. STAFF REVIEW
+    ST->>DB: View WhatsApp orders in /pos/orders
+    ST->>DB: Edit unmatched items
+    ST->>DB: Confirm order
+
+    Note over C,ST: 5. RECEIPT DELIVERY
+    ST->>GW: POST /api/send-receipt
+    GW->>WA: Receipt message
+    WA->>C: Receipt from Store with Total amount
+
+    Note over C,ST: 6. DELIVERY STATUS
+    WA->>GW: POST /api/webhook status delivered
+    GW->>DB: Update whatsapp_status to DELIVERED
+
+    Note over C,ST: 7. CREDIT REMINDERS
+    GW->>WA: POST /api/send-credit-alert
+    WA->>C: Hi Name your balance is Nu. X
+
+    Note over C,ST: 8. STOCK ALERTS
+    GW->>WA: POST /api/send-stock-alert
+    WA->>ST: Low Stock Product X equals 3 units

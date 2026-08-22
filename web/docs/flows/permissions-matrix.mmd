@@ -1,0 +1,28 @@
+graph TD
+    subgraph CASHIER_ROLE[CASHIER]
+        C1[Process sales]
+        C2["View orders and inventory"]
+        C3[Cancel orders]
+        C4[Request refunds]
+    end
+
+    subgraph MANAGER_ROLE["MANAGER equals Cashier plus"]
+        M1["Create and edit products"]
+        M2[Adjust stock]
+        M3["Scan bills and confirm drafts"]
+        M4["Apply discounts and override prices"]
+        M5[Create khata accounts]
+        M6[Record khata payments]
+        M7[Approve refunds]
+        M8[Toggle marketplace visibility]
+    end
+
+    subgraph OWNER_ROLE["OWNER ADMIN equals Manager plus"]
+        O1[Set credit limits]
+        O2["Adjust balances and write-off"]
+        O3["Freeze and unfreeze accounts"]
+        O4[Override credit limit at checkout]
+    end
+
+    CASHIER_ROLE --> MANAGER_ROLE
+    MANAGER_ROLE --> OWNER_ROLE

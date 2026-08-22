@@ -1,0 +1,27 @@
+flowchart TD
+    LOGIN["/rider/login\nWhatsApp number + PIN\nCredential-based no OTP"] --> AUTH{PIN valid?}
+    AUTH -->|No| LOGIN
+    AUTH -->|Yes| DASH["/rider\nDashboard\ncurrent order + stats"]
+
+    DASH --> PENDING{Pending assignment?}
+    PENDING -->|Yes| ASSIGN["Assignment notification\nOrder details + vendor address\n[Accept] [Reject]"]
+    ASSIGN -->|Accept| ACCEPT["POST /api/rider/orders/[id]/accept\nPickup OTP sent to vendor\nRider marked unavailable"]
+    ASSIGN -->|Reject| REJECT["POST /api/rider/orders/[id]/reject\nNext rider notified"]
+
+    ACCEPT --> CURRENT["Current order shown\n[View Order Details]"]
+    CURRENT --> ORDER["/rider/orders/[id]\nVendor address (pickup)\nCustomer address (delivery)\nOrder items\nStatus timeline"]
+
+    ORDER --> PICKUP_BTN["[Confirm Pickup]\n(shown when CONFIRMED or PROCESSING)"]
+    PICKUP_BTN --> OTP1["OTP Input Modal\nEnter 6-digit OTP from vendor\nVendor reads from invoice or WhatsApp"]
+    OTP1 -->|Correct OTP| DISPATCHED["Order → DISPATCHED\nDelivery OTP generated\nSent to customer WhatsApp"]
+    OTP1 -->|Wrong OTP| OTP1_ERR["Error shown\nAttempts tracked"]
+
+    DISPATCHED --> DELIVER_BTN["[Confirm Delivery]\n(shown when DISPATCHED)"]
+    DELIVER_BTN --> OTP2["OTP Input Modal\nEnter 6-digit OTP from customer\nCustomer reads from their WhatsApp"]
+    OTP2 -->|Correct OTP| DELIVERED["Order → DELIVERED\nPayment link sent to customer\nRider marked available again"]
+    OTP2 -->|Wrong OTP| OTP2_ERR["Error shown\nAttempts tracked"]
+
+    DELIVERED --> DASH
+
+    DASH --> HISTORY["/rider/history\nPast completed deliveries\nDate order amount area"]
+    DASH --> PROFILE["/rider/profile\nChange PIN"]

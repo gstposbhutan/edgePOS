@@ -3,9 +3,21 @@
 **Read this first.** Written 2026-08-22, the day the POS was transplanted back into this repo.
 This doc is self-contained: the session that continues here has no access to the monorepo
 terminal's context or memory. Companions: `docs/PLAN.md` (the full phase plan — Phases 0–1 are
-DONE, you are picking up at **Phase 2**), `docs/pos-brief.html` (the client's requirements),
-`docs/pos-brief-response.html` (our reply to them), root `README.md` + `CLAUDE.md` (layout +
-ground rules).
+DONE, you are picking up at **Phase 2**), **`docs/KNOWLEDGE.md` (operational facts: box, deploy,
+desktop releases, partners, test logins — read it with this doc)**, `docs/reference/` (13 design
+docs / decision records carried over from the monorepo), `docs/pos-brief.html` (the client's
+requirements), `docs/pos-brief-response.html` (our reply to them), root `README.md` + `CLAUDE.md`
+(layout + ground rules).
+
+**Restored 2026-08-22 (second commit): the guided-tour + e2e system** — `web/e2e/` (74 specs +
+31 tour-recording specs + page objects + tour-overlay engine), `web/playwright.config.js`,
+`web/desktop-tour-*.cjs` (Electron recording workaround), `web/docs/` (54 feature docs, 35
+mermaid flows, HSN tariff PDF, test accounts), the 3 unmerged desktop e2e specs, and the 13
+narrated onboarding videos at `web/e2e/recordings/` (gitignored — disk + `~/edgepos-salvage/`
+only). ⚠ **The tours/specs target the mid-July app and need an update pass** — six weeks of UI
+drift (product register, FEFO, HSN categories, modal fixes, themes); WhatsApp specs are dead.
+Re-validate specs → re-record videos once the standalone app settles (add as a task after
+Phase 2).
 
 ## Where things stand
 
@@ -55,6 +67,11 @@ super-admin surface. To do, in order:
    approval → terminal `.lic` flow end-to-end (`web/lib/license/`).
 3. **Env sweep**: `.env.example` for `web/` documenting every var (Supabase URLs/keys, SendGrid,
    S3/img.pelbu.com, `NEXT_PUBLIC_COOKIE_DOMAIN`, AI keys — the client deploy runs with AI off).
+4. **Desktop-release continuity** (auth app retirement breaks two things — see KNOWLEDGE.md):
+   installed terminals check updates + register licenses at `app.pelbu.com` (baked
+   `DEFAULT_CLOUD_URL`), so keep that vhost routing `/api/desktop/releases/*` + license
+   `register` to the POS app; and the release CI secrets (`APP_URL`, `RELEASE_INGEST_TOKEN`)
+   exist only on the monorepo's GitHub — recreate on this repo before the first tag.
 4. Then Phases 3–5 per `docs/PLAN.md`: slim droplet compose + **automated DB backups (none have
    ever existed — confirmed)** + till-only feature flags + 10-shop seed; camera pad v0 (the
    client's real ask — see the brief); box cutover + suite retirement.

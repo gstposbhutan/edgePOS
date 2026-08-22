@@ -1,0 +1,32 @@
+sequenceDiagram
+    participant S as Store Staff
+    participant POS as POS Terminal
+    participant GW as Gateway :3001
+    participant META as Meta Cloud API
+    participant WA as WhatsApp
+    participant C as Consumer
+    participant DB as Supabase
+
+    S->>POS: Confirm sale
+    POS->>DB: Create order CONFIRMED
+
+    POS->>GW: POST /api/send-receipt fire and forget
+    GW->>META: Send receipt template
+    META->>WA: Deliver receipt
+    WA->>C: Receipt from Store with Invoice Total and GST
+
+    WA->>META: Delivery status callback
+    META->>GW: POST /api/webhook status update
+    GW->>DB: Update whatsapp_status SENT to DELIVERED to READ
+
+    Note over POS: Confirmation page shows WhatsApp sent status
+
+    alt Template failed
+        GW->>META: Send plain text fallback
+    end
+
+    alt Gateway unreachable
+        POS->>POS: Show WhatsApp Web fallback button
+        S->>POS: Click fallback
+        POS->>C: Open wa.me with receipt text
+    end

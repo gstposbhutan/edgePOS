@@ -1,0 +1,35 @@
+flowchart TD
+    KHATA([Khata Page]) --> LIST[Account List]
+    LIST --> SEARCH["Search by name / phone"]
+    LIST --> |Manager+| CREATE[Create Account]
+
+    CREATE --> FORM["Party type + Name + Phone + Limit + Term"]
+    FORM --> SAVE["Save khata_accounts"]
+    SAVE --> LIST
+
+    LIST --> CLICK[Click account]
+    CLICK --> DETAIL["Account Detail /pos/khata/id"]
+
+    DETAIL --> SUMMARY["Outstanding - Limit - Available"]
+
+    DETAIL --> ACTIONS{Role-gated actions}
+
+    ACTIONS --> |"Record Payment - Manager+"| PAY_FORM["Amount + Method + Reference"]
+    PAY_FORM --> PAY_SAVE["Status: PAYMENT_MADE"]
+    PAY_SAVE --> TRIGGER_CREDIT["Trigger: CREDIT transaction"]
+    TRIGGER_CREDIT --> BAL_DOWN[Balance decreased]
+
+    ACTIONS --> |"Set Limit - Owner+"| LIMIT_FORM[New limit amount]
+    LIMIT_FORM --> LIMIT_SAVE[Update credit_limit]
+    LIMIT_SAVE --> ADJUST_TXN[ADJUSTMENT transaction logged]
+
+    ACTIONS --> |"Adjust Balance - Owner+"| ADJ_FORM["WRITE_OFF or CORRECTION + Reason"]
+    ADJ_FORM --> ADJ_SAVE["Update outstanding_balance"]
+    ADJ_SAVE --> ADJUST_TXN2[ADJUSTMENT transaction logged]
+
+    ACTIONS --> |"Freeze/Unfreeze - Owner+"| FREEZE["Toggle ACTIVE and FROZEN"]
+    FREEZE --> FREEZE_SAVE[Status updated]
+    FREEZE_SAVE --> BLOCK[Blocks new CREDIT sales at checkout]
+
+    DETAIL --> LEDGER[Transaction Ledger]
+    LEDGER --> TXN_TYPES["DEBIT sale / CREDIT payment / ADJUSTMENT"]

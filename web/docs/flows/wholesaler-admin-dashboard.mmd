@@ -1,0 +1,83 @@
+# Wholesaler Admin Dashboard Flow
+
+**Feature ID**: F-ADMIN-001
+**Last Updated**: 2026-04-26
+**Actors**: Wholesaler Owner, Manager, Staff
+
+---
+
+flowchart TD
+    LOGIN([Login /admin]) --> AUTH{Role check}
+    AUTH --> |RETAILER| REDIRECT_POS["Redirect to /pos"]
+    AUTH --> |WHOLESALER| DASHBOARD([Admin Dashboard])
+
+    DASHBOARD --> STATS["Stats Cards"]
+    STATS --> TEAM["Team Members count"]
+    STATS --> PRODUCTS["Active Products count"]
+    STATS --> ORDERS["Completed Orders count"]
+    STATS --> REVENUE["Total Revenue formatted"]
+
+    DASHBOARD --> LOAD_DATA["Load data on mount"]
+    LOAD_DATA --> TEAM_Q["user_profiles count"]
+    LOAD_DATA --> PROD_Q["products count WHERE created_by AND is_active"]
+    LOAD_DATA --> ORD_Q["orders sum grand_total WHERE seller_id AND status=COMPLETED"]
+
+    DASHBOARD --> NAVIGATION{Navigation}
+
+    NAVIGATION --> |Team| TEAM_PAGE["Team Management"]
+    NAVIGATION --> |Products| PRODUCTS_PAGE["Product Catalog"]
+    NAVIGATION --> |Orders| ORDERS_PAGE["Order Management"]
+    NAVIGATION --> |Inventory| INVENTORY_PAGE["Inventory"]
+    NAVIGATION --> |Khata| KHATA_PAGE["Khata Accounts"]
+    NAVIGATION --> |Sign Out| LOGOUT["Sign out"]
+
+    TEAM_PAGE --> TEAM_LIST["List all team members"]
+    TEAM_LIST --> TEAM_ROLES{Sub-role}
+    TEAM_ROLES --> |Owner| OWNER_ACTIONS["Full access"]
+    TEAM_ROLES --> |Manager| MANAGER_ACTIONS["Team mgmt, inventory, orders"]
+    TEAM_ROLES --> |Staff| STAFF_ACTIONS["Orders only"]
+
+    TEAM_PAGE --> ADD_MEMBER["Add Team Member button"]
+    ADD_MEMBER --> OWNER_CHECK{Is Owner?}
+    OWNER_CHECK --> |No| BLOCK["Blocked: Only owners can add"]
+    OWNER_CHECK --> |Yes| OPEN_MODAL["Open create-team-member-modal"]
+
+    OPEN_MODAL --> FORM["Email + Password + Name + Sub-role"]
+    FORM --> VALIDATE{Validate}
+    VALIDATE --> |Invalid| SHOW_ERROR["Show inline error"]
+    VALIDATE --> |Valid| CREATE_USER["Supabase auth.admin.createUser"]
+    CREATE_USER --> APP_META["app_metadata: role, sub_role, entity_id, permissions"]
+    CREATE_USER --> CREATE_PROF["INSERT user_profiles"]
+
+    APP_META --> SUCCESS{Success?}
+    SUCCESS --> |No| API_ERROR["Show API error"]
+    SUCCESS --> |Yes| REFRESH["Refresh team list"]
+    REFRESH --> CLOSE["Close modal"]
+
+    TEAM_LIST --> MEMBER_ACTIONS{Member actions}
+    MEMBER_ACTIONS --> |Edit| EDIT_MEMBER["Update role/permissions"]
+    MEMBER_ACTIONS --> |Delete| DELETE_CHECK{Is Owner?}
+    DELETE_CHECK --> |Yes| DELETE_USER["Delete auth user + profile"]
+    DELETE_CHECK --> |No| DELETE_BLOCK["Blocked: Only owners"]
+
+    ORDERS_PAGE --> WHOLESALER_ORDERS["Show WHOLESALER orders"]
+    WHOLESALER_ORDERS --> INCOMING["Incoming from retailers"]
+    WHOLESALER_ORDERS --> OUTGOING["Outgoing to distributors"]
+
+    KHATA_PAGE --> WHOLESALER_KHATA["Show retailer khata"]
+    WHOLESALER_KHATA --> RETAILER_ACC["Accounts WHERE party_type=RETAILER"]
+    RETAILER_ACC --> BALANCES["Outstanding balances"]
+    BALANCES --> RECORD_PAY["Record repayments"]
+    BALANCES --> SET_LIMITS["Set credit limits"]
+
+    classDef primary fill:#D4AF37,stroke:#D4AF37,color:#0F172A
+    classDef success fill:#10B981,stroke:#10B981,color:white
+    classDef error fill:#EF4444,stroke:#EF4444,color:white
+    classDef db fill:#3B82F6,stroke:#3B82F6,color:white
+    classDef page fill:#8B5CF6,stroke:#8B5CF6,color:white
+
+    class LOGIN,DASHBOARD primary
+    class SUCCESS,REFRESH success
+    class ERROR,BLOCK,API_ERROR,DELETE_BLOCK error
+    class TEAM_Q,PROD_Q,ORD_Q,CREATE_USER,APP_META,CREATE_PROF,DELETE_USER db
+    class TEAM_PAGE,PRODUCTS_PAGE,ORDERS_PAGE,INVENTORY_PAGE,KHATA_PAGE page

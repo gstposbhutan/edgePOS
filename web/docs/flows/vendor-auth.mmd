@@ -1,0 +1,25 @@
+flowchart TD
+    START([User opens app]) --> LOGIN[Login Page]
+
+    LOGIN --> |Email/Password| EP[Enter email + password]
+    LOGIN --> |WhatsApp OTP| WP[Enter phone number]
+
+    EP --> SUPA{Supabase Auth}
+    SUPA --> |Success| ROLE{Check role}
+    SUPA --> |Fail| ERR1[Show error]
+    ERR1 --> LOGIN
+
+    WP --> SEND_OTP["POST /api/auth/whatsapp/send"]
+    SEND_OTP --> META1["Gateway -> Meta Cloud API"]
+    META1 --> |OTP delivered| ENTER_OTP[Enter 6-digit code]
+    META1 --> |Dev mode| LOG_OTP[Log OTP to console]
+    LOG_OTP --> ENTER_OTP
+
+    ENTER_OTP --> VERIFY["POST /api/auth/whatsapp/verify"]
+    VERIFY --> |Verified| ROLE
+    VERIFY --> |Invalid code| RETRY{"Attempts < 3?"}
+    RETRY --> |Yes| ENTER_OTP
+    RETRY --> |No| LOGIN
+
+    ROLE --> |SUPER_ADMIN / DISTRIBUTOR| ADMIN["/admin hub - future"]
+    ROLE --> |RETAILER / WHOLESALER| POS["/pos terminal"]

@@ -1,0 +1,63 @@
+sequenceDiagram
+    participant C as Consumer
+    participant SHOP as /shop
+    participant AUTH as /login
+    participant CART as CartContext
+    participant API as Cart API
+    participant DB as Supabase
+
+    C->>SHOP: Browse /shop or /shop/store_[id]
+    SHOP->>DB: Load products (anon, is_active + stock > 0)
+    DB-->>SHOP: Product list
+
+    C->>SHOP: Click product card
+    SHOP->>SHOP: Open ProductDetailModal
+
+    C->>SHOP: Click "Add to Cart"
+
+    alt Not logged in
+        SHOP->>AUTH: redirect /login?redirect=/shop
+        C->>AUTH: WhatsApp OTP login
+        AUTH-->>SHOP: redirect back to /shop
+    end
+
+    SHOP->>API: POST /api/cart { productId, quantity }
+    API->>DB: Verify product (is_active, stock)
+    API->>DB: Find or create ACTIVE cart (customer_whatsapp + entity_id)
+    API->>DB: Upsert cart_item (increment qty if exists)
+    API-->>SHOP: { success: true }
+
+    SHOP->>API: GET /api/cart
+    API->>DB: Select carts WHERE customer_whatsapp + status=ACTIVE
+    API->>DB: Select cart_items for each cart
+    DB-->>API: Carts with items
+    API-->>SHOP: { carts: [...] }
+
+    SHOP->>CART: Update itemCount + carts state
+    SHOP->>SHOP: Show cart badge (itemCount)
+
+    C->>SHOP: Open CartDrawer
+    SHOP->>SHOP: Display items grouped by store
+    Note over SHOP: subtotalExGst = grandTotal / 1.05
+    Note over SHOP: gstAmount = grandTotal - subtotalExGst
+
+    alt Update quantity
+        C->>SHOP: Click +/- button
+        SHOP->>API: PATCH /api/cart/[itemId] { quantity }
+        API->>DB: Verify ownership (cart.customer_whatsapp)
+        API->>DB: Update quantity, recalc gst_5 + total
+        API-->>SHOP: { success: true }
+        SHOP->>CART: Refetch cart
+    end
+
+    alt Remove item
+        C->>SHOP: Click trash icon
+        SHOP->>API: DELETE /api/cart/[itemId]
+        API->>DB: Verify ownership
+        API->>DB: Delete cart_item
+        API-->>SHOP: { success: true }
+        SHOP->>CART: Refetch cart
+    end
+
+    C->>SHOP: Click "Checkout"
+    Note over SHOP: Checkout flow not yet implemented

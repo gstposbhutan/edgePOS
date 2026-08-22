@@ -1,0 +1,53 @@
+sequenceDiagram
+    participant V as Vendor
+    participant SYS as System
+    participant LB as Logistics Bridge
+    participant R as Rider (Phone)
+    participant C as Customer
+    participant GW as WhatsApp Gateway
+    participant WA as WhatsApp
+
+    Note over V,SYS: Vendor generates invoice → PROCESSING
+
+    V->>SYS: PATCH order → PROCESSING
+    SYS->>LB: POST /api/dispatch-delivery
+    LB->>LB: Find first available rider
+    LB->>GW: POST /api/send-rider-assignment
+    GW->>WA: Rider: New order pickup from [Vendor]. Accept: /rider/orders/[id]/accept?token=...
+    WA->>R: WhatsApp notification
+
+    alt Rider accepts
+        R->>SYS: POST /api/rider/orders/[id]/accept
+        SYS->>SYS: Assign rider, generate 6-digit pickup OTP
+        SYS->>GW: POST /api/send-pickup-otp to vendor
+        SYS->>GW: POST /api/send-rider-accepted to vendor
+        GW->>WA: Vendor: Rider [Name] assigned. Pickup OTP: XXXXXX
+        WA->>V: WhatsApp notification
+        Note over V: OTP also shown on sales invoice
+    else Rider rejects
+        R->>SYS: POST /api/rider/orders/[id]/reject
+        SYS->>LB: Try next available rider
+        LB->>GW: Send assignment to next rider
+    end
+
+    Note over R,V: Rider arrives at vendor store
+
+    V->>R: Tells rider the pickup OTP verbally (from invoice or WhatsApp)
+    R->>SYS: POST /api/rider/orders/[id]/pickup { otp: XXXXXX }
+    SYS->>SYS: Validate pickup_otp + expiry
+    SYS->>SYS: Order → DISPATCHED, pickup_otp = null
+    SYS->>SYS: Generate 6-digit delivery OTP
+    SYS->>GW: POST /api/send-delivery-otp to customer
+    GW->>WA: Customer: Rider is on the way. Delivery OTP: YYYYYY. Share with rider on arrival.
+    WA->>C: WhatsApp notification
+
+    Note over R,C: Rider arrives at customer address
+
+    C->>R: Tells rider the delivery OTP verbally
+    R->>SYS: POST /api/rider/orders/[id]/deliver { otp: YYYYYY }
+    SYS->>SYS: Validate delivery_otp + expiry
+    SYS->>SYS: Order → DELIVERED, delivery_otp = null
+    SYS->>SYS: Clear rider assignment, mark rider available
+    SYS->>GW: POST /api/send-payment-link to customer
+    GW->>WA: Customer: Order delivered! Pay here: /pay/[id]?token=...
+    WA->>C: WhatsApp payment link
