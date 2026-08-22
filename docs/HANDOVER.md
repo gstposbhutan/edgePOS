@@ -25,14 +25,18 @@ Phase 2).
   from the `bhutan-tour-operator` monorepo (`apps/pos` @ 2026-08-22, includes everything through
   migration 133). `next build` verified clean. **Not pushed to origin yet** (gstposbhutan/edgePOS)
   — Shawn's call on when.
-- **The box still runs the OLD build**: container `pelbu-pos-1` (port 3100) is built from the
-  monorepo, not from here. Nothing here is deployed yet; cutover is Phase 5 of the plan.
-  Also running: `pelbu-auth-1` (:3007), `pelbu-travel-1` (:3005), `pelbu-pms-1` (:3006) — all to
-  be retired (the suite is being wound down; POS is the only product going forward) — plus the
-  `pelbu-supabase-*` stack (Kong on 127.0.0.1:8000, db 5432) and edgePOS-era monitoring
-  containers. `sync-worker` is a **zombie** (source deliberately deleted 2026-07-06; it only logs
-  a heartbeat) — kill it at Phase 5. Caddy config: `/etc/caddy/Caddyfile` (not in any repo;
-  worth committing here at Phase 5).
+- **CUTOVER DONE (2026-08-22, Shawn's call, pulled ahead of Phase 5): pos.pelbu.com is served
+  by THIS repo** — container `pelbu-pos-pos-1` built from this tree (`docker compose up -d
+  --build pos` at repo root), verified 200 locally + through Caddy. The suite is STOPPED:
+  `pelbu-pos-1` (old monorepo build), `pelbu-auth-1` (:3007 / app.pelbu.com),
+  `pelbu-travel-1` (:3005), `pelbu-pms-1` (:3006), and the `sync-worker` zombie.
+  ⚠ **Consequence until Phase 2 ships: no browser login page** (it lived in the auth app).
+  Existing sessions keep working (GoTrue session refresh is in the Supabase stack, still up)
+  and `POST /api/auth/login` works for API login — but Phase 2 item 1 is now URGENT.
+  ⚠ app.pelbu.com is dead → installed desktop terminals' update-check/license-register too
+  (see Phase 2 item 4). Still running: `pelbu-supabase-*` stack (Kong 127.0.0.1:8000, db 5432)
+  + edgePOS-era monitoring containers (grafana/status vhosts). Caddy snapshot committed at
+  `infra/Caddyfile` (live file: `/etc/caddy/Caddyfile`; pos.pelbu.com→:3100 unchanged).
 - **Secrets**: `web/.env` is present (gitignored, copied from the monorepo app — the container's
   live env). Old env files + the 13 narrated tour videos (~190 MB, exist nowhere else) are in
   `~/edgepos-salvage/`. Full pre-transplant history: `~/edgepos-pre-homecoming-2026-08-22.bundle`

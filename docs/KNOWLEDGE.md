@@ -36,6 +36,23 @@ Apps use the **instance role over IMDS** for S3 — no AWS keys on disk.
   broken), `logistics-bridge`:3002 (delivery webhooks; source in `legacy/*` tags),
   `sync-worker` (**zombie** — source deleted 2026-07-06, only logs a heartbeat; kill it).
 
+## Secrets / env / config inventory (as of 2026-08-22)
+
+- **`web/.env` (this repo, gitignored)** — the live POS env: Supabase URL/keys, SendGrid,
+  S3/img.pelbu.com, ZAI/GLM + Gemini keys, `LICENSE_SIGNING_PRIVATE_KEY` (Ed25519 .lic
+  signer), `RELEASE_INGEST_TOKEN`. This is what the running container uses.
+- **`~/edgepos-salvage/`** — off-repo secret backups: `auth.env` (auth app's env — release
+  token + license key for the Phase 2 fold-in), `pms.env.local`, `travel.env.local`
+  (retired apps), the pre-transplant edgePOS `web/.env*` files, and the tour videos.
+- **`infra/Caddyfile` (committed)** — snapshot of `/etc/caddy/Caddyfile` (no secrets).
+- **Supabase stack secrets** — `bhutan-tour-operator/infra/supabase/.env` + `volumes/`
+  (kong.yml embeds the JWT keys); the stack still runs from there. Copy to
+  `infra-supabase-live/` here (gitignored) when convenient:
+  `cp -r ~/bhutan-tour-operator/infra/supabase ~/edgePOS/infra-supabase-live`
+- **NOT transferable as files**: GitHub Actions secrets (`APP_URL`,
+  `RELEASE_INGEST_TOKEN`) — set on the monorepo repo, must be re-created on this repo's
+  GitHub before a desktop release; Cloudflare DNS + AWS account access are dashboard-level.
+
 ## Shared services (used by the POS)
 
 - **Email — SendGrid**: `web/lib/email/notify.js` → `sendEmail(to, subject, text, html)`.
