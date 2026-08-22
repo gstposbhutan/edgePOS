@@ -80,17 +80,26 @@ live DB on a local port):
 
 ### Operator checklist to end the maintenance window (each step = Shawn's gate)
 
-1. Rebuild + restart the live app: `docker compose up -d --build pos` at repo root — ships
-   login/marketing/admin to pos.pelbu.com (restores browser login).
-2. Apply the updated app.pelbu.com vhost: copy the `infra/Caddyfile` block into
-   `/etc/caddy/Caddyfile`, `systemctl reload caddy` — un-breaks installed terminals'
-   update-check + license register (currently 502 against the stopped auth app).
-3. GoTrue redirects (box Supabase stack; local gitignored copy at `infra-supabase-live/.env`):
-   `SITE_URL=https://pos.pelbu.com`, `ADDITIONAL_REDIRECT_URLS=https://pos.pelbu.com/*` —
-   else password-reset + OAuth land on the dead app.pelbu.com SITE_URL. Recreate the auth
-   container after.
+1. ✅ DONE 2026-08-22: live app rebuilt from this repo (`docker compose up -d --build pos`)
+   — login/marketing/admin live on pos.pelbu.com, verified through Caddy.
+2. ⏳ Shawn runs (sudo blocked for the agent): apply the updated app.pelbu.com vhost from
+   `infra/Caddyfile` to `/etc/caddy/Caddyfile` + `systemctl reload caddy` — un-breaks
+   installed terminals' update-check + license register (currently 502).
+3. ✅ DONE 2026-08-22: GoTrue `SITE_URL=https://pos.pelbu.com`,
+   `ADDITIONAL_REDIRECT_URLS=https://pos.pelbu.com,https://pos.pelbu.com/*`; auth container
+   recreated healthy; login re-verified.
 4. GitHub (whenever the repo is pushed): recreate release CI secrets `APP_URL` +
    `RELEASE_INGEST_TOKEN` on this repo before the first `desktop-vX.Y.Z` tag.
+
+### Supabase stack re-home (Shawn's request 2026-08-22, in progress)
+
+The live stack (project `pelbu-supabase`, all data in named Docker volumes) ran from the
+monorepo's `infra/supabase`. Its config now lives at **`infra-supabase-live/`** (gitignored)
+in this repo — same `name: pelbu-supabase`, GoTrue fix included. To complete the move, run
+`docker compose up -d` from `infra-supabase-live/` (recreates containers onto the new config
+paths; data volumes untouched; ~1 min blip). After that the monorepo folder is fully inert.
+Old stopped containers (retired suite + 5-week-dead edgePOS-era stack) are queued for
+`docker rm` — data volumes (`edgepos_*`) and manual DB dumps are retained.
 
 ### After that — Phases 3–5 per `docs/PLAN.md`
 
