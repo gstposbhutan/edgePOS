@@ -31,6 +31,9 @@ async function loginAs(page: Page, email: string, password: string) {
   await page.goto(`${APP}/`, { waitUntil: "domcontentloaded" }).catch(() => {});
   await page.evaluate(() => { try { localStorage.clear(); } catch { /* */ } }).catch(() => {});
   await page.goto(`${APP}/`, { waitUntil: "domcontentloaded" }).catch(() => {});
+  // The page is shared across the worker, so a sibling test may have left a sheet open over
+  // the login form. Dismiss before waiting on the field (pos-core does the same).
+  await page.keyboard.press("Escape").catch(() => {});
   const emailInput = page.locator('input[type="email"]');
   await expect(emailInput).toBeVisible({ timeout: 60_000 });
   await emailInput.fill(email);
