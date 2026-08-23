@@ -6,6 +6,13 @@ Offline-first Electron + PocketBase retail terminal. Versions are the
 admin **Releases** console at publish time.
 
 ## 1.5.0 — the five reserved counter keys (2026-08-23)
+- **A new terminal can no longer be left with nobody able to sign in.** Staff logins are
+  mirrored from the cloud (same email and password as the website) when the licence is
+  activated — but that ran ONCE, so a terminal activated while the shop's internet was down
+  showed a login screen nothing could get past, and the only way to retry lived behind that
+  same login. The terminal now re-pulls the team on launch whenever it holds no store logins,
+  and the login screen says so plainly and offers a "Get logins from the cloud" button instead
+  of answering every attempt with "Failed to authenticate".
 The RanceLab key map had five keys the spec reserves that reported "not built yet"
 rather than doing nothing. All five now work.
 - **Alt+U unit sheet — sell by the pack or the case.** Items can carry a Pcs/Pack/Case

@@ -455,6 +455,31 @@ async function doBootstrap() {
 
 ipcMain.handle("sync:bootstrap", () => doBootstrap());
 
+// Does this terminal hold any of the SHOP's logins yet, as opposed to only the internal support
+// account? The login screen asks, so a terminal that has never reached the cloud can say that
+// plainly instead of answering every attempt with "Failed to authenticate".
+// `retry: true` pulls the team again first — the cashier's one-button recovery once the shop's
+// internet is back, with no settings screen to get into.
+ipcMain.handle("auth:store-logins", async (_e, { retry = false } = {}) => {
+  if (retry) await bootstrapIfNoStoreUsers();
+  // The local PB is always readable; whether the cloud is reachable is a separate question,
+  // reported as syncConfigured so the screen can tell "not pulled yet" from "cannot pull".
+  const localUrl = (syncConfig && syncConfig.pbUrl) || PB_URL;
+  try {
+    const token = await syncLocalAuth(localUrl);
+    const filter = encodeURIComponent('email != "admin@pos.local"');
+    const res = await fetch(`${localUrl}/api/collections/users/records?perPage=1&filter=${filter}`, {
+      headers: { Authorization: token },
+    });
+    const data = await res.json().catch(() => ({}));
+    // totalItems is authoritative; an unauthenticated read would always say zero.
+    return { count: typeof data.totalItems === "number" ? data.totalItems : null,
+             syncConfigured: !!(syncConfig && syncConfig.remoteUrl && syncConfig.apiKey) };
+  } catch (e) {
+    return { count: null, error: e.message };
+  }
+});
+
 // Ensure the internal super-admin login (admin@pos.local) exists on the terminal.
 // This is the Pelbu SUPPORT account (role: super_admin) so internal staff can sign
 // in on any terminal WITHOUT the client's credentials — it is NOT a store user.
@@ -485,6 +510,40 @@ async function seedDefaultUser() {
     else console.log("[Main] super-admin seed skipped/failed:", await createRes.text());
   } catch (e) {
     console.log("[Main] super-admin seed error:", e.message);
+  }
+}
+
+// Self-heal a terminal that has no store logins.
+//
+// Bootstrap normally runs ONCE, at licence activation. If the box was offline at that moment —
+// or the cloud returned an empty team — the terminal is left holding nothing but the internal
+// support account: the shop sees a login screen nobody can pass, and there is no way to retry
+// from it, because the other re-pull (sync:start) lives behind the settings screen, which is
+// behind that same login. So re-pull on launch instead, and the till repairs itself the first
+// time it is opened with a connection.
+//
+// Best-effort and idempotent — a terminal that already has its team skips the call entirely.
+async function bootstrapIfNoStoreUsers() {
+  if (!syncConfig || !syncConfig.remoteUrl || !syncConfig.apiKey) return;
+  const localUrl = syncConfig.pbUrl || PB_URL;
+  try {
+    // Listing `users` UNAUTHENTICATED returns an empty page whatever the collection actually
+    // holds, so this check must carry the superuser token — without it the terminal would
+    // re-bootstrap on every single launch.
+    const token = await syncLocalAuth(localUrl);
+    const filter = encodeURIComponent('email != "admin@pos.local"');
+    const res = await fetch(`${localUrl}/api/collections/users/records?perPage=1&filter=${filter}`, {
+      headers: { Authorization: token },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (Array.isArray(data.items) && data.items.length > 0) return; // the shop has its logins
+    console.log("[Main] No store logins on this terminal — pulling the team from the cloud");
+    const result = await doBootstrap();
+    console.log(result && result.ok
+      ? `[Main] Recovered ${result.users} store login(s) from the cloud`
+      : `[Main] Could not pull the team: ${(result && result.error) || "unknown error"}`);
+  } catch (e) {
+    console.log("[Main] Store-login check skipped:", e.message);
   }
 }
 
@@ -996,6 +1055,9 @@ app.whenReady().then(async () => {
   const lic = checkLicense();
   if (lic.valid) {
     applyLicensePayload(lic.payload);
+    // The licence carries the sync token, so this is the first point where the team CAN be
+    // pulled. A terminal that already has its logins skips it.
+    await bootstrapIfNoStoreUsers();
     createWindow();
   } else if (isDev && !process.env.NEXUS_FORCE_LICENSE) {
     console.log(`[Main] No valid license (${lic.reason}) — dev mode, skipping gate.`);

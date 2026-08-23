@@ -53,6 +53,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
     resetResync: () => ipcRenderer.invoke("sync:reset-resync"),
   },
 
+  // Auth provisioning — is this terminal holding the shop's logins yet?
+  auth: {
+    storeLogins: (opts) => ipcRenderer.invoke("auth:store-logins", opts || {}),
+  },
+
   // PocketBase
   pb: {
     getUrl: () => ipcRenderer.invoke("pb:get-url"),
