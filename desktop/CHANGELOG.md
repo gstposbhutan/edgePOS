@@ -25,6 +25,13 @@ rather than doing nothing. All five now work.
 - **Ctrl+B barcode print** — prints labels for the highlighted line's product through
   the terminal's existing label pipeline, asking how many (capped at 50).
 
+- **GST fix: an invoice discount no longer taxes exempt goods.** A ticket mixing GST-exempt
+  items (rice, sugar) with a **bill-level** discount charged 5% on the exempt lines too. The
+  discount now reduces every line pro-rata and only the taxable share carries tax, so a bill of
+  rice + sugar + soap with 10% off charges GST on the soap alone. Per-line exemption without a
+  bill discount was always correct and is unchanged, as is every ticket with nothing exempt on
+  it. The same fix landed on the web till, which shared the shape.
+
 ## 1.4.1-beta.1 — keyless CI validation (beta channel)
 - No functional changes. First build cut from the platform monorepo's **keyless**
   release pipeline: the runner POSTs the installer to the box, which uploads to S3

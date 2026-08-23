@@ -86,6 +86,30 @@ describe("calcCartTotals", () => {
     expect(parseFloat((t.taxableSubtotal + t.gstTotal).toFixed(2))).toBe(200);
   });
 
+  it("keeps exempt goods exempt under a BILL discount", () => {
+    // Rice 500 + sugar 85 (both exempt) + soap 100 (taxable), 10% off the invoice.
+    // The discount takes the same fraction off every line, so only the soap's share is taxed.
+    const mixed = [line(250, 2, 0, true), line(85, 1, 0, true), line(100, 1)];
+    const t = calcCartTotals(mixed, 5, 68.5);
+    expect(t.gstTotal).toBe(4.5);
+    expect(t.grandTotal).toBe(621);
+  });
+
+  it("keeps exempt goods exempt under a bill discount in included mode too", () => {
+    const mixed = [line(250, 2, 0, true), line(85, 1, 0, true), line(100, 1)];
+    const t = calcCartTotals(mixed, 5, 68.5, true);
+    // The customer pays the discounted gross either way; only the taxable share carries tax.
+    expect(t.grandTotal).toBe(616.5);
+    expect(t.gstTotal).toBe(4.29);
+    expect(parseFloat((t.taxableSubtotal + t.gstTotal).toFixed(2))).toBe(616.5);
+  });
+
+  it("charges no GST at all when every line under a bill discount is exempt", () => {
+    const t = calcCartTotals([line(100, 2, 0, true)], 5, 50);
+    expect(t.gstTotal).toBe(0);
+    expect(t.grandTotal).toBe(150);
+  });
+
   it("clamps a bill discount so the net cannot go negative", () => {
     const t = calcCartTotals(items, 5, 9999);
     expect(t.billDiscount).toBe(250);

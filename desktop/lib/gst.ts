@@ -54,33 +54,42 @@ export function calcCartTotals(
   /** Alt+T — the entered rates already contain GST, so it is extracted, not added. */
   gstIncluded: boolean = false,
 ) {
+  const rate = gstRate / 100;
+  const lines = items.map((i) => ({
+    net: Math.max(0, i.unitPrice - i.discount) * i.quantity,
+    exempt: !!i.gstExempt,
+  }));
   const subtotal = items.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
   const discountTotal = items.reduce((s, i) => s + i.discount * i.quantity, 0);
+  const net = lines.reduce((s, l) => s + l.net, 0);
   // Invoice/bill-level discount: a single pre-GST amount off the net subtotal (NOT distributed
-  // across lines). Clamped so the net can't go negative.
-  const bd = Math.min(Math.max(0, billDiscount), Math.max(0, subtotal - discountTotal));
-  const taxableSubtotal = Math.max(0, subtotal - discountTotal - bd);
-  const rate = gstRate / 100;
+  // into the stored line figures). Clamped so the net can't go negative.
+  const bd = Math.min(Math.max(0, billDiscount), Math.max(0, net));
+
   let gstTotal: number;
   let grandTotal: number;
   // The ex-GST net. In inclusive mode the line amounts already contain the tax, so the net is
-  // what is left after extracting it — which is why this is not simply taxableSubtotal.
-  let netSubtotal = taxableSubtotal;
+  // what is left after extracting it — which is why this is not simply the payable amount.
+  let netSubtotal: number;
+
   if (bd > 0) {
-    // Bill discount present → one rate over the discounted invoice net (matches the web cart).
-    //
-    // KNOWN LIMITATION, pre-dating the Alt+T work and deliberately left as-is here rather than
-    // silently changing every existing bill: this branch does not consult per-line gstExempt,
-    // so a ticket that mixes exempt goods with a BILL-level discount taxes the exempt lines
-    // too. The no-bill-discount branch below is per-line and does honour it.
+    // Pro-rata: the discount takes the same fraction off every line, so the ticket's taxable
+    // share is unchanged by it and exempt goods stay exempt. This branch used to tax the whole
+    // discounted net, which charged 5% on rice and sugar whenever an invoice discount was
+    // applied — the same fix landed in web/lib/gst.js.
+    const kept = net > 0 ? (net - bd) / net : 0;
+    const taxableNet = lines.reduce((s, l) => s + (l.exempt ? 0 : l.net), 0) * kept;
+    const payable = net - bd;
     if (gstIncluded) {
-      // The customer pays the discounted gross; the tax is inside it.
-      netSubtotal = taxableSubtotal / (1 + rate);
-      gstTotal = parseFloat((taxableSubtotal - netSubtotal).toFixed(2));
-      grandTotal = parseFloat(taxableSubtotal.toFixed(2));
+      // The customer pays the discounted gross; the tax is inside the taxable part of it.
+      const extracted = taxableNet - taxableNet / (1 + rate);
+      gstTotal = parseFloat(extracted.toFixed(2));
+      grandTotal = parseFloat(payable.toFixed(2));
+      netSubtotal = payable - gstTotal;
     } else {
-      gstTotal = parseFloat((taxableSubtotal * rate).toFixed(2));
-      grandTotal = parseFloat((taxableSubtotal + gstTotal).toFixed(2));
+      gstTotal = parseFloat((taxableNet * rate).toFixed(2));
+      grandTotal = parseFloat((payable + gstTotal).toFixed(2));
+      netSubtotal = payable;
     }
   } else {
     // No bill discount → canonical per-line-then-sum (P2-5): gst_total == Σ items.gst_5 to the
