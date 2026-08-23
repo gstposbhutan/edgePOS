@@ -1,8 +1,40 @@
-# Handover — the WEB till now speaks RanceLab too
+# Handover — web deployed, desktop 1.5.0 released
 
-**Read this section first.** Written 2026-08-23. Branch `v2`. Everything below is history kept
-for reference: the terminal's own handover, then the build record for the desktop parity work,
-then the Phase 2 port.
+**Read this section first.** Written 2026-08-23. Branch `v2`, pushed. Everything below is
+history kept for reference: the web-parity build record, the terminal's own handover, then the
+Phase 2 port.
+
+## Shipped today
+
+- **Web is LIVE at pos.pelbu.com** with the RanceLab counter. Deployed by rebuilding the host
+  bundle and the `pelbu-pos` image (`npm run build` in `web/`, then `docker compose build pos &&
+  docker compose up -d pos`). Verified in a real browser on the live host: the till bar, the
+  barcode row, no sidebar, the paged rail, Alt+O, and no page errors.
+  **The deploy trap:** the image copies the HOST's `web/.next`, so whatever was last built is
+  what ships. Build with `web/.env.local` deleted, or you will publish a bundle wired to
+  localhost. Check with `grep -r "localhost:3000" web/.next/static` before building the image.
+- **Desktop 1.5.0 tagged and published** (`desktop-v1.5.0`), stable channel — every terminal
+  picks it up on its next update check. Shawn's call to go straight to stable.
+- **Migrations 134–138 are applied on this box**, which is the only environment.
+
+## What was verified before releasing, and how
+
+The Windows-QA gate the previous handover set could not be met from here, so the equivalent was
+run on this box against the REAL packaged arm64 build (`npx electron-builder --linux dir
+--arm64`, then the binary under `xvfb-run`). Between them these cover the failure that bricked
+v1.0.2, which was a PocketBase config change and therefore platform-independent:
+
+- **Upgrade path.** Built a v1.4.0-era database (migrations ≤024 only), then booted the 1.5.0
+  migration set against it: 25 → 29 applied, PocketBase still healthy, Batch API on, the 14
+  repaired fields present, unit ladder and remark present.
+- **Fresh install.** The packaged app on a clean user-data dir: 29/29 migrations, Batch API on,
+  activation window opens.
+- **Vendor login with web credentials.** Mirrored a real cloud bcrypt hash through
+  `/api/custom/sync-user` into a fresh terminal, then signed in with the WEB password — and
+  confirmed a wrong password is still rejected.
+
+**Still genuinely untested:** Windows-specific packaging (NSIS installer, printer paths, path
+separators). If a terminal misbehaves after updating, that is where to look first.
 
 ## What changed, in one paragraph
 
