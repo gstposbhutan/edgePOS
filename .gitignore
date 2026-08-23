@@ -9,6 +9,12 @@ dist/
 .env.*
 !.env.example
 
+# Vision runtime + models — 38 MB of ONNX Runtime WASM copied out of node_modules by
+# web/scripts/fetch-vision-assets.mjs (which `npm run build` runs), plus model files we do not
+# author. Build inputs, not source.
+web/public/onnx/
+web/public/models/
+
 # test / recording output
 web/e2e/recordings/
 playwright-report/

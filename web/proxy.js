@@ -30,6 +30,12 @@ export async function proxy(request) {
     PUBLIC_ROUTES.some((r) => pathname === r || pathname.startsWith(r + '/')) ||
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api') ||
+    // The vision runtime and its model: static, non-secret build assets that ONNX Runtime
+    // fetches by URL while the camera pad initialises. Behind the auth gate they answer a 307
+    // to /login, and the runtime then reports an HTML page as a corrupt model — a confusing
+    // failure that also bites the moment a session expires with the pad open.
+    pathname.startsWith('/onnx/') ||
+    pathname.startsWith('/models/') ||
     pathname === '/favicon.ico'
   ) {
     return NextResponse.next()

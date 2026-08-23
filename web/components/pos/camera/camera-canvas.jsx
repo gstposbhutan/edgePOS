@@ -236,8 +236,14 @@ export function CameraCanvas({ onProductRecognized, active = true }) {
           }
           <p className="text-sm text-tibetan text-center px-4">{errorMsg}</p>
           {status === 'error' && (
+            // The runtime and the model are build assets, not commits — the script installs
+            // both. Naming only the model sent the last person hunting for a file when it was
+            // the 38 MB WASM runtime that was missing.
             <p className="text-xs text-muted-foreground text-center px-4">
-              Place model file at <code className="bg-muted px-1 rounded">public/models/yolov8n.onnx</code>
+              Vision assets missing. Run{' '}
+              <code className="bg-muted px-1 rounded">npm run vision:assets</code> in{' '}
+              <code className="bg-muted px-1 rounded">web/</code> — it installs the ONNX runtime
+              and reports how to obtain a model.
             </p>
           )}
         </div>
