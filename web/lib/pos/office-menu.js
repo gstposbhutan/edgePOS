@@ -1,0 +1,70 @@
+// The Office letter menu (spec WF-08/WF-09), web edition.
+//
+// RanceLab's back office is driven by single letters rather than a pointer: P for Purchase, W
+// for Warehouse and so on. Shops arriving from it navigate that way by reflex, so the till
+// offers the same strip. The letters are RanceLab's; the destinations are ours.
+//
+// The mirror of desktop/lib/office-menu.ts — same letters in the same order, so a shopkeeper
+// moving between the terminal and the browser presses the same key for the same module. The
+// difference is what exists on each side: a terminal is a register with the back office in the
+// cloud, so several of its modules are marked `todo`, while here the back office IS the app and
+// most of them are real screens.
+//
+// A module with nowhere to go is `todo`: shown dimmed and says so, rather than looking broken
+// or, worse, silently doing nothing under a trained reflex.
+
+export const OFFICE_MODULES = [
+  {
+    letter: 'P', label: 'Purchase Management', href: '/pos/purchases',
+    children: [
+      { letter: 'O', label: 'Purchase Order Register', href: '/pos/purchases' },
+      { letter: 'V', label: 'Purchase Voucher', todo: true },
+      { letter: 'R', label: 'Purchase Return Register', todo: true },
+    ],
+  },
+  {
+    letter: 'S', label: 'Sale Management', href: '/pos',
+    children: [
+      { letter: 'T', label: 'Transaction (Counter)', href: '/pos' },
+      { letter: 'O', label: 'Order Register', href: '/pos/orders' },
+      { letter: 'R', label: 'GST Report', href: '/pos/reports' },
+    ],
+  },
+  {
+    letter: 'W', label: 'Warehouse Management', href: '/pos/inventory',
+    children: [
+      { letter: 'O', label: 'Stock Register', href: '/pos/inventory' },
+      { letter: 'D', label: 'Discrepancy', href: '/pos/inventory' },
+      { letter: 'N', label: 'Opening Stock', todo: true },
+      { letter: 'J', label: 'Stock Journal', todo: true },
+    ],
+  },
+  {
+    letter: 'F', label: 'Financial Management', href: '/pos/khata',
+    children: [
+      { letter: 'K', label: 'Khata (credit ledger)', href: '/pos/khata' },
+      { letter: 'C', label: 'Cash Registers', href: '/pos/registers' },
+      { letter: 'S', label: 'Shifts', href: '/pos/shifts' },
+    ],
+  },
+  { letter: 'C', label: 'Customer Relationship', href: '/pos/khata' },
+  { letter: 'R', label: 'Customer Service', href: '/pos/orders' },
+  { letter: 'E', label: 'Payroll', todo: true },
+  {
+    letter: 'M', label: 'Master Data Management', href: '/pos/products',
+    children: [
+      { letter: 'P', label: 'Products', href: '/pos/products' },
+      { letter: 'T', label: 'Team', href: '/pos/team' },
+      { letter: 'S', label: 'Stores', href: '/pos/stores' },
+    ],
+  },
+  { letter: 'T', label: 'Settings', href: '/pos/settings' },
+  { letter: 'X', label: 'Exit', href: '/pos' },
+]
+
+/** Letter keys are for navigating, so they must never fire while something is being typed. */
+export function isTypingTarget(target) {
+  const el = target
+  if (!el) return false
+  return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable
+}

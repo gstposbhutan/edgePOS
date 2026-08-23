@@ -46,7 +46,7 @@ test('TOUR — Cashier: the register, a cash sale + an online (NQRC) sale', asyn
 
   // ═══ Tour intro ══════════════════════════════════════════════════════════
   await page.goto('/pos')
-  await expect(page.locator('header button[title="Select customer (F6)"]')).toBeVisible({ timeout: 20000 })
+  await expect(page.locator('header button[title="Customer (F9)"]')).toBeVisible({ timeout: 20000 })
   await titleCard(page, {
     kicker: 'Retailer · Cashier',
     title: 'Behind the till',
@@ -72,7 +72,7 @@ test('TOUR — Cashier: the register, a cash sale + an online (NQRC) sale', asyn
 
   // ── Register top bar — the action strip ──────────────────────────────────
   await caption(page, { step: 5, title: 'The top bar', text: 'The header carries register actions only — navigation lives in the rail you just saw.' }, 1900)
-  await callout(page, 'header button[title="Select customer (F6)"]', { step: 6, title: 'Customer (F6)', text: 'Attach a customer to the sale — for a digital receipt or a credit (khata) purchase. Blank means walk-in.' })
+  await callout(page, 'header button[title="Customer (F9)"]', { step: 6, title: 'Customer (F9)', text: 'Attach a customer to the sale — for a digital receipt or a credit (khata) purchase. Blank means walk-in.' })
   await callout(page, 'header button[title^="Next invoice number"]', { step: 7, title: 'Next invoice no.', text: 'A live preview of the number the next sale will carry. Double-click it to search past invoices.' })
   await callout(page, 'header button[title="Invoice date (server time)"]', { step: 8, title: 'Invoice date', text: 'The internet clock stamped on each sale — always accurate, and you cannot change it.' })
   await callout(page, 'header button[title="Notifications"]', { step: 9, title: 'Notifications', text: 'A bell for in-app alerts — new online orders, low-stock notices and the like.' })

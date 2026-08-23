@@ -55,7 +55,7 @@ function triggerShortcut(label) {
  */
 function CounterRail() {
   const [page, setPage] = useState(1)
-  const entries = railPage(page).map(e => ({ key: e.combo, label: e.label, stub: e.todo, go: e.go }))
+  const entries = railPage(page).map(e => ({ key: e.combo, label: e.label, stub: e.todo, go: e.go, alias: e.alias }))
   const flip = (d) => setPage(p => ((p - 1 + d + RAIL_PAGES) % RAIL_PAGES) + 1)
 
   return (
@@ -105,6 +105,9 @@ function ShortcutGrid({ items }) {
             </span>
             <span className="text-sm font-medium text-foreground whitespace-nowrap overflow-hidden text-ellipsis">
               {s.label}{s.stub ? ' ◌' : ''}
+              {/* The one key the browser keeps (F12) carries the combo that actually reaches
+                  the till, so the button is not a promise the page cannot keep. */}
+              {s.alias && <span className="block text-[10px] font-mono text-muted-foreground">or {s.alias}</span>}
             </span>
           </button>
         )

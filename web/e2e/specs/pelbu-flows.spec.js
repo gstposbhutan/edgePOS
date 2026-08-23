@@ -6,7 +6,7 @@ const { test, expect } = require('@playwright/test')
 test.describe('Pelbu P4 — six net-new flows', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/pos')
-    await expect(page.locator('[title="Select customer (F6)"]')).toBeVisible({ timeout: 20000 })
+    await expect(page.locator('[data-ticket-ready="true"]')).toBeVisible({ timeout: 20000 })
   })
 
   // Add a product to the cart so the item-gated flows (quotation, complimentary,
@@ -25,28 +25,30 @@ test.describe('Pelbu P4 — six net-new flows', () => {
   }
 
   test('F6 opens the salesperson picker', async ({ page }) => {
+    // Salespeople are attributed per LINE now, so the key needs a line to attribute to.
+    await addAProduct(page)
     await page.keyboard.press('F6')
     await expect(page.getByText(/Select Sales Person/)).toBeVisible({ timeout: 5000 })
     await page.keyboard.press('Escape')
   })
 
-  test('Alt+D opens the delivery address modal', async ({ page }) => {
-    await page.keyboard.press('Alt+d')
+  test('Ctrl+L opens the delivery address modal', async ({ page }) => {
+    await page.keyboard.press('Control+l')
     await expect(page.getByPlaceholder(/House no, street/)).toBeVisible({ timeout: 5000 })
     await page.keyboard.press('Escape')
   })
 
   test('Ctrl+E opens the exchange modal', async ({ page }) => {
     await page.keyboard.press('Control+e')
-    await expect(page.getByText(/Exchange — find the original sale/)).toBeVisible({ timeout: 5000 })
+    await expect(page.getByText(/Return — find the original sale/)).toBeVisible({ timeout: 5000 })
     await page.keyboard.press('Escape')
   })
 
-  test('with an item: Alt+Q quotation, Ctrl+C complimentary, Alt+M market', async ({ page }) => {
+  test('with an item: Ctrl+Q quotation, Ctrl+C complimentary, Alt+M market', async ({ page }) => {
     await addAProduct(page)
 
-    await page.keyboard.press('Alt+q')
-    await expect(page.getByText(/Convert to Quotation/)).toBeVisible({ timeout: 5000 })
+    await page.keyboard.press('Control+q')
+    await expect(page.getByRole('heading', { name: 'Save as draft' })).toBeVisible({ timeout: 5000 })
     await page.keyboard.press('Escape')
 
     await page.keyboard.press('Control+c')

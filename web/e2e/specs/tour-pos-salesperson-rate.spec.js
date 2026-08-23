@@ -21,7 +21,7 @@ test('TOUR — POS: rate tiers and per-line salesperson', async ({ page }) => {
   await installTour(page)
 
   await page.goto('/pos')
-  await expect(page.locator('header button[title="Select customer (F6)"]')).toBeVisible({ timeout: 15000 })
+  await expect(page.locator('header button[title="Customer (F9)"]')).toBeVisible({ timeout: 15000 })
   await page.locator('body').click({ position: { x: 4, y: 4 } })
   await titleCard(page, {
     kicker: 'Vendor · POS',

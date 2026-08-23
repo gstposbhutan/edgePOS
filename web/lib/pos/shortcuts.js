@@ -11,17 +11,22 @@
 // `go`     the tender key, highlighted everywhere.
 // `todo`   the spec reserves this key but the action is not built yet. It is shown dimmed and
 //          reports that, rather than quietly doing something else under a trained reflex.
+//          Nothing carries it any more — every key on this map does something — but the field
+//          stays so the next reserved key has somewhere honest to sit.
+// `alias`  a second combo shown beside the RanceLab one, for the single key the BROWSER keeps
+//          for itself (F12). Web only; the terminal owns the whole keyboard.
 // `extra`  ours, not in the RanceLab spec — kept because the feature exists and is used.
 
 export const COUNTER_KEYS = [
   // ── Line editing ────────────────────────────────────────────────────────────────────────
   { id: 'qtyUp',        combo: 'F3',      match: { key: 'F3' },                  label: 'Add Quantity',    rail: 1, group: 'Line' },
   { id: 'qtyDown',      combo: 'F4',      match: { key: 'F4' },                  label: 'Less Quantity',   rail: 1, group: 'Line' },
-  { id: 'rate',         combo: 'F5',      match: { key: 'F5' },                  label: 'Rate Change',     rail: 1, group: 'Line', todo: true },
+  { id: 'rate',         combo: 'F5',      match: { key: 'F5' },                  label: 'Rate Change',     rail: 1, group: 'Line' },
   { id: 'qtyFocus',     combo: 'Alt+Q',   match: { key: 'q', alt: true },        label: 'Qty',                      group: 'Line' },
-  { id: 'unitSheet',    combo: 'Alt+U',   match: { key: 'u', alt: true },        label: 'Unit',                     group: 'Line', todo: true },
+  { id: 'unitSheet',    combo: 'Alt+U',   match: { key: 'u', alt: true },        label: 'Unit',                     group: 'Line' },
   { id: 'itemDiscount', combo: 'Ctrl+M',  match: { key: 'm', ctrl: true },       label: 'Item Discount',   rail: 1, group: 'Line' },
-  { id: 'itemRemark',   combo: 'Ctrl+T',  match: { key: 't', ctrl: true },       label: 'Item Remark',     rail: 1, group: 'Line', todo: true },
+  { id: 'itemRemark',   combo: 'Ctrl+T',  match: { key: 't', ctrl: true },       label: 'Item Remark',     rail: 1, group: 'Line' },
+  { id: 'undo',         combo: 'Ctrl+Z',  match: { key: 'z', ctrl: true },       label: 'Undo',                     group: 'Line' },
   { id: 'complimentary',combo: 'Ctrl+C',  match: { key: 'c', ctrl: true },       label: 'Complimentary',   rail: 1, group: 'Line' },
   { id: 'removeLine',   combo: 'Del',     match: { key: 'Delete' },              label: 'Remove',          rail: 1, group: 'Line' },
 
@@ -31,10 +36,8 @@ export const COUNTER_KEYS = [
   { id: 'customerInfo', combo: 'F9',      match: { key: 'F9' },                  label: 'Customer Info',   rail: 1, group: 'Sale' },
   { id: 'party',        combo: 'F7',      match: { key: 'F7' },                  label: 'Party',           rail: 2, group: 'Sale' },
   { id: 'salesperson',  combo: 'F6',      match: { key: 'F6' },                  label: 'Sales Person',    rail: 2, group: 'Sale' },
-  // repriceCart() exists in use-cart but takes an explicit tier; the party-vs-retail chooser
-  // the spec shows is not built, so the key stays reserved rather than guessing a tier.
-  { id: 'priceList',    combo: 'Alt+P',   match: { key: 'p', alt: true },        label: 'Price List',               group: 'Sale', todo: true },
-  { id: 'gstIncluded',  combo: 'Alt+T',   match: { key: 't', alt: true },        label: 'GST Included',             group: 'Sale', todo: true },
+  { id: 'priceList',    combo: 'Alt+P',   match: { key: 'p', alt: true },        label: 'Price List',      rail: 2, group: 'Sale' },
+  { id: 'gstIncluded',  combo: 'Alt+T',   match: { key: 't', alt: true },        label: 'GST Included',             group: 'Sale' },
   { id: 'deliveryDetail',combo: 'Ctrl+L', match: { key: 'l', ctrl: true },       label: 'Delivery Detail', rail: 1, group: 'Sale' },
   { id: 'tender',       combo: 'F10',     match: { key: 'F10' },                 label: 'Tender',          rail: 1, group: 'Sale', go: true },
   { id: 'tenderAlt',    combo: 'Alt+S',   match: { key: 's', alt: true },        label: 'Tender',                   group: 'Sale', go: true },
@@ -49,11 +52,14 @@ export const COUNTER_KEYS = [
   { id: 'help',         combo: 'F1',      match: { key: 'F1' },                  label: 'Help',            rail: 2, group: 'Ticket' },
   { id: 'exit',         combo: 'Esc',     match: { key: 'Escape' },              label: 'Exit',            rail: 2, group: 'Ticket' },
 
-  // The browser keeps F11 (fullscreen) and F12 (devtools) whatever we do here — only the
-  // Electron terminal can take them, so these stay listed but unbound on web.
-  { id: 'day',          combo: 'F11',     match: { key: 'F11' },                 label: 'Day',             rail: 2, group: 'Ticket', todo: true },
-  { id: 'location',     combo: 'F12',     match: { key: 'F12' },                 label: 'Location',        rail: 2, group: 'Ticket', todo: true },
-  { id: 'barcodePrn',   combo: 'B',       match: { key: 'b', ctrl: true },       label: 'Barcode Prn',     rail: 2, group: 'Ticket', todo: true },
+  // F11 and F12 belong to the browser chrome (fullscreen / devtools). Chrome lets a page
+  // cancel F11, so Day is bound to it and works; F12 is NOT cancellable, so Location carries an
+  // alias the till can actually receive. The keys stay listed under their RanceLab combos so a
+  // trained cashier still finds them, and the alias is shown beside the one that cannot fire.
+  { id: 'day',          combo: 'F11',     match: { key: 'F11' },                 label: 'Day',             rail: 2, group: 'Ticket' },
+  { id: 'location',     combo: 'F12',     match: { key: 'F12' },                 label: 'Location',        rail: 2, group: 'Ticket', alias: 'Ctrl+⇧L' },
+  { id: 'locationAlt',  combo: 'Ctrl+⇧L', match: { key: 'l', ctrl: true, shift: true }, label: 'Location',          group: 'Ticket' },
+  { id: 'barcodePrn',   combo: 'Ctrl+B',  match: { key: 'b', ctrl: true },       label: 'Barcode Prn',     rail: 2, group: 'Ticket' },
 
   // ── Ours, kept alongside the RanceLab set ───────────────────────────────────────────────
   // Bill discount and quotation moved off Ctrl+D / Alt+Q, which the spec assigns to Clear
@@ -64,16 +70,19 @@ export const COUNTER_KEYS = [
   { id: 'postMarket',   combo: 'Alt+M',   match: { key: 'm', alt: true },        label: 'Post to Market',           group: 'Pelbu', extra: true },
   { id: 'zReport',      combo: 'Ctrl+Shift+Z', match: { key: 'z', ctrl: true, shift: true }, label: 'Z-Report',     group: 'Pelbu', extra: true },
   { id: 'cashInOut',    combo: 'Ctrl+Shift+X', match: { key: 'x', ctrl: true, shift: true }, label: 'Cash In / Out', group: 'Pelbu', extra: true },
+  // The counter is full-screen (it is a till, not a console), so the back office needs a way
+  // back that does not depend on a sidebar being on screen.
+  { id: 'office',       combo: 'Alt+O',   match: { key: 'o', alt: true },        label: 'Office / Back office',     group: 'Pelbu', extra: true },
 ]
 
 // Navigation that is inherent to the grid rather than a bindable command — listed for the F1
 // sheet only; the page handles these directly.
 export const COUNTER_NAV = [
   { combo: '↑ ↓',   label: 'Move the highlighted line' },
-  { combo: 'Enter', label: 'Edit qty on the highlighted line' },
+  { combo: 'Enter', label: 'Walk the line: qty → unit → rate' },
   { combo: 'Tab',   label: 'Next ticket' },
   { combo: 'Ctrl+1…9', label: 'Jump to ticket' },
-  { combo: 'Any key', label: 'Start a product search' },
+  { combo: 'Any key', label: 'Goes to the barcode row, which keeps the caret' },
 ]
 
 /** Does this keydown match a map entry? Modifiers are exact — a combo without ctrl never

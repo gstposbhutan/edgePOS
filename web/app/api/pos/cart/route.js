@@ -1,10 +1,18 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/supabase/server'
 
+// The cart plus, on every line, the item-master facts the till reads on each keystroke: GST
+// exemption (never client-trusted — resolved server-side and only DISPLAYED there) and the
+// Pcs/Pack/Case ladder behind Alt+U. Kept in step with ITEM_SELECT in cart/items/route.js.
+// This is a PostgREST select, not SQL: it takes a field list and nothing else.
 const CART_SELECT = `
-  id, customer_whatsapp, buyer_hash, bill_discount, created_at,
+  id, customer_whatsapp, buyer_hash, bill_discount, gst_included, created_at,
   cart_items (
     *,
+    product:product_id (
+      id, gst_exempt, sold_by_weight, unit, current_stock, barcode, mrp,
+      pack_size, case_size, pack_label, case_label
+    ),
     batch:batch_id (id, batch_number, expires_at, mrp, selling_price, available_qty:quantity),
     package_def:package_id (
       id, package_type,
@@ -115,6 +123,28 @@ export async function POST(request) {
   }
 
   // Abandon cart
+  // Alt+T — which basis this ticket is rung on. One ticket has exactly one basis, so this is
+  // only settable while the cart is empty; the till states the same rule to the cashier.
+  if (action === 'set_gst_included') {
+    const { cartId, gstIncluded } = body
+    const { count } = await supabase
+      .from('cart_items')
+      .select('id', { count: 'exact', head: true })
+      .eq('cart_id', cartId)
+    if ((count ?? 0) > 0) {
+      return NextResponse.json({ error: 'Finish or clear the ticket before changing the GST basis' }, { status: 409 })
+    }
+    const { data, error } = await supabase
+      .from('carts')
+      .update({ gst_included: !!gstIncluded })
+      .eq('id', cartId)
+      .eq('entity_id', ctx.entityId)
+      .select(CART_SELECT)
+      .single()
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ cart: data })
+  }
+
   if (action === 'abandon') {
     const { cartId } = body
     await supabase.from('cart_items').delete().eq('cart_id', cartId)

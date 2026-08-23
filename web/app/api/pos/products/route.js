@@ -13,6 +13,11 @@ async function enrichResults(results, supabase, entityId) {
   })
 }
 
+/** Escape a value for a PostgREST `or` filter, which is quoted with double quotes. */
+function orSafe(value) {
+  return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+}
+
 export async function GET(request) {
   const ctx = await getAuthContext()
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -111,7 +116,11 @@ export async function GET(request) {
     .eq('entity_id', entityId)
     .eq('status', 'ACTIVE')
     .gt('quantity', 0)
-    .or(`name.ilike.%${q}%,sku.ilike.%${q}%`, { referencedTable: 'products' })
+    // Quote the value: PostgREST reads `,` `(` `)` as filter syntax, so an unquoted product
+    // name like "Notebook A4 (200 pages)" corrupts the whole or-clause and the search silently
+    // returns nothing. Reachable from the till, where Enter on the barcode row hands whatever
+    // was typed straight to this search.
+    .or(`name.ilike."%${orSafe(q)}%",sku.ilike."%${orSafe(q)}%"`, { referencedTable: 'products' })
     .order('expires_at', { ascending: true, nullsFirst: false })
     .limit(9)
 

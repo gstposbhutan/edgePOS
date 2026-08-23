@@ -12,7 +12,7 @@ test('TOUR — POS: sell a weighed item', async ({ page }) => {
 
   // 1) Open the register.
   await page.goto('/pos')
-  await expect(page.locator('header button[title="Select customer (F6)"]')).toBeVisible({ timeout: 15000 })
+  await expect(page.locator('header button[title="Customer (F9)"]')).toBeVisible({ timeout: 15000 })
   await titleCard(page, {
     kicker: 'Vendor · POS',
     title: 'Sell by weight',

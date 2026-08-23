@@ -1,6 +1,130 @@
-# Handover — the counter is feature-complete; what is left is the release
+# Handover — the WEB till now speaks RanceLab too
 
-**Read this section first.** Written 2026-08-23. Branch `v2`, head **`cf8a430`**, **pushed to
+**Read this section first.** Written 2026-08-23. Branch `v2`. Everything below is history kept
+for reference: the terminal's own handover, then the build record for the desktop parity work,
+then the Phase 2 port.
+
+## What changed, in one paragraph
+
+The desktop counter was already feature-complete against `docs/keyboard-shortcuts.html`. This
+pass brought the **web till to the same place**: it now wears the RanceLab layout (full-screen
+ticket, status strip, always-focused barcode row, the spec's column order, the paged key rail)
+and every key the terminal has, except the ones a browser genuinely cannot deliver. Two
+decisions were Shawn's and are recorded here because they shaped the work: the web till takes
+the **full terminal look** (no sidebar — the back office is reached by the Office letter menu on
+Alt+O), and the **GST bill-discount bug was fixed on both tills** rather than left marked.
+
+## The keys the web till now has
+
+`F5` rate change · `Alt+U` unit sheet (Pcs/Pack/Case) · `Ctrl+T` item remark · `Alt+T`
+GST-included basis · `Ctrl+B` barcode labels · `Ctrl+Z` undo the last removal · `F11` day-end ·
+`Alt+O` the Office letter menu. Enter now walks a line the way the spec says — qty, then unit,
+then rate, then back to the barcode row. `todo` no longer appears on any entry in
+`web/lib/pos/shortcuts.js`, matching the terminal.
+
+**The one key a browser cannot take is `F12`** — it belongs to the devtools and no page can
+cancel it. Location therefore carries a second combo, `Ctrl+⇧L`, and the rail prints it under
+the F12 button so the key is never a promise the page cannot keep. `F11` IS cancellable in
+Chrome and Edge, so Day keeps its RanceLab key there. Silent thermal printing, native
+notifications and offline operation stay **desktop-only**: a browser cannot drive a printer
+without a dialog, and the web till is not the offline register.
+
+## Four migrations, applied on this box only
+
+| # | What | Why it matters |
+|---|---|---|
+| `136_cart_item_units_remark.sql` | `pos.cart_items` += `unit_label`, `unit_factor`, `remark` | The web cart is server-side, so a line rung in cartons has nowhere else to remember it |
+| `137_stock_moves_in_pieces.sql` | The four stock triggers multiply by `unit_factor` | **Selling 2 cases of 240 took 2 pieces off the shelf.** See the trap below |
+| `138_cart_gst_included.sql` | `pos.carts.gst_included` | Alt+T has to reach the server, or the slip's lines and its total disagree about which way the tax ran |
+
+(`134` and `135` from the terminal's pass are still un-applied to staging and production too —
+that item has not moved.)
+
+**The trap in 137, because it will cost the next person an hour:** the POS *tables* live in the
+`pos` schema after the 121 flip, but these trigger FUNCTIONS are still `public.<name>()` carrying
+`SET search_path = pos, public`. Identically-named copies exist in `pos` and are bound to
+nothing. Replacing those changes no behaviour at all — check `pg_trigger` before assuming which
+copy is live.
+
+## The GST fix — what it changes on a real bill
+
+A ticket mixing exempt goods (rice, sugar) with a **bill-level** discount used to charge 5% on
+the exempt lines too. The discount now reduces every line pro-rata and only the taxable share
+carries tax:
+
+    Rice 500 + sugar 85 (exempt) + soap 100 (taxable), 10% off the invoice
+    before:  GST on 616.50 = 30.83
+    after:   GST on  90.00 =  4.50
+
+Nothing changes for a ticket with no bill discount, or one with nothing exempt on it — those
+paths are byte-identical. `desktop/lib/gst.ts` and `web/lib/gst.js` carry the same maths, and
+the desktop suite now covers it (51 unit tests, up from 48). Two further web-only exempt bugs
+were fixed while in there: the cart's `discount` and `override_price` actions hard-coded 5%, so
+discounting an exempt line re-added tax to it.
+
+## What is verified, and what is not
+
+- **Desktop unit tests: 51/51 green** (`cd desktop && npx vitest run lib/`).
+- **Web build: clean.**
+- **Web e2e: 27/27 green** — `--project=pelbu`, which is auth-setup (6) plus all four Pelbu
+  specs (21): two new ones written here (`pelbu-counter-look` 7, `pelbu-counter-line-keys` 6)
+  and the two older ones re-pointed at the current key map and current copy (`Alt+D` → `Ctrl+L`,
+  `Alt+Q` → `Ctrl+Q`; the price-list spec had been testing an `F7` badge that never existed in
+  `web/` and now tests the real `Alt+P`; `Convert to Quotation` → `Save as draft`; `Exchange —`
+  → `Return —`; F6 now needs a line, because salespeople are attributed per line).
+- **Not verified:** a real sale rung end-to-end in a browser by hand, and the label print
+  dialog (it opens an OS dialog, which no harness can assert on).
+
+**Running the web suite on this box** needs three things the harness does not tell you:
+1. Playwright's Docker image, matched to the installed version — chromium refuses on
+   ubuntu26.04-arm64. Mount the **repo root** and `-w /work/web`, or the config cannot resolve
+   `@playwright/test` (it is hoisted to the root `node_modules`).
+2. The app must serve from **this machine**, and `proxy.js` redirects to
+   `NEXT_PUBLIC_APP_URL` — which is `https://pos.pelbu.com` in `web/.env`. A local run without
+   an override silently tests the DEPLOYED build instead of yours. `web/.env.local` with
+   `NEXT_PUBLIC_APP_URL=http://localhost:3000` fixes it; **delete that file afterwards.**
+3. `next start` does not work with `output: standalone`. Run
+   `node .next/standalone/web/server.js` — and copy `.next/static` and `public` into
+   `.next/standalone/web/` first, or every page renders blank and the failure looks like a
+   selector problem. Load `web/.env` into that process too (`set -a; . web/.env; set +a`), or
+   every sign-in hangs on "Signing in…".
+4. **`NEXT_PUBLIC_*` is inlined at BUILD time**, so a runtime override cannot move it. That bites
+   twice: `NEXT_PUBLIC_APP_URL` (above) and `NEXT_PUBLIC_COOKIE_DOMAIN=.pelbu.com`, which makes
+   the auth cookie one a `localhost` browser drops on the floor — the login form just sits on
+   "Signing in…". Both belong in `web/.env.local`, followed by a rebuild.
+5. **The e2e admin client must ask for the `pos` schema.** `createClient(url, key)` talks to
+   `public`, where `carts` and `products` do not exist, so every seed and cleanup silently
+   no-ops and the failure looks like the feature. Pass `{ db: { schema: 'pos' } }` — the older
+   helpers in `e2e/specs/v2-helpers.js` do NOT, which is worth knowing before trusting
+   `clearCart()`.
+6. **Gate on `[data-ticket-ready="true"]`, not on the till bar being painted.** The cart loads
+   asynchronously; a key pressed in that window can only report "ticket still loading", and the
+   spec then waits out its whole timeout against a page that looks perfectly healthy. This is
+   the web twin of the terminal's `waitForShortcutsReady` trap.
+
+## Still open — unchanged by this pass
+
+1. **Apply migrations 134–138 to staging and production.** All are additive and idempotent.
+2. **QA the four PocketBase migrations on a REAL Windows terminal before tagging** (025, 026,
+   027, 028). Unchanged: xvfb here is not enough.
+3. **The desktop release blocker is NOT the CI secrets.** `APP_URL` and `RELEASE_INGEST_TOKEN`
+   (and the AWS pair) all exist on `gstposbhutan/edgePOS`, set 2026-06-16 — the previous
+   handover was wrong about this. The real blocker: `.github/workflows/desktop-release.yml`
+   POSTs the installer to `${APP_URL}/api/desktop/releases/upload`, which **404s in production**
+   and does not exist in this repo. `web/` only has `/api/desktop/releases/register`, which takes
+   JSON metadata and a `download_url` — no file upload, no S3 write. Either port the keyless
+   upload route from the monorepo, or point the workflow back at the two-step keyed path (`aws
+   s3 cp` with the AWS secrets that are already there, then POST to `/register`). Its own git
+   history has that version: `git show 4a73118:.github/workflows/desktop-release.yml`.
+4. **The Alt+P flake on the terminal** ("counter-line" spec, ~1 run in 3) is still unexplained
+   and still pre-existing.
+
+---
+
+# Handover — the terminal counter is feature-complete (superseded)
+
+**Superseded by the section above** — kept because its traps and test instructions still hold.
+Written 2026-08-23. Branch `v2`, head **`cf8a430`**, **pushed to
 `origin/v2`**, working tree clean. Everything below this section is history kept for reference —
 the build record for the parity work, then the Phase 2 port.
 

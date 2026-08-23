@@ -39,7 +39,7 @@ test('TOUR — Manager: day-to-day console + shifts + GST report + online checko
 
   // ═══ Tour intro ══════════════════════════════════════════════════════════
   await page.goto('/pos')
-  await page.locator('header button[title="Select customer (F6)"]').waitFor({ state: 'visible', timeout: 20000 }).catch(() => {})
+  await page.locator('header button[title="Customer (F9)"]').waitFor({ state: 'visible', timeout: 20000 }).catch(() => {})
   await titleCard(page, {
     kicker: 'Retailer · Manager',
     title: 'Run the floor',
@@ -77,7 +77,7 @@ test('TOUR — Manager: day-to-day console + shifts + GST report + online checko
 
   // ── Anchor a couple of register components, then defer the full walkthrough ─
   await caption(page, { step: 12, title: 'The register', text: 'Same till as the owner — the full walkthrough lives in the Owner tour.' }, 2200)
-  await callout(page, 'header button[title="Select customer (F6)"]', { step: 13, title: 'Customer (F6)', text: 'Attach a customer for khata credit and a digital receipt.' })
+  await callout(page, 'header button[title="Customer (F9)"]', { step: 13, title: 'Customer (F9)', text: 'Attach a customer for khata credit and a digital receipt.' })
   await callout(page, 'header button:has-text("Shift")', { step: 14, title: 'Shift badge', text: 'Open your shift here to count the drawer; closing it triggers the reconcile.' })
 
   // ═══ SCREEN 2 — Inventory ════════════════════════════════════════════════
@@ -147,7 +147,7 @@ test('TOUR — Manager: day-to-day console + shifts + GST report + online checko
 
   // ═══ FINALE — quick ONLINE checkout (QR · scan receipt · journal) ═════════
   await page.goto('/pos')
-  await page.locator('header button[title="Select customer (F6)"]').waitFor({ state: 'visible', timeout: 20000 }).catch(() => {})
+  await page.locator('header button[title="Customer (F9)"]').waitFor({ state: 'visible', timeout: 20000 }).catch(() => {})
   await titleCard(page, {
     kicker: 'Finale · Online checkout',
     title: 'Scan · scan · done',

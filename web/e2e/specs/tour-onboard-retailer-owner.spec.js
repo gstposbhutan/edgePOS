@@ -36,7 +36,7 @@ test('TOUR — Owner: full console walkthrough + GST report + NQRC checkout', as
 
   // ═══ Tour intro ══════════════════════════════════════════════════════════
   await page.goto('/pos')
-  await page.locator('button[title="Select customer (F6)"]').waitFor({ state: 'visible', timeout: 20000 }).catch(() => {})
+  await page.locator('button[title="Customer (F9)"]').waitFor({ state: 'visible', timeout: 20000 }).catch(() => {})
   await titleCard(page, {
     kicker: 'Retailer · Owner',
     title: 'Run your whole shop',
@@ -71,7 +71,7 @@ test('TOUR — Owner: full console walkthrough + GST report + NQRC checkout', as
 
   // ── Register top bar — the action strip ──────────────────────────────────
   await caption(page, { step: 14, title: 'The top bar', text: 'The header is actions only — navigation lives in the rail you just saw.' }, 1900)
-  await callout(page, 'button[title="Select customer (F6)"]', { step: 15, title: 'Customer (F6)', text: 'Attach a customer to the sale for khata credit and a digital receipt.' })
+  await callout(page, 'button[title="Customer (F9)"]', { step: 15, title: 'Customer (F9)', text: 'Attach a customer to the sale for khata credit and a digital receipt.' })
   await callout(page, 'header button[title^="Next invoice"]', { step: 16, title: 'Next invoice no.', text: 'A live preview of the next invoice number. Double-click to search past invoices.' })
   await callout(page, 'header button[title*="Invoice date"]', { step: 17, title: 'Invoice date', text: 'The server clock stamped on the sale. As owner you can back-date one invoice.' })
   await callout(page, 'header button[title^="Cash In/Out"]', { step: 18, title: 'Cash In / Out', text: 'Record money added to or taken from the drawer mid-shift.' })
@@ -202,7 +202,7 @@ test('TOUR — Owner: full console walkthrough + GST report + NQRC checkout', as
   // ═══ FINALE — ONLINE checkout showing the three NEW payment features ══════
   // Full page load so the QR component re-reads the just-saved merchant config.
   await page.goto('/pos')
-  await page.locator('button[title="Select customer (F6)"]').waitFor({ state: 'visible', timeout: 20000 }).catch(() => {})
+  await page.locator('button[title="Customer (F9)"]').waitFor({ state: 'visible', timeout: 20000 }).catch(() => {})
   await titleCard(page, {
     kicker: 'Finale · Online checkout',
     title: 'Scan · scan · done',

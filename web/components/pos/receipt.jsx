@@ -74,8 +74,20 @@ export function Receipt({ order, entity, items }) {
                     )}
                   </p>
                   {item.sku && <p className="text-gray-400">{item.sku}</p>}
+                  {/* The cashier's note on this line (Ctrl+T) — what the shop points at when a
+                      customer queries that item later, so it belongs on the customer's copy. */}
+                  {item.remark && <p className="text-gray-500 italic">{item.remark}</p>}
                 </td>
-                <td className="text-center py-1.5">{item.quantity}</td>
+                <td className="text-center py-1.5">
+                  {item.quantity}
+                  {/* A line rung by the pack or case says so, and says how many pieces that is —
+                      "2" against a case rate is otherwise unreadable on a slip. */}
+                  {Number(item.unit_factor) > 1 && (
+                    <span className="block text-gray-400 text-[9px]">
+                      {item.unit_label} × {item.unit_factor}
+                    </span>
+                  )}
+                </td>
                 <td className="text-right py-1.5">Nu.{parseFloat(item.unit_price).toFixed(2)}</td>
                 <td className="text-right py-1.5">Nu.{parseFloat(item.gst_5).toFixed(2)}</td>
                 <td className="text-right py-1.5 font-semibold">Nu.{parseFloat(item.total).toFixed(2)}</td>

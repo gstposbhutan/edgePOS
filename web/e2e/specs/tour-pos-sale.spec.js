@@ -11,7 +11,7 @@ test('TOUR — POS: ring up a cash sale', async ({ page }) => {
 
   // 1) The cashier opens the register.
   await page.goto('/pos')
-  await expect(page.locator('header button[title="Select customer (F6)"]')).toBeVisible({ timeout: 15000 })
+  await expect(page.locator('header button[title="Customer (F9)"]')).toBeVisible({ timeout: 15000 })
   await titleCard(page, {
     kicker: 'Vendor · Point of Sale',
     title: 'Ring up a cash sale',

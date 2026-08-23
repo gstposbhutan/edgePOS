@@ -29,6 +29,10 @@ const NAV = [
 
 export function PosSidebar() {
   const pathname = usePathname()
+  // The counter is a full-screen till (spec WF-01) — RanceLab gives the whole screen to the
+  // ticket, and a cashier navigates by key, not by pointer. Every OTHER /pos screen is the back
+  // office and keeps the rail; the counter reaches them through its Office letter menu (Alt+O).
+  const onCounter = pathname === '/pos' 
   const [subRole, setSubRole] = useState(null)
   const [shiftsEnabled, setShiftsEnabled] = useState(false)
   const [collapsed, setCollapsed] = useState(true)
@@ -43,6 +47,9 @@ export function PosSidebar() {
     setCollapsed(c => { const n = !c; try { localStorage.setItem('pos_sidebar_collapsed', n ? '1' : '0') } catch {} return n })
   }
 
+  // Return before the placeholder rail too, or the counter keeps a 56px stripe while the role
+  // resolves and the till is not actually full-screen.
+  if (onCounter) return null
   if (subRole === null) return <aside className="w-14 shrink-0 border-r border-border bg-background" />
   const items = NAV.filter(i => i.show(subRole) && (!i.needsShifts || shiftsEnabled))
 

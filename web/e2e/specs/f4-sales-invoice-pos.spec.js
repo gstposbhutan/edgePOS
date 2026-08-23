@@ -27,7 +27,7 @@ test.describe('Direct POS Sales Invoice Flow', () => {
     await page.goto('/pos')
     // Wait for the POS header to render (entity name + customer button),
     // confirming the keyboard handler is attached before we press F3/F10.
-    await expect(page.locator('header button[title="Select customer (F6)"]')).toBeVisible({ timeout: 15000 })
+    await expect(page.locator('header button[title="Customer (F9)"]')).toBeVisible({ timeout: 15000 })
 
     // ── Step 1: Add two products via F3 search ────────────────────────
     await addProductViaSearch(page, 'Druk Supreme')

@@ -43,6 +43,27 @@ export async function POST(request) {
     return NextResponse.json({ error: orderNoError?.message || 'Failed to generate order number' }, { status: 500 })
   }
 
+  // The line facts that must be stamped from the item master rather than taken from the
+  // client: GST exemption (tax is never client-trusted) — the unit the line was rung in and
+  // its remark come from the cart line, which the server wrote in the first place.
+  const productIds = [...new Set((items ?? []).map(i => i.product_id).filter(Boolean))]
+  const exemptById = new Map()
+  if (productIds.length) {
+    const { data: prods } = await supabase
+      .from('products')
+      .select('id, gst_exempt')
+      .in('id', productIds)
+    for (const pr of prods ?? []) exemptById.set(pr.id, !!pr.gst_exempt)
+  }
+  // Stock is held and moved in PIECES, so the line carries the factor it was rung at and the
+  // confirm-time trigger multiplies by it (migration 137). unit_factor is NOT NULL DEFAULT 1.
+  const lineFields = (item) => ({
+    gst_exempt:  exemptById.get(item.product_id) ?? false,
+    unit_label:  item.unit_label ?? null,
+    unit_factor: Number(item.unit_factor) > 0 ? Number(item.unit_factor) : 1,
+    remark:      item.remark ? String(item.remark).slice(0, 200) : null,
+  })
+
   const digitalSignature = createHash('sha256')
     .update(`${orderNo}:${grandTotal}:${entity?.tpn_gstin ?? ''}`)
     .digest('hex')
@@ -91,6 +112,7 @@ export async function POST(request) {
         gst_5:      item.gst_5,
         total:      item.total,
         status:     'ACTIVE',
+        ...lineFields(item),
       }))
     )
     if (qItemsError) return NextResponse.json({ error: qItemsError.message }, { status: 500 })
@@ -158,6 +180,7 @@ export async function POST(request) {
       gst_5:      item.gst_5,
       total:      item.total,
       status:     'ACTIVE',
+      ...lineFields(item),
     }))
   )
 

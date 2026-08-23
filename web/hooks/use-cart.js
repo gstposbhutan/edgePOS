@@ -1,13 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-
-function calcItemTotals(unitPrice, discount, quantity) {
-  const taxable = Math.max(0, unitPrice - discount)
-  const gst5    = parseFloat((taxable * 0.05 * quantity).toFixed(2))
-  const total   = parseFloat(((taxable * 1.05) * quantity).toFixed(2))
-  return { gst5, total }
-}
+import { calcCartTotals } from "@/lib/gst"
 
 // Per-unit price for a product under the active POS price list. Retail = batch
 // selling price → MRP → wholesale (legacy fallback); Wholesale = wholesale_price;
@@ -34,6 +28,10 @@ export function useCart(entityId, createdBy, priceListMode = 'RETAIL', onStockCa
     ? { whatsapp: activeCart.customer_whatsapp, buyerHash: activeCart.buyer_hash }
     : null
   const rawBillDiscount = Math.max(0, parseFloat(activeCart?.bill_discount ?? 0) || 0)
+  // The till's Alt+T basis belongs to the TICKET (migration 138), not to this tab: the server
+  // writes every line's gst_5 and total from it, so the slip's lines and its total can never
+  // disagree about which way the tax ran.
+  const gstIncluded = !!activeCart?.gst_included
 
   useEffect(() => {
     if (!entityId) return
@@ -129,7 +127,12 @@ export function useCart(entityId, createdBy, priceListMode = 'RETAIL', onStockCa
         (i.salesperson_id ?? null) === (product.salesperson_id ?? null) &&
         Number(i.unit_price) === Number(unitPrice)
       )
-      if (existing) return updateQty(existing.id, existing.quantity + 1)
+      // Returns the merged line, so callers that need the row (Ctrl+Z's restore) get one either
+      // way rather than having to guess which branch ran.
+      if (existing) {
+        const merged = await updateQty(existing.id, existing.quantity + 1)
+        return merged?.item ?? null
+      }
     }
 
     try {
@@ -147,9 +150,11 @@ export function useCart(entityId, createdBy, priceListMode = 'RETAIL', onStockCa
               : c
           ))
           if (data.stockCapped) onStockCap?.(data.item.name ?? product.name, data.available)
+          return data.item
         }
       }
     } catch { /* silently fail */ }
+    return null
   }, [cartId, items, activeIndex, priceListMode, onStockCap])
 
   const updateQty = useCallback(async (itemId, newQty) => {
@@ -316,6 +321,72 @@ export function useCart(entityId, createdBy, priceListMode = 'RETAIL', onStockCa
     } catch { /* silently fail */ }
   }, [items, overridePrice])
 
+  // Alt+U — ring a line in a different unit (Pcs / Pack / Case). The server re-rates from the
+  // price per PIECE and re-checks the stock cap in the new unit, so a case can never be sold
+  // out of a shelf holding half of one.
+  const setLineUnit = useCallback(async (itemId, { label, factor }) => {
+    try {
+      const res = await fetch('/api/pos/cart/items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set_unit', itemId, unitLabel: label, unitFactor: factor }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) return { error: data.error || 'Could not change the unit' }
+      if (data.item) {
+        setCarts(prev => prev.map((c, i) =>
+          i === activeIndex
+            ? { ...c, cart_items: c.cart_items.map(ci => ci.id === itemId ? data.item : ci) }
+            : c
+        ))
+        if (data.stockCapped) onStockCap?.(data.item.name, data.available)
+      }
+      return { item: data.item, capped: !!data.stockCapped, available: data.available }
+    } catch {
+      return { error: 'Could not change the unit' }
+    }
+  }, [activeIndex, onStockCap])
+
+  // Ctrl+T — the cashier's note on one line. Empty clears it.
+  const setLineRemark = useCallback(async (itemId, remark) => {
+    try {
+      const res = await fetch('/api/pos/cart/items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set_remark', itemId, remark }),
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      if (data.item) {
+        setCarts(prev => prev.map((c, i) =>
+          i === activeIndex
+            ? { ...c, cart_items: c.cart_items.map(ci => ci.id === itemId ? data.item : ci) }
+            : c
+        ))
+      }
+    } catch { /* silently fail */ }
+  }, [activeIndex])
+
+  // Alt+T — set the basis for this ticket. The server refuses once the cart has lines (one
+  // ticket, one basis), and returns the reason so the till can say it.
+  const setGstIncluded = useCallback(async (flag) => {
+    // The cart loads asynchronously; a key pressed in that window is early, not wrong.
+    if (!cartId) return { error: 'Ticket still loading — try again' }
+    try {
+      const res = await fetch('/api/pos/cart', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set_gst_included', cartId, gstIncluded: !!flag }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) return { error: data.error || 'Could not change the GST basis' }
+      setCarts(prev => prev.map((c, i) => (i === activeIndex ? { ...c, gst_included: !!flag } : c)))
+      return { gstIncluded: !!flag }
+    } catch {
+      return { error: 'Could not change the GST basis' }
+    }
+  }, [cartId, activeIndex])
+
   const removeItem = useCallback(async (itemId) => {
     try {
       await fetch('/api/pos/cart/items', {
@@ -383,33 +454,30 @@ export function useCart(entityId, createdBy, priceListMode = 'RETAIL', onStockCa
     setCarts(prev => prev.map((c, i) => (i === activeIndex ? { ...c, bill_discount: billDiscount } : c)))
   }, [cartId, activeIndex])
 
-  const subtotal        = items.reduce((s, i) => s + parseFloat(i.unit_price) * i.quantity, 0)
-  const discountTotal   = items.reduce((s, i) => s + parseFloat(i.discount ?? 0) * i.quantity, 0)
-  // Clamp the bill discount so the net can't go negative.
-  const billDiscount    = Math.min(rawBillDiscount, Math.max(0, subtotal - discountTotal))
-  const taxableSubtotal = Math.max(0, subtotal - discountTotal - billDiscount)
-  // No bill discount → keep the canonical per-line-then-sum (matches desktop + the stored line
-  // gst_5/total exactly). With a bill discount → GST is computed on the discounted invoice net.
-  const gstTotal   = billDiscount > 0
-    ? parseFloat((taxableSubtotal * 0.05).toFixed(2))
-    : parseFloat(items.reduce((s, i) => s + parseFloat(i.gst_5), 0).toFixed(2))
-  const grandTotal = billDiscount > 0
-    ? parseFloat((taxableSubtotal + gstTotal).toFixed(2))
-    : parseFloat(items.reduce((s, i) => s + parseFloat(i.total), 0).toFixed(2))
+  // Totals come from the shared helper (web/lib/gst.js), which is the mirror of the terminal's
+  // desktop/lib/gst.ts — a ticket must print the same bill whichever till rang it. Exemption is
+  // honoured in BOTH branches, including under a bill discount, where it used to be ignored.
+  const totals = calcCartTotals(
+    items.map(i => ({
+      unitPrice: parseFloat(i.unit_price) || 0,
+      discount:  parseFloat(i.discount ?? 0) || 0,
+      quantity:  i.quantity,
+      // The server owns the tax decision; the line simply carries it here for display.
+      gstExempt: !!(i.product?.gst_exempt ?? (parseFloat(i.gst_5 ?? 0) === 0 && parseFloat(i.total ?? 0) > 0)),
+    })),
+    rawBillDiscount,
+    gstIncluded,
+  )
+  const { subtotal, discountTotal, billDiscount, taxableSubtotal, gstTotal, grandTotal } = totals
 
   return {
-    cartId, items, customer, loading,
-    subtotal:        parseFloat(subtotal.toFixed(2)),
-    discountTotal:   parseFloat(discountTotal.toFixed(2)),
-    billDiscount:    parseFloat(billDiscount.toFixed(2)),
-    taxableSubtotal: parseFloat(taxableSubtotal.toFixed(2)),
-    gstTotal:        parseFloat(gstTotal.toFixed(2)),
-    grandTotal:      parseFloat(grandTotal.toFixed(2)),
+    cartId, items, customer, loading, gstIncluded,
+    subtotal, discountTotal, billDiscount, taxableSubtotal, gstTotal, grandTotal,
     carts,
     activeIndex,
     holdCart,
     switchCart,
     cancelCart,
-    addItem, updateQty, changeBatch, applyDiscount, overridePrice, repriceCart, removeItem, clearCart, setCustomerIdentity, applyBillDiscount, setLineSalesperson,
+    addItem, updateQty, changeBatch, applyDiscount, overridePrice, repriceCart, removeItem, clearCart, setCustomerIdentity, applyBillDiscount, setLineSalesperson, setLineUnit, setLineRemark, setGstIncluded,
   }
 }

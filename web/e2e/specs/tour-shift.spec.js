@@ -29,7 +29,7 @@ test('TOUR — Shift lifecycle: open, cash drawer, Z-report, close', async ({ pa
 
   await installTour(page)
   await page.goto('/pos')
-  await expect(page.locator('header button[title="Select customer (F6)"]')).toBeVisible({ timeout: 15000 })
+  await expect(page.locator('header button[title="Customer (F9)"]')).toBeVisible({ timeout: 15000 })
   await titleCard(page, {
     kicker: 'Vendor · Cash Shift',
     title: 'Open, run, and reconcile a shift',

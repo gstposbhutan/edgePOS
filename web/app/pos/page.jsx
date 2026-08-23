@@ -8,7 +8,6 @@ import { BatchPickerModal }   from "@/components/pos/batch-picker-modal"
 import { ProductSearchModal } from "@/components/pos/keyboard/product-search-modal"
 import { PaymentModal }       from "@/components/pos/keyboard/payment-modal"
 import { HelpOverlay }        from "@/components/pos/keyboard/help-overlay"
-import { ShortcutBar }        from "@/components/pos/keyboard/shortcut-bar"
 import { DiscountModal }      from "@/components/pos/keyboard/discount-modal"
 import { BillDiscountModal }  from "@/components/pos/keyboard/bill-discount-modal"
 import { CustomerPanelModal } from "@/components/pos/keyboard/customer-panel-modal"
@@ -38,6 +37,24 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { CustomerOtpModal } from "@/components/pos/customer-otp-modal"
+import { TillBar }          from "@/components/pos/keyboard/till-bar"
+import { BarcodeRow, BARCODE_INPUT_ID } from "@/components/pos/keyboard/barcode-row"
+import { ListingFooter }    from "@/components/pos/keyboard/listing-footer"
+import { UnitSheet }        from "@/components/pos/keyboard/unit-sheet"
+import { TextPromptModal }  from "@/components/pos/keyboard/text-prompt-modal"
+import { OfficeMenu }       from "@/components/pos/keyboard/office-menu"
+import { unitLadder, hasUnitChoice, lineFactor } from "@/lib/pos/units"
+import { PRICE_LIST_LABEL, loadPriceListMode, savePriceListMode, nextPriceListMode } from "@/lib/pos/price-list"
+import { printLabel, loadLabelConfig } from "@/lib/pos/labels"
+
+// The station's GST basis preference. Per-station, like the price list: a shop that prices
+// inclusive prices every bill that way, so the choice outlives one ticket.
+function readGstPref() {
+  try { return localStorage.getItem('pos_gst_included') === '1' } catch { return false }
+}
+function writeGstPref(flag) {
+  try { localStorage.setItem('pos_gst_included', flag ? '1' : '0') } catch { /* private mode */ }
+}
 
 export default function KeyboardPosPage() {
   const router = useRouter()
@@ -90,6 +107,17 @@ export default function KeyboardPosPage() {
   const [showDateOverride, setShowDateOverride] = useState(false)
   const [toastMsg, setToastMsg] = useState(null)
   const toastTimer = useRef(null)
+  // Alt+P — the active price tier. Persisted per station, like the terminal's.
+  const [priceListMode, setPriceListMode] = useState('RETAIL')
+  const [unitSheet, setUnitSheet] = useState(null)          // { itemId, resumeRate } — Alt+U
+  const [remarkPrompt, setRemarkPrompt] = useState(null)    // { itemId, name, initial } — Ctrl+T
+  const [labelPrompt, setLabelPrompt] = useState(null)      // { line } — Ctrl+B, how many labels
+  const [officeOpen, setOfficeOpen] = useState(false)       // Alt+O — the back office, on a full-screen till
+  // Ctrl+Z — what the last removal took off the ticket, so it can be put back.
+  const undoStack = useRef([])
+
+  useEffect(() => { setPriceListMode(loadPriceListMode()) }, [])
+
 
   const { shift, openShift, closeShift } = useShift()
 
@@ -156,9 +184,25 @@ export default function KeyboardPosPage() {
     subtotal, gstTotal, grandTotal, billDiscount, taxableSubtotal,
     carts, activeIndex,
     addItem, updateQty, changeBatch, removeItem, clearCart, setCustomerIdentity, applyDiscount, applyBillDiscount,
-    repriceCart, setLineSalesperson,
+    repriceCart, setLineSalesperson, setLineUnit, setLineRemark, setGstIncluded, overridePrice,
+    gstIncluded,
     holdCart, switchCart, cancelCart,
-  } = useCart(entity?.id, user?.id, 'RETAIL', (name, avail) => showToast(`Only ${avail} in stock`))
+  } = useCart(
+    entity?.id, user?.id, priceListMode,
+    // The cap is stated in whatever unit the line is being rung in — "only 2 in stock" has to
+    // mean 2 cartons on a carton line, or the cashier reads it as loose pieces.
+    (name, avail) => showToast(`Only ${avail} in stock`),
+  )
+
+  // The GST basis lives on the ticket (the server writes every line's tax from it), but the
+  // CHOICE is a property of the shop: a store that prices inclusive prices every bill that way.
+  // Remember it per station and apply it to each fresh, empty ticket, so Alt+T is pressed once
+  // rather than once per customer.
+  useEffect(() => {
+    if (!cartId || items.length > 0) return
+    const want = readGstPref()
+    if (want !== gstIncluded) setGstIncluded(want)
+  }, [cartId, items.length, gstIncluded, setGstIncluded])
 
   const { accounts, lookupAccount, createAccount } = useKhata(entity?.id)
 
@@ -168,10 +212,29 @@ export default function KeyboardPosPage() {
     else if (items.length === 1) setSelectedRow(0)
   }, [items.length])
 
+  // Every sheet that owns the keyboard while it is up: the ticket's own bindings stand down and
+  // the barcode row stops reclaiming focus until the last one closes.
+  const anyModalOpen = searchOpen || paymentOpen || helpOpen || showCustomerPanel || showDiscount ||
+    showBillDiscount || showInvoiceSearch || showSalesPerson || showQuotation || showComp ||
+    showExchange || showMarket || showDelivery || showHandover || showReceipt || showStartShift ||
+    showEndShift || showCashAdj || showZReport || creditOtpOpen || officeOpen ||
+    !!weighProduct || !!batchPickItem || !!unitSheet || !!remarkPrompt || !!labelPrompt
+
   useEffect(() => {
     function handleKeyDown(e) {
-      if (searchOpen || paymentOpen || helpOpen || showCustomerPanel || showDiscount || showBillDiscount || showInvoiceSearch || showSalesPerson || showQuotation || showComp || showExchange || showMarket || showDelivery || showHandover || showReceipt) return
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return
+      if (anyModalOpen) return
+
+      // The barcode row holds the caret continuously (spec WF-01), so it is a deliberate
+      // exception: the ticket's keys still reach it from inside the field, which is what lets
+      // ↑↓ move the highlighted line while a scan is being typed. Every other field (the inline
+      // qty / rate editor) keeps its keys to itself.
+      const target = document.activeElement
+      const inBarcode = target?.id === BARCODE_INPUT_ID
+      if (!inBarcode && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName)) return
+      // While there is text in the barcode row, Enter submits it and Delete edits it — both
+      // belong to the field, not to the ticket.
+      const barcodeHasText = inBarcode && target.value.length > 0
+      if (barcodeHasText && (e.key === 'Enter' || e.key === 'Delete')) return
 
       // --- Commands: the RanceLab Counter map (lib/pos/shortcuts.js is the source of truth) ---
       const isManager = ['MANAGER', 'OWNER', 'ADMIN'].includes(subRole)
@@ -180,7 +243,7 @@ export default function KeyboardPosPage() {
       if (hit) {
         e.preventDefault()
         // A key the spec reserves but whose action we have not built says so, rather than
-        // silently doing nothing under a reflex the cashier trusts.
+        // silently doing nothing under a reflex the cashier trusts. Nothing carries this today.
         if (hit.todo) { showToast(`${hit.combo} ${hit.label} — not built yet`); return }
 
         const needLine  = () => { if (line) return true; showToast('Select a product line first'); return false }
@@ -193,17 +256,23 @@ export default function KeyboardPosPage() {
           case 'qtyUp':         if (needLine()) updateQty(line.id, line.quantity + 1); break
           // Less-quantity stops at 1 and removes the line below that, which is what a cashier
           // stepping a mis-scan back down expects.
-          case 'qtyDown':       if (needLine()) { if (line.quantity > 1) updateQty(line.id, line.quantity - 1); else removeItem(line.id) } break
+          case 'qtyDown':       if (needLine()) { if (line.quantity > 1) updateQty(line.id, line.quantity - 1); else removeLine(line) } break
           case 'qtyFocus':      if (needLine()) editRowRef.current?.(selectedRow); break
+          case 'rate':          if (needLine()) editRowRef.current?.(selectedRow, 'rate'); break
+          case 'unitSheet':     if (needLine()) openUnitSheet(selectedRow); break
+          case 'itemRemark':    if (needLine()) openRemarkPrompt(selectedRow); break
           case 'itemDiscount':  if (needLine()) setShowDiscount(true); break
           case 'complimentary': if (!isManager) showToast('Complimentary is manager-only'); else if (needItems()) setShowComp(true); break
           case 'removeLine':    voidSelected(); break
+          case 'undo':          undoLast(); break
 
           case 'productInfo':
           case 'products':      openSearch(''); break
           case 'customerInfo':
           case 'party':         setShowCustomerPanel(true); break
           case 'salesperson':   if (needLine()) setShowSalesPerson(true); break
+          case 'priceList':     cyclePriceList(); break
+          case 'gstIncluded':   toggleGstIncluded(); break
           case 'deliveryDetail':setShowDelivery(true); break
           case 'tender':
           case 'tenderAlt':     if (needItems()) setPaymentOpen(true); break
@@ -214,7 +283,13 @@ export default function KeyboardPosPage() {
           // Both reprint the last bill on its own serial — no new GST number is drawn.
           case 'print':
           case 'lastGst':       if (lastOrderNo) setShowReceipt(true); else showToast('No bill to reprint'); break
+          case 'barcodePrn':    if (needLine()) printBarcodeLabel(selectedRow); break
           case 'exit':          setCheckoutErr(null); break
+          case 'day':           dayEnd(); break
+          // F12 is the browser's and cannot be cancelled, so this fires from the rail button or
+          // the Ctrl+⇧L alias. Both land here.
+          case 'location':
+          case 'locationAlt':   showToast(entity?.name ? `Shop: ${entity.name}` : 'Shop not set'); break
 
           case 'billDiscount':  if (needItems()) setShowBillDiscount(true); break
           case 'quotation':     if (needItems()) setShowQuotation(true); break
@@ -222,6 +297,7 @@ export default function KeyboardPosPage() {
           case 'postMarket':    if (needItems()) setShowMarket(true); break
           case 'zReport':       if (isManager && shiftsEnabled) setShowZReport(true); break
           case 'cashInOut':     if (isManager && shiftsEnabled) setShowCashAdj(true); break
+          case 'office':        setOfficeOpen(true); break
           default: break
         }
         return
@@ -248,8 +324,11 @@ export default function KeyboardPosPage() {
         return
       }
 
-      // Type-to-search (single char, no modifiers)
+      // Typing goes to the barcode row, which already has the caret — that is the whole point of
+      // keeping it focused, and it is what stops a wedge scan losing its first characters. Only
+      // when focus is elsewhere does a printable character fall back to opening the picker.
       if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        if (inBarcode) return
         e.preventDefault()
         openSearch(e.key)
       }
@@ -257,10 +336,11 @@ export default function KeyboardPosPage() {
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-    // checkoutErr must be a dep: handleNewTransaction (F2) reads it to block
-    // clearing on a stock error. Without it, the out-of-stock branch (no item
-    // added → items unchanged → effect not re-run) leaves a stale closure.
-  }, [searchOpen, paymentOpen, helpOpen, showCustomerPanel, showDiscount, showBillDiscount, showInvoiceSearch, showSalesPerson, showQuotation, showComp, showExchange, showMarket, showDelivery, showHandover, showReceipt, items, selectedRow, carts, activeIndex, subRole, checkoutErr, shiftsEnabled, lastOrderNo, updateQty, removeItem])
+    // checkoutErr must be a dep: handleNewTransaction (Ctrl+D) reads it to block clearing on a
+    // stock error. Without it, the out-of-stock branch (no item added → items unchanged →
+    // effect not re-run) leaves a stale closure.
+  }, [anyModalOpen, items, selectedRow, carts, activeIndex, subRole, checkoutErr, shiftsEnabled,
+      lastOrderNo, entity?.name, priceListMode, gstIncluded, updateQty, removeItem])
 
   // Suppress the BROWSER's own function-key actions across the whole till, in the capture phase
   // and independently of the handler above — that one returns early whenever a sheet is open or
@@ -268,11 +348,12 @@ export default function KeyboardPosPage() {
   // (The cart itself survives a reload — it is server-side — but the open sheet, the typed query,
   // the selected row and any uncommitted qty edit do not, in front of a waiting customer.)
   // preventDefault in capture does not stop propagation, so every binding above still runs.
-  // F11/F12 belong to the browser chrome and cannot be reclaimed here; the Electron terminal
-  // takes F11 in its main process instead.
+  // F11 IS cancellable in Chrome/Edge (the terminal's browsers), so Day keeps its RanceLab key
+  // and fullscreen does not fire underneath it. F12 is NOT cancellable anywhere — it belongs to
+  // the devtools — so Location carries the Ctrl+⇧L alias instead of a key that cannot arrive.
   useEffect(() => {
     function swallowBrowserFnKeys(e) {
-      if (/^F([1-9]|10)$/.test(e.key)) e.preventDefault()
+      if (/^F([1-9]|10|11)$/.test(e.key)) e.preventDefault()
     }
     document.addEventListener('keydown', swallowBrowserFnKeys, true)
     return () => document.removeEventListener('keydown', swallowBrowserFnKeys, true)
@@ -323,9 +404,184 @@ export default function KeyboardPosPage() {
     setSearchOpen(true)
   }
 
+  // Enter in the barcode row: a scanned code adds its product straight to the ticket; anything
+  // that isn't a known code opens the picker already seeded with what was typed, so a cashier
+  // who half-remembers a name never has to retype it.
+  async function handleBarcodeEntry(value) {
+    try {
+      const res = await fetch(`/api/pos/products?barcode=${encodeURIComponent(value)}`)
+      if (res.ok) {
+        const data = await res.json()
+        const first = (data.results || [])[0]
+        if (first) {
+          handleProductAdd({
+            product_id: first.products.id,
+            id:         first.products.id,
+            name:       first.products.name,
+            sku:        first.products.sku,
+            unit:       first.products.unit,
+            mrp:        first.mrp ?? first.products.mrp,
+            selling_price: first.selling_price ?? first.products.selling_price ?? first.mrp,
+            wholesale_price:   first.products.wholesale_price,
+            distributor_price: first.products.distributor_price,
+            sold_by_weight:    first.products.sold_by_weight,
+            available_stock:   first.quantity,
+            batch_id:     first.id,
+            batch_number: first.batch_number,
+            expires_at:   first.expires_at,
+            stock_rotation:        first.products.stock_rotation,
+            has_older_batch:       first.has_older_batch,
+            earliest_batch_expiry: first.earliest_batch_expiry,
+          }, 1, priceListMode)
+          return
+        }
+      }
+    } catch { /* fall through to the picker */ }
+    openSearch(value)
+  }
+
+  // Removing a line remembers what it was, so Ctrl+Z can put it back. The stack holds the
+  // payload `addItem` needs rather than the cart row, because the row's id dies with it.
+  function removeLine(line) {
+    if (!line) return
+    undoStack.current.push({
+      id:         line.product_id,
+      product_id: line.product_id,
+      name:       line.name,
+      sku:        line.sku,
+      unitPrice:  parseFloat(line.unit_price),
+      quantity:   line.quantity,
+      batch_id:   line.batch_id,
+      unit_label: line.unit_label,
+      unit_factor: line.unit_factor,
+    })
+    removeItem(line.id)
+  }
+
+  // Ctrl+Z — put back the last line the cashier took off. Only removals are undoable: a
+  // quantity or rate edit is visible on the ticket and can simply be retyped, while a line that
+  // has vanished is the one a cashier cannot reconstruct mid-queue.
+  async function undoLast() {
+    const last = undoStack.current.pop()
+    if (!last) { showToast('Nothing to undo'); return }
+    const restored = await addItem(last, priceListMode)
+    if (!restored) { showToast('Could not restore the line'); return }
+    // Put it back as it was, not merely back on the ticket: the unit it was rung in first (which
+    // re-rates from the price per piece), then the exact rate it carried, which may have been
+    // overridden by hand.
+    if (Number(last.unit_factor) > 1) {
+      await setLineUnit(restored.id, { label: last.unit_label, factor: Number(last.unit_factor) })
+    }
+    if (Number.isFinite(last.unitPrice) && Math.abs(last.unitPrice - parseFloat(restored.unit_price)) > 0.001) {
+      await overridePrice(restored.id, last.unitPrice)
+    }
+    showToast(`Restored ${last.name}`)
+  }
+
+  // ── Alt+U — the Pcs / Pack / Case sheet ─────────────────────────────────────────────────
+  // Returns whether it opened, so the Enter cycle can fall straight through to the rate step on
+  // an item that has no ladder rather than stalling on a sheet with one row.
+  function openUnitSheet(index, resumeRate = false) {
+    const line = items[index]
+    if (!line) { showToast('Select a product line first'); return false }
+    if (!hasUnitChoice(line.product)) {
+      showToast(`${line.name} — sold in ${line.product?.unit || 'Pcs'} only, no pack size set`)
+      return false
+    }
+    setUnitSheet({ itemId: line.id, resumeRate })
+    return true
+  }
+
+  function closeUnitSheet() {
+    setUnitSheet(sheet => {
+      // The cycle resumes at the rate step whether or not a level was chosen — Esc means "not
+      // this unit", not "stop editing the line".
+      if (sheet?.resumeRate) {
+        const at = items.findIndex(i => i.id === sheet.itemId)
+        if (at >= 0) setTimeout(() => editRowRef.current?.(at, 'rate'), 0)
+      }
+      return null
+    })
+  }
+
+  async function applyUnitLevel(level) {
+    if (!unitSheet) return
+    const res = await setLineUnit(unitSheet.itemId, { label: level.label, factor: level.factor })
+    if (res?.error) showToast(res.error)
+    closeUnitSheet()
+  }
+
+  // ── Ctrl+T — the line's remark ──────────────────────────────────────────────────────────
+  function openRemarkPrompt(index) {
+    const line = items[index]
+    if (!line) { showToast('Select a product line first'); return }
+    setRemarkPrompt({ itemId: line.id, name: line.name, initial: line.remark || '' })
+  }
+
+  // ── Alt+T — GST-included basis ──────────────────────────────────────────────────────────
+  // The basis belongs to the ticket, so the server owns it: it writes every line's tax from it
+  // and refuses to change it once lines exist. A bill half-rung one way and half the other is
+  // not something a cashier can create by accident.
+  async function toggleGstIncluded() {
+    const next = !gstIncluded
+    // Write the station preference BEFORE the server call. The effect above keeps a fresh ticket
+    // on the station's basis; if it re-ran while the preference still said the old value it would
+    // flip the ticket straight back, and the key would look dead.
+    const prev = readGstPref()
+    writeGstPref(next)
+    const res = await setGstIncluded(next)
+    if (res?.error) { writeGstPref(prev); showToast(res.error); return }
+    showToast(next ? 'Rates now include GST (extracted)' : 'GST added to the rate (exclusive)')
+  }
+
+  // ── Alt+P — the price list ──────────────────────────────────────────────────────────────
+  async function cyclePriceList() {
+    const next = nextPriceListMode(priceListMode)
+    setPriceListMode(next)
+    savePriceListMode(next)
+    // Existing lines move to the new tier too — a single GST bill priced from two different
+    // lists is exactly the kind of thing a cashier cannot spot on the printout.
+    if (items.length > 0) await repriceCart(next)
+    showToast(`Price list: ${PRICE_LIST_LABEL[next]}${items.length ? ` · ${items.length} line${items.length > 1 ? 's' : ''} repriced` : ''}`)
+  }
+
+  // ── Ctrl+B — barcode labels for the highlighted line ────────────────────────────────────
+  function printBarcodeLabel(index) {
+    const line = items[index]
+    if (!line) { showToast('Select a product line first'); return }
+    setLabelPrompt({ line })
+  }
+
+  function doPrintLabels(line, raw) {
+    const copies = parseInt(raw, 10)
+    setLabelPrompt(null)
+    if (!Number.isFinite(copies)) return
+    // Clamp rather than trust: a mistyped 500 sends a roll of labels through the printer with no
+    // way to stop it, and the print dialog gives no other confirmation step.
+    const n = Math.min(50, Math.max(1, copies))
+    const ok = printLabel({
+      name:    line.name,
+      sku:     line.sku,
+      barcode: line.product?.barcode,
+      mrp:     line.product?.mrp ?? parseFloat(line.unit_price),
+      unit:    line.product?.unit,
+    }, loadLabelConfig(), n)
+    showToast(ok ? `Printing ${n} label${n > 1 ? 's' : ''}` : 'The browser blocked the print window — allow pop-ups for this site')
+  }
+
+  // ── F11 — day end ───────────────────────────────────────────────────────────────────────
+  function dayEnd() {
+    if (!shiftsEnabled) { showToast('Shifts are off for this store'); return }
+    // Closing the drawer on an open ticket would strand it, so the cashier is told rather than
+    // losing what is on screen.
+    if (items.length > 0) { showToast('Finish or hold the ticket before day-end'); return }
+    if (!shift) { showToast('No open shift'); return }
+    setShowEndShift(true)
+  }
+
   function voidSelected() {
     if (items[selectedRow]) {
-      removeItem(items[selectedRow].id)
+      removeLine(items[selectedRow])
       setSelectedRow(r => Math.max(0, r - (r >= items.length - 1 ? 1 : 0)))
       setCheckoutErr(null)   // removing an item clears the stock-error path
     }
@@ -591,7 +847,7 @@ export default function KeyboardPosPage() {
           </div>
           <button
             onClick={() => setShowCustomerPanel(true)}
-            title="Select customer (F6)"
+            title="Customer (F9)"
             className={`text-xs font-medium border px-2 py-0.5 rounded-full shrink-0 truncate max-w-[160px] ${
               selectedCustomer
                 ? 'text-emerald-600 border-emerald-500/30 bg-emerald-500/10'
@@ -649,7 +905,18 @@ export default function KeyboardPosPage() {
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
-          {/* Top bar = ACTIONS only. Page navigation lives in the left sidebar (PosSidebar). */}
+          {/* Top bar = ACTIONS only. The counter is full-screen (it is a till, not a console),
+              so page navigation is the Office letter menu rather than a sidebar. */}
+          <Button
+            variant="ghost"
+            size="sm"
+            title="Office — back office [Alt+O]"
+            onClick={() => setOfficeOpen(true)}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <LayoutDashboard className="h-4 w-4 mr-1.5" />
+            Office
+          </Button>
           <NotificationBell />
           <Button
             variant="ghost"
@@ -738,36 +1005,50 @@ export default function KeyboardPosPage() {
           <button
             onClick={holdCart}
             className="flex items-center gap-1 px-2 py-1 rounded text-xs text-muted-foreground hover:text-primary hover:bg-muted/50 transition-colors shrink-0"
-            title="Hold cart & start new [Shift+F3]"
+            title="Hold cart & start new [Ctrl+H]"
           >
             + Hold
           </button>
         </div>
       )}
 
+      <TillBar
+        title="Counter"
+        ready={!!cartId}
+        buyer={selectedCustomer?.debtor_name ?? customer?.whatsapp}
+        gstIncluded={gstIncluded}
+        priceList={PRICE_LIST_LABEL[priceListMode]}
+        hint="F1 Help · Alt+O Office"
+      />
+
+      <BarcodeRow
+        disabled={anyModalOpen}
+        onSubmit={handleBarcodeEntry}
+      />
+
       <CartTable
         items={items}
         onUpdateQty={handleQtyChange}
-        onRemoveItem={removeItem}
+        onOverridePrice={overridePrice}
+        onRemoveItem={(id) => removeLine(items.find(i => i.id === id))}
         onChangeBatch={setBatchPickItem}
         selectedRow={selectedRow}
         onSelectRow={setSelectedRow}
         onEditRequest={editRowRef}
+        // Editing done — the caret goes back to the barcode row, so the next scan lands in it.
+        onEditEnd={() => document.getElementById(BARCODE_INPUT_ID)?.focus()}
+        onUnitStep={(index) => openUnitSheet(index, true)}
         salespeopleById={salespeopleById}
       />
 
-      {items.length > 0 && (
-        <div className="border-t border-border px-4 py-2 flex items-center justify-end gap-6 text-sm tabular-nums shrink-0 bg-muted/10">
-          <span className="text-muted-foreground">Subtotal: <strong>Nu. {subtotal.toFixed(2)}</strong></span>
-          {billDiscount > 0 && (
-            <span className="text-emerald-600">Invoice disc: <strong>−Nu. {billDiscount.toFixed(2)}</strong></span>
-          )}
-          <span className="text-muted-foreground">GST (5%): <strong>Nu. {gstTotal.toFixed(2)}</strong></span>
-          <span className="text-lg font-bold text-primary">Total: Nu. {grandTotal.toFixed(2)}</span>
-        </div>
-      )}
-
-      <ShortcutBar />
+      <ListingFooter
+        itemCount={items.length}
+        subtotal={subtotal}
+        billDiscount={billDiscount}
+        gstTotal={gstTotal}
+        grandTotal={grandTotal}
+        gstIncluded={gstIncluded}
+      />
 
       <ProductSearchModal
         open={searchOpen}
@@ -974,6 +1255,50 @@ export default function KeyboardPosPage() {
           onClear={() => { setDeliveryAddress(null); showToast('Delivery address cleared') }}
         />
       )}
+
+      {unitSheet && (() => {
+        const line = items.find(i => i.id === unitSheet.itemId)
+        if (!line) return null
+        return (
+          <UnitSheet
+            open
+            levels={unitLadder(line.product)}
+            currentFactor={lineFactor(line)}
+            productName={line.name}
+            // On-hand in PIECES — the sheet floors it per level, so a shelf of 25 offers two
+            // cartons of 12 and not 2.08.
+            pieceStock={typeof line.product?.current_stock === 'number' ? line.product.current_stock : null}
+            onSelect={applyUnitLevel}
+            onClose={closeUnitSheet}
+          />
+        )
+      })()}
+
+      {remarkPrompt && (
+        <TextPromptModal
+          open
+          title="Item remark"
+          label={`A note against ${remarkPrompt.name}. It prints beside the line on the slip.`}
+          initial={remarkPrompt.initial}
+          placeholder="damaged carton — sold as seen"
+          onSubmit={(text) => { setLineRemark(remarkPrompt.itemId, text); setRemarkPrompt(null) }}
+          onClose={() => setRemarkPrompt(null)}
+        />
+      )}
+
+      {labelPrompt && (
+        <TextPromptModal
+          open
+          title="Print barcode labels"
+          label={`How many labels for ${labelPrompt.line.name}? (up to 50)`}
+          initial="1"
+          maxLength={2}
+          onSubmit={(raw) => doPrintLabels(labelPrompt.line, raw)}
+          onClose={() => setLabelPrompt(null)}
+        />
+      )}
+
+      <OfficeMenu open={officeOpen} onClose={() => setOfficeOpen(false)} />
 
       {toastMsg && (
         <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[60] px-4 py-2 rounded-lg bg-foreground text-background text-sm shadow-lg pointer-events-none">
