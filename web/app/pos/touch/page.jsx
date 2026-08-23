@@ -528,9 +528,11 @@ export default function PosPage() {
             )}
           </div>
 
-          {/* 4K Camera canvas */}
+          {/* Camera canvas — no fixed height: the pad sizes itself to the camera's own
+              resolution and caps its own height, so a 16:9 or 4:3 stream is shown whole
+              instead of being cropped into a 256px letterbox. */}
           {cameraActive && (
-            <div className="px-4 pb-3 shrink-0 h-64">
+            <div className="px-4 pb-3 shrink-0">
               <CameraCanvas
                 active={cameraActive}
                 onProductRecognized={(product) => {

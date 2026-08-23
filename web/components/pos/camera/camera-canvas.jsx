@@ -14,12 +14,20 @@ import { MODEL_CONFIG }          from "@/lib/vision/model-config"
  * Gold bounding boxes pulse on confirmed SKU matches.
  * Unrecognized detections show grey boxes.
  *
+ * The pad sizes itself to the camera's OWN resolution: the frame keeps the stream's aspect
+ * ratio and grows to whatever width the section gives it, capped at `maxHeightVh` of the
+ * viewport so it cannot push the rest of the screen out of the way. Nothing is cropped — which
+ * also matters for correctness, not just looks: the detection overlay maps normalised box
+ * coordinates straight onto this element, so a letterboxed or cover-cropped video would draw
+ * every box in the wrong place.
+ *
  * @param {{
  *   onProductRecognized: (product: { productId, name, sku, score }) => void,
  *   active: boolean,
+ *   maxHeightVh?: number,
  * }} props
  */
-export function CameraCanvas({ onProductRecognized, active = true }) {
+export function CameraCanvas({ onProductRecognized, active = true, maxHeightVh = 52 }) {
   const videoRef      = useRef(null)
   const canvasRef     = useRef(null)
   const engineRef     = useRef(null)
@@ -34,6 +42,15 @@ export function CameraCanvas({ onProductRecognized, active = true }) {
   const [recognized,   setRecognized]   = useState({})        // detectionId → product
   const [embedCount,   setEmbedCount]   = useState(0)
   const [errorMsg,     setErrorMsg]     = useState(null)
+  // The stream's actual resolution. 4K is only ever *requested* — the camera answers with what
+  // it has (often 1280x720 or a 4:3 sensor), so the frame has to follow the answer, not the ask.
+  const [resolution,   setResolution]   = useState(null)     // { w, h } once metadata arrives
+
+  // Until the camera reports its own size, assume the shape we asked for — that way the pad
+  // does not visibly jump when the real resolution arrives a frame later.
+  const aspect = resolution
+    ? resolution.w / resolution.h
+    : MODEL_CONFIG.CAMERA_WIDTH / MODEL_CONFIG.CAMERA_HEIGHT
 
   // ── Initialise camera + engine ───────────────────────────────────────────
   useEffect(() => {
@@ -57,6 +74,13 @@ export function CameraCanvas({ onProductRecognized, active = true }) {
         if (videoRef.current) {
           videoRef.current.srcObject = stream
           await videoRef.current.play()
+          // videoWidth/Height are 0 until metadata lands; play() resolving is not a guarantee.
+          const readSize = () => {
+            const v = videoRef.current
+            if (v?.videoWidth && v?.videoHeight) setResolution({ w: v.videoWidth, h: v.videoHeight })
+          }
+          readSize()
+          videoRef.current.addEventListener('loadedmetadata', readSize)
         }
       } catch (err) {
         setStatus('no-camera')
@@ -202,12 +226,26 @@ export function CameraCanvas({ onProductRecognized, active = true }) {
 
   // ── Render ───────────────────────────────────────────────────────────────
   return (
-    <div className="relative w-full h-full bg-obsidian rounded-xl overflow-hidden">
+    <div className="w-full flex items-center justify-center">
+      {/*
+        Width is capped two ways at once: the section's own width, and whatever width would make
+        the frame taller than maxHeightVh. Height then follows from the aspect ratio, so the
+        camera's full frame is always visible and never cropped.
+        `max-height` alone would NOT do: with width pinned at 100% the browser clamps the height
+        and silently breaks the ratio, which is how the overlay drifts off the objects.
+      */}
+      <div
+        className="relative w-full bg-obsidian rounded-xl overflow-hidden"
+        style={{
+          aspectRatio: `${aspect}`,
+          width: `min(100%, calc(${maxHeightVh}vh * ${aspect}))`,
+        }}
+      >
 
       {/* Video feed */}
       <video
         ref={videoRef}
-        className="w-full h-full object-cover"
+        className="w-full h-full object-contain"
         muted
         playsInline
         autoPlay
@@ -270,6 +308,11 @@ export function CameraCanvas({ onProductRecognized, active = true }) {
             <Cpu className="h-2.5 w-2.5" />
             {inferMs}ms
           </span>
+          {resolution && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-obsidian/70 text-muted-foreground border border-border/30 tabular-nums">
+              {resolution.w}×{resolution.h}
+            </span>
+          )}
           {embedCount > 0 && (
             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-obsidian/70 text-muted-foreground border border-border/30">
               {embedCount} products
@@ -287,10 +330,11 @@ export function CameraCanvas({ onProductRecognized, active = true }) {
         </div>
       )}
 
-      {/* Scanning animation border when active + ready */}
-      {status === 'ready' && (
-        <div className="absolute inset-0 rounded-xl border-2 border-primary/20 pointer-events-none" />
-      )}
+        {/* Scanning animation border when active + ready */}
+        {status === 'ready' && (
+          <div className="absolute inset-0 rounded-xl border-2 border-primary/20 pointer-events-none" />
+        )}
+      </div>
     </div>
   )
 }
