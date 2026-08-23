@@ -92,6 +92,49 @@ function extractColorHistogram(canvas) {
 }
 
 /**
+ * Crop the middle of the frame — the fallback for when the detector finds no box.
+ *
+ * The pad tells the shopkeeper to "hold items in view to auto-add", and a COCO detector has
+ * never seen most of a Bhutanese grocery, so it draws no box around a noodle packet and the
+ * catalog is never consulted. Held-up items are centred and dominant by definition, so the
+ * middle of the frame is a good guess at what is being shown.
+ */
+export function cropCenter(videoEl, fraction = MODEL_CONFIG.CENTER_CROP_FRACTION) {
+  const vw = videoEl.videoWidth  || MODEL_CONFIG.CAMERA_WIDTH
+  const vh = videoEl.videoHeight || MODEL_CONFIG.CAMERA_HEIGHT
+  const side = Math.min(vw, vh) * fraction
+
+  const canvas = document.createElement('canvas')
+  canvas.width  = Math.round(side)
+  canvas.height = Math.round(side)
+  canvas.getContext('2d').drawImage(
+    videoEl,
+    (vw - side) / 2, (vh - side) / 2, side, side,
+    0, 0, canvas.width, canvas.height,
+  )
+  return canvas
+}
+
+/**
+ * Try to recognise whatever is being held up, without a detection to guide the crop.
+ * Returns the matched product or null. Deliberately uses the same threshold and margin as the
+ * detection path — the bar for writing a line to a real bill does not drop just because the
+ * detector was quiet.
+ *
+ * @returns {Promise<{ productId: string, name: string, sku: string, score: number }|null>}
+ */
+export async function matchHeldItem({ videoEl, embeddingStore, mediapipeEmbedder }) {
+  if (!embeddingStore || !mediapipeEmbedder) return null
+  try {
+    const vector = await extractFeatureVector(cropCenter(videoEl), mediapipeEmbedder)
+    return embeddingStore.match(vector)
+  } catch (err) {
+    console.warn('[SKU] held-item match failed:', err.message)
+    return null
+  }
+}
+
+/**
  * Full 4-stage SKU recognition pipeline.
  * Called once per YOLO detection batch.
  *

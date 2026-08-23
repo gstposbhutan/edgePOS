@@ -36,6 +36,7 @@ export async function proxy(request) {
     // failure that also bites the moment a session expires with the pad open.
     pathname.startsWith('/onnx/') ||
     pathname.startsWith('/models/') ||
+    pathname.startsWith('/mediapipe/') ||
     pathname === '/favicon.ico'
   ) {
     return NextResponse.next()

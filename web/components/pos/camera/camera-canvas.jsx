@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { YoloEngine }            from "@/lib/vision/yolo-engine"
 import { ProductEmbeddingStore } from "@/lib/vision/product-embeddings"
-import { runSkuPipeline }        from "@/lib/vision/sku-recognition"
+import { runSkuPipeline, matchHeldItem } from "@/lib/vision/sku-recognition"
 import { MODEL_CONFIG }          from "@/lib/vision/model-config"
 
 /**
@@ -32,6 +32,7 @@ export function CameraCanvas({ onProductRecognized, active = true, maxHeightVh =
   const canvasRef     = useRef(null)
   const engineRef     = useRef(null)
   const embStoreRef   = useRef(null)
+  const embedderRef   = useRef(null)   // MediaPipe ImageEmbedder — one instance, two jobs
   const rafRef        = useRef(null)
   const streamRef     = useRef(null)
 
@@ -45,6 +46,8 @@ export function CameraCanvas({ onProductRecognized, active = true, maxHeightVh =
   // The stream's actual resolution. 4K is only ever *requested* — the camera answers with what
   // it has (often 1280x720 or a 4:3 sensor), so the frame has to follow the answer, not the ask.
   const [resolution,   setResolution]   = useState(null)     // { w, h } once metadata arrives
+  const [catalogMsg,   setCatalogMsg]   = useState(null)     // what the catalog sync is doing
+  const [lastMatch,    setLastMatch]    = useState(null)     // most recent recognised product
 
   // Until the camera reports its own size, assume the shape we asked for — that way the pad
   // does not visibly jump when the real resolution arrives a frame later.
@@ -100,12 +103,52 @@ export function CameraCanvas({ onProductRecognized, active = true, maxHeightVh =
         return
       }
 
-      // 3. Init embedding store
+      // 3. Feature extractor. This is the piece that decides whether "recognition" means
+      //    anything: with it, a crop and a catalog photo land in the same MobileNet space and
+      //    can be compared; without it the pipeline falls back to a colour histogram that
+      //    cannot tell one red packet from another.
+      //    Assets are served locally (scripts/fetch-vision-assets.mjs) — a till must not depend
+      //    on a CDN reachable from Thimphu.
+      let extractor = null
+      try {
+        const { FilesetResolver, ImageEmbedder } = await import('@mediapipe/tasks-vision')
+        const fileset = await FilesetResolver.forVisionTasks('/mediapipe')
+        const embedder = await ImageEmbedder.createFromOptions(fileset, {
+          baseOptions: { modelAssetPath: '/models/mobilenet_v3_small.tflite' },
+          quantize: false,
+        })
+        embedderRef.current = embedder
+        // One wrapper, handed to both the catalog sync and the crop pipeline, so there is no way
+        // for the two sides to drift onto different models.
+        extractor = {
+          embed: (source) => {
+            const out = embedder.embed(source)
+            const e = out?.embeddings?.[0]
+            return e ? new Float32Array(e.floatEmbedding ?? e.quantizedEmbedding) : null
+          },
+        }
+      } catch (err) {
+        console.warn('[SKU] image embedder unavailable:', err.message)
+      }
+
+      // 4. Catalog → local vectors, in that same space.
       const store = new ProductEmbeddingStore()
-      const count = await store.init()
-      await store.syncFromServer()
+      await store.init()
+      setCatalogMsg('Reading product catalog…')
+      const count = await store.syncFromServer(extractor, (done, total) => {
+        setCatalogMsg(`Learning products ${done}/${total}…`)
+      })
       embStoreRef.current = store
       setEmbedCount(count)
+      setCatalogMsg(null)
+      if (count === 0) {
+        // Say it plainly: the pad will draw boxes and name nothing, and the reason is the
+        // catalog, not the camera.
+        const withImage = store.coverage?.withImage ?? 0
+        console.warn(withImage === 0
+          ? '[SKU] no product in this shop has a photo — nothing can be recognised'
+          : '[SKU] catalog photos could not be embedded')
+      }
 
       if (!cancelled) {
         setStatus('ready')
@@ -120,10 +163,25 @@ export function CameraCanvas({ onProductRecognized, active = true, maxHeightVh =
       stopLoop()
       stopCamera()
       engineRef.current?.dispose()
+      try { embedderRef.current?.close() } catch { /* already gone */ }
     }
   }, [active])
 
   // ── Inference loop ───────────────────────────────────────────────────────
+  // A held item stays in frame for many frames; without this it would be added to the bill
+  // once per frame. Same product within the cooldown is treated as still-being-shown.
+  const lastAddRef = useRef({ productId: null, at: 0 })
+  const ADD_COOLDOWN_MS = 4000
+
+  function announce(product) {
+    const now = Date.now()
+    const last = lastAddRef.current
+    if (last.productId === product.productId && now - last.at < ADD_COOLDOWN_MS) return
+    lastAddRef.current = { productId: product.productId, at: now }
+    setLastMatch({ ...product, at: now })
+    onProductRecognized?.(product)
+  }
+
   function startLoop() {
     async function loop() {
       if (!videoRef.current || !engineRef.current) return
@@ -140,13 +198,22 @@ export function CameraCanvas({ onProductRecognized, active = true, maxHeightVh =
             videoEl:           videoRef.current,
             detections:        dets,
             embeddingStore:    embStoreRef.current,
-            mediapipeEmbedder: null,
+            mediapipeEmbedder: embedderRef.current,
             onRecognized: (detection, product) => {
               const key = `${Math.round(detection.x1 * 100)}_${Math.round(detection.y1 * 100)}`
               setRecognized(prev => ({ ...prev, [key]: product }))
-              onProductRecognized?.(product)
+              announce(product)
             },
           })
+        } else if (embStoreRef.current && dets.length === 0) {
+          // Nothing boxed. The detector only knows COCO classes, so most of a grocery is
+          // invisible to it — try the middle of the frame, which is where a held-up item is.
+          const product = await matchHeldItem({
+            videoEl:           videoRef.current,
+            embeddingStore:    embStoreRef.current,
+            mediapipeEmbedder: embedderRef.current,
+          })
+          if (product) announce(product)
         }
 
         drawOverlay(dets)
@@ -261,7 +328,7 @@ export function CameraCanvas({ onProductRecognized, active = true, maxHeightVh =
       {status === 'loading' && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-obsidian gap-3">
           <div className="h-10 w-10 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-muted-foreground">Loading AI model...</p>
+          <p className="text-sm text-muted-foreground">{catalogMsg ?? 'Loading AI model…'}</p>
         </div>
       )}
 
@@ -313,11 +380,24 @@ export function CameraCanvas({ onProductRecognized, active = true, maxHeightVh =
               {resolution.w}×{resolution.h}
             </span>
           )}
-          {embedCount > 0 && (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-obsidian/70 text-muted-foreground border border-border/30">
-              {embedCount} products
-            </span>
-          )}
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${
+            embedCount > 0
+              ? 'bg-obsidian/70 text-muted-foreground border-border/30'
+              : 'bg-tibetan/20 text-tibetan border-tibetan/40'
+          }`}>
+            {embedCount > 0 ? `${embedCount} products known` : 'no product photos — cannot match'}
+          </span>
+        </div>
+      )}
+
+      {/* HUD — bottom: what was just recognised. Without this the pad silently adds a line and
+          the cashier has to look away at the ticket to find out what it thought it saw. */}
+      {status === 'ready' && lastMatch && (
+        <div className="absolute bottom-3 left-3 right-3 flex justify-center pointer-events-none">
+          <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-primary/90 text-primary-foreground shadow">
+            ✓ {lastMatch.name}
+            <span className="opacity-75 tabular-nums">{Math.round(lastMatch.score * 100)}%</span>
+          </span>
         </div>
       )}
 

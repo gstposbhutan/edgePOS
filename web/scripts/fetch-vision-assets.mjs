@@ -30,6 +30,15 @@ const ORT_DIST = path.resolve(WEB, '..', 'node_modules', 'onnxruntime-web', 'dis
 const ONNX_OUT = path.join(WEB, 'public', 'onnx')
 const MODEL_OUT = path.join(WEB, 'public', 'models', 'yolov8n.onnx')
 
+// MediaPipe's Image Embedder: the WASM ships in node_modules, the model does not. This is what
+// turns a crop into a feature vector — WITHOUT it the pipeline falls back to a 96-bin colour
+// histogram, which cannot tell one red packet from another.
+const MP_DIST = path.resolve(WEB, '..', 'node_modules', '@mediapipe', 'tasks-vision', 'wasm')
+const MP_OUT = path.join(WEB, 'public', 'mediapipe')
+const EMBEDDER_OUT = path.join(WEB, 'public', 'models', 'mobilenet_v3_small.tflite')
+const EMBEDDER_URL =
+  'https://storage.googleapis.com/mediapipe-models/image_embedder/mobilenet_v3_small/float32/1/mobilenet_v3_small.tflite'
+
 // The plain build is the CPU/WASM path; the .jsep build is what WebGPU runs on. Each needs its
 // loader .mjs beside it — ORT fetches the pair by name from wasmPaths.
 const RUNTIME_FILES = [
@@ -62,6 +71,40 @@ async function copyRuntime() {
   console.log(`✓ ONNX runtime → public/onnx/ (${mb(total)})`)
 }
 
+async function copyMediapipe() {
+  if (!existsSync(MP_DIST)) {
+    console.warn('  ! @mediapipe/tasks-vision is not installed — the embedder will be unavailable')
+    return
+  }
+  await mkdir(MP_OUT, { recursive: true })
+  const { readdir } = await import('node:fs/promises')
+  let total = 0
+  for (const name of await readdir(MP_DIST)) {
+    const from = path.join(MP_DIST, name)
+    await copyFile(from, path.join(MP_OUT, name))
+    total += (await stat(from)).size
+  }
+  console.log(`✓ MediaPipe wasm → public/mediapipe/ (${mb(total)})`)
+}
+
+async function fetchEmbedderModel() {
+  if (existsSync(EMBEDDER_OUT)) {
+    console.log(`✓ image embedder already present (${mb((await stat(EMBEDDER_OUT)).size)})`)
+    return
+  }
+  await mkdir(path.dirname(EMBEDDER_OUT), { recursive: true })
+  try {
+    const res = await fetch(EMBEDDER_URL, { redirect: 'follow' })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    await writeFile(EMBEDDER_OUT, Buffer.from(await res.arrayBuffer()))
+    console.log(`✓ image embedder → public/models/mobilenet_v3_small.tflite (${mb((await stat(EMBEDDER_OUT)).size)})`)
+  } catch (err) {
+    // Not fatal: the pipeline still runs, just on the histogram fallback.
+    console.warn(`  ! could not fetch the image embedder (${err.message}) — product matching will`)
+    console.warn('    fall back to a colour histogram, which is much weaker. Retry when online.')
+  }
+}
+
 /** An ONNX file starts with a protobuf field header; an HTML error page does not. */
 async function looksLikeOnnx(file) {
   const head = (await readFile(file)).subarray(0, 16).toString('latin1')
@@ -89,6 +132,8 @@ const argv = process.argv.slice(2)
 const modelArg = argv.includes('--model') ? argv[argv.indexOf('--model') + 1] : null
 
 await copyRuntime()
+await copyMediapipe()
+await fetchEmbedderModel()
 
 if (modelArg) {
   await installModel(modelArg)

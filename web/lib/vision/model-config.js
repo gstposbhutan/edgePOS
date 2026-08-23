@@ -19,6 +19,31 @@ export const MODEL_CONFIG = {
   CONFIDENCE_THRESHOLD: 0.45,
   IOU_THRESHOLD:        0.45,  // NMS overlap threshold
 
+  // SKU matching. A match here AUTO-ADDS a line to a real bill, so a near-tie is refused
+  // outright: a wrong item on the ticket is worse for a shop than no item at all, because the
+  // cashier has to notice it to undo it.
+  //
+  // These numbers are MEASURED, not guessed. Embedding each catalog photo with MobileNetV3 and
+  // querying with a 60% centre crop of the same photo — roughly what the pad sees when an item
+  // is held up — gives the correct product first every time, but at cosine scores of only
+  // 0.50-0.73. An earlier 0.75 threshold would therefore have matched NOTHING, ever, while
+  // looking perfectly reasonable in the source.
+  //
+  // The absolute score is the weak signal; the MARGIN is the strong one (0.18-0.58 in the same
+  // run). So the threshold sits below the weakest correct match with room for a live camera to
+  // be worse than a clean photo, and the margin does the discriminating.
+  //
+  // Re-measure when the catalog grows: margins shrink as more near-neighbours arrive, and a
+  // shop with two similar packets is exactly where a false positive would first appear.
+  MATCH_THRESHOLD: 0.45,
+  MATCH_MARGIN:    0.08,
+
+  // The pad's own hint is "hold items in view to auto-add", so when the detector finds no box
+  // at all we still embed the middle of the frame and try to match that. Without this, any
+  // product COCO has never heard of — which is most of a Bhutanese grocery — can never be
+  // recognised no matter how complete the catalog is.
+  CENTER_CROP_FRACTION: 0.6,
+
   // Number of COCO classes (YOLOv8n default — override for custom model)
   NUM_CLASSES: 80,
 
