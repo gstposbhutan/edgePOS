@@ -1,8 +1,89 @@
-# Handover — RanceLab parity on the desktop terminal
+# Handover — the counter is feature-complete; what is left is the release
 
-**Read this section first; it is the live work.** Written 2026-08-22 (second handover of the
-day — the Phase 2 port section below is now history, kept for context). Branch `v2`, head
-`5034363`, **pushed to `origin/v2`**, working tree clean.
+**Read this section first.** Written 2026-08-23. Branch `v2`, head **`cf8a430`**, **pushed to
+`origin/v2`**, working tree clean. Everything below this section is history kept for reference —
+the build record for the parity work, then the Phase 2 port.
+
+## State in one paragraph
+
+The desktop terminal now implements **the whole RanceLab Counter key table**. The last five keys
+the spec reserved — Alt+U unit sheet, Ctrl+T item remark, Alt+T GST-included, F2 bill date,
+Ctrl+B barcode print — were built in `cf8a430`; `todo` no longer appears on any entry in
+`desktop/lib/pos-shortcuts.ts`. Verified at 48 unit tests, 29/29 Electron specs over three
+consecutive runs, fullscreen passing under a WM, and both apps building clean. **No product work
+is queued.** What remains is release mechanics and two decisions that are Shawn's.
+
+## Do these next, in this order
+
+1. **Apply migrations 134 + 135 to staging and production.** They exist only on this box's local
+   Supabase. `134_pack_case_units.sql` (the Pcs/Pack/Case ladder) and `135_order_item_remark.sql`
+   are both additive and idempotent — every column is nullable or defaulted, and no existing read
+   path changes. Apply via `docker exec -i <db> psql -U postgres -d postgres -v ON_ERROR_STOP=1`.
+2. **QA four PocketBase migrations on a REAL Windows terminal before tagging.** 025 (enables the
+   Batch API — without it every sale fails outright), 026 (repairs 14 fields that never existed),
+   and now 027 (unit ladder) + 028 (item remark). 027/028 are additive and low-risk, but a PB
+   config change bricked v1.0.2 boot before. xvfb on this box is not enough.
+3. **Recreate the CI secrets** `APP_URL` and `RELEASE_INGEST_TOKEN` on this repo — they only ever
+   existed on the monorepo's GitHub, and a `desktop-vX.Y.Z` tag will not publish without them.
+   This is the actual release blocker.
+4. **Then tag a release.** Notes are already drafted under "Unreleased" in `desktop/CHANGELOG.md`.
+
+## Two decisions waiting on Shawn — do not guess these
+
+- **The web till's remap (`7716521`) is still undeployed**, so production web is unchanged either
+  way. Keep it or revert that one commit; the two web bug fixes in `b435161` are worth keeping
+  regardless. Also `pelbu-customer-pricelist.spec.js` tests an F7 price-list feature that does not
+  exist in `web/` — stale, and failing before any of this work.
+- **A real GST bug, deliberately left alone.** `calcCartTotals`' bill-discount branch does not
+  consult per-line `gstExempt`, so a ticket that mixes exempt goods (rice, sugar) with a
+  **bill-level** discount charges 5% on the exempt lines too. It pre-dates this work, the web cart
+  shares the shape, and fixing it changes the totals on every such bill — so it is marked in
+  `desktop/lib/gst.ts` and left for a deliberate call rather than changed quietly. The
+  no-bill-discount path is per-line and does honour exemption.
+
+## The one thing that will make Alt+U look broken
+
+**The unit sheet is inert until a shop fills in pack sizes.** The factors live on the item master
+(web back office → product form → "Pack sizes"), and an item with none configured reports
+"sold in Pcs only — no pack size set" instead of opening a sheet. That refusal is deliberate — a
+Pcs/Pack/Case sheet built on a guessed factor would invent quantities and mis-deduct stock — but
+if nobody has entered any, the key will look dead. **Terminals also need to re-bootstrap** to
+pull the new fields down (`sync/bootstrap` now ships `pack_size`, `case_size` and the labels).
+
+Stock is only ever held and moved in **pieces**. A line keeps its quantity in the sold unit and
+its price per one of that unit, so `quantity x unit_price = total` still holds; the factor enters
+only where stock is read or written. Cloud stock reconciles from `inventory_movements`, not order
+lines, so the terminal writing pieces needed no cloud-side stock change. The model and its 18
+tests are in `desktop/lib/units.ts` — read the header comment there before changing anything, in
+particular why this is NOT the vendor-console package model (084/085).
+
+## Two harness traps that cost real time
+
+- **A key pressed after `reload()` but before the counter's shortcut effect registers is swallowed
+  silently.** The spec then waits out its entire timeout on an assertion that can never pass, and
+  the trace shows a perfectly healthy page. `#pos-barcode` being visible is NOT sufficient. Gate on
+  `waitForShortcutsReady()` in `e2e/electron/app-fixture.ts`.
+- **Specs seed products by barcode and REUSE the existing row** (a fresh id would orphan cart lines
+  pointing at the old one), so two specs sharing a barcode silently rename each other's product and
+  the loser fails a long way from the cause. There is now an allocation registry at the top of
+  `app-fixture.ts` — claim a number there before seeding.
+
+Also: a `git stash` of `desktop/` reverts the arm64 PocketBase binary, after which every spec fails
+in ~12ms and it looks nothing like a binary problem. Re-fetch after any stash or pop.
+
+**Known pre-existing flake, not from this work:** `counter-line` "Alt+P cycles the price list"
+fails roughly 1 run in 3, and 4 of 6 when repeated in isolation. Verified at the same 4-of-6 rate
+against a stashed pre-parity tree. Alt+P silently does nothing — the tier never changes and the
+line never reprices. `waitForShortcutsReady` does **not** help it, so the cause is something other
+than registry arming; start there rather than assuming it is the same bug.
+
+---
+
+# Build record — RanceLab parity on the desktop terminal
+
+Written 2026-08-22 across two sessions, amended 2026-08-23. **No longer the live work** (see the
+section above), but still the reference for how the counter is put together, what will bite you
+before a release, and how to run the tests. Nothing here has been superseded.
 
 ## Why this work exists
 
@@ -60,7 +141,7 @@ the two web bug fixes in `b435161` are worth keeping regardless.
 5. **The shared `Input` component does not forward `id`** (base-ui primitive underneath), which
    breaks label association and lookups. Use a plain `<input>` when you need an id.
 
-## The five reserved keys — now built (2026-08-22, third session)
+## The five reserved keys — now built (concluded 2026-08-23, commit `cf8a430`)
 
 All five work; `todo` no longer appears on any entry in `desktop/lib/pos-shortcuts.ts`.
 
@@ -101,11 +182,7 @@ path is per-line and does honour exemption.
 
 ## What is left
 
-- **Release**: desktop ships via a `desktop-vX.Y.Z` tag; CI secrets `APP_URL` and
-  `RELEASE_INGEST_TOKEN` still need recreating on this repo (they only existed on the
-  monorepo's GitHub).
-- The web till's remap is undeployed (see above), and `pelbu-customer-pricelist.spec.js` tests
-  an F7 price-list feature that **does not exist in web/** — stale, failing before this work.
+Moved to the live handover at the top of this file — follow that list, not a second copy here.
 
 ## Running the tests (this is the trustworthy signal)
 
