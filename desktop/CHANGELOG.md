@@ -5,7 +5,7 @@ Offline-first Electron + PocketBase retail terminal. Versions are the
 (`/api/desktop/releases/latest`); release notes are also entered in the
 admin **Releases** console at publish time.
 
-## Unreleased — the five reserved counter keys
+## 1.5.0 — the five reserved counter keys (2026-08-23)
 The RanceLab key map had five keys the spec reserves that reported "not built yet"
 rather than doing nothing. All five now work.
 - **Alt+U unit sheet — sell by the pack or the case.** Items can carry a Pcs/Pack/Case
