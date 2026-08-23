@@ -40,6 +40,16 @@ interface PosShortcutsInput {
   onQtyDelta?: (delta: number) => void;
   onItemDiscount?: () => void;
   onRateChange?: () => void;
+  /** Alt+U — the Pcs/Pack/Case sheet for the highlighted line. */
+  onUnitSheet?: () => void;
+  /** Ctrl+B — print a barcode label for the highlighted line's product. */
+  onBarcodePrint?: () => void;
+  /** F2 — set the date stamped on the next invoice. */
+  onBillDate?: () => void;
+  /** Ctrl+T — a note against the highlighted line. */
+  onItemRemark?: () => void;
+  /** Alt+T — whether catalog rates already contain GST. */
+  onGstIncluded?: () => void;
   onPriceList?: () => void;
   onReprintLast?: () => void;
   /** Ask the cashier for a number. Replaces window.prompt, which throws in Electron. */
@@ -103,6 +113,11 @@ export function usePosShortcuts(input: PosShortcutsInput) {
       qtyDown:       input.onQtyDelta ? () => input.onQtyDelta!(-1) : needsListing("Less quantity"),
       qtyFocus:      input.onChangeQty ?? needsListing("Change qty"),
       rate:          input.onRateChange ?? needsListing("Rate change"),
+      unitSheet:     input.onUnitSheet ?? needsListing("Unit"),
+      barcodePrn:    input.onBarcodePrint ?? needsListing("Barcode print"),
+      date:          () => input.onBillDate?.(),
+      itemRemark:    input.onItemRemark ?? needsListing("Item remark"),
+      gstIncluded:   () => input.onGstIncluded?.(),
       priceList:     () => input.onPriceList?.(),
       print:         () => input.onReprintLast?.(),
       lastGst:       () => input.onReprintLast?.(),

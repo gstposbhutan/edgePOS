@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/supabase/server'
+import { packCaseFields } from '@/lib/units'
 import { nextUniqueSku } from '@/lib/products/sku'
 
 /** GET /api/products/catalog — fetch products with categories and categories list */
@@ -17,6 +18,7 @@ export async function GET() {
       .select(`
         id, name, sku, hsn_code, unit, mrp, wholesale_price, selling_price,
         current_stock, image_url, is_active, sold_by_weight, gst_exempt, created_at,
+        pack_size, case_size, pack_label, case_label,
         category, subcategory, condition, brand, description, tags, specifications, video_url, ai_enriched, stock_rotation
       `)
       // Scope to the caller's own shop — a store only manages its own catalog (multi-tenant).
@@ -51,6 +53,11 @@ export async function POST(request) {
       return NextResponse.json({ error: 'FEFO products need an expiry date on the opening batch.' }, { status: 400 })
     }
 
+    // Pcs/Pack/Case ladder for the counter's unit sheet — validated here so a bad factor comes
+    // back as advice rather than a raw CHECK violation.
+    const packCase = packCaseFields(formData)
+    if (packCase.error) return NextResponse.json({ error: packCase.error }, { status: 400 })
+
     // Blank SKU → auto-number: continue this vendor's series, else start a default one.
     const sku = formData.sku?.trim() || await nextUniqueSku(supabase, entityId)
 
@@ -71,6 +78,7 @@ export async function POST(request) {
         reorder_point:   parseInt(formData.reorder_point) || 10,
         sold_by_weight:  !!formData.sold_by_weight,
         gst_exempt:      !!formData.gst_exempt,
+        ...packCase.fields,
         video_url:       formData.video_url?.trim() || null,
         ...(formData.specifications !== undefined ? { specifications: formData.specifications || {} } : {}),
         is_active:       true,

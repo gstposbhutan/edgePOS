@@ -354,6 +354,11 @@ async function doBootstrap() {
         wholesale_price: p.wholesale_price, current_stock: p.current_stock,
         reorder_point: p.reorder_point, image_url: p.image_url, is_active: p.is_active,
         sold_by_weight: p.sold_by_weight, gst_exempt: p.gst_exempt,
+        // Pcs/Pack/Case ladder (cloud migration 134 / PB 027). Coalesced to 0 so an older
+        // cloud that does not send them yet leaves the item piece-only rather than undefined,
+        // which PocketBase would drop on write.
+        pack_size: p.pack_size || 0, case_size: p.case_size || 0,
+        pack_label: p.pack_label || "", case_label: p.case_label || "",
       };
       if (p.category_name && catMap.has(p.category_name)) fields.category = catMap.get(p.category_name);
       const existing = p.sku ? await findOne("products", `sku = "${esc(p.sku)}"`) : null;

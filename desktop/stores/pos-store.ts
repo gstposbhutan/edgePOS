@@ -44,6 +44,9 @@ export interface PosStore {
   clearFavorites: (userId: string | undefined) => void;
   taxExempt: boolean;
   setTaxExempt: (v: boolean) => void;
+  /** Alt+T — the rates on the catalog already contain GST, so it is extracted, not added. */
+  gstIncluded: boolean;
+  setGstIncluded: (v: boolean) => void;
 
   // UI State (in-memory)
   activeModal: string | null;
@@ -106,6 +109,8 @@ export const usePosStore = create<PosStore>()(
       },
       taxExempt: false,
       setTaxExempt: (v) => set({ taxExempt: v }),
+      gstIncluded: false,
+      setGstIncluded: (v) => set({ gstIncluded: v }),
 
       // UI State
       activeModal: null,
@@ -174,6 +179,9 @@ export const usePosStore = create<PosStore>()(
         favorites: state.favorites,
         heldCarts: state.heldCarts,
         taxExempt: state.taxExempt,
+        // Persisted: how a shop prices is a standing property of the shop, not of one ticket,
+        // and a cashier must not have to re-set it after every restart.
+        gstIncluded: state.gstIncluded,
       }),
     }
   )

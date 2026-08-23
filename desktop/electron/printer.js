@@ -57,8 +57,8 @@ function buildReceiptHtml(order, settings) {
     .map(
       (i) => `
         <tr>
-          <td class="name">${esc(i.name)}</td>
-          <td class="num">${esc(i.quantity)}</td>
+          <td class="name">${esc(i.name)}${i.remark ? `<br /><span class="remark">${esc(i.remark)}</span>` : ""}</td>
+          <td class="num">${esc(i.quantity)}${Number(i.unit_factor) > 1 ? " " + esc(i.unit_label || "Pack") : ""}</td>
           <td class="num">${money(i.total)}</td>
         </tr>`
     )
@@ -70,6 +70,7 @@ function buildReceiptHtml(order, settings) {
 <meta charset="utf-8" />
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  .remark { font-size: 0.85em; font-style: italic; }
   html, body {
     width: ${width}mm;
     font-family: "Courier New", monospace;

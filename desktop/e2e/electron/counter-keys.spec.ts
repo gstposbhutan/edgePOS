@@ -36,7 +36,7 @@ test.describe("counter keys (Electron)", () => {
 
     await appPage.keyboard.press("F1");
     await expect(appPage.getByText("Keyboard Shortcuts")).toBeVisible({ timeout: 10000 });
-    // A key from the map, and one the spec reserves but we have not built.
+    // Two keys straight from the shared map — the sheet is rendered from it, not a second list.
     await expect(appPage.getByText("Add Quantity").first()).toBeVisible();
     await expect(appPage.getByText("Rate Change").first()).toBeVisible();
     await appPage.keyboard.press("Escape");

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/supabase/server'
+import { packCaseFields } from '@/lib/units'
 
 /** PATCH /api/products/catalog/[id] — update a product */
 export async function PATCH(request, { params }) {
@@ -10,6 +11,9 @@ export async function PATCH(request, { params }) {
     const { id } = await params
     const supabase = ctx.supabase
     const { formData, categoryIds } = await request.json()
+
+    const packCase = packCaseFields(formData)
+    if (packCase.error) return NextResponse.json({ error: packCase.error }, { status: 400 })
 
     const { error } = await supabase
       .from('products')
@@ -24,6 +28,7 @@ export async function PATCH(request, { params }) {
         reorder_point:   parseInt(formData.reorder_point) || 10,
         sold_by_weight:  !!formData.sold_by_weight,
         gst_exempt:      !!formData.gst_exempt,
+        ...packCase.fields,
         video_url:       formData.video_url?.trim() || null,
         ...(formData.specifications !== undefined ? { specifications: formData.specifications || {} } : {}),
       })

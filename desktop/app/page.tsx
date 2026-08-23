@@ -46,6 +46,10 @@ import { HeldCartsModal } from "@/components/pos/held-carts-modal";
 import { HelpOverlay } from "@/components/pos/help-overlay";
 import { WeightEntryModal } from "@/components/pos/weight-entry-modal";
 import { AmountPromptModal, type AmountPromptRequest } from "@/components/pos/amount-prompt-modal";
+import { UnitSheet } from "@/components/pos/keyboard/unit-sheet";
+import { DatePromptModal, type DatePromptRequest } from "@/components/pos/date-prompt-modal";
+import { TextPromptModal, type TextPromptRequest } from "@/components/pos/text-prompt-modal";
+import { unitLadder, hasUnitChoice, lineFactor, type UnitLevel } from "@/lib/units";
 import { printLabel } from "@/lib/print-label";
 import { loadLabelConfig } from "@/lib/label-config";
 import { useShifts } from "@/hooks/use-shifts";
@@ -124,9 +128,10 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
     items, loading: cartLoading,
     subtotal, discountTotal, taxableSubtotal, gstTotal, grandTotal, billDiscount,
     taxExempt, setTaxExempt,
+    gstIncluded, setGstIncluded,
     subtotalExTax, gstTotalExempt, grandTotalExempt,
     addItem, updateQty, applyDiscount, applyBillDiscount, overridePrice, removeItem, clearCart,
-    setLineSalesperson,
+    setLineSalesperson, setLineUnit, setLineRemark,
     setCustomer: setCartCustomer,
   } = useCart("RETAIL");
   const { customers, createCustomer } = useCustomers();
@@ -221,13 +226,19 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
   // selectedRow + editRowRef). Unused in grid mode.
   const [selectedRow, setSelectedRow] = useState(0);
   const editRowRef = useRef<((index: number, field?: EditField) => void) | null>(null);
+  // Alt+U / the Enter cycle's middle step. Keyed by cart-line ID, not row index — the ticket
+  // can re-sync from PocketBase while the sheet is open and rows would shift under it.
+  // `resumeRate` marks the sheet as part of an Enter cycle, which continues into the rate step.
+  const [unitSheet, setUnitSheet] = useState<{ itemId: string; resumeRate: boolean } | null>(null);
+  const [datePrompt, setDatePrompt] = useState<DatePromptRequest | null>(null);
+  const [textPrompt, setTextPrompt] = useState<TextPromptRequest | null>(null);
   const [showSearch, setShowSearch] = useState(false);
   const [searchSeed, setSearchSeed] = useState("");
 
   const anyModalOpen =
     showScanner || showPayment || showCustomer || showReceipt || showZReport ||
     showShiftModal !== null || showHandover || showHeldCarts || showHelp || showSearch ||
-    amountPrompt !== null;
+    amountPrompt !== null || unitSheet !== null || datePrompt !== null || textPrompt !== null;
 
   const { validateStock, confirmPayment, saveQuotation } = useCheckout({
     pb,
@@ -633,6 +644,127 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
     setShowReceipt(true);
   }, [lastOrder]);
 
+  // Alt+T — whether the catalog's rates already contain GST (spec: "GST included toggle").
+  //
+  // This changes what every price on the ticket MEANS, so it refuses to flip mid-ticket: lines
+  // already rung would silently re-split their tax under the cashier, and the bill they quoted
+  // would no longer be the bill they take.
+  const toggleGstIncluded = useCallback(() => {
+    if (items.length > 0) {
+      toast("Finish or clear the ticket before changing the GST basis");
+      return;
+    }
+    const next = !gstIncluded;
+    setGstIncluded(next);
+    toast.success(next ? "Rates now read as GST-inclusive" : "Rates now read as GST-exclusive");
+  }, [items.length, gstIncluded, setGstIncluded]);
+
+  // Ctrl+T — a note against the highlighted line (spec: "^T Item remark"). An empty entry
+  // clears it, which is why the text prompt passes a blank through instead of cancelling.
+  const openRemarkPrompt = useCallback(() => {
+    const line = items[selectedRow];
+    if (!line) { toast("Select a product line first"); return; }
+    setTextPrompt({
+      title: "Item remark",
+      label: `Note against ${line.name}. Prints on the bill; blank clears it.`,
+      placeholder: "e.g. damaged carton — sold as seen",
+      initial: line.remark ?? "",
+      maxLength: 200,
+      onSubmit: async (value) => {
+        const result = await setLineRemark(line.id, value);
+        if (!result.success) toast.error(result.error || "Could not save the remark");
+        else toast.success(value ? "Remark saved" : "Remark cleared");
+      },
+    });
+  }, [items, selectedRow, setLineRemark]);
+
+  // F2 — the bill date (spec: "F2 Date — sets bill date to today"). Owner-only, because
+  // checkout only honours an override for an owner; showing it to anyone else would be a field
+  // that silently does nothing.
+  const openDatePrompt = useCallback(() => {
+    if (!isOwner) { toast("Bill date is owner-only"); return; }
+    setDatePrompt({
+      title: "Bill date",
+      label: "Date stamped on the next invoice. Today = use the time of sale.",
+      initial: dateOverride,
+      onSubmit: (value) => {
+        setDateOverride(value);
+        toast.success(value ? `Bill date: ${new Date(value).toLocaleString()}` : "Bill date: today");
+      },
+    });
+  }, [isOwner, dateOverride]);
+
+  // Ctrl+B — print a barcode label for the highlighted line's product (spec WF-02 "B Barcode
+  // Prn"). Reuses the label pipeline the weighed-goods flow already prints through, so the
+  // symbology and label size come from this terminal's own printer config.
+  const printBarcodeLabel = useCallback(() => {
+    const line = items[selectedRow];
+    if (!line) { toast("Select a product line first"); return; }
+    const product = products.find((p) => p.id === line.product) ?? line.expand?.product;
+    if (!product) { toast.error("Product not found in the catalog"); return; }
+    const config = loadLabelConfig();
+    setAmountPrompt({
+      title: "Print barcode labels",
+      label: `How many labels for ${product.name}?`,
+      suffix: "labels",
+      initial: String(config.copies ?? 1),
+      onSubmit: (value) => {
+        // Clamp rather than trust: a mistyped 500 sends a roll of labels through the printer
+        // with no way to stop it, and the sheet gives no other confirmation step.
+        const copies = Math.min(50, Math.max(1, Math.round(value) || 1));
+        const ok = printLabel({
+          name: product.name,
+          sku: product.sku,
+          barcode: product.barcode,
+          mrp: product.mrp,
+          unit: product.unit,
+        }, config, copies);
+        if (ok) toast.success(`Printing ${copies} label${copies > 1 ? "s" : ""}`);
+        else toast.error("Could not open the label print window");
+      },
+    });
+  }, [items, selectedRow, products]);
+
+  // Alt+U — the unit sheet for the highlighted line (spec: "Pcs / Pack / Case. ^v Enter Esc").
+  //
+  // Refuses out loud in the two cases where a sheet would be a lie: a line that is not selected,
+  // and an item whose master carries no pack or case size. The second is the reason this key sat
+  // reserved — a sheet offering Pack/Case for an item nobody configured would invent a quantity
+  // and mis-deduct stock. Returns whether it actually opened, so the Enter cycle knows whether
+  // to hand off or fall straight through to the rate step.
+  const openUnitSheet = useCallback((index: number, resumeRate = false): boolean => {
+    const line = items[index];
+    if (!line) { toast("Select a product line first"); return false; }
+    const product = products.find((p) => p.id === line.product) ?? line.expand?.product;
+    if (!hasUnitChoice(product)) {
+      toast(`${line.name} is sold in ${line.unit_label || "Pcs"} only — no pack size set`);
+      return false;
+    }
+    setUnitSheet({ itemId: line.id, resumeRate });
+    return true;
+  }, [items, products]);
+
+  // Close the sheet, and continue an Enter cycle into the rate step when that is where it came
+  // from. Resolving the row by ID keeps the cycle on the right line if the ticket re-sorted.
+  const closeUnitSheet = useCallback((applied: boolean) => {
+    setUnitSheet((sheet) => {
+      if (sheet?.resumeRate) {
+        const row = items.findIndex((i) => i.id === sheet.itemId);
+        if (row >= 0) setTimeout(() => editRowRef.current?.(row, "rate"), applied ? 60 : 0);
+      }
+      return null;
+    });
+  }, [items]);
+
+  const applyUnitLevel = useCallback(async (level: UnitLevel) => {
+    const itemId = unitSheet?.itemId;
+    closeUnitSheet(true);
+    if (!itemId) return;
+    const result = await setLineUnit(itemId, level);
+    if (!result.success) toast.error(result.error || "Could not change the unit");
+    else toast.success(`Unit: ${level.label}${level.factor > 1 ? ` (x ${level.factor})` : ""}`);
+  }, [unitSheet, closeUnitSheet, setLineUnit]);
+
   const handleNewSale = useCallback(() => {
     setShowReceipt(false);
     setLastOrder(null);
@@ -672,6 +804,11 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
     onFocusSearch: inputMode === "listing" ? () => openSearch("") : undefined,
     onChangeQty: inputMode === "listing" ? () => editRowRef.current?.(selectedRow) : undefined,
     onRateChange: inputMode === "listing" ? () => editRowRef.current?.(selectedRow, "rate") : undefined,
+    onUnitSheet: inputMode === "listing" ? () => { openUnitSheet(selectedRow); } : undefined,
+    onBarcodePrint: inputMode === "listing" ? printBarcodeLabel : undefined,
+    onBillDate: openDatePrompt,
+    onItemRemark: inputMode === "listing" ? openRemarkPrompt : undefined,
+    onGstIncluded: toggleGstIncluded,
     onQtyDelta: inputMode === "listing"
       ? (delta: number) => {
           const line = items[selectedRow];
@@ -850,10 +987,10 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
             <Hash className="h-3 w-3" />
             {nextInvoiceNo || "—"}
           </Badge>
-          {(isOwner || isManager) && (
+          {isOwner && (
             <div
               className="hidden lg:flex items-center gap-1 text-[10px] text-muted-foreground"
-              title="Override the invoice date for the next sale (admin only). Blank = now."
+              title="Override the invoice date for the next sale (F2, owner only). Blank = now."
             >
               <CalendarClock className="h-3.5 w-3.5" />
               <input
@@ -1026,6 +1163,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
             title="Counter"
             buyer={selectedCustomer?.debtor_name}
             taxExempt={taxExempt}
+            gstIncluded={gstIncluded}
             priceList={PRICE_LIST_LABEL[priceListMode]}
             hint="F11 Day"
           />
@@ -1043,6 +1181,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
             onOverridePrice={(itemId, price) => overridePrice(itemId, price)}
             onEditEnd={() => document.getElementById(BARCODE_INPUT_ID)?.focus()}
             onEditRequest={editRowRef}
+            onUnitStep={(index) => openUnitSheet(index, true)}
             salespeopleById={salespeopleById}
           />
           <ListingFooter
@@ -1209,6 +1348,26 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
       />
 
       <AmountPromptModal request={amountPrompt} onClose={() => setAmountPrompt(null)} />
+      <DatePromptModal request={datePrompt} onClose={() => setDatePrompt(null)} />
+      <TextPromptModal request={textPrompt} onClose={() => setTextPrompt(null)} />
+      {(() => {
+        // Resolve the line by ID at render time: an incoming cart re-sync must not point the
+        // sheet at a different product than the one the cashier opened it on.
+        const line = unitSheet ? items.find((i) => i.id === unitSheet.itemId) : null;
+        if (!unitSheet || !line) return null;
+        const product = products.find((p) => p.id === line.product) ?? line.expand?.product;
+        return (
+          <UnitSheet
+            open
+            levels={unitLadder(product)}
+            currentFactor={lineFactor(line)}
+            productName={line.name}
+            pieceStock={typeof product?.current_stock === "number" ? product.current_stock : null}
+            onSelect={applyUnitLevel}
+            onClose={() => closeUnitSheet(false)}
+          />
+        );
+      })()}
 
       <ZReportModal
         open={showZReport}

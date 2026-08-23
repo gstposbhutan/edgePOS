@@ -6,6 +6,7 @@ import { calcItemTotals, calcCartTotals } from "@/lib/gst";
 import { CART_STATUS } from "@/lib/constants";
 import { usePosStore } from "@/stores/pos-store";
 import { priceFor } from "@/lib/price-list";
+import { lineFactor, unitsAvailable, repriceForLevel, baseUnitLabel, type UnitLevel } from "@/lib/units";
 import { toast } from "sonner";
 import type { PriceListMode } from "@/lib/price-list";
 import type { Product } from "./use-products";
@@ -21,6 +22,13 @@ export interface CartItem {
   gst_5: number;
   total: number;
   gst_exempt?: boolean;
+  // Which level of the Pcs/Pack/Case ladder this line was rung at. `quantity` is in THAT unit
+  // and `unit_price` is the price of one of it; pieces = quantity * unit_factor. Absent means
+  // pieces, which is how every line written before the ladder existed must be read.
+  unit_label?: string;
+  unit_factor?: number;
+  /** Ctrl+T — a cashier note on this line. Copied into the order and printed on the slip. */
+  remark?: string;
   salesperson_id?: string | null;
   expand?: { product?: Product };
 }
@@ -47,6 +55,15 @@ function resolveStock(qc: QueryClient, productId: string, fallback?: Product): n
   const stock = live ? live.current_stock : fallback?.current_stock;
   // Only a real number is a tracked cap; anything else is "untracked" (no cap).
   return typeof stock === "number" ? stock : null;
+}
+
+// "Only N in stock" has to be said in the unit the cashier is ringing, or a cap on a carton
+// line reads as nonsense ("only 25 in stock" when they asked for 3 cartons of 12).
+function stockMessage(item: { unit_label?: string; unit_factor?: number }, pieces: number): string {
+  const factor = lineFactor(item);
+  if (factor <= 1) return `Only ${pieces} in stock`;
+  const cap = unitsAvailable(pieces, factor) ?? 0;
+  return `Only ${cap} x ${item.unit_label || "Pack"} in stock (${pieces} pcs)`;
 }
 
 async function fetchActiveCart(): Promise<Cart> {
@@ -77,6 +94,8 @@ export function useCart(priceListMode: PriceListMode = "RETAIL") {
   const queryClient = useQueryClient();
   const taxExempt = usePosStore((s) => s.taxExempt);
   const setTaxExempt = usePosStore((s) => s.setTaxExempt);
+  const gstIncluded = usePosStore((s) => s.gstIncluded);
+  const setGstIncluded = usePosStore((s) => s.setGstIncluded);
 
   const cartQuery = useQuery({
     queryKey: ["cart"],
@@ -94,7 +113,22 @@ export function useCart(priceListMode: PriceListMode = "RETAIL") {
     staleTime: 0,
   });
 
-  const items = itemsQuery.data ?? [];
+  const rawItems = itemsQuery.data ?? [];
+
+  // Alt+T re-splits every line: gst_5 and total were written when the line was added, under
+  // whichever mode was active then, so a toggle would otherwise leave the ticket showing stale
+  // tax. Recomputing on read fixes the cart table, the totals and the receipt preview at once.
+  // Writes still read the raw cache, so this stays a display/checkout view.
+  const items: CartItem[] = gstIncluded
+    ? rawItems.map((i) => {
+        const { gstAmount, total } = calcItemTotals(
+          { unitPrice: i.unit_price, discount: i.discount, quantity: i.quantity, gstExempt: i.gst_exempt },
+          undefined,
+          true,
+        );
+        return { ...i, gst_5: gstAmount, total };
+      })
+    : rawItems;
 
   // Invoice/bill-level discount lives on the cart record — a single pre-GST amount off the net
   // subtotal (after per-line discounts), NOT distributed across line items.
@@ -104,6 +138,7 @@ export function useCart(priceListMode: PriceListMode = "RETAIL") {
     items.map((i) => ({ unitPrice: i.unit_price, discount: i.discount, quantity: i.quantity, gstExempt: !!i.gst_exempt })),
     undefined,
     billDiscount,
+    gstIncluded,
   );
 
   const subtotalExTax = totals.taxableSubtotal;
@@ -142,17 +177,22 @@ export function useCart(priceListMode: PriceListMode = "RETAIL") {
         // Merge only when product + salesperson + RATE match. Rate in the key means the same SKU added
         // at two tiers (wholesale line + retail line) stays as two separate lines in one invoice (#4);
         // salesperson keeps per-staff lines distinct (#3).
+        // Merging also requires the same UNIT: 3 Pcs and 3 Cases of the same item are two
+        // different lines, and folding them together would silently mis-deduct stock.
         const existing = current.find(
-          (i) => i.product === product.id && (i.salesperson_id ?? null) === (salespersonId ?? null) && Number(i.unit_price) === Number(unitPrice)
+          (i) => i.product === product.id && (i.salesperson_id ?? null) === (salespersonId ?? null) && Number(i.unit_price) === Number(unitPrice) && lineFactor(i) === 1
         );
         if (existing) {
           // Hard cap: never increment past current_stock. If the line is already at
           // (or over) the cap, hold it there and let the cashier know. Untracked
           // stock (null/undefined) increments freely, as before.
           const stock = resolveStock(queryClient, product.id, product);
+          // The cap is in the line's OWN unit: stock is pieces, so a carton line can only go as
+          // high as the whole cartons those pieces cover.
+          const cap = unitsAvailable(stock, lineFactor(existing));
           const wanted = existing.quantity + 1;
-          const newQty = typeof stock === "number" ? Math.min(wanted, Math.max(1, stock)) : wanted;
-          if (newQty < wanted) toast.error(`Only ${stock} in stock`);
+          const newQty = cap != null ? Math.min(wanted, Math.max(1, cap)) : wanted;
+          if (newQty < wanted) toast.error(stockMessage(existing, stock as number));
           if (newQty === existing.quantity) return existing; // already at the cap — nothing to write
           const { gstAmount, total } = calcItemTotals({
             unitPrice: existing.unit_price, discount: existing.discount, quantity: newQty, gstExempt: existing.gst_exempt,
@@ -168,6 +208,8 @@ export function useCart(priceListMode: PriceListMode = "RETAIL") {
         cart: cart.id, product: product.id, name: product.name, sku: product.sku,
         quantity, unit_price: unitPrice, discount: 0, gst_5: gstAmount, total,
         gst_exempt: gstExempt,
+        // Every line starts at the base of the ladder; Alt+U moves it up.
+        unit_label: baseUnitLabel(product), unit_factor: 1,
         salesperson_id: salespersonId ?? null,
       }, PB_REQ) as unknown as CartItem;
     },
@@ -215,10 +257,12 @@ export function useCart(priceListMode: PriceListMode = "RETAIL") {
       // pass through unchanged. This is the single chokepoint for the +/- buttons and
       // the qty-numpad commit, so the cap holds no matter how the qty was entered.
       const stock = resolveStock(queryClient, item.product, item.expand?.product);
+      // Cap in the line's own unit — stock is pieces, the line may be in cartons.
+      const cap = unitsAvailable(stock, lineFactor(item));
       let qty = newQty;
-      if (typeof stock === "number" && newQty > stock) {
-        qty = Math.max(1, stock);
-        toast.error(`Only ${stock} in stock`);
+      if (cap != null && newQty > cap) {
+        qty = Math.max(1, cap);
+        toast.error(stockMessage(item, stock as number));
       }
       const { gstAmount, total } = calcItemTotals({
         unitPrice: item.unit_price, discount: item.discount, quantity: qty, gstExempt: item.gst_exempt,
@@ -272,6 +316,74 @@ export function useCart(priceListMode: PriceListMode = "RETAIL") {
   const setLineSalesperson = async (itemId: string, salespersonId: string | null): Promise<OpResult> => {
     try {
       await setLineSalespersonMutation.mutateAsync({ itemId, salespersonId });
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: errMsg(err) };
+    }
+  };
+
+  // Alt+U — move a ticket line to another level of the Pcs/Pack/Case ladder.
+  //
+  // Rate and per-unit discount both follow the unit (they mean "per one of what we are
+  // selling"), so the price PER PIECE is unchanged by the switch — a cashier who moves a line
+  // from Pcs to Carton sees the amount stay the same for the same number of pieces, which is
+  // the only behaviour that does not look like a pricing bug.
+  const setLineUnitMutation = useMutation({
+    mutationFn: async ({ itemId, level }: { itemId: string; level: UnitLevel }) => {
+      const current = queryClient.getQueryData<CartItem[]>(["cart-items", cartId]) ?? [];
+      const item = current.find((i) => i.id === itemId);
+      if (!item) throw new Error("Item not found");
+      const from = lineFactor(item);
+      const to = Math.max(1, level.factor);
+      if (from === to && (item.unit_label ?? "") === level.label) return;
+
+      // Re-cap against stock IN THE NEW UNIT before writing. Refusing outright when the stock
+      // does not cover even one of them is the point: clamping to a quantity of 1 would sell a
+      // whole carton out of five loose pieces.
+      const stock = resolveStock(queryClient, item.product, item.expand?.product);
+      const cap = unitsAvailable(stock, to);
+      if (cap != null && cap < 1) {
+        throw new Error(`Not enough stock for one ${level.label} — ${stock} pcs on hand`);
+      }
+      const qty = cap != null ? Math.min(item.quantity, cap) : item.quantity;
+
+      const unitPrice = repriceForLevel(item.unit_price, from, to);
+      const discount = item.discount ? repriceForLevel(item.discount, from, to) : 0;
+      const { gstAmount, total } = calcItemTotals({
+        unitPrice, discount, quantity: qty, gstExempt: item.gst_exempt,
+      });
+      await pb.collection("cart_items").update(itemId, {
+        unit_label: level.label, unit_factor: to,
+        unit_price: unitPrice, discount, quantity: qty, gst_5: gstAmount, total,
+      }, PB_REQ);
+      if (qty < item.quantity) {
+        toast.error(`Reduced to ${qty} x ${level.label} — ${stock} pcs on hand`);
+      }
+    },
+    onSuccess: () => refetchItems(),
+  });
+
+  const setLineUnit = async (itemId: string, level: UnitLevel): Promise<OpResult> => {
+    try {
+      await setLineUnitMutation.mutateAsync({ itemId, level });
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: errMsg(err) };
+    }
+  };
+
+  // Ctrl+T — the line's remark. Purely descriptive: it moves no stock and changes no total, so
+  // it writes on its own without touching the GST maths.
+  const setLineRemarkMutation = useMutation({
+    mutationFn: async ({ itemId, remark }: { itemId: string; remark: string }) => {
+      await pb.collection("cart_items").update(itemId, { remark: remark.slice(0, 200) }, PB_REQ);
+    },
+    onSuccess: () => refetchItems(),
+  });
+
+  const setLineRemark = async (itemId: string, remark: string): Promise<OpResult> => {
+    try {
+      await setLineRemarkMutation.mutateAsync({ itemId, remark });
       return { success: true };
     } catch (err) {
       return { success: false, error: errMsg(err) };
@@ -332,6 +444,8 @@ export function useCart(priceListMode: PriceListMode = "RETAIL") {
     ...totals,
     taxExempt,
     setTaxExempt,
+    gstIncluded,
+    setGstIncluded,
     subtotalExTax,
     gstTotalExempt,
     grandTotalExempt,
@@ -340,6 +454,8 @@ export function useCart(priceListMode: PriceListMode = "RETAIL") {
     applyDiscount,
     applyBillDiscount,
     setLineSalesperson,
+    setLineUnit,
+    setLineRemark,
     overridePrice,
     removeItem,
     clearCart,

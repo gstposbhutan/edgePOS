@@ -31,6 +31,13 @@ export interface Product {
   sold_by_weight?: boolean;
   // GST-exempt goods: rung at 0% instead of the flat 5%. See migration 022.
   gst_exempt?: boolean;
+  // Pcs/Pack/Case ladder for Alt+U (PB migration 027). pack_size = pieces per pack,
+  // case_size = PACKS per case; 0/absent means the shop does not sell that level. Stock is
+  // always held in pieces — see lib/units.ts.
+  pack_size?: number;
+  case_size?: number;
+  pack_label?: string;
+  case_label?: string;
   category: string;
   expand?: { category?: Category };
 }

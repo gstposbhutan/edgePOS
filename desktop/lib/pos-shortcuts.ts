@@ -25,9 +25,9 @@ export const COUNTER_KEYS: KeyEntry[] = [
   { id: "qtyDown",      combo: "F4",     match: { key: "F4" },                 label: "Less Quantity",   rail: 1, group: "Line" },
   { id: "rate",         combo: "F5",     match: { key: "F5" },                 label: "Rate Change",     rail: 1, group: "Line" },
   { id: "qtyFocus",     combo: "Alt+Q",  match: { key: "q", alt: true },       label: "Qty",                      group: "Line" },
-  { id: "unitSheet",    combo: "Alt+U",  match: { key: "u", alt: true },       label: "Unit",                     group: "Line", todo: true },
+  { id: "unitSheet",    combo: "Alt+U",  match: { key: "u", alt: true },       label: "Unit",                     group: "Line" },
   { id: "itemDiscount", combo: "Ctrl+M", match: { key: "m", ctrl: true },      label: "Item Discount",   rail: 1, group: "Line" },
-  { id: "itemRemark",   combo: "Ctrl+T", match: { key: "t", ctrl: true },      label: "Item Remark",     rail: 1, group: "Line", todo: true },
+  { id: "itemRemark",   combo: "Ctrl+T", match: { key: "t", ctrl: true },      label: "Item Remark",     rail: 1, group: "Line" },
   { id: "complimentary",combo: "Ctrl+C", match: { key: "c", ctrl: true },      label: "Complimentary",   rail: 1, group: "Line" },
   { id: "removeLine",   combo: "Del",    match: { key: "Delete" },             label: "Remove",          rail: 1, group: "Line" },
   { id: "undo",         combo: "Ctrl+Z", match: { key: "z", ctrl: true },      label: "Undo",                     group: "Line" },
@@ -39,7 +39,7 @@ export const COUNTER_KEYS: KeyEntry[] = [
   { id: "party",        combo: "F7",     match: { key: "F7" },                 label: "Party",           rail: 2, group: "Sale" },
   { id: "salesperson",  combo: "F6",     match: { key: "F6" },                 label: "Sales Person",    rail: 2, group: "Sale" },
   { id: "priceList",    combo: "Alt+P",  match: { key: "p", alt: true },       label: "Price List",      rail: 2, group: "Sale" },
-  { id: "gstIncluded",  combo: "Alt+T",  match: { key: "t", alt: true },       label: "GST Included",             group: "Sale", todo: true },
+  { id: "gstIncluded",  combo: "Alt+T",  match: { key: "t", alt: true },       label: "GST Included",             group: "Sale" },
   { id: "deliveryDetail",combo: "Ctrl+L",match: { key: "l", ctrl: true },      label: "Delivery Detail", rail: 1, group: "Sale" },
   { id: "tender",       combo: "F10",    match: { key: "F10" },                label: "Tender",          rail: 1, group: "Sale", go: true },
   { id: "tenderAlt",    combo: "Alt+S",  match: { key: "s", alt: true },       label: "Tender",                   group: "Sale", go: true },
@@ -50,13 +50,13 @@ export const COUNTER_KEYS: KeyEntry[] = [
   { id: "clearTicket",  combo: "Ctrl+D", match: { key: "d", ctrl: true },      label: "Clear Ticket",             group: "Ticket" },
   { id: "print",        combo: "Ctrl+P", match: { key: "p", ctrl: true },      label: "Print",                    group: "Ticket" },
   { id: "lastGst",      combo: "PgUp",   match: { key: "PageUp" },             label: "Last GST",                 group: "Ticket" },
-  { id: "date",         combo: "F2",     match: { key: "F2" },                 label: "Date",            rail: 2, group: "Ticket", todo: true },
+  { id: "date",         combo: "F2",     match: { key: "F2" },                 label: "Date",            rail: 2, group: "Ticket" },
   { id: "help",         combo: "F1",     match: { key: "F1" },                 label: "Help",            rail: 2, group: "Ticket" },
   { id: "exit",         combo: "Esc",    match: { key: "Escape" },             label: "Exit",            rail: 2, group: "Ticket" },
   // Real on the terminal: it owns the keyboard. Fullscreen moved off F11 to Alt+Enter.
   { id: "day",          combo: "F11",    match: { key: "F11" },                label: "Day",             rail: 2, group: "Ticket" },
   { id: "location",     combo: "F12",    match: { key: "F12" },                label: "Location",        rail: 2, group: "Ticket" },
-  { id: "barcodePrn",   combo: "Ctrl+B", match: { key: "b", ctrl: true },      label: "Barcode Prn",     rail: 2, group: "Ticket", todo: true },
+  { id: "barcodePrn",   combo: "Ctrl+B", match: { key: "b", ctrl: true },      label: "Barcode Prn",     rail: 2, group: "Ticket" },
 
   // ── Ours, kept alongside the RanceLab set ───────────────────────────────────────────────
   // Bill discount and quotation moved off Ctrl+D / Alt+Q, which the spec gives to Clear Ticket

@@ -3,10 +3,11 @@
 import { useState, useRef, useEffect, useCallback, type MutableRefObject } from "react";
 import { Trash2 } from "lucide-react";
 import type { CartItem } from "@/hooks/use-cart";
+import { baseUnitLabel, lineFactor } from "@/lib/units";
 import type { Product } from "@/hooks/use-products";
 
-/** Which cell the inline editor is sitting on. The spec's Enter cycle walks qty → rate;
- *  its middle step (unit) needs pack/case factors the terminal does not carry yet. */
+/** Which cell the inline editor is sitting on. The spec's Enter cycle walks qty → unit →
+ *  rate; the unit step is a modal the page owns, not an inline edit field. */
 export type EditField = "qty" | "rate";
 
 interface CartTableProps {
@@ -27,6 +28,13 @@ interface CartTableProps {
    * during render.
    */
   onEditRequest?: MutableRefObject<((index: number, field?: EditField) => void) | null>;
+  /**
+   * The Enter cycle's middle step (spec WF-05): open the Pcs/Pack/Case sheet for this row.
+   * Returns whether it opened — false (no pack size configured, no line) falls straight through
+   * to the rate step, so the cycle never stalls on an item with nothing to choose. The page
+   * owns the sheet and resumes the cycle at rate when it closes.
+   */
+  onUnitStep?: (index: number) => boolean;
   /** id → name for the sales team, to label each line's salesperson (per-line #3). */
   salespeopleById?: Record<string, string>;
 }
@@ -51,6 +59,7 @@ export function CartTable({
   onRemoveItem,
   onEditEnd,
   onEditRequest,
+  onUnitStep,
   salespeopleById = {},
 }: CartTableProps) {
   const [editingRow, setEditingRow] = useState<number | null>(null);
@@ -91,18 +100,19 @@ export function CartTable({
     onEditEnd?.();
   }, [commit, onEditEnd]);
 
-  // Enter walks the line: qty, then rate, then back to the barcode row (spec WF-05).
+  // Enter walks the line: qty, then unit, then rate, then back to the barcode row (WF-05).
+  // The unit step is a modal, so we hand control to the page and it resumes at rate.
   const advanceEdit = useCallback((index: number) => {
     if (committedRef.current) return;
     committedRef.current = true;
     commit(index);
-    if (editField === "qty" && onOverridePrice) {
-      startEdit(index, "rate");
-    } else {
-      setEditingRow(null);
-      onEditEnd?.();
+    if (editField === "qty") {
+      if (onUnitStep?.(index)) { setEditingRow(null); return; }
+      if (onOverridePrice) { startEdit(index, "rate"); return; }
     }
-  }, [commit, editField, onOverridePrice, startEdit, onEditEnd]);
+    setEditingRow(null);
+    onEditEnd?.();
+  }, [commit, editField, onOverridePrice, onUnitStep, startEdit, onEditEnd]);
 
   const cancelEdit = useCallback(() => {
     committedRef.current = true;
@@ -171,9 +181,10 @@ export function CartTable({
             // fall back to the expanded product on the cart line; "—" when untracked.
             const liveStock = products.find((p) => p.id === item.product)?.current_stock;
             const stock = typeof liveStock === "number" ? liveStock : item.expand?.product?.current_stock;
-            // The product's own unit. Pcs/Pack/Case switching (Alt+U) additionally needs pack
-            // and case factors, which the terminal's catalog does not carry yet.
-            const unit = item.expand?.product?.unit || (item.expand?.product?.sold_by_weight ? "Kg" : "Pcs");
+            // The unit this line is rung at (Alt+U). Falls back to the product's own unit for
+            // lines written before the ladder existed, which are pieces by definition.
+            const unit = item.unit_label || baseUnitLabel(item.expand?.product);
+            const factor = lineFactor(item);
             const taxName = item.gst_exempt ? "Exempt" : "GST 5%";
 
             return (
@@ -192,6 +203,11 @@ export function CartTable({
                   {item.salesperson_id && (
                     <p className="text-[10px] font-medium text-gold">
                       👤 {salespeopleById[item.salesperson_id] || "Salesperson"}
+                    </p>
+                  )}
+                  {item.remark && (
+                    <p className="text-[10px] italic text-muted-foreground truncate max-w-xs" title={item.remark}>
+                      &#9998; {item.remark}
                     </p>
                   )}
                 </td>
@@ -228,7 +244,14 @@ export function CartTable({
                     </span>
                   )}
                 </td>
-                <td className="px-2 py-2.5 text-center text-xs text-muted-foreground">{unit}</td>
+                <td className="px-2 py-2.5 text-center text-xs text-muted-foreground">
+                  {unit}
+                  {factor > 1 && (
+                    // A carton line and a piece line otherwise look identical at a glance, and
+                    // the amount is the only tell. Say the factor out loud.
+                    <span className="block text-[10px] text-primary tabular-nums">x {factor}</span>
+                  )}
+                </td>
                 <td className="px-3 py-2.5 text-[11px] text-muted-foreground">{taxName}</td>
                 {/* Amount carries the rate underneath, and the pre-discount rate struck through
                     when a line discount applies — the spec has no separate Disc column. */}

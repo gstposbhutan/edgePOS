@@ -4,6 +4,7 @@ import { useCallback } from "react";
 import { getPB } from "@/lib/pb-client";
 import { getRegisterId } from "@/lib/register";
 import { generateOrderSignature } from "@/lib/gst";
+import { lineFactor, piecesFor } from "@/lib/units";
 import { nowISO } from "@/lib/date-utils";
 import { peekNextOrderNo } from "@/lib/invoice-header";
 import { MOVEMENT_TYPE, KHATA_TXN, KHATA_STATUS, PB_REQ, PAYMENT_METHOD } from "@/lib/constants";
@@ -157,6 +158,12 @@ export function useCheckout(input: CheckoutInput) {
             quantity: i.quantity,
             unit_price: i.unit_price,
             discount: i.discount,
+            // The unit this line was RUNG at. quantity stays in that unit (2 cases, not 240)
+            // so quantity * unit_price = total still holds; unit_factor is what lets a report
+            // explode the line back to pieces. See lib/units.ts.
+            unit_label: i.unit_label || "",
+            unit_factor: lineFactor(i),
+            remark: i.remark || "",
             salesperson_id: i.salesperson_id ?? salespersonId ?? null,
             gst_5: taxExempt ? 0 : i.gst_5,
             gst_exempt: taxExempt || !!i.gst_exempt,
@@ -196,11 +203,16 @@ export function useCheckout(input: CheckoutInput) {
         for (const item of items) {
           const product = products.find((p) => p.id === item.product);
           if (!product) continue;
-          batch.collection("products").update(product.id, { "current_stock-": item.quantity });
+          // Stock is held in PIECES; the line may be in packs or cases. Deducting item.quantity
+          // here would take 2 off the shelf for 2 cases of 120. The cloud reconciles its own
+          // stock from these movements (apply_inventory_movement), so writing pieces keeps both
+          // sides right with no cloud-side change.
+          const pieces = piecesFor(item);
+          batch.collection("products").update(product.id, { "current_stock-": pieces });
           batch.collection("inventory_movements").create({
             product: product.id,
             movement_type: MOVEMENT_TYPE.SALE,
-            quantity: -item.quantity,
+            quantity: -pieces,
             reference_id: orderId,
             register_id: registerId || "",
             notes: `Sale: ${orderNo}`,
@@ -270,6 +282,12 @@ export function useCheckout(input: CheckoutInput) {
             quantity: i.quantity,
             unit_price: i.unit_price,
             discount: i.discount,
+            // The unit this line was RUNG at. quantity stays in that unit (2 cases, not 240)
+            // so quantity * unit_price = total still holds; unit_factor is what lets a report
+            // explode the line back to pieces. See lib/units.ts.
+            unit_label: i.unit_label || "",
+            unit_factor: lineFactor(i),
+            remark: i.remark || "",
             salesperson_id: i.salesperson_id ?? salespersonId ?? null,
             gst_5: taxExempt ? 0 : i.gst_5,
             gst_exempt: taxExempt || !!i.gst_exempt,

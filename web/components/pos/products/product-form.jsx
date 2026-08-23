@@ -16,6 +16,8 @@ const EMPTY_FORM = {
   current_stock: '0', image_url: '', reorder_point: '10',
   sold_by_weight: false, gst_exempt: false, video_url: '', specifications: {},
   stock_rotation: 'FIFO',
+  // Pcs/Pack/Case ladder (migration 134) — what the terminal's Alt+U unit sheet offers.
+  pack_size: '', case_size: '', pack_label: '', case_label: '',
 }
 
 /**
@@ -57,6 +59,10 @@ export function ProductForm({ open, product, categories, saving, onSave, onClose
         image_url:       product.image_url ?? '',
         reorder_point:   String(product.reorder_point ?? '10'),
         sold_by_weight:  product.sold_by_weight ?? false,
+        pack_size:       product.pack_size != null ? String(product.pack_size) : '',
+        case_size:       product.case_size != null ? String(product.case_size) : '',
+        pack_label:      product.pack_label ?? '',
+        case_label:      product.case_label ?? '',
         gst_exempt:      product.gst_exempt ?? false,
         video_url:       product.video_url ?? '',
         specifications:  product.specifications && typeof product.specifications === 'object' ? product.specifications : {},
@@ -349,6 +355,64 @@ export function ProductForm({ open, product, categories, saving, onSave, onClose
           </div>
 
           </div>
+
+          {/* Pack / case sizes — the ladder the counter's Alt+U unit sheet offers.
+              Hidden for weighed goods: you sell 1.5 kg of rice, not 1.5 cartons, and the DB
+              CHECK refuses the combination anyway. Leaving both blank is the norm — the item
+              then sells in pieces only, and the sheet says so rather than guessing a size. */}
+          {!form.sold_by_weight && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">Pack sizes <span className="text-muted-foreground font-normal">— optional</span></label>
+              <p className="text-[10px] text-muted-foreground">
+                Lets the counter ring this item by the pack or case (Alt+U on the terminal). Stock is
+                always counted in <strong>{form.unit}</strong> — selling one case simply takes its
+                full contents off the shelf.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div className="space-y-1.5">
+                  <label htmlFor="pack_size" className="text-xs text-muted-foreground">{form.unit} per pack</label>
+                  <Input
+                    id="pack_size" type="number" min="2" step="1" placeholder="e.g. 12"
+                    value={form.pack_size}
+                    onChange={e => set('pack_size', e.target.value)}
+                  />
+                  <Input
+                    aria-label="Pack name"
+                    placeholder='Name for this level — default "Pack"'
+                    value={form.pack_label}
+                    onChange={e => set('pack_label', e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label htmlFor="case_size" className="text-xs text-muted-foreground">
+                    Packs per case
+                    {!form.pack_size && <span className="text-muted-foreground/70"> — needs a pack size</span>}
+                  </label>
+                  <Input
+                    id="case_size" type="number" min="2" step="1" placeholder="e.g. 10"
+                    value={form.case_size}
+                    disabled={!form.pack_size}
+                    onChange={e => set('case_size', e.target.value)}
+                  />
+                  <Input
+                    aria-label="Case name"
+                    placeholder='Name for this level — default "Case"'
+                    value={form.case_label}
+                    disabled={!form.pack_size || !form.case_size}
+                    onChange={e => set('case_label', e.target.value)}
+                  />
+                </div>
+              </div>
+              {form.pack_size && (
+                <p className="text-[11px] text-primary pt-0.5">
+                  1 {form.pack_label?.trim() || 'Pack'} = {form.pack_size} {form.unit}
+                  {form.case_size && (
+                    <> &middot; 1 {form.case_label?.trim() || 'Case'} = {(parseInt(form.pack_size, 10) || 0) * (parseInt(form.case_size, 10) || 0)} {form.unit}</>
+                  )}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Stock rotation (FEFO/FIFO) */}
           <div className="space-y-1.5">

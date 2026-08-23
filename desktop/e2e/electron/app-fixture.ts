@@ -6,6 +6,17 @@ const DESKTOP_DIR = path.resolve(__dirname, "..", "..");
 const PB = "http://127.0.0.1:8090";
 export const OWNER = { email: "admin@pos.local", password: "admin12345", role: "owner" };
 
+// Seeded-product barcode registry. Specs seed by barcode and REUSE an existing row rather than
+// recreating it (a fresh product id would orphan cart lines pointing at the old one), so two
+// specs sharing a barcode silently rename each other's product and the loser fails with
+// "element not found" a long way from the cause. Claim a free number here before seeding:
+//
+//   70000000001  counter-line, counter-tender     E2E Red Rice 1kg
+//   70000000002  zz-split-tender                  E2E Split Item
+//   70000000004  counter-remark-basis             E2E Remark Tea 250g
+//   70000000005  counter-unit-sheet               E2E Packed Soap   (pack/case ladder)
+//   70000000006  counter-unit-sheet               E2E Loose Candle  (piece-only)
+
 async function pbReady(timeoutMs = 30_000) {
   const end = Date.now() + timeoutMs;
   while (Date.now() < end) {
@@ -157,6 +168,30 @@ export async function waitForActiveCart(timeoutMs = 20_000) {
     await new Promise((r) => setTimeout(r, 250));
   }
   throw new Error("no ACTIVE cart appeared — the terminal never opened a ticket");
+}
+
+/**
+ * Wait until the counter's keyboard registry is actually armed.
+ *
+ * `#pos-barcode` being visible is NOT enough: the shortcuts are registered by an effect in the
+ * counter page, and a key pressed before it runs is swallowed silently — the press simply does
+ * nothing and the spec then waits out its whole timeout on an assertion that can never pass.
+ * That was a real flake in the Alt+ specs, worse right after a reload.
+ *
+ * F1 is the probe because it is served by the same registry and shows an unmistakable sheet.
+ * It toggles, so poll until the sheet appears and then close it — armed means the first press
+ * opened it, and we stop there.
+ */
+export async function waitForShortcutsReady(page: Page) {
+  await expect
+    .poll(async () => {
+      await page.keyboard.press("F1");
+      await page.waitForTimeout(250);
+      return page.getByText("Keyboard Shortcuts").isVisible().catch(() => false);
+    }, { timeout: 20_000 })
+    .toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(page.getByText("Keyboard Shortcuts")).toHaveCount(0, { timeout: 10_000 });
 }
 
 export async function ensureLoggedIn(page: Page) {

@@ -5,6 +5,26 @@ Offline-first Electron + PocketBase retail terminal. Versions are the
 (`/api/desktop/releases/latest`); release notes are also entered in the
 admin **Releases** console at publish time.
 
+## Unreleased — the five reserved counter keys
+The RanceLab key map had five keys the spec reserves that reported "not built yet"
+rather than doing nothing. All five now work.
+- **Alt+U unit sheet — sell by the pack or the case.** Items can carry a Pcs/Pack/Case
+  ladder (pieces per pack, packs per case) set on the product in the web back office.
+  Alt+U on a ticket line — or the Enter cycle's middle step — picks the level, and the
+  rate follows it, so the price per piece never changes. **Stock stays counted in
+  pieces**: selling one case takes its full contents off the shelf, and the "only N in
+  stock" cap is stated in whatever unit the line is being rung in. An item with no pack
+  size configured says so instead of offering an invented one.
+- **Ctrl+T item remark** — a note against one line ("damaged carton — sold as seen").
+  Shows under the line on the ticket and prints beside it on the slip.
+- **Alt+T GST-included toggle** — tells the till that catalog rates already contain the
+  5% GST, so it is extracted rather than added and the customer pays the rate shown.
+  The till bar states which basis is live, and the toggle refuses to flip mid-ticket.
+- **F2 bill date** — sets the date stamped on the next invoice; "Today" clears the
+  override. Owner-only, matching what checkout actually honours.
+- **Ctrl+B barcode print** — prints labels for the highlighted line's product through
+  the terminal's existing label pipeline, asking how many (capped at 50).
+
 ## 1.4.1-beta.1 — keyless CI validation (beta channel)
 - No functional changes. First build cut from the platform monorepo's **keyless**
   release pipeline: the runner POSTs the installer to the box, which uploads to S3

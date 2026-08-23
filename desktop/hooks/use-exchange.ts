@@ -2,6 +2,7 @@
 
 import { getPB } from "@/lib/pb-client";
 import { MOVEMENT_TYPE } from "@/lib/constants";
+import { lineFactor } from "@/lib/units";
 import { toast } from "sonner";
 
 export interface ExchangeItem {
@@ -13,6 +14,10 @@ export interface ExchangeItem {
   unit_price: number;
   gst_5: number;
   total: number;
+  // The unit the line was SOLD at (lib/units.ts). A returned case has to put back its pieces,
+  // not one item, or the shelf count drifts by the factor on every return.
+  unit_label?: string;
+  unit_factor?: number;
 }
 
 export interface ExchangeOrder {
@@ -72,11 +77,14 @@ export async function submitExchange(
         status: "COMPLETED",
         is_synced: false,
       });
-      batch.collection("products").update(item.product, { "current_stock+": qty });
+      // Stock is held in PIECES: returning 1 case of 120 puts back 120. `qty` above stays in
+      // the sold unit so the refund amount and the refunds row still match the invoice line.
+      const pieces = qty * lineFactor(item);
+      batch.collection("products").update(item.product, { "current_stock+": pieces });
       batch.collection("inventory_movements").create({
         product: item.product,
         movement_type: MOVEMENT_TYPE.RETURN,
-        quantity: qty,
+        quantity: pieces,
         reference_id: order.id,
         notes: `Exchange return: ${order.order_no}`,
       });

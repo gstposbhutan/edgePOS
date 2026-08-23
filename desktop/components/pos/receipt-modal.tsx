@@ -200,8 +200,18 @@ export function ReceiptModal({ open, onClose, onNewSale, order, settings }: Rece
                 <tbody>
                   {items.map((item: any, i: number) => (
                     <tr key={i}>
-                      <td>{item.name}</td>
-                      <td className="right">{item.quantity}</td>
+                      <td>
+                        {item.name}
+                        {item.remark && (
+                          <span className="block text-[10px] italic text-gray-500">{item.remark}</span>
+                        )}
+                      </td>
+                      {/* Qty is in the unit the line was RUNG at, so a case line must say so —
+                          "2" against a case price is otherwise unreadable on a slip. */}
+                      <td className="right">
+                        {item.quantity}
+                        {Number(item.unit_factor) > 1 && ` ${item.unit_label || "Pack"}`}
+                      </td>
                       <td className="right">{item.total.toFixed(2)}</td>
                     </tr>
                   ))}

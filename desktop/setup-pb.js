@@ -147,6 +147,11 @@ async function setup() {
     { name: 'is_active', type: 'bool', required: false, options: { default: true } },
     { name: 'sold_by_weight', type: 'bool', required: false, options: { default: false } },
     { name: 'gst_exempt', type: 'bool', required: false, options: { default: false } },
+    // Pcs/Pack/Case ladder (PB migration 027 / cloud 134). 0 = no such level for this item.
+    { name: 'pack_size', type: 'number', required: false, options: { default: 0, onlyInt: true } },
+    { name: 'case_size', type: 'number', required: false, options: { default: 0, onlyInt: true } },
+    { name: 'pack_label', type: 'text', required: false },
+    { name: 'case_label', type: 'text', required: false },
     { name: 'category', type: 'relation', target: 'categories', required: false },
     { name: 'entity_id', type: 'relation', target: 'entities', required: false },
     { name: 'created_by', type: 'relation', target: 'users', required: false },
@@ -189,6 +194,12 @@ async function setup() {
     { name: 'gst_5', type: 'number', required: false, options: { default: 0 } },
     { name: 'gst_exempt', type: 'bool', required: false, options: { default: false } },
     { name: 'total', type: 'number', required: false, options: { default: 0 } },
+    // Which level of the ladder this line was rung at. unit_factor is pieces per sold unit —
+    // checkout multiplies by it to move stock. Absent/0 reads as 1 (pieces).
+    { name: 'unit_label', type: 'text', required: false },
+    { name: 'unit_factor', type: 'number', required: false, options: { default: 1, onlyInt: true } },
+    // Ctrl+T — a free-text note on this line (PB migration 028 / cloud 135).
+    { name: 'remark', type: 'text', required: false, options: { max: 200 } },
   ]);
 
   // ── orders ─────────────────────────────────────────────────────────────────

@@ -60,12 +60,47 @@ the two web bug fixes in `b435161` are worth keeping regardless.
 5. **The shared `Input` component does not forward `id`** (base-ui primitive underneath), which
    breaks label association and lookups. Use a plain `<input>` when you need an id.
 
+## The five reserved keys — now built (2026-08-22, third session)
+
+All five work; `todo` no longer appears on any entry in `desktop/lib/pos-shortcuts.ts`.
+
+**Alt+U unit sheet** was the one that needed data, and the data now exists. The vendor-console
+package model (cloud 084/085) does carry factors in `package_items.quantity`, but it is **Model
+B** — pallet/box/piece are three separate stock-carrying products — and `sync/bootstrap` filters
+`product_type='SINGLE'` precisely to keep sealed-unit stock off the till. A retail counter needs
+**Model A**: one line, one stock pool in pieces, quantity scaled by a factor. So the ladder is
+two integers on the item master:
+
+- **cloud migration 134** — `pos.products.pack_size` (pieces per pack), `case_size` (PACKS per
+  case), `pack_label` / `case_label`, plus `pos.order_items.unit_label` / `unit_factor`. CHECKs
+  reject a factor <= 1, a case without a pack, and a pack on a weighed item, so a bad
+  configuration can never reach the counter and invent a quantity.
+- **PB migration 027** mirrors it on the terminal; **028** adds `cart_items.remark`; **cloud 135**
+  adds `pos.order_items.remark`.
+- `desktop/lib/units.ts` is the ladder (18 unit tests). **Stock is only ever held and moved in
+  pieces** — checkout multiplies by the factor, so the cloud reconciles through the existing
+  `apply_inventory_movement` trigger with no cloud-side stock change. Returns restock pieces too.
+- A level the shop has not configured is ABSENT from the sheet, and Alt+U on an unconfigured
+  item says so. That refusal is the feature.
+
+**Alt+T GST-included** re-splits tax out of the entered rate rather than adding it on
+(`lib/gst.ts`, 13 unit tests; the exclusive path is byte-identical to before). It refuses to
+flip mid-ticket and the till bar states the live basis. **F2** sets the bill date, owner-only —
+the header field was previously shown to managers too but checkout only ever honoured an owner,
+so the gate now matches what takes effect. **Ctrl+T** is a per-line remark, on the ticket and on
+the slip. **Ctrl+B** prints labels for the highlighted line through the existing label pipeline.
+
+Three prompt modals now exist because `window.prompt` throws in Electron: amount, date, text.
+
+### Found while doing this — NOT fixed, needs a decision
+`calcCartTotals`' bill-discount branch does not consult per-line `gstExempt`, so a ticket that
+mixes exempt goods (rice, sugar) with a **bill-level** discount charges 5% on the exempt lines
+too. It pre-dates this work and the web cart shares the shape, so it was left alone rather than
+silently changing every existing bill — the comment in `lib/gst.ts` marks it. The no-bill-discount
+path is per-line and does honour exemption.
+
 ## What is left
 
-- **Five reserved keys**, deliberately not faked — they report "not built yet" rather than
-  doing nothing: unit sheet (Alt+U), item remark (Ctrl+T), GST-included toggle (Alt+T),
-  F2 date, barcode print. Alt+U additionally needs **pack/case factors**, which the terminal's
-  catalog does not carry — a Pcs/Pack/Case sheet without them would invent quantities.
 - **Release**: desktop ships via a `desktop-vX.Y.Z` tag; CI secrets `APP_URL` and
   `RELEASE_INGEST_TOKEN` still need recreating on this repo (they only existed on the
   monorepo's GitHub).
@@ -75,13 +110,33 @@ the two web bug fixes in `b435161` are worth keeping regardless.
 ## Running the tests (this is the trustworthy signal)
 
     cd desktop
+    npx vitest run lib/                           # 48 pure unit tests: gst, units, labels
     node scripts/fetch-pocketbase.mjs --force     # arm64 box: tracked pb/pocketbase is x86-64
     xvfb-run -a npx playwright test --config playwright.electron.config.ts
     # fullscreen spec needs a WM:
     xvfb-run -a sh -c 'openbox & sleep 2; npx playwright test --config playwright.electron.config.ts e2e/electron/fullscreen.spec.ts'
 
 **Do NOT commit the swapped arm64 binary** — `git checkout -- desktop/pb/pocketbase` before
-committing. 22 specs, 22/22 across three consecutive runs at handover.
+committing. That binary is also why a `git stash` of `desktop/` makes every spec fail in ~12ms:
+it reverts to the x86-64 one, PocketBase never boots, and the instant failure looks nothing like
+a test problem. Re-fetch after any stash/pop.
+
+**Counts.** 29 specs in the baseline suite (`--grep-invert "TOUR|fullscreen"`); the fullscreen
+spec runs separately under a WM and passes. The four `TOUR — …` specs are narrated recorders
+that exhaust their 7-minute budgets on this box and are excluded from the baseline — they are
+the same ones the note above flags as targeting the mid-July app.
+
+**Known flake, PRE-EXISTING — `counter-line` "Alt+P cycles the price list".** It fails ~1 run in
+3 in the suite, and **4 of 6** when repeated in isolation. Verified against a stashed
+(pre-parity-work) tree at the same 4-of-6 rate, so it is not from this work. Alt+P silently does
+nothing: the tier never changes and the line never reprices. `waitForShortcutsReady` does not
+help it, so its cause is something other than registry arming — start there.
+
+**`waitForShortcutsReady(page)` (in `app-fixture.ts`) is why the new specs are stable.** A key
+pressed after a reload but before the counter's shortcut effect has registered is swallowed
+**silently** — the spec then waits out its entire timeout on an assertion that can never pass,
+and the trace shows a perfectly healthy page. `#pos-barcode` being visible is NOT sufficient.
+Any spec that presses a key after `reload()` should gate on it.
 
 The harness was ~50% flaky and was fixed: the window is worker-scoped but `appPage` is now
 test-scoped and resets both the screen and the ticket before every test. `zz-split-tender` is

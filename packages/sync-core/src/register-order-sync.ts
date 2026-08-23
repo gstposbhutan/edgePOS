@@ -81,6 +81,13 @@ export interface TerminalOrderItemLine {
   gst_5?: number
   gst_exempt?: boolean
   total?: number
+  // Pcs/Pack/Case ladder (cloud migration 134). quantity is in the SOLD unit and unit_price is
+  // the price of one of it, so quantity * unit_price = total holds either way; unit_factor is
+  // pieces per sold unit. Absent on lines from terminals older than the ladder → 1 (pieces).
+  unit_label?: string | null
+  unit_factor?: number
+  /** Ctrl+T cashier note on this line (cloud migration 135). */
+  remark?: string | null
 }
 
 /** A khata account row as stored on a terminal's PocketBase. */
@@ -277,6 +284,13 @@ export async function syncOrderItems(
         gst_5: line.gst_5 ?? 0,
         gst_exempt: line.gst_exempt ?? false,
         total: line.total ?? 0,
+        unit_label: line.unit_label || null,
+        // The column is NOT NULL DEFAULT 1 with a > 0 CHECK — coalesce rather than pass a 0
+        // through from an older terminal and fail the whole batch on the constraint.
+        unit_factor: Number(line.unit_factor) > 0 ? Number(line.unit_factor) : 1,
+        // Bounded to match the column CHECK, so an over-long note truncates instead of
+        // failing the whole batch and stranding the terminal's unsynced sales.
+        remark: line.remark ? String(line.remark).slice(0, 200) : null,
         external_id: `${machineId}:${o.order_no}:${idx}`,
       })
     })

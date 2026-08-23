@@ -14,22 +14,45 @@ export interface CartItemTotals {
   total: number;
 }
 
-export function calcItemTotals(input: CartItemInput, gstRate: number = DEFAULT_GST_RATE): CartItemTotals {
+/**
+ * Split one line into its net, its GST and what the customer pays.
+ *
+ * `gstIncluded` (the counter's Alt+T) says the rate the cashier typed ALREADY contains GST, so
+ * the tax is extracted from it rather than added on top — the customer pays exactly the entered
+ * rate. Exempt lines carry no GST either way, so the mode cannot change them.
+ *
+ * Returned `taxable` is always the ex-GST amount PER UNIT, in both modes.
+ */
+export function calcItemTotals(
+  input: CartItemInput,
+  gstRate: number = DEFAULT_GST_RATE,
+  gstIncluded: boolean = false,
+): CartItemTotals {
   const rate = gstRate / 100;
-  const taxable = Math.max(0, input.unitPrice - input.discount);
-  // Exempt goods carry no GST: total is just taxable × qty, gstAmount is 0.
+  const perUnit = Math.max(0, input.unitPrice - input.discount);
+  // Exempt goods carry no GST: total is just the entered amount × qty, gstAmount is 0.
   if (input.gstExempt) {
-    return { taxable, gstAmount: 0, total: parseFloat((taxable * input.quantity).toFixed(2)) };
+    return { taxable: perUnit, gstAmount: 0, total: parseFloat((perUnit * input.quantity).toFixed(2)) };
   }
-  const gstAmount = parseFloat((taxable * rate * input.quantity).toFixed(2));
-  const total = parseFloat(((taxable * (1 + rate)) * input.quantity).toFixed(2));
-  return { taxable, gstAmount, total };
+  if (gstIncluded) {
+    const total = parseFloat((perUnit * input.quantity).toFixed(2));
+    const net = perUnit / (1 + rate);
+    // Derive GST from the ROUNDED total so net + gst reconciles to the printed figure to the
+    // cent; computing both independently leaves a stray paisa on the slip.
+    const gstAmount = parseFloat((total - net * input.quantity).toFixed(2));
+    return { taxable: parseFloat(net.toFixed(4)), gstAmount, total };
+  }
+  const gstAmount = parseFloat((perUnit * rate * input.quantity).toFixed(2));
+  const total = parseFloat(((perUnit * (1 + rate)) * input.quantity).toFixed(2));
+  return { taxable: perUnit, gstAmount, total };
 }
 
 export function calcCartTotals(
   items: { unitPrice: number; discount: number; quantity: number; gstExempt?: boolean }[],
   gstRate: number = DEFAULT_GST_RATE,
-  billDiscount: number = 0
+  billDiscount: number = 0,
+  /** Alt+T — the entered rates already contain GST, so it is extracted, not added. */
+  gstIncluded: boolean = false,
 ) {
   const subtotal = items.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
   const discountTotal = items.reduce((s, i) => s + i.discount * i.quantity, 0);
@@ -40,28 +63,47 @@ export function calcCartTotals(
   const rate = gstRate / 100;
   let gstTotal: number;
   let grandTotal: number;
+  // The ex-GST net. In inclusive mode the line amounts already contain the tax, so the net is
+  // what is left after extracting it — which is why this is not simply taxableSubtotal.
+  let netSubtotal = taxableSubtotal;
   if (bd > 0) {
-    // Bill discount present → GST on the discounted invoice net (matches the web cart).
-    gstTotal = parseFloat((taxableSubtotal * rate).toFixed(2));
-    grandTotal = parseFloat((taxableSubtotal + gstTotal).toFixed(2));
+    // Bill discount present → one rate over the discounted invoice net (matches the web cart).
+    //
+    // KNOWN LIMITATION, pre-dating the Alt+T work and deliberately left as-is here rather than
+    // silently changing every existing bill: this branch does not consult per-line gstExempt,
+    // so a ticket that mixes exempt goods with a BILL-level discount taxes the exempt lines
+    // too. The no-bill-discount branch below is per-line and does honour it.
+    if (gstIncluded) {
+      // The customer pays the discounted gross; the tax is inside it.
+      netSubtotal = taxableSubtotal / (1 + rate);
+      gstTotal = parseFloat((taxableSubtotal - netSubtotal).toFixed(2));
+      grandTotal = parseFloat(taxableSubtotal.toFixed(2));
+    } else {
+      gstTotal = parseFloat((taxableSubtotal * rate).toFixed(2));
+      grandTotal = parseFloat((taxableSubtotal + gstTotal).toFixed(2));
+    }
   } else {
     // No bill discount → canonical per-line-then-sum (P2-5): gst_total == Σ items.gst_5 to the
     // cent, no aggregate re-rounding drift.
     let g = 0;
     let t = 0;
+    let n = 0;
     for (const i of items) {
-      const it = calcItemTotals(i, gstRate);
+      const it = calcItemTotals(i, gstRate, gstIncluded);
       g += it.gstAmount;
       t += it.total;
+      n += it.total - it.gstAmount;
     }
     gstTotal = parseFloat(g.toFixed(2));
     grandTotal = parseFloat(t.toFixed(2));
+    netSubtotal = n;
   }
   return {
     subtotal: parseFloat(subtotal.toFixed(2)),
     discountTotal: parseFloat(discountTotal.toFixed(2)),
     billDiscount: parseFloat(bd.toFixed(2)),
-    taxableSubtotal: parseFloat(taxableSubtotal.toFixed(2)),
+    // Ex-GST net in both modes — this is what the slip's "Subtotal" line means.
+    taxableSubtotal: parseFloat(netSubtotal.toFixed(2)),
     gstTotal,
     grandTotal,
   };

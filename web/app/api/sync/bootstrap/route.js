@@ -50,6 +50,7 @@ export async function GET(request) {
       .select(`
         id, name, sku, barcode, qr_code, hsn_code, unit, mrp, selling_price,
         wholesale_price, current_stock, reorder_point, image_url, is_active, sold_by_weight, gst_exempt,
+        pack_size, case_size, pack_label, case_label,
         category, subcategory
       `)
       .eq('created_by', entityId)
@@ -98,6 +99,13 @@ export async function GET(request) {
     is_active: p.is_active ?? true,
     sold_by_weight: p.sold_by_weight ?? false,
     gst_exempt: p.gst_exempt ?? false,
+    // Pcs/Pack/Case ladder for the counter's Alt+U unit sheet (migration 134). 0 = the shop
+    // does not sell that level, and the sheet omits it rather than inventing a quantity.
+    // Stock stays in PIECES on both sides — only the ticket line is scaled.
+    pack_size: p.pack_size ?? 0,
+    case_size: p.case_size ?? 0,
+    pack_label: p.pack_label || '',
+    case_label: p.case_label || '',
     category_name: p.category ?? null,   // HSN category (category-tag join retired — Phase 1)
   }))
 
