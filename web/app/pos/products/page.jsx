@@ -123,18 +123,9 @@ export default function ProductsPage() {
   function closeForm() { setShowForm(false); setEditProduct(null) }
   function closeDetail() { setViewProduct(null) }
 
-  // Keyboard shortcuts: N = add product, Escape = close form
-  useEffect(() => {
-    function handleKeyDown(e) {
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return
-      if (showForm || viewProduct) return
-      if (e.key === 'n' || e.key === 'N') {
-        if (canManage) { e.preventDefault(); openAdd() }
-      }
-    }
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [showForm, viewProduct, canManage])
+  // N (add product) is bound by the office rail — see components/pos/office/office-shell.jsx.
+  // It was a private listener here, so the key worked but nothing on screen said so; after the
+  // reskin put N on the rail it would have been bound twice.
 
   // The product register (spec WF-09) — the master list read as a register, not a card wall.
   //

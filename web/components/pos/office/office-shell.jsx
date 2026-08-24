@@ -4,6 +4,8 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { OfficeMenu } from "@/components/pos/keyboard/office-menu"
 import { OFFICE_KEY_BAR } from "@/lib/pos/office-keys"
+import { isTypingTarget } from "@/lib/pos/office-menu"
+import { matches } from "@/lib/pos/shortcuts"
 
 /**
  * The back-office frame (spec WF-08/WF-09), the counter's other half.
@@ -39,11 +41,18 @@ export function OfficeShell({ title, crumb, keys = [], date, escToCounter = true
     if (!escToCounter) return
     const onKey = (e) => {
       if (e.key !== 'Escape') return
-      const el = e.target
-      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return
       // The menu owns Escape while it is up — it closes itself, and closing it must not also
       // throw the screen back to the till underneath.
       if (menuOpen) return
+      // Escape out of the FIELD first, then out of the screen. Standing down entirely while a
+      // field has focus broke the promise the rail makes: /pos/products puts the caret in its
+      // search box on arrival, so "Esc Counter" did nothing at all there until you clicked away.
+      // One press leaves the field, the next leaves the screen.
+      if (isTypingTarget(e.target)) {
+        e.preventDefault()
+        e.target.blur()
+        return
+      }
       e.preventDefault()
       router.push('/pos')
     }
@@ -70,10 +79,12 @@ export function OfficeShell({ title, crumb, keys = [], date, escToCounter = true
     const onKey = (e) => {
       if (menuOpen) return
       if (isTypingTarget(e.target)) return
+      // A modal owns the keyboard while it is up, or the rail fires underneath it.
+      if (document.querySelector('[role="dialog"]')) return
       for (const entry of rail) {
         if (!entry.onClick || entry.todo) continue
         if (entry.key === 'Esc') continue          // handled above, together with the menu
-        if (matchesKey(entry.key, e)) {
+        if (matches(e, { match: toMatch(entry.key) })) {
           e.preventDefault()
           entry.onClick()
           return
@@ -117,25 +128,28 @@ export function OfficeShell({ title, crumb, keys = [], date, escToCounter = true
 }
 
 /**
- * Does this keydown match a rail label like "P", "F2", "Alt+O" or "Ctrl+⇧L"?
- * Modifiers must match exactly, so plain "P" does not fire while Ctrl+P is printing the page.
+ * Turn a rail label ("P", "F2", "Ctrl+⇧L") into the shape lib/pos/shortcuts.js `matches()` wants.
+ *
+ * The matching itself is NOT reimplemented here. That function already handles what an ad-hoc
+ * comparison gets wrong: Option rewrites the character on macOS, so Alt+L arrives as '¬' and has
+ * to be matched on event.code, and Cmd counts as Ctrl. The till's map has been through all of
+ * that, so the office rail routes through the same code rather than growing a second dialect.
  */
-function matchesKey(label, e) {
+function toMatch(label) {
   const parts = String(label).split('+')
-  const base = parts.pop()
-  const want = { ctrl: parts.includes('Ctrl'), alt: parts.includes('Alt'), shift: parts.includes('Shift') || parts.includes('⇧') }
-  if (e.ctrlKey !== want.ctrl || e.altKey !== want.alt) return false
-  // A letter typed with Shift is a different character, so only demand Shift when the label asks.
-  if (want.shift && !e.shiftKey) return false
-  if (base === 'Esc') return e.key === 'Escape'
-  if (/^F\d{1,2}$/.test(base)) return e.key === base
-  if (base.length === 1) return e.key.toUpperCase() === base.toUpperCase()
-  return false
-}
-
-/** Letter keys are for acting, so they must never fire while something is being typed. */
-function isTypingTarget(el) {
-  return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)
+  let base = parts.pop()
+  // The till prints Shift as ⇧ glued to the letter ("Ctrl+⇧L"), not as its own +-separated part,
+  // so the glyph has to be peeled off the base rather than looked for among the modifiers.
+  const glued = /^[⇧^]/.test(base)
+  if (glued) base = base.slice(1)
+  const mods = {
+    ctrl:  parts.includes('Ctrl'),
+    alt:   parts.includes('Alt'),
+    shift: glued || parts.includes('Shift') || parts.includes('⇧'),
+  }
+  if (base === 'Esc') return { key: 'Escape', ...mods }
+  if (/^F\d{1,2}$/.test(base)) return { key: base, ...mods }
+  return { key: base.toLowerCase(), ...mods }   // shortcuts.js matches letters lowercase
 }
 
 /**
@@ -160,6 +174,7 @@ export function OfficeKeyRail({ keys = [] }) {
       {keys.map(({ key, label, onClick, todo }) => (
         <button
           key={`${key}-${label}`}
+          data-rail-key={key}
           type="button"
           onClick={todo ? undefined : onClick}
           aria-disabled={todo || !onClick ? 'true' : undefined}
