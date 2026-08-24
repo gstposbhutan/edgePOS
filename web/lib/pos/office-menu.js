@@ -28,6 +28,7 @@ export const OFFICE_MODULES = [
       { letter: 'T', label: 'Transaction (Counter)', href: '/pos' },
       { letter: 'O', label: 'Order Register', href: '/pos/orders' },
       { letter: 'R', label: 'GST Report', href: '/pos/reports' },
+      { letter: 'D', label: 'Day Book', href: '/pos/reports/day-book' },
     ],
   },
   {
@@ -44,6 +45,7 @@ export const OFFICE_MODULES = [
     letter: 'F', label: 'Financial Management', href: '/pos/khata',
     children: [
       { letter: 'K', label: 'Khata (credit ledger)', href: '/pos/khata' },
+      { letter: 'B', label: 'Cash Book', href: '/pos/reports/cash-book' },
       { letter: 'C', label: 'Cash Registers', href: '/pos/registers' },
       { letter: 'S', label: 'Shifts', href: '/pos/shifts' },
     ],
@@ -90,6 +92,9 @@ export const OFFICE_ROUTES = [
   '/pos/team',
   '/pos/settings',
   '/pos/inventory/ledger',
+  '/pos/orders',
+  '/pos/reports/day-book',
+  '/pos/reports/cash-book',
 ]
 
 /** True when `pathname` is an office-framed screen (its own route, not a child of it). */

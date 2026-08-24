@@ -1,5 +1,9 @@
 "use client"
 
+import { OfficeShell } from "@/components/pos/office/office-shell"
+import { OfficeGrid } from "@/components/pos/office/office-grid"
+import { REPORT_KEYS, withHandlers } from "@/lib/pos/office-keys"
+
 import { useState, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { ArrowLeft, Search, RefreshCw, ShoppingBag, MessageCircle, Plus, Store, FileText, Receipt } from "lucide-react"
@@ -94,202 +98,146 @@ function OrdersPage() {
     (o.buyer_whatsapp ?? '').includes(search)
   )
 
+  // The order register (spec WF-09) — counter orders and sales vouchers, each as its own register.
+  //
+  // Both lists answer "which order was that, and what was it worth", which is a column read: the
+  // voucher number down one side, the amount down the other. The section switch changes WHICH
+  // register is on screen rather than reflowing the page.
+  const money = (n) => Number(n ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const day = (d) => new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-')
+
+  const POS_COLUMNS = [
+    { key: 'order_no', label: 'Order No', width: 170 },
+    { key: 'date',     label: 'Date',     width: 120 },
+    { key: 'source',   label: 'Source',   width: 120 },
+    { key: 'buyer',    label: 'Customer' },
+    { key: 'method',   label: 'Payment',  width: 110 },
+    { key: 'status',   label: 'Status',   width: 150 },
+    { key: 'gst',      label: 'GST',      width: 110, align: 'right' },
+    { key: 'total',    label: 'Amount',   width: 130, align: 'right' },
+  ]
+
+  const SALES_COLUMNS = [
+    { key: 'order_no', label: salesTab === 'SI' ? 'Invoice No' : 'Order No', width: 170 },
+    { key: 'date',     label: 'Date',     width: 120 },
+    { key: 'buyer',    label: 'Customer' },
+    { key: 'against',  label: 'Against',  width: 150 },
+    { key: 'method',   label: 'Payment',  width: 110 },
+    { key: 'status',   label: 'Status',   width: 150 },
+    { key: 'total',    label: 'Amount',   width: 130, align: 'right' },
+  ]
+
+  const posRows = displayedPOS.map(o => ({
+    id: o.id,
+    order_no: o.order_no,
+    date: day(o.created_at),
+    source: o.order_source === 'WHATSAPP' ? 'WhatsApp' : o.order_type === 'MARKETPLACE' ? 'Marketplace' : 'Counter',
+    buyer: o.buyer_whatsapp || o.buyer_phone || 'Walk-in',
+    method: o.payment_method ?? '—',
+    status: o.status ?? '—',
+    gst: money(o.gst_total),
+    total: money(o.grand_total),
+  }))
+
+  const salesRows = displayedSales.map(o => ({
+    id: o.id,
+    order_no: o.order_no,
+    date: day(o.created_at),
+    buyer: o.buyer_whatsapp || o.buyer_phone || '—',
+    against: salesTab === 'SI' && o.sales_order_id ? (o.sales_orders?.order_no || 'SO') : '—',
+    method: o.payment_method ?? '—',
+    status: o.status ?? '—',
+    total: money(o.grand_total),
+  }))
+
+  const onSales = effectiveSection === 'SALES'
+  const rows = onSales ? salesRows : posRows
+  const busy = onSales ? salesLoading : loading
+  const total = (onSales ? displayedSales : displayedPOS)
+    .reduce((sum, o) => sum + parseFloat(o.grand_total ?? 0), 0)
+  const canManage = ['MANAGER', 'OWNER', 'ADMIN'].includes(subRole)
+
+  const SALES_TABS = [['SO', 'Sales Orders'], ['SI', 'Invoices'], ['MKT', 'Marketplace']]
+
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="glassmorphism border-b border-border px-4 py-3 flex items-center gap-3 shrink-0">
-        <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos')}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div className="flex-1 min-w-0">
-          {/* Breadcrumb */}
-          <div className="flex items-center gap-1 text-xs text-muted-foreground mb-0.5">
-            <button onClick={() => router.push('/pos')} className="hover:text-foreground transition-colors">POS</button>
-            <span>/</span>
-            <span className="text-foreground font-medium">Orders</span>
-            {effectiveSection === 'SALES' && (
-              <>
-                <span>/</span>
-                <span className="text-foreground font-medium">
-                  {salesTab === 'SO' ? 'Sales Orders' : salesTab === 'SI' ? 'Invoices' : 'Marketplace'}
-                </span>
-              </>
-            )}
-          </div>
-          <p className="text-[10px] text-muted-foreground">
-            {effectiveSection === 'SALES' ? `${salesOrders.length} ${salesTab === 'SO' ? 'sales orders' : 'invoices'}` : `${orders.length} orders`}
-          </p>
-        </div>
-        <Button variant="ghost" size="icon-sm" onClick={effectiveSection === 'SALES' ? loadSalesOrders : fetchOrders}>
-          <RefreshCw className="h-4 w-4" />
-        </Button>
-        {['MANAGER', 'OWNER', 'ADMIN'].includes(subRole) && (
-          <Button size="sm" onClick={() => router.push('/pos')} className="gap-1.5">
-            <Plus className="h-4 w-4" /> New Order
-          </Button>
-        )}
+    <OfficeShell
+      crumb="Sale Management"
+      title={onSales
+        ? (salesTab === 'SO' ? 'Sales Order Register' : salesTab === 'SI' ? 'Sales Invoice Register' : 'Marketplace Register')
+        : 'Order Register'}
+      keys={[
+        ...(onSales && salesTab === 'SO' && canManage
+          ? [{ key: 'N', label: 'New Sales Order', onClick: () => router.push('/salesorder') }] : []),
+        ...(subRole !== 'CASHIER'
+          ? [{ key: 'V', label: onSales ? 'Counter Orders' : 'Sales Vouchers', onClick: () => setSection(onSales ? 'POS' : 'SALES') }] : []),
+        { key: 'R', label: 'Refresh', onClick: () => (onSales ? loadSalesOrders() : fetchOrders()) },
+        ...withHandlers(REPORT_KEYS, {
+          P: () => window.print(),
+          'Ctrl+⇧L': () => router.push('/pos/stores'),
+        }),
+      ]}
+    >
+      <div className="flex flex-wrap items-center gap-2 mb-3 text-[12px]">
+        {subRole !== 'CASHIER' && [['SALES', 'Sales'], ['POS', 'Counter Orders']].map(([key, label]) => (
+          <button key={key} type="button" onClick={() => setSection(key)}
+            className="px-3 py-1 text-[11px] border"
+            style={{
+              borderColor: 'var(--office-line)',
+              background: effectiveSection === key ? 'var(--office-menu-sel)' : 'var(--office-panel-bg)',
+              color: effectiveSection === key ? '#fff' : undefined,
+              fontWeight: effectiveSection === key ? 700 : 400,
+            }}>
+            {label}
+          </button>
+        ))}
+
+        {onSales && SALES_TABS.map(([key, label]) => (
+          <button key={key} type="button" onClick={() => setSalesTab(key)}
+            className="px-2 py-1 text-[11px] border"
+            style={{
+              borderColor: 'var(--office-line)',
+              background: salesTab === key ? 'var(--office-menu-sel)' : 'var(--office-panel-bg)',
+              color: salesTab === key ? '#fff' : undefined,
+            }}>
+            {label}
+          </button>
+        ))}
+
+        {!onSales && POS_FILTERS.map(f => (
+          <button key={f} type="button" onClick={() => setFilter(f)}
+            className="px-2 py-1 text-[11px] border"
+            style={{
+              borderColor: 'var(--office-line)',
+              background: filter === f ? 'var(--office-menu-sel)' : 'var(--office-panel-bg)',
+              color: filter === f ? '#fff' : undefined,
+            }}>
+            {f}
+          </button>
+        ))}
+
+        <label className="flex items-center gap-1.5 ml-2">
+          <span className="sr-only">Search</span>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="order no or phone"
+            className="px-1.5 py-0.5 border bg-white w-56" style={{ borderColor: 'var(--office-line)' }} />
+        </label>
+
+        <span className="ml-auto opacity-75">{rows.length} {onSales ? 'voucher' : 'order'}{rows.length === 1 ? '' : 's'}</span>
       </div>
 
-      {/* Section tabs */}
-      {subRole !== 'CASHIER' && (
-        <div className="px-4 pt-3 pb-1 flex gap-2 shrink-0">
-          <button
-            onClick={() => setSection('SALES')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-              section === 'SALES' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'
-            }`}
-          >
-            <FileText className="h-3.5 w-3.5" /> Sales
-          </button>
-          <button
-            onClick={() => setSection('POS')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-              section === 'POS' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'
-            }`}
-          >
-            <ShoppingBag className="h-3.5 w-3.5" /> POS Orders
-          </button>
-        </div>
+      {busy ? (
+        <p className="text-[12px] opacity-60 p-4">Loading…</p>
+      ) : (
+        <OfficeGrid
+          columns={onSales ? SALES_COLUMNS : POS_COLUMNS}
+          rows={rows}
+          totals={{ order_no: 'Total', total: money(total) }}
+          onOpen={(row) => router.push(`/pos/orders/${row.id}`)}
+          openOnClick
+          empty={onSales ? 'No vouchers found.' : 'No orders found.'}
+        />
       )}
 
-      {/* Sub-tabs + search */}
-      <div className="px-4 py-2 space-y-2 shrink-0 border-b border-border">
-        {effectiveSection === 'SALES' && (
-          <div className="flex gap-1.5 overflow-x-auto pb-0.5">
-            {[
-              ['SO',  'Sales Orders',  FileText],
-              ['SI',  'Invoices',      Receipt],
-              ['MKT', 'Marketplace',   Store],
-            ].map(([key, label, Icon]) => (
-              <button key={key} onClick={() => setSalesTab(key)}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors shrink-0 ${
-                  salesTab === key ? 'bg-primary/10 text-primary border border-primary/30' : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                }`}>
-                <Icon className="h-3 w-3" />{label}
-              </button>
-            ))}
-          </div>
-        )}
-
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search by order no. or WhatsApp..." value={search}
-            onChange={e => setSearch(e.target.value)} className="pl-9" />
-        </div>
-
-        {effectiveSection === 'POS' && (
-          <div className="flex gap-1 overflow-x-auto pb-0.5">
-            {POS_FILTERS.map(f => (
-              <Button key={f} size="sm" variant={filter === f ? 'default' : 'outline'}
-                onClick={() => setFilter(f)}
-                className={`shrink-0 ${filter === f ? 'bg-primary' : ''}`}>
-                {f === 'MARKETPLACE'
-                  ? <span className="flex items-center gap-1"><Store className="h-3 w-3" /> Marketplace</span>
-                  : f.charAt(0) + f.slice(1).toLowerCase()
-                }
-              </Button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* List */}
-      <div className="flex-1 overflow-y-auto">
-        {/* POS orders */}
-        {effectiveSection === 'POS' && (
-          loading ? (
-            <div className="p-4 space-y-3">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-16 rounded-lg bg-muted animate-pulse" />)}</div>
-          ) : displayedPOS.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
-              <ShoppingBag className="h-10 w-10 opacity-20" /><p className="text-sm">No orders found</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-border">
-              {displayedPOS.map(order => (
-                <button key={order.id} onClick={() => router.push(`/pos/orders/${order.id}`)}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors text-left">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-mono font-medium text-foreground">{order.order_no}</p>
-                      {order.order_source === 'WHATSAPP' && (
-                        <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-                          <MessageCircle className="h-3 w-3" /> WA
-                        </span>
-                      )}
-                      {order.order_type === 'MARKETPLACE' && (
-                        <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-600 border border-blue-500/20">
-                          <Store className="h-3 w-3" /> MKT
-                        </span>
-                      )}
-                      <OrderStatusBadge status={order.status} size="sm" />
-                    </div>
-                    <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
-                      <span>{new Date(order.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
-                      {order.buyer_whatsapp && <span>{order.buyer_whatsapp}</span>}
-                      <span>{order.payment_method}</span>
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-sm font-semibold text-primary">Nu. {parseFloat(order.grand_total).toFixed(2)}</p>
-                    <p className="text-xs text-muted-foreground">GST Nu. {parseFloat(order.gst_total).toFixed(2)}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )
-        )}
-
-        {/* Sales orders / invoices */}
-        {effectiveSection === 'SALES' && (
-          salesLoading ? (
-            <div className="p-4 space-y-3">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-16 rounded-lg bg-muted animate-pulse" />)}</div>
-          ) : displayedSales.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
-              <FileText className="h-10 w-10 opacity-20" />
-              <p className="text-sm">No {salesTab === 'SO' ? 'sales orders' : 'invoices'} yet</p>
-              {salesTab === 'SO' && ['MANAGER', 'OWNER', 'ADMIN'].includes(subRole) && (
-                <Button size="sm" onClick={() => router.push('/salesorder')}>
-                  <Plus className="h-4 w-4 mr-1" /> Create Sales Order
-                </Button>
-              )}
-            </div>
-          ) : (
-            <div>
-              <div className="divide-y divide-border">
-                {displayedSales.map(order => (
-                  <button key={order.id} onClick={() => router.push(`/pos/orders/${order.id}`)}
-                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors text-left">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-mono font-medium">{order.order_no}</p>
-                        <SalesBadge status={order.status} />
-                      </div>
-                      <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
-                        <span>{new Date(order.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</span>
-                        {order.buyer_whatsapp && <span>{order.buyer_whatsapp}</span>}
-                        <span>{order.payment_method}</span>
-                        {salesTab === 'SI' && order.sales_order_id && (
-                          <span className="text-primary text-[10px]">← {order.sales_orders?.order_no || 'SO'}</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-sm font-semibold text-primary">Nu. {parseFloat(order.grand_total).toFixed(2)}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-              {salesTab === 'SO' && ['MANAGER', 'OWNER', 'ADMIN'].includes(subRole) && (
-                <div className="sticky bottom-0 p-3 bg-background/95 backdrop-blur border-t border-border">
-                  <Button className="w-full" onClick={() => router.push('/salesorder')}>
-                    <Plus className="h-4 w-4 mr-1.5" /> New Sales Order
-                  </Button>
-                </div>
-              )}
-            </div>
-          )
-        )}
-      </div>
-    </div>
+      <p className="mt-2 text-[10px] opacity-60">Enter opens the selected voucher. Amounts in Nu.</p>
+    </OfficeShell>
   )
 }

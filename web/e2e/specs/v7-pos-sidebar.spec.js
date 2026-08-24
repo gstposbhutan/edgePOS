@@ -34,8 +34,10 @@ test.describe('POS nav rail — manager', () => {
     console.log('SIDEBAR_OFFICE_FULLBLEED_OK')
   })
 
+  // /pos/terminals is one of the few screens still on the console layout — orders, khata,
+  // products and the rest are office-framed now and deliberately have no rail.
   test('a console screen keeps the rail, with the management destinations', async ({ page }) => {
-    await page.goto('/pos/orders')
+    await page.goto('/pos/terminals')
     await expect(page.locator('aside a[href="/pos/products"]')).toBeVisible({ timeout: 15000 })
     await expect(page.locator('aside a[href="/pos/orders"]')).toBeVisible()
     await expect(page.locator('aside a[href="/pos/khata"]')).toBeVisible()
@@ -47,7 +49,7 @@ test.describe('POS nav rail — cashier', () => {
   test.use({ storageState: 'e2e/storage/cashier-auth.json' })
 
   test('a cashier is not shown management destinations', async ({ page }) => {
-    await page.goto('/pos/orders')
+    await page.goto('/pos/terminals')
     // Orders is visible to all; Products/Khata/Registers are management-only.
     await expect(page.locator('aside a[href="/pos/orders"]')).toBeVisible({ timeout: 15000 })
     await expect(page.locator('aside a[href="/pos/products"]')).toHaveCount(0)

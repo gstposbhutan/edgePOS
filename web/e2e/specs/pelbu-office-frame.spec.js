@@ -17,6 +17,9 @@ const FRAMED = [
   { path: '/pos/inventory', crumb: 'Warehouse Management',  title: 'Stock Register' },
   { path: '/pos/registers', crumb: 'Financial Management',  title: 'Terminal Register' },
   { path: '/pos/shifts',    crumb: 'Financial Management',  title: 'Shift Register' },
+  { path: '/pos/orders',    crumb: 'Sale Management',       title: 'Register' },
+  { path: '/pos/reports/day-book',  crumb: 'Financial Management', title: 'Day Book' },
+  { path: '/pos/reports/cash-book', crumb: 'Financial Management', title: 'Cash Book' },
 ]
 
 test.describe('the office frame', () => {
@@ -42,6 +45,36 @@ test.describe('the office frame', () => {
       await expect(page.locator('aside')).toHaveCount(0)
     })
   }
+
+  // The ledger is the one framed screen with nothing to show until a product is named, so it
+  // gets its own case rather than a prompt failing the shared "has a register" assertion.
+  test('the stock ledger frames up and shows a register once a product is chosen', async ({ page }) => {
+    await page.goto('/pos/inventory/ledger')
+    const band = page.locator('[data-testid="office-band"]')
+    await expect(band).toBeVisible({ timeout: 20000 })
+    await expect(band).toContainText('Stock Ledger')
+    await expect(page.locator('[data-testid="office-rail"]')).toBeVisible()
+
+    const options = page.locator('select option')
+    await expect.poll(async () => await options.count(), { timeout: 20000 }).toBeGreaterThan(1)
+    await page.selectOption('select', await options.nth(1).getAttribute('value'))
+    await expect(page.locator('[data-testid="office-grid"]')).toBeVisible({ timeout: 15000 })
+    // An opening balance row is what makes it a ledger rather than a movement list.
+    await expect(page.locator('[data-testid="office-grid"]')).toContainText('Opening Balance')
+  })
+
+  // /pos/stores is OWNER-only; this project runs as a manager, who is bounced to the counter.
+  test.describe('store register', () => {
+    test.use({ storageState: 'e2e/storage/owner-auth.json' })
+    test('/pos/stores wears the frame for an owner', async ({ page }) => {
+      await page.goto('/pos/stores')
+      const band = page.locator('[data-testid="office-band"]')
+      await expect(band).toBeVisible({ timeout: 20000 })
+      await expect(band).toContainText('Store Register')
+      await expect(page.locator('[data-testid="office-grid"]')).toBeVisible()
+      await expect(page.locator('aside')).toHaveCount(0)
+    })
+  })
 
   test('Esc returns to the counter from a framed screen', async ({ page }) => {
     await page.goto('/pos/khata')
