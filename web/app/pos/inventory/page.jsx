@@ -120,7 +120,7 @@ export default function InventoryPage() {
       title={TAB_TITLE[activeTab] ?? 'Stock Register'}
       keys={[
         { key: 'R', label: 'Refresh', onClick: refresh },
-        ...withHandlers(REPORT_KEYS, { P: () => window.print() }),
+        ...withHandlers(REPORT_KEYS, { P: () => window.print(), 'Ctrl+⇧L': () => router.push('/pos/stores') }),
       ]}
     >
 

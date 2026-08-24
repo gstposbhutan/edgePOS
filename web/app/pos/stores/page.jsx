@@ -3,6 +3,9 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getUser, getRoleClaims } from '@/lib/auth'
+import { OfficeShell } from '@/components/pos/office/office-shell'
+import { OfficeGrid } from '@/components/pos/office/office-grid'
+import { MASTER_KEYS, withHandlers } from '@/lib/pos/office-keys'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -106,69 +109,47 @@ export default function AdminStoresPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Simple header — no admin sidebar needed for OWNER */}
-      <header className="border-b border-border px-6 py-4 flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => router.push('/pos')}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div>
-          <h1 className="text-lg font-bold flex items-center gap-2"><Store className="h-5 w-5" /> My Stores</h1>
-          <p className="text-sm text-muted-foreground">{stores.length} store{stores.length !== 1 ? 's' : ''}</p>
-        </div>
-        {/* Shop creation is admin-only (meeting 2026-08-11 D7) — owners view/switch, admins add. */}
-        {role === 'SUPER_ADMIN' && (
-          <Button onClick={() => setModalOpen(true)} className="ml-auto gap-2">
-            <Plus className="h-4 w-4" /> Add Store
-          </Button>
-        )}
-      </header>
+    <OfficeShell
+      crumb="Master Data Management"
+      title="Store Register"
+      keys={[
+        ...(role === 'SUPER_ADMIN' ? [{ key: 'N', label: 'Add Store', onClick: () => setModalOpen(true) }] : []),
+        ...withHandlers(MASTER_KEYS, {}).filter(k => k.key === 'Esc'),
+      ]}
+    >
+      <div className="flex flex-wrap items-center gap-3 mb-3 text-[12px]">
+        <span className="opacity-75">{stores.length} store{stores.length !== 1 ? 's' : ''}</span>
+      </div>
 
-      <main className="p-6 max-w-4xl mx-auto">
-        {stores.length === 0 ? (
-          <div className="text-center py-16 text-muted-foreground">
-            <Store className="h-12 w-12 mx-auto mb-3 opacity-20" />
-            <p className="text-sm">{role === 'SUPER_ADMIN' ? 'No stores yet. Create your first store.' : 'No stores yet. Contact your administrator to set one up.'}</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
-            {stores.map(store => (
-              <div key={store.id} className="border border-border rounded-xl p-4 space-y-2 hover:border-primary/40 transition-colors">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="font-semibold text-sm">{store.name}</p>
-                  <Badge variant="outline" className={store.is_active
-                    ? 'text-emerald-600 border-emerald-500/30 bg-emerald-500/10 text-xs'
-                    : 'text-xs text-muted-foreground'
-                  }>
-                    {store.is_active ? 'Active' : 'Inactive'}
-                  </Badge>
-                </div>
-                {store.tpn_gstin && <p className="text-xs text-muted-foreground">TPN: {store.tpn_gstin}</p>}
-                {store.whatsapp_no && <p className="text-xs text-muted-foreground">{store.whatsapp_no}</p>}
-                {store.is_primary && (
-                  <span className="inline-block text-[10px] font-medium text-primary border border-primary/30 bg-primary/5 px-1.5 py-0.5 rounded-full">
-                    Primary store
-                  </span>
-                )}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="w-full mt-1"
-                  onClick={() => router.push('/pos')}
-                >
-                  Open POS
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
-      </main>
+      <OfficeGrid
+        columns={[
+          { key: 'name',    label: 'Store' },
+          { key: 'tpn',     label: 'TPN / GSTIN', width: 160 },
+          { key: 'phone',   label: 'Phone',       width: 150 },
+          { key: 'primary', label: 'Primary',     width: 90 },
+          { key: 'status',  label: 'Status',      width: 100 },
+          { key: '_act', label: '', width: 110, render: (_v, row) => (
+            <span onClick={e => e.stopPropagation()}>
+              <button type="button" className="underline" onClick={() => router.push('/pos')}>Open</button>
+            </span>
+          ) },
+        ]}
+        rows={stores.map(st => ({
+          id: st.id,
+          name: st.name,
+          tpn: st.tpn_gstin || '—',
+          phone: st.whatsapp_no || '—',
+          primary: st.is_primary ? 'Primary' : '',
+          status: st.is_active ? 'Active' : 'Inactive',
+        }))}
+        empty="No stores yet."
+      />
 
       <AddStoreModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         onAdded={store => setStores(prev => [...prev, { ...store, is_primary: prev.length === 0 }])}
       />
-    </div>
+    </OfficeShell>
   )
 }

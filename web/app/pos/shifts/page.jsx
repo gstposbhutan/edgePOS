@@ -83,7 +83,7 @@ export default function ShiftHistoryPage() {
 
   const COLUMNS = [
     { key: 'register',       label: 'Terminal',  width: 150 },
-    { key: 'cashier',        label: 'Cashier',   width: 150 },
+    { key: 'cashier',        label: 'Cashier' },   // no width: absorbs the slack
     { key: 'opened',         label: 'Opened',    width: 130 },
     { key: 'closed',         label: 'Closed',    width: 130 },
     { key: 'opening',        label: 'Opening',   width: 100, align: 'right' },
@@ -97,7 +97,7 @@ export default function ShiftHistoryPage() {
     <OfficeShell
       crumb="Financial Management"
       title="Shift Register"
-      keys={withHandlers(REPORT_KEYS, { P: () => window.print() })}
+      keys={withHandlers(REPORT_KEYS, { P: () => window.print(), 'Ctrl+⇧L': () => router.push('/pos/stores') })}
     >
       <div className="flex flex-wrap items-center gap-3 mb-3 text-[12px]">
         <span className="opacity-75">{shifts.length} shift{shifts.length === 1 ? '' : 's'}</span>

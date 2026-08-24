@@ -14,13 +14,21 @@ export const OFFICE_KEY_BAR = [
   { key: 'Esc', label: 'Counter' },
 ]
 
-/** Report screens: the reading keys. */
+/**
+ * Report screens: the reading keys.
+ *
+ * `E Expand` is deliberately absent. It expands grouped rows, none of these registers group, and
+ * it is not a reflex the way F2 is — advertising it dimmed forever would be clutter, not honesty.
+ *
+ * Location is `Ctrl+⇧L`, NOT F12. F12 belongs to the browser's devtools and no page can cancel
+ * it, so printing F12 here would be a promise the web till cannot keep — the same reason the
+ * counter's rail carries the alias (see lib/pos/shortcuts.js). The terminal can bind the real F12.
+ */
 export const REPORT_KEYS = [
-  { key: 'F2',  label: 'Date',     todo: true },
-  { key: 'P',   label: 'Print',    todo: true },
-  { key: 'E',   label: 'Expand',   todo: true },
-  { key: 'F12', label: 'Location', todo: true },
-  { key: 'Esc', label: 'Counter' },
+  { key: 'F2',      label: 'Date',     todo: true },
+  { key: 'P',       label: 'Print',    todo: true },
+  { key: 'Ctrl+⇧L', label: 'Location', todo: true },
+  { key: 'Esc',     label: 'Counter' },
 ]
 
 /** Master-data screens: the editing keys. */

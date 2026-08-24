@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { getUser, getRoleClaims } from "@/lib/auth"
 import { OfficeShell } from "@/components/pos/office/office-shell"
@@ -27,6 +27,7 @@ const COLUMNS = [
 
 export default function PosReportsPage() {
   const router = useRouter()
+  const fromRef = useRef(null)
   const today = new Date()
   const yearAgo = new Date(today.getTime() - 365 * 86400000)
 
@@ -85,12 +86,19 @@ export default function PosReportsPage() {
       crumb="Financial Management"
       title="Tax Register (GST)"
       date={`${from} — ${to}`}
-      keys={withHandlers(REPORT_KEYS, { P: () => window.print() })}
+      keys={withHandlers(REPORT_KEYS, {
+        // F2 is the period key. This is the screen that has a period, so it is the screen that
+        // answers it: put the caret in From and select it, so typing replaces the date outright
+        // the way a date field on the incumbent does.
+        F2: () => { fromRef.current?.focus(); fromRef.current?.select?.() },
+        P: () => window.print(),
+        'Ctrl+⇧L': () => router.push('/pos/stores'),
+      })}
     >
       <div className="flex flex-wrap items-end gap-3 mb-3 text-[12px]">
         <label className="flex items-center gap-1.5">
           <span>From</span>
-          <input type="date" value={from} onChange={e => setFrom(e.target.value)}
+          <input ref={fromRef} type="date" value={from} onChange={e => setFrom(e.target.value)}
             className="px-1.5 py-0.5 border bg-white" style={{ borderColor: 'var(--office-line)' }} />
         </label>
         <label className="flex items-center gap-1.5">

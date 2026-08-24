@@ -119,7 +119,7 @@ export default function RegistersPage() {
     { key: 'name',    label: 'Terminal', width: 220 },
     { key: 'mode',    label: 'Mode',     width: 110 },
     { key: 'active',  label: 'Status',   width: 90 },
-    { key: 'licence', label: 'Licence',  width: 260 },
+    { key: 'licence', label: 'Licence' },   // no width: absorbs the slack
     { key: 'float',   label: 'Opening Float', width: 120, align: 'right' },
     { key: '_act', label: '', width: 150, render: (_v, row) => (
       <span className="flex items-center gap-2" onClick={e => e.stopPropagation()}>

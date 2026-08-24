@@ -19,21 +19,21 @@ const day = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit'
 const COLUMNS_PO = [
   { key: 'order_no', label: 'Order No',  width: 130 },
   { key: 'date',     label: 'Date',      width: 110 },
-  { key: 'supplier', label: 'Supplier',  width: '26%' },
+  { key: 'supplier', label: 'Supplier' },   // no width: absorbs the slack
   { key: 'status',   label: 'Status',    width: 150 },
   { key: 'due',      label: 'Due',       width: 110 },
   { key: 'method',   label: 'Payment',   width: 110 },
-  { key: 'total',    label: 'Amount',    align: 'right' },
+  { key: 'total',    label: 'Amount',    width: 130, align: 'right' },
 ]
 
 const COLUMNS_INV = [
   { key: 'order_no', label: 'Invoice No', width: 130 },
   { key: 'date',     label: 'Date',       width: 110 },
-  { key: 'supplier', label: 'Supplier',   width: '26%' },
+  { key: 'supplier', label: 'Supplier' },   // no width: absorbs the slack
   { key: 'status',   label: 'Status',     width: 150 },
   { key: 'against',  label: 'Against PO', width: 130 },
   { key: 'method',   label: 'Payment',    width: 110 },
-  { key: 'total',    label: 'Amount',     align: 'right' },
+  { key: 'total',    label: 'Amount',     width: 130, align: 'right' },
 ]
 
 export default function PurchasesPage() {
@@ -75,7 +75,7 @@ export default function PurchasesPage() {
       keys={[
         { key: 'N', label: 'New PO', onClick: () => router.push('/pos/purchases/new') },
         { key: 'Tab', label: isPO ? 'Invoices' : 'Orders', onClick: () => setTab(isPO ? 'INVOICE' : 'PO') },
-        ...withHandlers(REPORT_KEYS, { P: () => window.print() }),
+        ...withHandlers(REPORT_KEYS, { P: () => window.print(), 'Ctrl+⇧L': () => router.push('/pos/stores') }),
       ]}
     >
       <div className="flex flex-wrap items-center gap-2 mb-3 text-[12px]">

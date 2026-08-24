@@ -3,9 +3,10 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getUser, getRoleClaims } from '@/lib/auth'
-import { Button } from '@/components/ui/button'
-import { Loader2, ArrowLeft } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { TeamManager } from '@/components/team/team-manager'
+import { OfficeShell } from '@/components/pos/office/office-shell'
+import { MASTER_KEYS, withHandlers } from '@/lib/pos/office-keys'
 
 export default function TeamPage() {
   const router = useRouter()
@@ -32,18 +33,17 @@ export default function TeamPage() {
     )
   }
 
+  // TeamManager keeps its own controls for now — the frame is what a shopkeeper navigates by, and
+  // it can be right before the widgets inside it are.
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border px-6 py-4 flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => router.back()}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <h1 className="text-lg font-bold">Team Members</h1>
-      </header>
-
-      <main className="p-6 max-w-4xl mx-auto">
+    <OfficeShell
+      crumb="Master Data Management"
+      title="Team Members"
+      keys={withHandlers(MASTER_KEYS, {}).filter(k => k.key === 'Esc')}
+    >
+      <div className="max-w-4xl">
         <TeamManager />
-      </main>
-    </div>
+      </div>
+    </OfficeShell>
   )
 }

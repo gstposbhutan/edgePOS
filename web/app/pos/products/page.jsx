@@ -157,7 +157,7 @@ export default function ProductsPage() {
   }))
 
   const PRODUCT_COLUMNS = [
-    { key: 'name',     label: 'Product Name', width: 260 },
+    { key: 'name',     label: 'Product Name' },   // no width: absorbs the slack
     { key: 'sku',      label: 'Code',         width: 110 },
     { key: 'hsn',      label: 'HSN',          width: 80 },
     { key: 'category', label: 'Group',        width: 160 },

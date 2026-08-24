@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Loader2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Loader2 } from 'lucide-react'
 import { getUser } from '@/lib/auth'
 import { EntityProfileForm } from '@/components/console/entity-profile-form'
+import { OfficeShell } from '@/components/pos/office/office-shell'
+import { MASTER_KEYS, withHandlers } from '@/lib/pos/office-keys'
 
 /**
  * Retailer/vendor self-serve settings: business profile + marketplace storefront + fulfilment mode
@@ -30,16 +31,12 @@ export default function PosSettingsPage() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-border bg-background/95 px-4 py-3 backdrop-blur">
-        <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos')} title="Back to POS">
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <h1 className="text-sm font-semibold">Store Settings</h1>
-      </div>
-      <div className="p-4">
-        <EntityProfileForm />
-      </div>
-    </div>
+    <OfficeShell
+      crumb="Settings"
+      title="Store Settings"
+      keys={withHandlers(MASTER_KEYS, {}).filter(k => k.key === 'Esc')}
+    >
+      <EntityProfileForm />
+    </OfficeShell>
   )
 }

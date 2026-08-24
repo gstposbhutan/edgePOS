@@ -34,7 +34,8 @@ export const OFFICE_MODULES = [
     letter: 'W', label: 'Warehouse Management', href: '/pos/inventory',
     children: [
       { letter: 'O', label: 'Stock Register', href: '/pos/inventory' },
-      { letter: 'D', label: 'Discrepancy', href: '/pos/inventory' },
+      { letter: 'L', label: 'Stock Ledger', href: '/pos/inventory/ledger' },
+      { letter: 'D', label: 'Discrepancy', todo: true },
       { letter: 'N', label: 'Opening Stock', todo: true },
       { letter: 'J', label: 'Stock Journal', todo: true },
     ],
@@ -85,6 +86,10 @@ export const OFFICE_ROUTES = [
   '/pos/products',
   '/pos/registers',
   '/pos/shifts',
+  '/pos/stores',
+  '/pos/team',
+  '/pos/settings',
+  '/pos/inventory/ledger',
 ]
 
 /** True when `pathname` is an office-framed screen (its own route, not a child of it). */

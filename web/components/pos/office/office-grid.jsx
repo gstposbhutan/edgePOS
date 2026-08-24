@@ -24,11 +24,13 @@ import { useEffect, useRef, useState } from "react"
  *                  normally selects on click and opens on Enter, but a list whose whole purpose
  *                  is drill-down (accounts, vouchers, products) opened on one click before the
  *                  reskin and people rely on that — those screens set this.
- * @param {boolean} [stretch=false] Fill the page width. Off by default: a register sizes to its
- *                 columns and leaves the rest of the page empty, so a five-column report does
- *                 not stretch five columns across a wide screen and lose the ledger's shape.
+ * @param {boolean} [stretch=true] Fill the page width. On by default: a table sized to its own
+ *                 columns leaves a wide monitor half empty, which reads as an unfinished page
+ *                 rather than a ledger. Give exactly one column no explicit width and it absorbs
+ *                 the slack — make that the descriptive column (name, supplier, particulars), or
+ *                 the numbers end up floating far from their headings.
  */
-export function OfficeGrid({ columns = [], rows = [], totals, onOpen, empty = 'Nothing to show.', rowAttrs, openOnClick = false, stretch = false, className = '' }) {
+export function OfficeGrid({ columns = [], rows = [], totals, onOpen, empty = 'Nothing to show.', rowAttrs, openOnClick = false, stretch = true, className = '' }) {
   const [cursor, setCursor] = useState(-1)
   const bodyRef = useRef(null)
 

@@ -25,13 +25,13 @@ function ageDays(account) {
 }
 
 const COLUMNS = [
-  { key: 'name',        label: 'Account',     width: '28%' },
+  { key: 'name',        label: 'Account' },   // no width: this column absorbs the slack
   { key: 'phone',       label: 'Phone',       width: 130 },
   { key: 'party',       label: 'Type',        width: 100 },
   { key: 'status',      label: 'Status',      width: 90 },
-  { key: 'limit',       label: 'Credit Limit', align: 'right' },
+  { key: 'limit',       label: 'Credit Limit', width: 120, align: 'right' },
   { key: 'term',        label: 'Term',        align: 'right', width: 70 },
-  { key: 'outstanding', label: 'Outstanding', align: 'right' },
+  { key: 'outstanding', label: 'Outstanding', width: 130, align: 'right' },
   { key: 'age',         label: 'Age',         align: 'right', width: 70 },
 ]
 
@@ -90,7 +90,7 @@ export default function KhataPage() {
       title="Bills Receivable (Khata)"
       keys={[
         ...(canCreate ? [{ key: 'N', label: 'New Account', onClick: () => setShowCreate(true) }] : []),
-        ...withHandlers(REPORT_KEYS, { P: () => window.print() }),
+        ...withHandlers(REPORT_KEYS, { P: () => window.print(), 'Ctrl+⇧L': () => router.push('/pos/stores') }),
       ]}
     >
       <div className="flex flex-wrap items-center gap-3 mb-3 text-[12px]">
