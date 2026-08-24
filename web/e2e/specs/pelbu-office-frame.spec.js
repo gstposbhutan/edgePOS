@@ -15,6 +15,8 @@ const FRAMED = [
   { path: '/pos/purchases', crumb: 'Purchase Management',   title: 'Purchase Order Register' },
   { path: '/pos/products',  crumb: 'Master Data Management', title: 'Product Register' },
   { path: '/pos/inventory', crumb: 'Warehouse Management',  title: 'Stock Register' },
+  { path: '/pos/registers', crumb: 'Financial Management',  title: 'Terminal Register' },
+  { path: '/pos/shifts',    crumb: 'Financial Management',  title: 'Shift Register' },
 ]
 
 test.describe('the office frame', () => {

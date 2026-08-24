@@ -83,6 +83,8 @@ export const OFFICE_ROUTES = [
   '/pos/purchases',
   '/pos/inventory',
   '/pos/products',
+  '/pos/registers',
+  '/pos/shifts',
 ]
 
 /** True when `pathname` is an office-framed screen (its own route, not a child of it). */

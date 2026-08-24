@@ -1,6 +1,9 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { OfficeShell } from "@/components/pos/office/office-shell"
+import { OfficeGrid } from "@/components/pos/office/office-grid"
+import { MASTER_KEYS, withHandlers } from "@/lib/pos/office-keys"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Pencil, Trash2, Landmark, Download, KeyRound } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -93,78 +96,71 @@ export default function RegistersPage() {
     return { text: `Licensed · expires ${new Date(l.expires_at).toLocaleDateString()}`, tone: 'ok', licensed: true }
   }
 
+  // The terminal register (spec WF-09) — which tills exist, and whether each may still ring.
+  //
+  // The question an owner brings here is "is that till going to work tomorrow", which is the
+  // licence column: not licensed, revoked, expired, or an expiry date. That is a column read, so
+  // it gets a column rather than a sentence under the name.
+  const rows = registers.map(reg => {
+    const st = licStatus(reg)
+    return {
+      id: reg.id,
+      _reg: reg,
+      _licensed: !!st.licensed,
+      name: reg.name,
+      mode: reg.mode === 'BACK_OFFICE' ? 'Back office' : 'POS',
+      active: reg.is_active ? 'Active' : 'Inactive',
+      licence: st.text,
+      float: parseFloat(reg.default_opening_float ?? 0).toFixed(2),
+    }
+  })
+
+  const COLUMNS = [
+    { key: 'name',    label: 'Terminal', width: 220 },
+    { key: 'mode',    label: 'Mode',     width: 110 },
+    { key: 'active',  label: 'Status',   width: 90 },
+    { key: 'licence', label: 'Licence',  width: 260 },
+    { key: 'float',   label: 'Opening Float', width: 120, align: 'right' },
+    { key: '_act', label: '', width: 150, render: (_v, row) => (
+      <span className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+        {row._licensed && (
+          <button type="button" className="underline" disabled={busyKey === row.id}
+            onClick={() => downloadKey(row._reg)}>
+            {busyKey === row.id ? 'Key…' : 'Key'}
+          </button>
+        )}
+        <button type="button" className="underline" onClick={() => openEdit(row._reg)}>Edit</button>
+        {row._reg.is_active && (
+          <button type="button" className="underline" onClick={() => handleDeactivate(row._reg)}>Deactivate</button>
+        )}
+      </span>
+    ) },
+  ]
+
   return (
-    <div className="flex flex-col h-full">
-      <div className="glassmorphism border-b border-border px-4 py-3 flex items-center gap-3 shrink-0">
-        <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos')}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1 text-xs text-muted-foreground mb-0.5">
-            <button onClick={() => router.push('/pos')} className="hover:text-foreground transition-colors">POS</button>
-            <span>/</span>
-            <span className="text-foreground font-medium">Terminals</span>
-          </div>
-          <p className="text-[10px] text-muted-foreground">{registers.length} terminal{registers.length !== 1 ? 's' : ''}</p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => router.push('/pos/terminals')}>Sync tokens</Button>
+    <OfficeShell
+      crumb="Financial Management"
+      title="Terminal Register"
+      keys={[
+        { key: 'S', label: 'Sync Tokens', onClick: () => router.push('/pos/terminals') },
+        ...withHandlers(MASTER_KEYS, {}).filter(k => k.key === 'Esc'),
+      ]}
+    >
+      <div className="flex flex-wrap items-center gap-3 mb-3 text-[12px]">
+        <span className="opacity-75">
+          {registers.length} terminal{registers.length !== 1 ? 's' : ''}
+        </span>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
-        {loading ? (
-          <div className="p-4 space-y-3">
-            {Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-16 rounded-lg bg-muted animate-pulse" />)}
-          </div>
-        ) : registers.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
-            <Landmark className="h-10 w-10 opacity-20" />
-            <p className="text-sm">No terminals yet</p>
-            <p className="text-xs max-w-xs text-center">A terminal appears here once its license request is approved by the platform admin. Install the desktop app and request a license from its activation screen.</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-border">
-            {registers.map(reg => {
-              const st = licStatus(reg)
-              return (
-                <div key={reg.id} className="flex items-center gap-3 px-4 py-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Landmark className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <p className="text-sm font-medium">{reg.name}</p>
-                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full border bg-muted text-muted-foreground border-border">
-                        {reg.mode === 'BACK_OFFICE' ? 'Back office' : 'POS'}
-                      </span>
-                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${
-                        reg.is_active ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' : 'bg-muted text-muted-foreground border-border'
-                      }`}>
-                        {reg.is_active ? 'Active' : 'Inactive'}
-                      </span>
-                    </div>
-                    <p className={`text-xs mt-0.5 ${st.tone === 'bad' ? 'text-tibetan' : 'text-muted-foreground'}`}>
-                      {st.text} · float Nu. {parseFloat(reg.default_opening_float).toFixed(2)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {st.licensed && (
-                      <Button variant="ghost" size="icon-sm" onClick={() => downloadKey(reg)} disabled={busyKey === reg.id} title="Download license key">
-                        {busyKey === reg.id ? <KeyRound className="h-4 w-4 animate-pulse" /> : <Download className="h-4 w-4" />}
-                      </Button>
-                    )}
-                    <Button variant="ghost" size="icon-sm" onClick={() => openEdit(reg)} title="Edit">
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    {reg.is_active && (
-                      <Button variant="ghost" size="icon-sm" onClick={() => handleDeactivate(reg)} title="Deactivate">
-                        <Trash2 className="h-4 w-4 text-tibetan" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
+      {loading ? (
+        <p className="text-[12px] opacity-60 p-4">Loading…</p>
+      ) : (
+        <OfficeGrid
+          columns={COLUMNS}
+          rows={rows}
+          empty="No terminals yet. A terminal appears here once its licence request is approved by the platform admin — install the desktop app and request a licence from its activation screen."
+        />
+      )}
 
       {showModal && editing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -196,6 +192,6 @@ export default function RegistersPage() {
           </div>
         </div>
       )}
-    </div>
+    </OfficeShell>
   )
 }

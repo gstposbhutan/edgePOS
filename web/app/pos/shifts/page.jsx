@@ -1,12 +1,19 @@
 "use client"
 
+import { OfficeShell } from "@/components/pos/office/office-shell"
+import { OfficeGrid } from "@/components/pos/office/office-grid"
+import { REPORT_KEYS, withHandlers } from "@/lib/pos/office-keys"
+
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Clock, Landmark } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { getUser, getRoleClaims } from "@/lib/auth"
 
-const fmt = (n) => "Nu. " + Number(n || 0).toLocaleString("en-IN", {
+// Register cells carry the number alone — the unit is stated once, in the footnote. Repeating
+// "Nu." down a column pushes every figure a different distance from the column edge and defeats
+// the scan the alignment exists for.
+const amt = (n) => Number(n || 0).toLocaleString("en-IN", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 })
@@ -56,84 +63,55 @@ export default function ShiftHistoryPage() {
 
   const manager = isManager(subRole)
 
+  // The shift register (spec WF-09) — the day's tills, and where the cash disagreed.
+  //
+  // A manager reads this for one thing: variance. Cards put opening, expected, counted and
+  // variance in four different places on every card, so a run of shifts cannot be compared by
+  // eye. In a register the variance column reads straight down and a bad drawer stands out of it.
+  const rows = shifts.map(sh => ({
+    id: sh.id,
+    register: sh.register_name ?? '—',
+    cashier: sh.opened_by_name ?? '—',
+    opened: fmtTime(sh.opened_at),
+    closed: sh.closed_at ? fmtTime(sh.closed_at) : 'Open',
+    opening: amt(sh.opening_float),
+    expected: amt(sh.expected_total),
+    counted: sh.closing_count == null ? '—' : amt(sh.closing_count),
+    variance: sh.discrepancy == null ? '—' : amt(sh.discrepancy),
+    classification: sh.classification ?? '—',
+  }))
+
+  const COLUMNS = [
+    { key: 'register',       label: 'Terminal',  width: 150 },
+    { key: 'cashier',        label: 'Cashier',   width: 150 },
+    { key: 'opened',         label: 'Opened',    width: 130 },
+    { key: 'closed',         label: 'Closed',    width: 130 },
+    { key: 'opening',        label: 'Opening',   width: 100, align: 'right' },
+    { key: 'expected',       label: 'Expected',  width: 100, align: 'right' },
+    { key: 'counted',        label: 'Counted',   width: 100, align: 'right' },
+    { key: 'variance',       label: 'Variance',  width: 100, align: 'right' },
+    { key: 'classification', label: 'Result',    width: 120 },
+  ]
+
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="glassmorphism border-b border-border px-4 py-3 flex items-center gap-3 shrink-0">
-        <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos')}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1 text-xs text-muted-foreground mb-0.5">
-            <button onClick={() => router.push('/pos')} className="hover:text-foreground transition-colors">POS</button>
-            <span>/</span>
-            <span className="text-foreground font-medium">Shift History</span>
-          </div>
-          <p className="text-[10px] text-muted-foreground">{shifts.length} closed shift{shifts.length !== 1 ? 's' : ''}</p>
-        </div>
+    <OfficeShell
+      crumb="Financial Management"
+      title="Shift Register"
+      keys={withHandlers(REPORT_KEYS, { P: () => window.print() })}
+    >
+      <div className="flex flex-wrap items-center gap-3 mb-3 text-[12px]">
+        <span className="opacity-75">{shifts.length} shift{shifts.length === 1 ? '' : 's'}</span>
       </div>
 
-      {/* List */}
-      <div className="flex-1 overflow-y-auto">
-        {loading ? (
-          <div className="p-4 space-y-3">
-            {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-20 rounded-lg bg-muted animate-pulse" />)}
-          </div>
-        ) : shifts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
-            <Clock className="h-10 w-10 opacity-20" />
-            <p className="text-sm">No closed shifts yet</p>
-            <p className="text-xs max-w-xs text-center">Closed shifts and their cash reconciliations will appear here.</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-border">
-            {shifts.map(s => (
-              <div key={s.id} className="px-4 py-3">
-                <div className="flex items-center gap-2">
-                  <Landmark className="h-4 w-4 text-muted-foreground shrink-0" />
-                  <p className="text-sm font-medium flex-1 min-w-0 truncate">
-                    {s.register_name || 'Register'}
-                  </p>
-                  {s.classification && (
-                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${CLASS_STYLES[s.classification] || ''}`}>
-                      {s.classification}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                  <span>{s.opened_by_name || 'Cashier'}</span>
-                  <span>·</span>
-                  <span>{fmtTime(s.opened_at)} → {fmtTime(s.closed_at)}</span>
-                </div>
-                {manager && s.expected_total != null && (
-                  <div className="grid grid-cols-3 gap-2 mt-2 text-[11px]">
-                    <div className="rounded-md bg-muted/50 px-2 py-1">
-                      <div className="text-muted-foreground">Opening</div>
-                      <div className="font-medium tabular-nums">{fmt(s.opening_float)}</div>
-                    </div>
-                    <div className="rounded-md bg-muted/50 px-2 py-1">
-                      <div className="text-muted-foreground">Expected</div>
-                      <div className="font-medium tabular-nums">{fmt(s.expected_total)}</div>
-                    </div>
-                    <div className="rounded-md bg-muted/50 px-2 py-1">
-                      <div className="text-muted-foreground">Counted</div>
-                      <div className="font-medium tabular-nums">{fmt(s.closing_count)}</div>
-                    </div>
-                    <div className="col-span-3 rounded-md bg-muted/50 px-2 py-1 flex items-center justify-between">
-                      <span className="text-muted-foreground">Variance</span>
-                      <span className={`font-medium tabular-nums ${
-                        s.discrepancy > 0 ? 'text-gold' : s.discrepancy < 0 ? 'text-tibetan' : 'text-emerald'
-                      }`}>
-                        {Number(s.discrepancy) >= 0 ? '+' : ''}{fmt(s.discrepancy).replace('Nu. ', 'Nu. ')}
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+      {loading ? (
+        <p className="text-[12px] opacity-60 p-4">Loading…</p>
+      ) : (
+        <OfficeGrid columns={COLUMNS} rows={rows} empty="No shifts recorded yet." />
+      )}
+
+      <p className="mt-2 text-[10px] opacity-60">
+        Variance is counted minus expected — negative is short. Amounts in Nu.
+      </p>
+    </OfficeShell>
   )
 }

@@ -68,20 +68,28 @@ Apps use the **instance role over IMDS** for S3 — no AWS keys on disk.
 
 ## Desktop terminal releases
 
-- Release = on this repo now: bump `desktop/package.json` + CHANGELOG, commit, tag
-  `desktop-vX.Y.Z`, push tag. CI (`.github/workflows/desktop-release.yml`, windows-latest)
-  builds NSIS and POSTs the .exe (multipart, `x-release-token`) to
-  `app.pelbu.com/api/desktop/releases/upload`; the box uploads to S3 via instance role and
-  registers in `pos.desktop_releases`. **Keyless** — repo secrets needed: `APP_URL` +
-  `RELEASE_INGEST_TOKEN` (⚠ currently configured on the MONOREPO's GitHub repo, must be
-  re-created on gstposbhutan/edgePOS before the first release from here).
+- Release: bump `desktop/package.json` + CHANGELOG, commit, tag `desktop-vX.Y.Z`, push tag.
+  CI (`.github/workflows/desktop-release.yml`, windows-latest) builds NSIS, uploads the .exe
+  to S3 with AWS keys, then registers it at `${APP_URL}/api/desktop/releases/register`
+  (`x-release-token`), which writes `pos.desktop_releases`.
+  ⚠ **Two steps, not keyless.** The monorepo's keyless variant POSTed the installer to
+  `/api/desktop/releases/upload` — that route does NOT exist here (`web/` serves only
+  `latest` and `register`), so the keyless version 404s at publish AFTER a ~15-minute Windows
+  build. The workflow header says so; do not "simplify" it back.
+- Secrets: `APP_URL`, `RELEASE_INGEST_TOKEN`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`.
+  **All four are present on gstposbhutan/edgePOS** (verified 2026-08-24 via `gh secret list`;
+  set 2026-06-16). Earlier notes claiming they live only on the monorepo and must be
+  re-created are wrong.
 - Channels: tags containing `-beta`/`-rc` → beta; terminals only query stable.
-  Current stable = **1.4.0**; `desktop/` here contains ~6 unreleased commits' worth
-  (auth/role sync, super-admin seeding, F11 fullscreen fix) awaiting a tag + runtime QA.
-- ⚠ **Installed terminals bake `DEFAULT_CLOUD_URL=https://app.pelbu.com`** for update
-  checks and license register, and sync to `pos.pelbu.com/api/sync/*`. The auth app is
-  being retired — either keep an `app.pelbu.com` vhost routing `/api/desktop/releases/*`
-  (the POS app has these routes) or accept deployed terminals lose auto-update.
+  Current stable = **1.5.0** (tag `desktop-v1.5.0`, published 2026-08-23), installer
+  219,255,075 bytes at `img.pelbu.com/releases/1.5.0/`. Owners download it from `/downloads`,
+  which calls `/api/desktop/releases/latest`.
+- **Installed terminals bake `DEFAULT_CLOUD_URL=https://app.pelbu.com`** for update checks and
+  license register/status, and sync to `pos.pelbu.com/api/sync/*`. The auth app is retired, but
+  this is **already handled**: `/etc/caddy/Caddyfile` keeps an `app.pelbu.com` vhost that
+  reverse-proxies `/api/desktop/*` and `/api/license/*` to the POS app on :3100 and 301s
+  everything else to `pos.pelbu.com`. Verified live 2026-08-24 — terminals keep auto-update.
+  Do not delete that vhost.
 - Terminal auth: local PocketBase; `admin@pos.local` = internal super_admin (set
   `NEXUS_SUPERADMIN_PASS` at build — `admin12345` is a DEV fallback, never ship it).
   Store users mirror from `/api/sync/bootstrap` (same bcrypt hash → web password works
