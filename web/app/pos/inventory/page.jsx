@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { OfficeShell } from "@/components/pos/office/office-shell"
+import { REPORT_KEYS, withHandlers } from "@/lib/pos/office-keys"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Package, AlertTriangle, XCircle, History, RefreshCw, TrendingUp, FileText, Camera, Layers, PackagePlus, Trash2, Loader2 } from "lucide-react"
 import { toast } from "sonner"
@@ -104,25 +106,27 @@ export default function InventoryPage() {
     return result
   }
 
+  const TAB_TITLE = {
+    stock:       'Stock Register',
+    batches:     'Batch Register',
+    drafts:      'Draft Purchase Register',
+    predictions: 'Stock Predictions',
+    history:     'Stock Ledger',
+  }
+
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="glassmorphism border-b border-border px-4 py-3 flex items-center gap-4 shrink-0">
-        <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos')}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-base font-serif font-bold text-foreground">Inventory</h1>
-          <p className="text-xs text-muted-foreground">Stock management & adjustments</p>
-        </div>
-        <Button variant="ghost" size="icon-sm" onClick={refresh} title="Refresh">
-          <RefreshCw className="h-4 w-4" />
-        </Button>
-      </div>
+    <OfficeShell
+      crumb="Warehouse Management"
+      title={TAB_TITLE[activeTab] ?? 'Stock Register'}
+      keys={[
+        { key: 'R', label: 'Refresh', onClick: refresh },
+        ...withHandlers(REPORT_KEYS, { P: () => window.print() }),
+      ]}
+    >
 
       {/* Alert banners */}
       {(outCount > 0 || lowCount > 0) && (
-        <div className="px-4 pt-3 space-y-2 shrink-0">
+        <div className="space-y-2 mb-3">
           {outCount > 0 && (
             <div data-testid="out-of-stock-banner" data-count={outCount} className="flex items-center gap-2 p-3 bg-tibetan/10 border border-tibetan/30 rounded-lg">
               <XCircle className="h-4 w-4 text-tibetan shrink-0" />
@@ -161,32 +165,29 @@ export default function InventoryPage() {
       )}
 
       {/* Tabs */}
-      <div data-testid="inventory-tabs" className="flex gap-1 px-4 pt-3 shrink-0 border-b border-border pb-0">
-        {TABS.map(tab => {
-          const Icon = tab.icon
-          return (
-            <button
-              key={tab.id}
-              data-testid={`inventory-tab-${tab.id}`}
-              data-active={activeTab === tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`
-                flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 transition-colors
-                ${activeTab === tab.id
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-                }
-              `}
-            >
-              <Icon className="h-4 w-4" />
-              {tab.label}
-            </button>
-          )
-        })}
+      <div data-testid="inventory-tabs" className="flex flex-wrap gap-2 mb-3">
+        {TABS.map(tab => (
+          <button
+            key={tab.id}
+            type="button"
+            data-testid={`inventory-tab-${tab.id}`}
+            data-active={activeTab === tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className="px-3 py-1 text-[11px] border"
+            style={{
+              borderColor: 'var(--office-line)',
+              background: activeTab === tab.id ? 'var(--office-menu-sel)' : 'var(--office-panel-bg)',
+              color: activeTab === tab.id ? '#fff' : undefined,
+              fontWeight: activeTab === tab.id ? 700 : 400,
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {/* Tab content */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div>
         {activeTab === 'stock' && (
           <>
             {/* Filter + search bar */}
@@ -323,7 +324,7 @@ export default function InventoryPage() {
         onReceive={receiveStock}
         onClose={() => setReceiveOpen(false)}
       />
-    </div>
+    </OfficeShell>
   )
 }
 

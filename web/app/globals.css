@@ -176,3 +176,28 @@
   25% { transform: translateX(-4px); }
   75% { transform: translateX(4px); }
 }
+
+/* ── Counter UI: the back-office chrome ──────────────────────────────────────────────────────
+   The counter (spec WF-01) already dresses the till. These tokens dress the BACK OFFICE the
+   same way, so a shopkeeper crossing from the ticket to a report does not change visual
+   language mid-task. Scoped to .office-ui so the console screens opt in one at a time and the
+   marketplace/rider surfaces are untouched. Palette is a variable set on purpose: the density
+   and the layout carry the recognition, so colour stays tunable per vendor theme. */
+.office-ui {
+  --office-title-bg:      #F5A623;   /* the screen-name band */
+  --office-title-fg:      #1A1A1A;
+  --office-page-bg:       #E8F0D4;   /* the page behind panels */
+  --office-panel-bg:      #F7F6E8;   /* forms and report bodies */
+  --office-grid-head-bg:  #7A7A7A;   /* column headers */
+  --office-grid-head-fg:  #FFFFFF;
+  --office-row-a:         #FFFFFF;
+  --office-row-b:         #FFFCE8;
+  --office-row-sel-bg:    #6E6047;
+  --office-row-sel-fg:    #FFFFFF;
+  --office-line:          #BFBFBF;
+  --office-total-bg:      #D8E6B0;
+  --office-key-bg:        #7A7A7A;
+  --office-key-fg:        #FFFFFF;
+  --office-menu-bg:       #A8C070;
+  --office-menu-sel:      #7E9B4A;
+}

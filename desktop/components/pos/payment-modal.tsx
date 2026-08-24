@@ -185,7 +185,7 @@ export function PaymentModal({ open, onClose, grandTotal, customer, onConfirm }:
   const remaining = isCash ? Math.max(0, grandTotal - effectiveTendered) : 0;
 
   // The tender sheet is keyboard-complete: before this, F10 opened it and the cashier then had
-  // to reach for the mouse to finish the sale, which is exactly where a RanceLab counter is
+  // to reach for the mouse to finish the sale, which is exactly where the incumbent's counter is
   // fastest. Method keys take Alt so plain digits stay free for typing an amount.
   useEffect(() => {
     if (!open) return;

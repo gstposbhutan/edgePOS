@@ -13,7 +13,7 @@ admin **Releases** console at publish time.
   same login. The terminal now re-pulls the team on launch whenever it holds no store logins,
   and the login screen says so plainly and offers a "Get logins from the cloud" button instead
   of answering every attempt with "Failed to authenticate".
-The RanceLab key map had five keys the spec reserves that reported "not built yet"
+The inherited key map had five keys the spec reserves that reported "not built yet"
 rather than doing nothing. All five now work.
 - **Alt+U unit sheet — sell by the pack or the case.** Items can carry a Pcs/Pack/Case
   ladder (pieces per pack, packs per case) set on the product in the web back office.

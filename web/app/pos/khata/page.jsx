@@ -2,19 +2,38 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Search, RefreshCw, Plus, Wallet } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
 import { CreateAccountModal } from "@/components/pos/khata/create-account-modal"
 import { useKhata } from "@/hooks/use-khata"
 import { getUser, getRoleClaims } from "@/lib/auth"
+import { OfficeShell } from "@/components/pos/office/office-shell"
+import { OfficeGrid } from "@/components/pos/office/office-grid"
+import { REPORT_KEYS, withHandlers } from "@/lib/pos/office-keys"
 
-const STATUS_COLORS = {
-  ACTIVE:  'border-emerald-500 text-emerald-600',
-  FROZEN:  'border-amber-500 text-amber-600',
-  CLOSED:  'border-muted text-muted-foreground',
+// Khata — the credit ledger, read as Bills Receivable (spec WF-09).
+//
+// A shop chasing money reads this the way it reads a receivable register: every party on one
+// screen, the outstanding column aligned so the big debts stand out of the column, and the
+// total under it. Age is what turns a list into a chase list, so it is computed here from the
+// last payment and printed as days rather than a date the reader has to subtract.
+const money = (v) => parseFloat(v ?? 0).toFixed(2)
+
+function ageDays(account) {
+  const since = account.last_payment_at ?? account.created_at
+  if (!since) return null
+  const days = Math.floor((Date.now() - new Date(since).getTime()) / 86400000)
+  return Number.isFinite(days) && days >= 0 ? days : null
 }
+
+const COLUMNS = [
+  { key: 'name',        label: 'Account',     width: '28%' },
+  { key: 'phone',       label: 'Phone',       width: 130 },
+  { key: 'party',       label: 'Type',        width: 100 },
+  { key: 'status',      label: 'Status',      width: 90 },
+  { key: 'limit',       label: 'Credit Limit', align: 'right' },
+  { key: 'term',        label: 'Term',        align: 'right', width: 70 },
+  { key: 'outstanding', label: 'Outstanding', align: 'right' },
+  { key: 'age',         label: 'Age',         align: 'right', width: 70 },
+]
 
 export default function KhataPage() {
   const router = useRouter()
@@ -46,120 +65,84 @@ export default function KhataPage() {
     (a.debtor_phone ?? '').includes(search)
   )
 
-  async function handleCreate(data) {
-    return createAccount(data)
-  }
+  const rows = displayed.map(a => {
+    const age = ageDays(a)
+    return {
+      id: a.id,
+      _account: a,
+      name: a.debtor_name || a.debtor_phone || '—',
+      phone: a.debtor_phone ?? '—',
+      party: a.party_type,
+      status: a.status,
+      limit: money(a.credit_limit),
+      term: `${a.credit_term_days}d`,
+      outstanding: money(a.outstanding_balance),
+      age: age == null ? '—' : String(age),
+    }
+  })
+
+  const totalOutstanding = displayed.reduce((sum, a) => sum + parseFloat(a.outstanding_balance ?? 0), 0)
+  const totalLimit = displayed.reduce((sum, a) => sum + parseFloat(a.credit_limit ?? 0), 0)
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="glassmorphism border-b border-border px-4 py-3 flex items-center gap-3 shrink-0">
-        <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos')}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-base font-serif font-bold text-foreground">Khata (Credit)</h1>
-          <p className="text-xs text-muted-foreground">{accounts.length} accounts</p>
-        </div>
-        <Button variant="ghost" size="icon-sm" onClick={fetchAccounts}>
-          <RefreshCw className="h-4 w-4" />
-        </Button>
-        {canCreate && (
-          <Button size="sm" onClick={() => setShowCreate(true)} className="bg-primary hover:bg-primary/90">
-            <Plus className="h-4 w-4 mr-1" /> New
-          </Button>
-        )}
-      </div>
-
-      {/* Search */}
-      <div className="px-4 py-3 border-b border-border shrink-0">
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by name or phone..."
+    <OfficeShell
+      crumb="Financial Management"
+      title="Bills Receivable (Khata)"
+      keys={[
+        ...(canCreate ? [{ key: 'N', label: 'New Account', onClick: () => setShowCreate(true) }] : []),
+        ...withHandlers(REPORT_KEYS, { P: () => window.print() }),
+      ]}
+    >
+      <div className="flex flex-wrap items-center gap-3 mb-3 text-[12px]">
+        <label className="flex items-center gap-1.5">
+          <span className="sr-only">Search</span>
+          <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
+            placeholder="Search by name or phone..."
+            className="px-1.5 py-0.5 border bg-white w-56"
+            style={{ borderColor: 'var(--office-line)' }}
           />
-        </div>
+        </label>
+        <button type="button" onClick={fetchAccounts}
+          className="px-2.5 py-1 text-[11px] border" style={{ borderColor: 'var(--office-line)', background: 'var(--office-panel-bg)' }}>
+          Refresh
+        </button>
+        <span className="ml-auto opacity-75">
+          {displayed.length} account{displayed.length === 1 ? '' : 's'}
+          {search ? ` of ${accounts.length}` : ''}
+        </span>
       </div>
 
-      {/* Account list */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-2">
-        {loading ? (
-          <div className="flex items-center justify-center h-32">
-            <div className="h-6 w-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          </div>
-        ) : displayed.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-32 gap-2 text-muted-foreground">
-            <Wallet className="h-8 w-8 opacity-20" />
-            <p className="text-sm">{search ? 'No accounts match your search' : 'No khata accounts yet'}</p>
-            {canCreate && !search && (
-              <Button size="sm" variant="outline" onClick={() => setShowCreate(true)}>
-                <Plus className="h-4 w-4 mr-1" /> Create first account
-              </Button>
-            )}
-          </div>
-        ) : (
-          displayed.map(account => (
-            <button
-              key={account.id}
-              data-testid="khata-account-row"
-              data-account-id={account.id}
-              data-account-name={account.debtor_name || account.debtor_phone}
-              data-account-phone={account.debtor_phone}
-              onClick={() => router.push(`/pos/khata/${account.id}`)}
-              className="w-full text-left p-3 rounded-lg border border-border bg-card hover:border-primary/40 transition-all"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-sm font-medium text-foreground truncate">
-                    {account.debtor_name || account.debtor_phone}
-                  </span>
-                  <Badge variant="outline" className="text-[9px] shrink-0">
-                    {account.party_type}
-                  </Badge>
-                </div>
-                <Badge variant="outline" className={`text-[9px] shrink-0 ${STATUS_COLORS[account.status] ?? ''}`}>
-                  {account.status}
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between mt-1.5">
-                <span className="text-xs text-muted-foreground">
-                  {account.debtor_phone ?? '—'}
-                </span>
-                <div className="text-right">
-                  <p className="text-xs text-muted-foreground">Outstanding</p>
-                  <p className={`text-sm font-semibold tabular-nums ${
-                    parseFloat(account.outstanding_balance) > 0 ? 'text-tibetan' : 'text-emerald-600'
-                  }`}>
-                    Nu. {parseFloat(account.outstanding_balance).toFixed(2)}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 mt-1">
-                <span className="text-[10px] text-muted-foreground">
-                  Limit: Nu. {parseFloat(account.credit_limit).toFixed(2)}
-                </span>
-                <span className="text-[10px] text-muted-foreground">
-                  Term: {account.credit_term_days}d
-                </span>
-                {account.last_payment_at && (
-                  <span className="text-[10px] text-muted-foreground">
-                    Last pay: {new Date(account.last_payment_at).toLocaleDateString()}
-                  </span>
-                )}
-              </div>
-            </button>
-          ))
-        )}
-      </div>
+      {loading ? (
+        <p className="text-[12px] opacity-60 p-4">Loading…</p>
+      ) : (
+        <OfficeGrid
+          columns={COLUMNS}
+          rows={rows}
+          totals={{ name: 'Total', limit: money(totalLimit), outstanding: money(totalOutstanding) }}
+          onOpen={(row) => router.push(`/pos/khata/${row.id}`)}
+          openOnClick
+          rowAttrs={(row) => ({
+            'data-testid': 'khata-account-row',
+            'data-account-id': row.id,
+            'data-account-name': row._account.debtor_name || row._account.debtor_phone,
+            'data-account-phone': row._account.debtor_phone,
+          })}
+          empty={search ? 'No accounts match your search.' : 'No khata accounts yet.'}
+        />
+      )}
+
+      <p className="mt-2 text-[10px] opacity-60">
+        Age counts days since the last payment, or since the account opened when none has been
+        taken. Enter opens the selected account. Amounts in Nu.
+      </p>
 
       <CreateAccountModal
         open={showCreate}
         onClose={() => setShowCreate(false)}
-        onCreate={handleCreate}
+        onCreate={createAccount}
       />
-    </div>
+    </OfficeShell>
   )
 }

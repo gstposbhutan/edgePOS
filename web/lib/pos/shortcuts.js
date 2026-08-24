@@ -1,6 +1,6 @@
 // The Counter key map.
 //
-// Shops arriving from RanceLab bring the muscle memory in this table, so the till speaks that
+// Shops arriving from the incumbent ERP bring that muscle memory, so the till speaks the same
 // dialect rather than the scheme we invented (spec: docs/keyboard-shortcuts.html). This list is
 // the ONE source of truth — app/pos/page.jsx binds by `id`, the footer rail renders entries with
 // a `rail` page, and the F1 sheet renders the whole table. The binding, the rail and the help
@@ -13,9 +13,9 @@
 //          reports that, rather than quietly doing something else under a trained reflex.
 //          Nothing carries it any more — every key on this map does something — but the field
 //          stays so the next reserved key has somewhere honest to sit.
-// `alias`  a second combo shown beside the RanceLab one, for the single key the BROWSER keeps
+// `alias`  a second combo shown beside the primary one, for the single key the BROWSER keeps
 //          for itself (F12). Web only; the terminal owns the whole keyboard.
-// `extra`  ours, not in the RanceLab spec — kept because the feature exists and is used.
+// `extra`  ours, not in the inherited key map — kept because the feature exists and is used.
 
 export const COUNTER_KEYS = [
   // ── Line editing ────────────────────────────────────────────────────────────────────────
@@ -54,14 +54,14 @@ export const COUNTER_KEYS = [
 
   // F11 and F12 belong to the browser chrome (fullscreen / devtools). Chrome lets a page
   // cancel F11, so Day is bound to it and works; F12 is NOT cancellable, so Location carries an
-  // alias the till can actually receive. The keys stay listed under their RanceLab combos so a
+  // alias the till can actually receive. The keys stay listed under their primary combos so a
   // trained cashier still finds them, and the alias is shown beside the one that cannot fire.
   { id: 'day',          combo: 'F11',     match: { key: 'F11' },                 label: 'Day',             rail: 2, group: 'Ticket' },
   { id: 'location',     combo: 'F12',     match: { key: 'F12' },                 label: 'Location',        rail: 2, group: 'Ticket', alias: 'Ctrl+⇧L' },
   { id: 'locationAlt',  combo: 'Ctrl+⇧L', match: { key: 'l', ctrl: true, shift: true }, label: 'Location',          group: 'Ticket' },
   { id: 'barcodePrn',   combo: 'Ctrl+B',  match: { key: 'b', ctrl: true },       label: 'Barcode Prn',     rail: 2, group: 'Ticket' },
 
-  // ── Ours, kept alongside the RanceLab set ───────────────────────────────────────────────
+  // ── Ours, kept alongside the inherited set ──────────────────────────────────────────────
   // Bill discount and quotation moved off Ctrl+D / Alt+Q, which the spec assigns to Clear
   // Ticket and Qty.
   { id: 'billDiscount', combo: 'Ctrl+Shift+B', match: { key: 'b', ctrl: true, shift: true }, label: 'Bill Discount', group: 'Pelbu', extra: true },

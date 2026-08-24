@@ -2,7 +2,7 @@ import { test, expect, ensureLoggedIn } from "./app-fixture";
 
 const APP = "http://127.0.0.1:3200";
 
-// The Office letter menu (spec WF-08/WF-09): shops arriving from RanceLab navigate the back
+// The Office letter menu (spec WF-08/WF-09): shops arriving from the incumbent ERP navigate the back
 // office by single letters, and expect the strip on every Office screen — but never on the
 // counter, where letters belong to the barcode row.
 test.describe("office letters (Electron)", () => {
@@ -10,7 +10,7 @@ test.describe("office letters (Electron)", () => {
     await ensureLoggedIn(appPage);
     await appPage.goto(`${APP}/stock.html`, { waitUntil: "domcontentloaded" }).catch(() => {});
 
-    // The strip is present with RanceLab's module letters.
+    // The strip is present with the incumbent ERP's module letters.
     await expect(appPage.getByRole("button", { name: /^W\s+Warehouse Management$/i })).toBeVisible({ timeout: 20000 });
     await expect(appPage.getByRole("button", { name: /^C\s+Customer Relationship$/i })).toBeVisible();
 

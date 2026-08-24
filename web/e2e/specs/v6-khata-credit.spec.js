@@ -24,8 +24,8 @@ test.describe('Khata Account List', () => {
     const khataList = new KhataListPage(page)
     await khataList.goto()
 
-    // Should show heading
-    await expect(khataList.getHeading()).toHaveText(/Khata \(Credit\)/)
+    // Should show heading — the register's name on the office band.
+    await expect(khataList.getHeading()).toContainText(/Bills Receivable/)
 
     // Should show seeded accounts
     const count = await khataList.getAccountCount()
@@ -36,21 +36,24 @@ test.describe('Khata Account List', () => {
     const khataList = new KhataListPage(page)
     await khataList.goto()
 
+    // The register names its columns ONCE, in the header — that is the point of a register, so
+    // the labels are asserted here rather than on every row.
+    const grid = page.locator('[data-testid="office-grid"]').first()
+    for (const column of ['Account', 'Phone', 'Credit Limit', 'Outstanding', 'Status']) {
+      await expect(grid.locator('thead')).toContainText(column)
+    }
+
     const firstAccount = TEST_KHATA_ACCOUNTS[0]
     const row = khataList.getAccountRow(firstAccount.debtor_name)
     await expect(row).toBeVisible()
 
-    // Row should contain phone
+    // The row carries the VALUES under those columns. Only the phone is asserted against the
+    // fixture: this suite runs against the shared box database, and its own freeze/unfreeze and
+    // limit tests mutate these very rows, so status and credit limit drift from the seed. What
+    // stays true is the SHAPE — a status from the known set, and amounts printed to two decimals.
     await expect(row).toContainText(firstAccount.debtor_phone)
-
-    // Row should contain outstanding balance
-    await expect(row).toContainText('Outstanding')
-
-    // Row should show credit limit
-    await expect(row).toContainText('Limit:')
-
-    // Row should show status badge
-    await expect(row).toContainText(firstAccount.status)
+    await expect(row).toContainText(/ACTIVE|FROZEN|CLOSED/)
+    await expect(row).toContainText(/\d+\.\d{2}/)
   })
 
   test('search filters accounts by name', async ({ page }) => {
@@ -142,8 +145,10 @@ test.describe('Create Khata Account', () => {
     })
     await createModal.clickSubmit()
 
-    // Modal should close and new account should appear in list
-    await expect(page.locator('text=Test E2E Account')).toBeVisible({ timeout: 10000 })
+    // Modal should close and the new account should appear in the register. The name is fixed and
+    // the row is never cleaned up, so earlier runs leave copies — assert the FIRST matching row
+    // rather than a bare text match, which strict mode rejects once a second copy exists.
+    await expect(khataList.getAccountRow('Test E2E Account')).toBeVisible({ timeout: 10000 })
   })
 
   test('sets credit limit and term days', async ({ page }) => {
@@ -163,7 +168,7 @@ test.describe('Create Khata Account', () => {
     await createModal.clickSubmit()
 
     // New account should be visible
-    await expect(page.locator('text=Limit Test Account')).toBeVisible({ timeout: 10000 })
+    await expect(khataList.getAccountRow('Limit Test Account')).toBeVisible({ timeout: 10000 })
   })
 
   test('validates phone format — rejects invalid phone', async ({ page }) => {

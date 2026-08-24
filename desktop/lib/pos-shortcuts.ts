@@ -1,6 +1,6 @@
 // The Counter key map for the terminal.
 //
-// Shops arrive trained on RanceLab, so the till speaks that dialect (spec:
+// Shops arrive trained on the incumbent ERP, so the till speaks that dialect (spec:
 // docs/keyboard-shortcuts.html in the repo root). This table is the ONE source of truth —
 // use-pos-shortcuts registers by `id`, the listing footer renders entries by `rail` page, and
 // the F1 sheet renders the whole table. Those three each kept their own copy before and drifted.
@@ -58,7 +58,7 @@ export const COUNTER_KEYS: KeyEntry[] = [
   { id: "location",     combo: "F12",    match: { key: "F12" },                label: "Location",        rail: 2, group: "Ticket" },
   { id: "barcodePrn",   combo: "Ctrl+B", match: { key: "b", ctrl: true },      label: "Barcode Prn",     rail: 2, group: "Ticket" },
 
-  // ── Ours, kept alongside the RanceLab set ───────────────────────────────────────────────
+  // ── Ours, kept alongside the inherited set ───────────────────────────────────────────────
   // Bill discount and quotation moved off Ctrl+D / Alt+Q, which the spec gives to Clear Ticket
   // and Qty.
   { id: "billDiscount", combo: "Ctrl+Shift+B", match: { key: "b", ctrl: true, shift: true }, label: "Bill Discount", group: "Pelbu" },

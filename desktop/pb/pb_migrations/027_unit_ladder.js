@@ -1,6 +1,6 @@
 /// <reference path="../pb_data/types.d.ts" />
 
-// Pcs / Pack / Case unit ladder — the counter's Alt+U unit sheet (spec WF-05, RanceLab Alt+U).
+// Pcs / Pack / Case unit ladder — the counter's Alt+U unit sheet (spec WF-05, incumbent Alt+U).
 //
 // Mirrors cloud migration 134. Stock is ALWAYS held and moved in pieces; only the ticket line
 // is scaled, so nothing about the stock model changes here.

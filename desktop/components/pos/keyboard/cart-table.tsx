@@ -158,7 +158,7 @@ export function CartTable({
     <div className="flex-1 overflow-y-auto">
       <table className="w-full text-sm">
         <thead className="sticky top-0 bg-muted/40 border-b border-border z-10">
-          {/* Column order is the RanceLab ticket (spec WF-01), so a cashier reads the line
+          {/* Column order is the counter ticket (spec WF-01), so a cashier reads the line
               where they expect to. */}
           <tr className="text-xs text-muted-foreground">
             <th className="text-right px-3 py-2 w-12">Srl</th>

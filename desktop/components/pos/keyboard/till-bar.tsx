@@ -16,7 +16,7 @@ interface TillBarProps {
 }
 
 /**
- * The till's status strip (spec WF-01). RanceLab puts the standing facts of the sale on one
+ * The till's status strip (spec WF-01). The convention puts the standing facts of the sale on one
  * line above the ticket — which surface you are on, the tax basis, the currency and the buyer —
  * so a cashier can confirm at a glance what the next bill will be, without opening anything.
  */

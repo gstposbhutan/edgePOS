@@ -7,7 +7,7 @@ import { OFFICE_MODULES, activeModule, isTypingTarget, type OfficeEntry } from "
 
 /**
  * The Office letter strip (spec WF-08/WF-09) — the same navigation shops already have in
- * RanceLab: a row of single letters across the top, and a second row for the module you are in.
+ * The convention: a row of single letters across the top, and a second row for the module you are in.
  *
  * The strip is also the key binding. Letters fire only when focus is not in a field, which is
  * the spec's own rule and what keeps them from stealing characters out of a search box.
@@ -25,7 +25,7 @@ export function LetterStrip() {
       const letter = e.key.toUpperCase();
 
       // The module's own second row wins: inside Warehouse, D is Discrepancy, not a top-level
-      // module. That mirrors RanceLab, where the nested letters take precedence.
+      // module. That mirrors the incumbent, where the nested letters take precedence.
       const hit =
         current?.children?.find((c) => c.letter === letter) ??
         OFFICE_MODULES.find((m) => m.letter === letter);

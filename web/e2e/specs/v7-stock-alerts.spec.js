@@ -43,7 +43,7 @@ test.describe('Stock Alerts', () => {
       p => p.current_stock > 0 && p.current_stock <= 10
     ).length
 
-    await inventoryPage.assertAlertBanners(0, Math.max(seedLow, 1))
+    await inventoryPage.assertAlertBanners(null, Math.max(seedLow, 1))
     // Banner text and data-count must agree.
     const count = parseInt(await inventoryPage.lowStockBanner.getAttribute('data-count') ?? '0', 10)
     expect(count).toBeGreaterThanOrEqual(seedLow)
@@ -69,7 +69,7 @@ test.describe('Stock Alerts', () => {
     // of truth; live DB may exceed the seed minimums.
     const seedOut = TEST_PRODUCTS.filter(p => p.current_stock <= 0).length
 
-    await inventoryPage.assertAlertBanners(Math.max(seedOut, 1), 0)
+    await inventoryPage.assertAlertBanners(Math.max(seedOut, 1), null)
     const count = parseInt(await inventoryPage.outOfStockBanner.getAttribute('data-count') ?? '0', 10)
     expect(count).toBeGreaterThanOrEqual(seedOut)
     await expect(inventoryPage.outOfStockBanner).toContainText(`${count} product`)

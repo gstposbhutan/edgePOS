@@ -5,7 +5,7 @@ import { X } from "lucide-react"
 import { unitsAvailable } from "@/lib/pos/units"
 
 /**
- * Alt+U — the RanceLab unit sheet ("Unit sheet — Pcs / Pack / Case. ↑↓ Enter Esc"), also the
+ * Alt+U — the counter unit sheet ("Unit sheet — Pcs / Pack / Case. ↑↓ Enter Esc"), also the
  * middle step of the Enter cycle (spec WF-05). The mirror of
  * desktop/components/pos/keyboard/unit-sheet.tsx.
  *

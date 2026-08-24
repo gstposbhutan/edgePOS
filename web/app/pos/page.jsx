@@ -236,7 +236,7 @@ export default function KeyboardPosPage() {
       const barcodeHasText = inBarcode && target.value.length > 0
       if (barcodeHasText && (e.key === 'Enter' || e.key === 'Delete')) return
 
-      // --- Commands: the RanceLab Counter map (lib/pos/shortcuts.js is the source of truth) ---
+      // --- Commands: the Counter key map (lib/pos/shortcuts.js is the source of truth) ---
       const isManager = ['MANAGER', 'OWNER', 'ADMIN'].includes(subRole)
       const line = items[selectedRow] || null
       const hit = resolveShortcut(e)
@@ -348,7 +348,7 @@ export default function KeyboardPosPage() {
   // (The cart itself survives a reload — it is server-side — but the open sheet, the typed query,
   // the selected row and any uncommitted qty edit do not, in front of a waiting customer.)
   // preventDefault in capture does not stop propagation, so every binding above still runs.
-  // F11 IS cancellable in Chrome/Edge (the terminal's browsers), so Day keeps its RanceLab key
+  // F11 IS cancellable in Chrome/Edge (the terminal's browsers), so Day keeps its inherited key
   // and fullscreen does not fire underneath it. F12 is NOT cancellable anywhere — it belongs to
   // the devtools — so Location carries the Ctrl+⇧L alias instead of a key that cannot arrive.
   useEffect(() => {

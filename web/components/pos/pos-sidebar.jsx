@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { isOfficeRoute } from '@/lib/pos/office-menu'
 import {
   ScanLine, ClipboardList, BookOpen, Package, ShoppingCart, Wallet, Landmark,
   Clock, Users, Store, Settings, MonitorDown, FileBarChart, PanelLeftClose, PanelLeftOpen,
@@ -29,10 +30,12 @@ const NAV = [
 
 export function PosSidebar() {
   const pathname = usePathname()
-  // The counter is a full-screen till (spec WF-01) — RanceLab gives the whole screen to the
-  // ticket, and a cashier navigates by key, not by pointer. Every OTHER /pos screen is the back
-  // office and keeps the rail; the counter reaches them through its Office letter menu (Alt+O).
-  const onCounter = pathname === '/pos' 
+  // The counter is a full-screen till (spec WF-01) — the convention gives the whole screen to the
+  // ticket, and a cashier navigates by key, not by pointer. The back-office screens wearing the
+  // office frame are full-bleed for the same reason and carry the same Alt+O letter menu, so the
+  // rail would be a second way to do what the letters already do. The screens still on the old
+  // console layout keep it, until they are framed too.
+  const onCounter = pathname === '/pos' || isOfficeRoute(pathname)
   const [subRole, setSubRole] = useState(null)
   const [shiftsEnabled, setShiftsEnabled] = useState(false)
   const [collapsed, setCollapsed] = useState(true)

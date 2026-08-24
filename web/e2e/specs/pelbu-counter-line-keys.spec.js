@@ -4,7 +4,7 @@ const { TEST_PRODUCTS, TEST_USERS } = require('../fixtures/test-data')
 
 const ENTITY_ID = TEST_USERS[0].entity_id
 
-// The five keys the RanceLab spec reserves, on the WEB till: F5 rate, Alt+U unit sheet,
+// The five keys the counter spec reserves, on the WEB till: F5 rate, Alt+U unit sheet,
 // Ctrl+T item remark, Alt+T GST-included, Ctrl+B barcode print (the prompt — the print itself
 // opens an OS dialog and is not automatable). They were built on the terminal first; this is
 // the parity pass.

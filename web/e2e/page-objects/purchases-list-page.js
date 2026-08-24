@@ -4,7 +4,7 @@ const { expect } = require('@playwright/test')
  * Page object for /pos/purchases — Purchases list with PO / Invoice tabs.
  *
  * Selectors derived from app/pos/purchases/page.jsx:
- *   - Header: h1.font-serif "Purchases", refresh button (RefreshCw icon), "New PO" button
+ *   - Header: the office band's h1 ("Purchase Order Register"), Refresh button, "N New PO" in the key rail
  *   - Tabs: "Purchase Orders" / "Purchase Invoices" <button>s with FileText/Receipt icons
  *   - List rows: <button> elements inside div.divide-y, each containing order_no (font-mono),
  *     status badge, supplier name, date, total
@@ -22,7 +22,8 @@ class PurchasesListPage {
 
     // ── Locators ─────────────────────────────────────────────────────
     // Header
-    this.heading = page.locator('h1.font-serif:text("Purchases")')
+    // The office band's h1 — "Purchase Order Register" / "Purchase Invoice Register" by tab.
+    this.heading = page.locator('h1:has-text("Purchase")')
     this.refreshButton = page.locator('button:has(svg.lucide-refresh-cw)').first()
     this.newPoButton = page.getByRole('button', { name: /new po/i })
 

@@ -2,29 +2,39 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Plus, RefreshCw, FileText, Receipt, Building2 } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { OrderStatusBadge } from "@/components/pos/orders/order-status-badge"
 import { usePurchases } from "@/hooks/use-purchases"
 import { getUser, getRoleClaims } from "@/lib/auth"
+import { OfficeShell } from "@/components/pos/office/office-shell"
+import { OfficeGrid } from "@/components/pos/office/office-grid"
+import { REPORT_KEYS, withHandlers } from "@/lib/pos/office-keys"
 
-const PO_STATUS_STYLE = {
-  DRAFT:               'bg-muted text-muted-foreground border-border',
-  SENT:                'bg-blue-500/10 text-blue-600 border-blue-500/20',
-  PARTIALLY_RECEIVED:  'bg-amber-500/10 text-amber-600 border-amber-500/20',
-  CANCELLED:           'bg-tibetan/10 text-tibetan border-tibetan/20',
-  CONFIRMED:           'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
-  PAID:                'bg-emerald-600/10 text-emerald-700 border-emerald-600/20',
-}
+// The purchase register (spec WF-09) — orders and invoices, each as its own register.
+//
+// A buyer checks this screen to answer one question at a time: what is outstanding with whom,
+// and for how much. That reads as a register with the amount column aligned and a total under
+// it, so the tab switch changes WHICH register is on screen rather than reflowing the page.
+const money = (v) => parseFloat(v ?? 0).toFixed(2)
+const day = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-') : '—')
 
-function StatusBadge({ status }) {
-  const style = PO_STATUS_STYLE[status] || 'bg-muted text-muted-foreground'
-  return (
-    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${style}`}>
-      {status}
-    </span>
-  )
-}
+const COLUMNS_PO = [
+  { key: 'order_no', label: 'Order No',  width: 130 },
+  { key: 'date',     label: 'Date',      width: 110 },
+  { key: 'supplier', label: 'Supplier',  width: '26%' },
+  { key: 'status',   label: 'Status',    width: 150 },
+  { key: 'due',      label: 'Due',       width: 110 },
+  { key: 'method',   label: 'Payment',   width: 110 },
+  { key: 'total',    label: 'Amount',    align: 'right' },
+]
+
+const COLUMNS_INV = [
+  { key: 'order_no', label: 'Invoice No', width: 130 },
+  { key: 'date',     label: 'Date',       width: 110 },
+  { key: 'supplier', label: 'Supplier',   width: '26%' },
+  { key: 'status',   label: 'Status',     width: 150 },
+  { key: 'against',  label: 'Against PO', width: 130 },
+  { key: 'method',   label: 'Payment',    width: 110 },
+  { key: 'total',    label: 'Amount',     align: 'right' },
+]
 
 export default function PurchasesPage() {
   const router = useRouter()
@@ -43,79 +53,73 @@ export default function PurchasesPage() {
 
   const supplierName = (p) => p.seller?.name || p.supplier_name || 'Unknown Supplier'
 
-  return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="glassmorphism border-b border-border px-4 py-3 flex items-center gap-3 shrink-0">
-        <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos')}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-base font-serif font-bold">Purchases</h1>
-          <p className="text-xs text-muted-foreground">{purchases.length} {tab === 'PO' ? 'orders' : 'invoices'}</p>
-        </div>
-        <Button variant="ghost" size="icon-sm" onClick={() => fetchPurchases({ type: tab })}>
-          <RefreshCw className="h-4 w-4" />
-        </Button>
-        <Button size="sm" onClick={() => router.push('/pos/purchases/new')} className="gap-1.5">
-          <Plus className="h-4 w-4" /> New PO
-        </Button>
-      </div>
+  const rows = purchases.map(p => ({
+    id: p.id,
+    order_no: p.order_no,
+    date: day(p.created_at),
+    supplier: supplierName(p),
+    status: p.status,
+    due: p.expected_delivery ? day(p.expected_delivery) : '—',
+    against: p.purchase_order_no || (p.purchase_order_id ? p.purchase_order_id.slice(0, 8) : '—'),
+    method: p.payment_method ?? '—',
+    total: money(p.grand_total),
+  }))
 
-      {/* Tabs */}
-      <div className="px-4 py-2 flex gap-2 border-b border-border shrink-0">
-        {[['PO', 'Purchase Orders', FileText], ['INVOICE', 'Purchase Invoices', Receipt]].map(([key, label, Icon]) => (
-          <button key={key} onClick={() => setTab(key)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-              tab === key ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'
-            }`}>
-            <Icon className="h-3.5 w-3.5" />{label}
+  const total = purchases.reduce((sum, p) => sum + parseFloat(p.grand_total ?? 0), 0)
+  const isPO = tab === 'PO'
+
+  return (
+    <OfficeShell
+      crumb="Purchase Management"
+      title={isPO ? 'Purchase Order Register' : 'Purchase Invoice Register'}
+      keys={[
+        { key: 'N', label: 'New PO', onClick: () => router.push('/pos/purchases/new') },
+        { key: 'Tab', label: isPO ? 'Invoices' : 'Orders', onClick: () => setTab(isPO ? 'INVOICE' : 'PO') },
+        ...withHandlers(REPORT_KEYS, { P: () => window.print() }),
+      ]}
+    >
+      <div className="flex flex-wrap items-center gap-2 mb-3 text-[12px]">
+        {[['PO', 'Purchase Orders'], ['INVOICE', 'Purchase Invoices']].map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setTab(key)}
+            className="px-3 py-1 text-[11px] border"
+            style={{
+              borderColor: 'var(--office-line)',
+              background: tab === key ? 'var(--office-menu-sel)' : 'var(--office-panel-bg)',
+              color: tab === key ? '#fff' : undefined,
+              fontWeight: tab === key ? 700 : 400,
+            }}
+          >
+            {label}
           </button>
         ))}
+        <button type="button" onClick={() => fetchPurchases({ type: tab })}
+          className="px-2.5 py-1 text-[11px] border" style={{ borderColor: 'var(--office-line)', background: 'var(--office-panel-bg)' }}>
+          Refresh
+        </button>
+        <span className="ml-auto opacity-75">
+          {purchases.length} {isPO ? 'order' : 'invoice'}{purchases.length === 1 ? '' : 's'}
+        </span>
       </div>
 
-      {/* List */}
-      <div className="flex-1 overflow-y-auto">
-        {loading ? (
-          <div className="p-4 space-y-3">{[1,2,3].map(i => <div key={i} className="h-16 rounded-lg bg-muted animate-pulse" />)}</div>
-        ) : purchases.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
-            <FileText className="h-10 w-10 opacity-20" />
-            <p className="text-sm">No {tab === 'PO' ? 'purchase orders' : 'invoices'} yet</p>
-            {tab === 'PO' && <Button size="sm" onClick={() => router.push('/pos/purchases/new')}>Create First PO</Button>}
-          </div>
-        ) : (
-          <div className="divide-y divide-border">
-            {purchases.map(p => (
-              <button key={p.id} onClick={() => router.push(`/pos/purchases/${p.id}`)}
-                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors text-left">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-sm font-mono font-medium">{p.order_no}</p>
-                    <StatusBadge status={p.status} />
-                  </div>
-                  <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
-                    <Building2 className="h-3 w-3" />
-                    <span className="truncate max-w-[160px]">{supplierName(p)}</span>
-                    <span>·</span>
-                    <span>{new Date(p.created_at).toLocaleDateString()}</span>
-                    {p.expected_delivery && tab === 'PO' && (
-                      <><span>·</span><span>Due {new Date(p.expected_delivery).toLocaleDateString()}</span></>
-                    )}
-                    {p.purchase_order_id && tab === 'INVOICE' && (
-                      <span className="text-[10px] text-primary">← {p.purchase_order_no || p.purchase_order_id?.slice(0,8)}</span>
-                    )}
-                  </div>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-sm font-semibold text-primary">Nu. {parseFloat(p.grand_total).toFixed(2)}</p>
-                  <p className="text-xs text-muted-foreground">{p.payment_method}</p>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+      {error && <p className="mb-2 text-[12px] text-red-700">{String(error)}</p>}
+
+      {loading ? (
+        <p className="text-[12px] opacity-60 p-4">Loading…</p>
+      ) : (
+        <OfficeGrid
+          columns={isPO ? COLUMNS_PO : COLUMNS_INV}
+          rows={rows}
+          totals={{ order_no: 'Total', total: money(total) }}
+          onOpen={(row) => router.push(`/pos/purchases/${row.id}`)}
+          openOnClick
+          empty={`No ${isPO ? 'purchase orders' : 'invoices'} yet.`}
+        />
+      )}
+
+      <p className="mt-2 text-[10px] opacity-60">Enter opens the selected voucher. Amounts in Nu.</p>
+    </OfficeShell>
   )
 }

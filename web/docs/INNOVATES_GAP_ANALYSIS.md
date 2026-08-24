@@ -1,6 +1,6 @@
 # Innovates POS — Gap Analysis vs Current btGST-edgePOS
 **Date**: 2026-04-19
-**Source**: Innovates POS Feature Requirements (Rancelabs-inspired)
+**Source**: Innovates POS Feature Requirements (incumbent-ERP-inspired)
 **Architecture**: Dual-platform — Native Windows desktop app + Mobile PWA
 
 ---

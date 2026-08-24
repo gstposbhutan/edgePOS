@@ -10,7 +10,7 @@ import { OFFICE_MODULES, isTypingTarget } from "@/lib/pos/office-menu"
  *
  * The counter fills the screen because it is a till, not a console, so the back office needs a
  * way in that does not depend on a sidebar being visible. Navigation is by LETTER, the way a
- * RanceLab-trained shopkeeper already does it: press P for Purchase, then the module's own
+ * ERP-trained shopkeeper already does it: press P for Purchase, then the module's own
  * second row of letters appears. A module with nowhere to go yet says so rather than looking
  * broken.
  *

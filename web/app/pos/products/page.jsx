@@ -1,6 +1,9 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { OfficeShell } from "@/components/pos/office/office-shell"
+import { OfficeGrid } from "@/components/pos/office/office-grid"
+import { MASTER_KEYS, withHandlers } from "@/lib/pos/office-keys"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Plus, Search, RefreshCw, Pencil, ToggleLeft, ToggleRight, Package, Boxes, Upload, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -133,120 +136,133 @@ export default function ProductsPage() {
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [showForm, viewProduct, canManage])
 
-  return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="glassmorphism border-b border-border px-4 py-3 flex items-center gap-3 shrink-0">
-        <Button variant="ghost" size="icon-sm" onClick={() => router.push('/pos')}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-base font-serif font-bold text-foreground">Products</h1>
-          <p className="text-xs text-muted-foreground">
-            {activeTab === 'Products' ? `${products.length} products` : `${packages.length} packages`}
-          </p>
-        </div>
-        <Button variant="ghost" size="icon-sm" onClick={activeTab === 'Products' ? refresh : loadPackages} title="Refresh">
-          <RefreshCw className="h-4 w-4" />
-        </Button>
-        {canManage && activeTab === 'Products' && (
-          <>
-            <Button onClick={enrichAll} variant="outline" size="sm" disabled={!!aiAll}>
-              <Sparkles className="h-4 w-4 mr-1" /> {aiAll ? `Enriching ${aiAll.done}/${aiAll.total}…` : 'Enrich all'}
-            </Button>
-            <Button onClick={() => setShowImport(true)} variant="outline" size="sm">
-              <Upload className="h-4 w-4 mr-1" /> Import
-            </Button>
-            <Button onClick={openAdd} className="bg-primary hover:bg-primary/90" size="sm">
-              <Plus className="h-4 w-4 mr-1" /> Add Product
-            </Button>
-          </>
-        )}
-        {canManage && activeTab === 'Packages' && (
-          <Button onClick={() => { setEditPackage(null); setShowPkgForm(true) }} className="bg-primary hover:bg-primary/90" size="sm">
-            <Plus className="h-4 w-4 mr-1" /> Create Package
-          </Button>
-        )}
-      </div>
+  // The product register (spec WF-09) — the master list read as a register, not a card wall.
+  //
+  // An owner opens this to check a rate or a stock figure against a name, which is a COLUMN
+  // read: the eye runs down one column until it finds the row. Cards make that read impossible
+  // because every value sits in a different place on every card. Enter opens the product card,
+  // which is where editing still happens.
+  const productRows = displayed.map(pr => ({
+    id: pr.id,
+    _p: pr,
+    name: pr.name,
+    sku: pr.sku || '—',
+    hsn: pr.hsn_code ?? '—',
+    category: [pr.category, pr.subcategory].filter(Boolean).join(' / ') || '—',
+    unit: pr.unit ?? 'pcs',
+    stock: String(pr.current_stock ?? 0),
+    cost: parseFloat(pr.wholesale_price ?? 0).toFixed(2),
+    rate: parseFloat(pr.mrp ?? 0).toFixed(2),
+    status: !pr.is_active ? 'Inactive' : pr.sold_as_package_only ? 'Pkg only' : 'Active',
+  }))
 
-      {/* Tabs */}
-      <div className="flex border-b border-border px-4 shrink-0">
+  const PRODUCT_COLUMNS = [
+    { key: 'name',     label: 'Product Name', width: 260 },
+    { key: 'sku',      label: 'Code',         width: 110 },
+    { key: 'hsn',      label: 'HSN',          width: 80 },
+    { key: 'category', label: 'Group',        width: 160 },
+    { key: 'unit',     label: 'Unit',         width: 60 },
+    { key: 'stock',    label: 'Stock',        width: 70,  align: 'right' },
+    { key: 'cost',     label: 'Cost',         width: 90,  align: 'right' },
+    { key: 'rate',     label: 'Rate',         width: 90,  align: 'right' },
+    { key: 'status',   label: 'Status',       width: 80 },
+    ...(canManage ? [{
+      key: '_act', label: '', width: 96,
+      render: (_v, row) => (
+        <span className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+          <button type="button" title="Edit" onClick={() => openEdit(row._p)} className="underline">Edit</button>
+          <button
+            type="button"
+            title={row._p.is_active ? 'Deactivate' : 'Activate'}
+            onClick={() => toggleActive(row._p.id, !row._p.is_active)}
+            className="underline"
+          >
+            {row._p.is_active ? 'Off' : 'On'}
+          </button>
+        </span>
+      ),
+    }] : []),
+  ]
+
+  return (
+    <OfficeShell
+      crumb="Master Data Management"
+      title={activeTab === 'Products' ? 'Product Register' : 'Package Register'}
+      keys={[
+        ...(canManage && activeTab === 'Products' ? [
+          { key: 'N', label: 'Add Product', onClick: openAdd },   // label kept from the old header — the guided tours click it by name
+          { key: 'I', label: 'Import', onClick: () => setShowImport(true) },
+          { key: 'A', label: aiAll ? `Enriching ${aiAll.done}/${aiAll.total}` : 'Enrich all', onClick: aiAll ? undefined : enrichAll },
+        ] : []),
+        ...(canManage && activeTab === 'Packages' ? [
+          { key: 'N', label: 'New Package', onClick: () => { setEditPackage(null); setShowPkgForm(true) } },
+        ] : []),
+        { key: 'Tab', label: activeTab === 'Products' ? 'Packages' : 'Products',
+          onClick: () => { setActiveTab(activeTab === 'Products' ? 'Packages' : 'Products'); setSearch('') } },
+        ...withHandlers(MASTER_KEYS, {}).filter(k => k.key === 'Esc'),
+      ]}
+    >
+      <div className="flex flex-wrap items-center gap-2 mb-3 text-[12px]">
         {TABS.map(tab => (
-          <button key={tab} onClick={() => { setActiveTab(tab); setSearch('') }}
-            className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 transition-colors
-              ${activeTab === tab ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
-            {tab === 'Products' ? <Package className="h-3.5 w-3.5" /> : <Boxes className="h-3.5 w-3.5" />}
+          <button key={tab} type="button" onClick={() => { setActiveTab(tab); setSearch('') }}
+            className="px-3 py-1 text-[11px] border"
+            style={{
+              borderColor: 'var(--office-line)',
+              background: activeTab === tab ? 'var(--office-menu-sel)' : 'var(--office-panel-bg)',
+              color: activeTab === tab ? '#fff' : undefined,
+              fontWeight: activeTab === tab ? 700 : 400,
+            }}>
             {tab}
           </button>
         ))}
-      </div>
 
-      {/* Filters (products tab only) */}
-      <div className={`px-4 py-3 flex gap-2 shrink-0 border-b border-border ${activeTab !== 'Products' ? 'hidden' : ''}`}>
-        <div className="relative flex-1">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search name, SKU, or HSN code..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-        <div className="flex gap-1">
-          {['ALL', 'ACTIVE', 'INACTIVE'].map(f => (
-            <Button
-              key={f}
-              size="sm"
-              variant={filterActive === f ? 'default' : 'outline'}
-              onClick={() => setFilterActive(f)}
-              className={filterActive === f ? 'bg-primary' : ''}
-            >
-              {f.charAt(0) + f.slice(1).toLowerCase()}
-            </Button>
-          ))}
-        </div>
+        {activeTab === 'Products' && (
+          <>
+            <label className="flex items-center gap-1.5 ml-2">
+              <span>Search</span>
+              <input value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="name, SKU or HSN"
+                className="px-1.5 py-0.5 border bg-white w-60" style={{ borderColor: 'var(--office-line)' }} />
+            </label>
+            {['ALL', 'ACTIVE', 'INACTIVE'].map(f => (
+              <button key={f} type="button" onClick={() => setFilterActive(f)}
+                className="px-2 py-1 text-[11px] border"
+                style={{
+                  borderColor: 'var(--office-line)',
+                  background: filterActive === f ? 'var(--office-menu-sel)' : 'var(--office-panel-bg)',
+                  color: filterActive === f ? '#fff' : undefined,
+                }}>
+                {f.charAt(0) + f.slice(1).toLowerCase()}
+              </button>
+            ))}
+          </>
+        )}
+
+        <button type="button" onClick={activeTab === 'Products' ? refresh : loadPackages}
+          className="px-2.5 py-1 text-[11px] border" style={{ borderColor: 'var(--office-line)', background: 'var(--office-panel-bg)' }}>
+          Refresh
+        </button>
+        <span className="ml-auto opacity-75">
+          {activeTab === 'Products' ? `${displayed.length} of ${products.length} products` : `${packages.length} packages`}
+        </span>
       </div>
 
       {/* Products tab */}
       {activeTab === 'Products' && (
-        <div className="flex-1 overflow-y-auto">
-          {loading ? (
-            <div className="p-4 space-y-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="h-16 rounded-lg bg-muted animate-pulse" />
-              ))}
-            </div>
-          ) : displayed.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full gap-4 text-muted-foreground">
-              <Package className="h-12 w-12 opacity-20" />
-              <p className="text-sm">No products found</p>
-              {canManage && (
-                <Button onClick={openAdd} className="bg-primary hover:bg-primary/90" size="sm">
-                  <Plus className="h-4 w-4 mr-1.5" /> Add your first product
-                </Button>
-              )}
-            </div>
-          ) : (
-            <div className="divide-y divide-border">
-              {displayed.map(product => (
-                <ProductRow
-                  key={product.id}
-                  product={product}
-                  canManage={canManage}
-                  onEdit={() => openEdit(product)}
-                  onToggle={() => toggleActive(product.id, !product.is_active)}
-                  onTogglePkgOnly={() => togglePackageOnly(product.id, !product.sold_as_package_only)}
-                  onToggleWeb={() => toggleVisibleOnWeb(product.id, !product.visible_on_web)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+        loading
+          ? <p className="text-[12px] opacity-60 p-4">Loading…</p>
+          : <OfficeGrid
+              columns={PRODUCT_COLUMNS}
+              rows={productRows}
+              onOpen={(row) => (canManage ? openEdit(row._p) : setViewProduct(row._p))}
+          openOnClick
+              empty="No products found."
+            />
       )}
 
       {/* Packages tab */}
       {activeTab === 'Packages' && (
-        <div className="flex-1 overflow-y-auto">
+        <div>
           {pkgsLoading ? (
             <div className="p-4 space-y-3">
               {Array.from({ length: 4 }).map((_, i) => (
@@ -314,7 +330,7 @@ export default function ProductsPage() {
         onClose={closeDetail}
         readOnly={true}
       />
-    </div>
+    </OfficeShell>
   )
 }
 

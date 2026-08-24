@@ -15,7 +15,8 @@ class InventoryPage {
 
     // ── Locators ─────────────────────────────────────────────────────
     // Header
-    this.heading = page.locator('h1.font-serif:text("Inventory")')
+    // The office band's h1 — the screen is the Stock Register now (2026-08-24 reskin).
+    this.heading = page.locator('h1:has-text("Stock Register")')
     this.refreshButton = page.locator('button[title="Refresh"]')
 
     // Alert banners — see app/pos/inventory/page.jsx
@@ -166,7 +167,10 @@ class InventoryPage {
    */
   getStockRow(productName) {
     const safe = productName.replace(/"/g, '\\"')
-    return this.page.locator(`tr:has(p:text-is("${safe}"))`)
+    // The stock register puts the product name in its own cell; it used to be a <p> stacked over
+    // the HSN code, which is now its own column.
+    return this.page.locator(`tr:has(td:text-is("${safe}"))`)
+      .or(this.page.locator(`tr:has(p:text-is("${safe}"))`))
   }
 
   /** Count of visible stock rows. */
@@ -182,7 +186,10 @@ class InventoryPage {
   async getStockLevel(productName) {
     await this.ensureRowVisible(productName)
     const row = this.getStockRow(productName)
-    const stockText = await row.locator('td:nth-child(3) span.font-bold').textContent()
+    // Read by testid rather than column position — the register gained HSN and Unit columns, and
+    // positional selectors silently point at the wrong cell when that happens.
+    const stockText = await row.locator('[data-testid="stock-qty"]')
+      .or(row.locator('td:nth-child(3) span.font-bold')).first().textContent()
     return parseInt(stockText, 10)
   }
 
@@ -194,7 +201,8 @@ class InventoryPage {
   async getStockStatus(productName) {
     await this.ensureRowVisible(productName)
     const row = this.getStockRow(productName)
-    return row.locator('td:nth-child(4) span').textContent()
+    return row.locator('[data-testid="stock-status"]')
+      .or(row.locator('td:nth-child(4) span')).first().textContent()
   }
 
   /** Count of movement history entries. */
@@ -225,7 +233,12 @@ class InventoryPage {
   // exceed the seed minimums. The data-count attr exposed by inventory/page.jsx
   // is the source of truth.
   async assertAlertBanners(outCount, lowCount) {
-    if (outCount > 0) {
+    // `null` means "this test is not about that banner". Passing 0 asserts the banner is ABSENT,
+    // which is a different and much stronger claim — and a false one on a database that holds
+    // more than the seed, where both conditions genuinely exist at once.
+    if (outCount === null) {
+      // no assertion on the out-of-stock banner
+    } else if (outCount > 0) {
       await expect(this.outOfStockBanner).toBeVisible()
       const c = parseInt(await this.outOfStockBanner.getAttribute('data-count') ?? '0', 10)
       expect(c, `out-of-stock banner expected >= ${outCount}, got ${c}`).toBeGreaterThanOrEqual(outCount)
@@ -233,6 +246,9 @@ class InventoryPage {
       await expect(this.outOfStockBanner).not.toBeVisible()
     }
 
+    if (lowCount === null) {
+      return
+    }
     if (lowCount > 0) {
       await expect(this.lowStockBanner).toBeVisible()
       const c = parseInt(await this.lowStockBanner.getAttribute('data-count') ?? '0', 10)
@@ -276,8 +292,19 @@ class InventoryPage {
    * @param {{ sample?: number }} [opts] - max rows to check (default 8)
    */
   async assertRowsHaveStatus(statusText, { sample = 8 } = {}) {
-    // Status badges live in column 4 of each row.
-    const badges = this.page.locator('tbody tr td:nth-child(4) span')
+    // Read the status cell by testid — it used to be a badge <span> in column 4, and the register
+    // moved it when HSN and Unit columns were added.
+    const badges = this.page.locator('tbody tr [data-testid="stock-status"]')
+    if (await badges.count() === 0) {
+      // Older markup: a badge <span> in the fourth column.
+      const legacy = this.page.locator('tbody tr td:nth-child(4) span')
+      const legacyTotal = await legacy.count()
+      expect(legacyTotal, `expected at least one row when filtering to ${statusText}`).toBeGreaterThan(0)
+      for (let i = 0; i < Math.min(sample, legacyTotal); i++) {
+        expect(await legacy.nth(i).textContent(), `row ${i} status`).toContain(statusText)
+      }
+      return
+    }
     const total = await badges.count()
     expect(total, `expected at least one row when filtering to ${statusText}`).toBeGreaterThan(0)
 

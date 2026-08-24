@@ -1,12 +1,12 @@
 import { test, expect, ensureLoggedIn } from "./app-fixture";
 
-// The counter follows the RanceLab key map (spec: docs/keyboard-shortcuts.html). Shops arrive
+// The counter follows The inherited key map (spec: docs/keyboard-shortcuts.html). Shops arrive
 // trained on it, so these labels and keys are the product requirement, not cosmetics.
 //
 // lib/pos-shortcuts.ts is the single source of truth for the bindings, the footer rail and the
 // F1 sheet — this proves the three actually agree inside the real app.
 test.describe("counter keys (Electron)", () => {
-  test("the footer rail is the RanceLab map, across both pages", async ({ appPage }) => {
+  test("the footer rail is the inherited map, across both pages", async ({ appPage }) => {
     await ensureLoggedIn(appPage);
     await appPage.keyboard.press("Escape").catch(() => {});
 
@@ -43,7 +43,7 @@ test.describe("counter keys (Electron)", () => {
     await expect(appPage.getByText("Keyboard Shortcuts")).toHaveCount(0, { timeout: 10000 });
   });
 
-  test("F8 opens the product picker — the RanceLab key, not our old F3", async ({ appPage }) => {
+  test("F8 opens the product picker — the the incumbent ERP key, not our old F3", async ({ appPage }) => {
     await ensureLoggedIn(appPage);
     await appPage.keyboard.press("Escape").catch(() => {});
 

@@ -27,7 +27,7 @@ test.describe('Pelbu P2/P3 — customer panel, price list, invoice lookup', () =
     await expect(page.getByText('Select Customer')).toBeHidden()
   })
 
-  // Alt+P is the RanceLab price-list key (F7 is Party). Retail is the default and the till bar
+  // Alt+P is the counter price-list key (F7 is Party). Retail is the default and the till bar
   // only names a tier once it stops being the plain retail one — a cashier must not be able to
   // ring a wholesale bill without seeing why.
   test('Alt+P cycles the price list, and the till bar names the tier', async ({ page }) => {

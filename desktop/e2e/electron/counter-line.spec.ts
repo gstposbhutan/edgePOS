@@ -4,7 +4,7 @@ const PB = "http://127.0.0.1:8090";
 const BARCODE = "70000000001";
 
 // The ticket line end-to-end: scan into the always-focused barcode row, then work the line with
-// the RanceLab keys (F3 add quantity, F5 rate change) and the Enter cycle. Also pins the grid's
+// the counter keys (F3 add quantity, F5 rate change) and the Enter cycle. Also pins the grid's
 // column order (spec WF-01), which a cashier reads positionally.
 async function seedProduct() {
   const auth = await fetch(`${PB}/api/collections/_superusers/auth-with-password`, {
@@ -52,7 +52,7 @@ async function seedProduct() {
 }
 
 test.describe("ticket line (Electron)", () => {
-  test("scan adds a line, the grid reads in RanceLab order, and F3/F4/F5 work it", async ({ appPage }) => {
+  test("scan adds a line, the grid reads in counter order, and F3/F4/F5 work it", async ({ appPage }) => {
     await seedProduct();
     await resetTicket();
     await ensureLoggedIn(appPage);
@@ -93,7 +93,7 @@ test.describe("ticket line (Electron)", () => {
     const qtyCell = appPage.locator("tbody tr").first().locator("td").nth(4);
     await expect(qtyCell).toContainText("1");
 
-    // F3 = Add Quantity (RanceLab). Our old map had F3 on search.
+    // F3 = Add Quantity (incumbent). Our old map had F3 on search.
     await appPage.keyboard.press("F3");
     await expect(qtyCell).toContainText("2", { timeout: 10000 });
 

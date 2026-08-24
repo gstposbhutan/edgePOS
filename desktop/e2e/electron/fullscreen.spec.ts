@@ -6,7 +6,7 @@ import { execSync } from "node:child_process";
 // layer. Regression test for the stuck-fullscreen bug (default-menu WINDOW
 // fullscreen vs renderer DOM fullscreen both bound to one key; the key seemed dead).
 //
-// It used to be F11. The counter now follows the RanceLab map, which gives F11 to Day
+// It used to be F11. The counter now follows the inherited map, which gives F11 to Day
 // (day-end), so fullscreen moved to the other conventional Windows toggle and F11 is
 // passed through to the renderer — asserted at the end.
 //

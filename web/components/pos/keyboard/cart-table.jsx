@@ -5,8 +5,8 @@ import { Trash2 } from "lucide-react"
 import { baseUnitLabel, lineFactor } from "@/lib/pos/units"
 
 /**
- * The ticket, in the RanceLab column order (spec WF-01) — Srl, Product Name, Product Code,
- * Stock, Qty, Unit, Sale Tax Price Name, Amount — so a cashier trained on RanceLab reads each
+ * The ticket, in the counter column order (spec WF-01) — Srl, Product Name, Product Code,
+ * Stock, Qty, Unit, Sale Tax Price Name, Amount — so a cashier trained on the incumbent reads each
  * line where they expect to. The mirror of desktop/components/pos/keyboard/cart-table.tsx;
  * keep the two in step.
  *

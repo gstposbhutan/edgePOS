@@ -49,7 +49,7 @@ function triggerShortcut(label) {
 }
 
 /**
- * The Counter rail: the RanceLab footer, paged. Entries come from the shared key map so the
+ * The Counter rail: the counter footer, paged. Entries come from the shared key map so the
  * rail can never disagree with what the keys actually do. Other screens keep passing their own
  * `shortcuts` array and render unpaged, as before.
  */

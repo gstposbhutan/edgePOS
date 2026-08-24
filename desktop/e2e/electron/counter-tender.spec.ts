@@ -4,7 +4,7 @@ const PB = "http://127.0.0.1:8090";
 const BARCODE = "70000000001";
 
 // The tender sheet used to be mouse-only: F10 opened it and the cashier then had to click to
-// pick a method and finish. On a RanceLab counter that is the fastest part of the sale, so the
+// pick a method and finish. On the incumbent's counter that is the fastest part of the sale, so the
 // sheet has to be workable from the keyboard alone. (Tendering itself is not driven here — it
 // would ring a real sale and move stock.)
 async function superHeaders() {

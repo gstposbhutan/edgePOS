@@ -1,12 +1,53 @@
 # Handover — web deployed, desktop 1.5.0 released
 
-**Read this section first.** Written 2026-08-23. Branch `v2`, pushed. Everything below is
-history kept for reference: the web-parity build record, the terminal's own handover, then the
-Phase 2 port.
+**Read this section first.** Written 2026-08-23, updated 2026-08-24. Branch `v2`, pushed.
+Everything below is history kept for reference: the web-parity build record, the terminal's
+own handover, then the Phase 2 port.
+
+---
+
+## Counter UI back-office reskin (2026-08-24)
+
+**Status**: five screens BUILT and browser-verified; e2e not run. Branch `v2`, uncommitted.
+
+Innovates cannot retrain staff, so the product wears the incumbent ERP's shape. The till already
+did (commit `58aae63`). This pass extended it to the BACK OFFICE, which was still on the console
+look — so a shopkeeper crossing from the ticket to a report no longer changes visual language
+mid-task.
+
+**Naming rule, and it is a hard one:** the competitor is never named in code, UI, docs or commit
+messages. Prior mentions were scrubbed across `web/`, `desktop/`, docs and memory. One is left
+deliberately for Shawn: `web/lib/marketing/content.js` states Innovates' real credential as an
+implementation partner for that ERP — a factual claim about the partner, not imitation.
+
+**Built** (`web/components/pos/office/`): `OfficeShell` (orange band, key rail, Esc → counter,
+Alt+O → letter menu), `OfficeGrid` (banded register, ↑↓/Enter cursor, totals foot),
+`OfficeForm`/`OfficeSection`/`OfficeField` (not yet used), rails in `lib/pos/office-keys.js`,
+tokens under `.office-ui` in `globals.css`.
+
+**Framed**: `/pos/reports` (Tax Register), `/pos/khata` (Bills Receivable, with aging),
+`/pos/purchases` (PO/Invoice registers), `/pos/products` (Product Register), `/pos/inventory`
+(Stock Register). All five are full-bleed — `isOfficeRoute()` stands the sidebar down and Alt+O
+replaces it.
+
+**Verified**: build clean; all five render in a real browser on live data with no page errors;
+screenshots checked against the reference frames.
+
+**Not verified**: the e2e suite. Its harness resolves to `pos.pelbu.com`, so it was stopped rather
+than pointed at the live site. `e2e/storage/*.json` are untouched. Separately,
+`v7-pos-sidebar.spec.js` has been stale since `58aae63` and needs rewriting.
+
+**Docs**: `docs/frs/COUNTER-UI-PLAN.md` (state + what remains), `COUNTER-UI-FRS.md` (requirements),
+`COUNTER-UI-COMPONENTS.md` (design analysis), `docs/ui-reference-frames/` (180 reference stills).
+
+**Next**: the product card on `OfficeForm`; the remaining office screens; and access to the
+reference's **billing screen**, which the recording never showed and which staff touch most.
+
+---
 
 ## Shipped today
 
-- **Web is LIVE at pos.pelbu.com** with the RanceLab counter. Deployed by rebuilding the host
+- **Web is LIVE at pos.pelbu.com** with the counter UI. Deployed by rebuilding the host
   bundle and the `pelbu-pos` image (`npm run build` in `web/`, then `docker compose build pos &&
   docker compose up -d pos`). Verified in a real browser on the live host: the till bar, the
   barcode row, no sidebar, the paged rail, Alt+O, and no page errors.
@@ -39,7 +80,7 @@ separators). If a terminal misbehaves after updating, that is where to look firs
 ## What changed, in one paragraph
 
 The desktop counter was already feature-complete against `docs/keyboard-shortcuts.html`. This
-pass brought the **web till to the same place**: it now wears the RanceLab layout (full-screen
+pass brought the **web till to the same place**: it now wears the counter layout (full-screen
 ticket, status strip, always-focused barcode row, the spec's column order, the paged key rail)
 and every key the terminal has, except the ones a browser genuinely cannot deliver. Two
 decisions were Shawn's and are recorded here because they shaped the work: the web till takes
@@ -57,7 +98,7 @@ then rate, then back to the barcode row. `todo` no longer appears on any entry i
 **The one key a browser cannot take is `F12`** — it belongs to the devtools and no page can
 cancel it. Location therefore carries a second combo, `Ctrl+⇧L`, and the rail prints it under
 the F12 button so the key is never a promise the page cannot keep. `F11` IS cancellable in
-Chrome and Edge, so Day keeps its RanceLab key there. Silent thermal printing, native
+Chrome and Edge, so Day keeps its inherited key there. Silent thermal printing, native
 notifications and offline operation stay **desktop-only**: a browser cannot drive a printer
 without a dialog, and the web till is not the offline register.
 
@@ -162,7 +203,7 @@ the build record for the parity work, then the Phase 2 port.
 
 ## State in one paragraph
 
-The desktop terminal now implements **the whole RanceLab Counter key table**. The last five keys
+The desktop terminal now implements **the whole the incumbent ERP Counter key table**. The last five keys
 the spec reserved — Alt+U unit sheet, Ctrl+T item remark, Alt+T GST-included, F2 bill date,
 Ctrl+B barcode print — were built in `cf8a430`; `todo` no longer appears on any entry in
 `desktop/lib/pos-shortcuts.ts`. Verified at 48 unit tests, 29/29 Electron specs over three
@@ -235,7 +276,7 @@ than registry arming; start there rather than assuming it is the same bug.
 
 ---
 
-# Build record — RanceLab parity on the desktop terminal
+# Build record — the incumbent ERP parity on the desktop terminal
 
 Written 2026-08-22 across two sessions, amended 2026-08-23. **No longer the live work** (see the
 section above), but still the reference for how the counter is put together, what will bite you
@@ -243,13 +284,13 @@ before a release, and how to run the tests. Nothing here has been superseded.
 
 ## Why this work exists
 
-The client's shops are trained on **RanceLab** ERP/POS. Our UI forced them to relearn, so
+The client's shops are trained on **the incumbent ERP** ERP/POS. Our UI forced them to relearn, so
 **adoption was zero** — this is the top product priority, ahead of the camera pad. The
 requirement is `docs/keyboard-shortcuts.html` (wireframes WF-01…WF-10 + full key tables).
 
 Two decisions from Shawn that shape everything:
 - **The client uses the DESKTOP terminal, not the web till.** "web can remain the same".
-- **The desktop must mimic RanceLab's UI**, not merely its keys.
+- **The desktop must mimic the incumbent ERP's UI**, not merely its keys.
 
 ⚠ The older `web/docs/features/*keyboard*` docs describe the OLD system and are **not** the
 requirement — "the docs merely reflect the existing system". One wrong diagnosis was caused by
@@ -257,7 +298,7 @@ trusting them. Trust `docs/keyboard-shortcuts.html` and the code.
 
 ## What is done (all committed + pushed)
 
-Desktop, in the order it was built: key map as a single source of truth → RanceLab ticket
+Desktop, in the order it was built: key map as a single source of truth → the incumbent ERP ticket
 columns → always-focused barcode row → rate editor + Enter cycle → till status bar →
 keyboard-complete tender sheet → Office letter navigation → price list + reprint → split tender.
 
@@ -290,7 +331,7 @@ the two web bug fixes in `b435161` are worth keeping regardless.
    → **Both migrations change installed terminals. A PB config change bricked v1.0.2 boot
    before (see the notes on partial-index parens). Exercise them on a real Windows terminal
    before tagging a release — xvfb here is not enough.**
-3. **Electron fullscreen moved F11 → Alt+Enter**, because the RanceLab map gives F11 to Day.
+3. **Electron fullscreen moved F11 → Alt+Enter**, because the counter map gives F11 to Day.
    Terminals in the field will notice; tell the shopkeepers before the release goes out.
 4. **`window.prompt` is not implemented in Electron — it throws.** Never use it. Use
    `components/pos/amount-prompt-modal.tsx`.

@@ -1,38 +1,68 @@
 "use client"
 
-import { SlidersHorizontal, AlertTriangle, XCircle, Package } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-
 /**
+ * The stock register (spec WF-09) — levels, read the way a stock statement is read.
+ *
+ * The question this table answers is "what is short", and that is a column read: the eye runs
+ * down Stock looking for the small numbers. So the figures are tabular and right-aligned, the
+ * rows band, and status is a WORD in a fixed column rather than a pill of varying width — a
+ * pill moves the column edge on every row and defeats the scan.
+ *
+ * Dressed from the office tokens (app/globals.css) so it matches the registers the rest of the
+ * back office uses. Rendered inside a page that carries `.office-ui`.
+ *
  * @param {{ products: object[], onAdjust: (product: object) => void }} props
  */
 export function StockTable({ products, onAdjust }) {
   if (products.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
-        <Package className="h-10 w-10 opacity-30" />
-        <p className="text-sm">No products match this filter</p>
+      <div
+        className="py-12 text-center text-[12px] opacity-60 border"
+        style={{ background: 'var(--office-panel-bg)', borderColor: 'var(--office-line)' }}
+      >
+        No products match this filter.
       </div>
     )
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+    <div
+      className="overflow-x-auto border"
+      style={{ background: 'var(--office-panel-bg)', borderColor: 'var(--office-line)' }}
+      data-testid="office-grid"
+    >
+      <table className="w-auto border-collapse text-[11px]">
         <thead>
-          <tr className="border-b border-border">
-            <th className="text-left py-2.5 px-3 text-muted-foreground font-medium">Product</th>
-            <th className="text-left py-2.5 px-3 text-muted-foreground font-medium hidden sm:table-cell">SKU</th>
-            <th className="text-right py-2.5 px-3 text-muted-foreground font-medium">Stock</th>
-            <th className="text-center py-2.5 px-3 text-muted-foreground font-medium">Status</th>
-            <th className="text-right py-2.5 px-3 text-muted-foreground font-medium">Price (MRP)</th>
-            <th className="py-2.5 px-3" />
+          <tr>
+            {[
+              ['Product', 260, 'left'],
+              ['HSN', 80, 'left'],
+              ['SKU', 110, 'left'],
+              ['Stock', 80, 'right'],
+              ['Unit', 60, 'left'],
+              ['Status', 100, 'left'],
+              ['Price (MRP)', 100, 'right'],
+              ['', 80, 'left'],
+            ].map(([label, width, align]) => (
+              <th
+                key={label || 'act'}
+                scope="col"
+                className="px-2 py-1 font-bold whitespace-nowrap border"
+                style={{
+                  width, textAlign: align,
+                  background: 'var(--office-grid-head-bg)',
+                  color: 'var(--office-grid-head-fg)',
+                  borderColor: 'var(--office-line)',
+                }}
+              >
+                {label}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
-          {products.map((product) => (
-            <StockRow key={product.id} product={product} onAdjust={() => onAdjust(product)} />
+          {products.map((product, i) => (
+            <StockRow key={product.id} product={product} index={i} onAdjust={() => onAdjust(product)} />
           ))}
         </tbody>
       </table>
@@ -40,49 +70,38 @@ export function StockTable({ products, onAdjust }) {
   )
 }
 
-function StockRow({ product, onAdjust }) {
-  const stock    = product.current_stock ?? 0
-  const isOut    = stock <= 0
-  const isLow    = stock > 0 && stock <= 10
-  const price    = parseFloat(product.mrp ?? product.wholesale_price ?? 0)
+function StockRow({ product, index, onAdjust }) {
+  const stock = product.current_stock ?? 0
+  const isOut = stock <= 0
+  const isLow = stock > 0 && stock <= 10
+  const price = parseFloat(product.mrp ?? product.wholesale_price ?? 0)
+  const status = isOut ? 'Out of Stock' : isLow ? 'Low Stock' : 'In Stock'
 
-  const statusBadge = isOut
-    ? <Badge variant="destructive" className="text-xs">Out of Stock</Badge>
-    : isLow
-      ? <Badge className="bg-amber-500/10 text-amber-600 border border-amber-500/30 text-xs">Low Stock</Badge>
-      : <Badge className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 text-xs">In Stock</Badge>
+  const cell = { borderColor: 'var(--office-line)' }
 
   return (
-    <tr className="border-b border-border/50 hover:bg-muted/30 transition-colors">
-      <td className="py-3 px-3">
-        <p className="font-medium text-foreground">{product.name}</p>
-        {product.hsn_code && (
-          <p className="text-xs text-muted-foreground">HSN: {product.hsn_code}</p>
-        )}
+    <tr style={{ background: index % 2 ? 'var(--office-row-b)' : 'var(--office-row-a)' }}>
+      <td className="px-2 py-1 border font-medium" style={cell}>{product.name}</td>
+      <td className="px-2 py-1 border opacity-75" style={cell}>{product.hsn_code ?? '—'}</td>
+      <td className="px-2 py-1 border opacity-75" style={cell}>{product.sku ?? '—'}</td>
+      <td
+        data-testid="stock-qty"
+        className="px-2 py-1 border text-right font-bold tabular-nums"
+        style={{ ...cell, color: isOut ? '#B91C1C' : isLow ? '#B45309' : undefined }}
+      >
+        {stock}
       </td>
-      <td className="py-3 px-3 text-muted-foreground hidden sm:table-cell">
-        {product.sku ?? '—'}
+      <td className="px-2 py-1 border opacity-75" style={cell}>{product.unit ?? 'pcs'}</td>
+      <td
+        data-testid="stock-status"
+        className="px-2 py-1 border"
+        style={{ ...cell, color: isOut ? '#B91C1C' : isLow ? '#B45309' : '#15803D' }}
+      >
+        {status}
       </td>
-      <td className="py-3 px-3 text-right">
-        <span className={`font-bold tabular-nums ${isOut ? 'text-tibetan' : isLow ? 'text-amber-600' : 'text-foreground'}`}>
-          {stock}
-        </span>
-        <span className="text-xs text-muted-foreground ml-1">{product.unit ?? 'pcs'}</span>
-      </td>
-      <td className="py-3 px-3 text-center">{statusBadge}</td>
-      <td className="py-3 px-3 text-right text-muted-foreground">
-        Nu. {price.toFixed(2)}
-      </td>
-      <td className="py-3 px-3 text-right">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onAdjust}
-          className="text-xs"
-        >
-          <SlidersHorizontal className="h-3.5 w-3.5 mr-1" />
-          Adjust
-        </Button>
+      <td className="px-2 py-1 border text-right tabular-nums" style={cell}>{price.toFixed(2)}</td>
+      <td className="px-2 py-1 border" style={cell}>
+        <button type="button" onClick={onAdjust} className="underline">Adjust</button>
       </td>
     </tr>
   )

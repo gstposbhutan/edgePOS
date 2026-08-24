@@ -1,8 +1,8 @@
 // The Office letter menu (spec WF-08/WF-09), web edition.
 //
-// RanceLab's back office is driven by single letters rather than a pointer: P for Purchase, W
-// for Warehouse and so on. Shops arriving from it navigate that way by reflex, so the till
-// offers the same strip. The letters are RanceLab's; the destinations are ours.
+// The incumbent ERP's back office is driven by single letters rather than a pointer: P for
+// Purchase, W for Warehouse and so on. Shops arriving from it navigate that way by reflex, so
+// the till offers the same strip. The letters are the convention; the destinations are ours.
 //
 // The mirror of desktop/lib/office-menu.ts — same letters in the same order, so a shopkeeper
 // moving between the terminal and the browser presses the same key for the same module. The
@@ -67,4 +67,25 @@ export function isTypingTarget(target) {
   const el = target
   if (!el) return false
   return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable
+}
+
+/**
+ * The screens wearing the back-office frame (OfficeShell).
+ *
+ * They are full-bleed the way the counter is: the frame states where you are and the letter
+ * menu moves you, so a pointer rail beside them would be a second, competing way to navigate.
+ * Listed here rather than sniffed from the component, because the SIDEBAR is what needs to
+ * know and it renders above these pages in the layout.
+ */
+export const OFFICE_ROUTES = [
+  '/pos/reports',
+  '/pos/khata',
+  '/pos/purchases',
+  '/pos/inventory',
+  '/pos/products',
+]
+
+/** True when `pathname` is an office-framed screen (its own route, not a child of it). */
+export function isOfficeRoute(pathname) {
+  return OFFICE_ROUTES.includes(pathname)
 }

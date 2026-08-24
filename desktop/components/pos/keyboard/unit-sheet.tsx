@@ -6,7 +6,7 @@ import type { UnitLevel } from "@/lib/units";
 import { unitsAvailable } from "@/lib/units";
 
 /**
- * Alt+U — the RanceLab unit sheet (spec: Counter map "Unit sheet — Pcs / Pack / Case.
+ * Alt+U — the counter unit sheet (spec: Counter map "Unit sheet — Pcs / Pack / Case.
  * ↑↓ Enter Esc"), also the middle step of the Enter cycle (WF-05).
  *
  * The sheet only ever lists levels the shop actually configured on the item (lib/units.ts

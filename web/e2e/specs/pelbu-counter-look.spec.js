@@ -27,14 +27,14 @@ async function resetTicket() {
 }
 
 
-// The RanceLab counter shell on the WEB till (spec WF-01/WF-02): the status strip, the
+// The counter shell on the WEB till (spec WF-01/WF-02): the status strip, the
 // always-focused barcode row, the ticket's column order, the paged key rail, and the Office
 // letter menu that replaces the sidebar now the counter is full-screen.
 //
 // The line-editing keys these make room for are covered separately in
 // pelbu-counter-line-keys.spec.js — small suites, so a failure names itself.
 
-test.describe('Pelbu counter — the RanceLab shell', () => {
+test.describe('Pelbu counter — the counter shell', () => {
   test.beforeEach(async ({ page }) => {
     await resetTicket()
     await page.goto('/pos')
@@ -74,7 +74,7 @@ test.describe('Pelbu counter — the RanceLab shell', () => {
     await page.keyboard.press('Escape')
   })
 
-  test('the ticket carries the RanceLab columns, in RanceLab order', async ({ page }) => {
+  test('the ticket carries the counter columns, in counter order', async ({ page }) => {
     // An empty ticket shows the "scan a barcode" placeholder; the grid appears with the line.
     await page.keyboard.press('F8')
     const input = page.locator('[data-testid="keyboard-product-search-input"]')
@@ -110,7 +110,7 @@ test.describe('Pelbu counter — the RanceLab shell', () => {
     await page.keyboard.press('Alt+o')
     await expect(page.getByRole('heading', { name: 'Office' })).toBeVisible({ timeout: 5000 })
     await expect(page.getByRole('button', { name: /P\s*Purchase Management/ })).toBeVisible()
-    // W is Warehouse, and it has a second row of letters the way RanceLab does.
+    // W is Warehouse, and it has a second row of letters the way the incumbent does.
     await page.keyboard.press('W')
     await expect(page.getByRole('heading', { name: /Office — Warehouse Management/ })).toBeVisible()
     await expect(page.getByRole('button', { name: /O\s*Stock Register/ })).toBeVisible()

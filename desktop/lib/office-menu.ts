@@ -1,10 +1,10 @@
 // The Office letter menu (spec WF-08/WF-09).
 //
-// RanceLab's back office is driven by single letters rather than a pointer: P for Purchase, W for
+// The incumbent ERP's back office is driven by single letters rather than a pointer: P for Purchase, W for
 // Warehouse and so on, with a second row of letters once you are inside a module. Shops arriving
 // from it navigate that way by reflex, so the terminal offers the same strip.
 //
-// The letters are RanceLab's, but the destinations are ours and only some exist on a terminal —
+// The letters are the incumbent ERP's, but the destinations are ours and only some exist on a terminal —
 // this is a register, with the full back office on the cloud app. A module with nowhere to go is
 // marked `todo`: it is shown dimmed and says so, rather than looking broken or, worse, silently
 // doing nothing under a trained reflex.

@@ -37,3 +37,8 @@ infra-supabase-live/
 Pelbu UI.pptx
 pelbu-product-import-template.xlsx
 Hotel Items for Sales.xlsx
+
+# UI reference files (video + extracted frames) — working files, not source
+docs/ui-reference.mov
+docs/ui-reference-frames/
+docs/Screen\ Recording*.mov
