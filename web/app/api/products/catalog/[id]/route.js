@@ -2,6 +2,40 @@ import { NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/supabase/server'
 import { packCaseFields } from '@/lib/units'
 
+/**
+ * GET /api/products/catalog/[id] — one product's whole record.
+ *
+ * The catalogue list endpoints return what a LIST needs. The product card shows the record on one
+ * sheet, so it needs the fields a list has no room for — the pack/case ladder, rotation, the
+ * exemption flag, specifications. Scoped by `created_by`, which is how the list endpoint scopes:
+ * products is a SHARED catalogue with no entity_id of its own, so a shop's own rows are the ones
+ * it created. A product id belonging to another shop reads as missing, not as their data.
+ */
+export async function GET(request, { params }) {
+  try {
+    const ctx = await getAuthContext()
+    if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const { id } = await params
+    const { entityId, supabase } = ctx
+
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .eq('id', id)
+      .eq('created_by', entityId)
+      .maybeSingle()
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+    return NextResponse.json({ product: data })
+  } catch (err) {
+    console.error('[products/catalog/[id]] GET error:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
 /** PATCH /api/products/catalog/[id] — update a product */
 export async function PATCH(request, { params }) {
   try {

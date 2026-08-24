@@ -97,7 +97,13 @@ export const OFFICE_ROUTES = [
   '/pos/reports/cash-book',
 ]
 
+/**
+ * Office screens whose path carries a record id (…/products/<id>). Matched by prefix, since the
+ * id cannot be listed ahead of time.
+ */
+const OFFICE_PREFIXES = ['/pos/products/']
+
 /** True when `pathname` is an office-framed screen (its own route, not a child of it). */
 export function isOfficeRoute(pathname) {
-  return OFFICE_ROUTES.includes(pathname)
+  return OFFICE_ROUTES.includes(pathname) || OFFICE_PREFIXES.some(prefix => pathname.startsWith(prefix))
 }

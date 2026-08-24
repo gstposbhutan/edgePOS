@@ -245,7 +245,7 @@ export default function ProductsPage() {
           : <OfficeGrid
               columns={PRODUCT_COLUMNS}
               rows={productRows}
-              onOpen={(row) => (canManage ? openEdit(row._p) : setViewProduct(row._p))}
+              onOpen={(row) => router.push(`/pos/products/${row.id}`)}
           openOnClick
               empty="No products found."
             />

@@ -63,6 +63,26 @@ test.describe('the office frame', () => {
     await expect(page.locator('[data-testid="office-grid"]')).toContainText('Opening Balance')
   })
 
+  test('the product register opens a product card, and the card is a sheet', async ({ page }) => {
+    await page.goto('/pos/products')
+    await expect(page.locator('[data-testid="office-grid"]')).toBeVisible({ timeout: 20000 })
+
+    // Click the NAME cell, not the row centre — the row's last cell carries Edit/deactivate and
+    // deliberately stops propagation, so a centre click is not a "open this row" click.
+    await page.locator('[data-testid="office-grid"] tbody tr').first().locator('td').first().click()
+    await page.waitForURL('**/pos/products/*', { timeout: 15000 })
+
+    const band = page.locator('[data-testid="office-band"]')
+    await expect(band).toContainText('Master Data Management')
+    await expect(band).toContainText('Product —')
+
+    // The card's whole point is that the record is on ONE sheet under landmarks.
+    for (const section of ['Product', 'Brand and Grouping', 'Tax', 'Stock', 'Pricing']) {
+      await expect(page.getByRole('heading', { name: section, exact: true })).toBeVisible()
+    }
+    await expect(page.locator('aside')).toHaveCount(0)
+  })
+
   // /pos/stores is OWNER-only; this project runs as a manager, who is bounced to the counter.
   test.describe('store register', () => {
     test.use({ storageState: 'e2e/storage/owner-auth.json' })
@@ -95,10 +115,22 @@ test.describe('the office frame', () => {
   })
 
   test('the register carries a keyboard cursor: ArrowDown selects a row', async ({ page }) => {
-    await page.goto('/pos/products')
-    await expect(page.locator('[data-testid="office-grid"]')).toBeVisible({ timeout: 20000 })
-    await page.locator('body').click()
+    // Shifts, not products: the product register puts the caret in its search box on arrival, and
+    // a cursor cannot move while a field is being typed into. And NOT page.locator('body').click()
+    // — a register fills the width now, so the centre of the body is a ROW, and clicking it opens
+    // that row instead of merely giving the page focus.
+    await page.goto('/pos/shifts')
+    const grid = page.locator('[data-testid="office-grid"]')
+    await expect(grid).toBeVisible({ timeout: 20000 })
+    await expect(grid.locator('tbody tr').first()).toBeVisible()
+    await page.locator('[data-testid="office-band"]').click()
+
+    const bgOf = (i) => page.evaluate(
+      (n) => getComputedStyle(document.querySelector(`[data-testid="office-grid"] tbody tr[data-row="${n}"]`)).backgroundColor,
+      i,
+    )
+    const before = await bgOf(0)
     await page.keyboard.press('ArrowDown')
-    await expect(page.locator('[data-testid="office-grid"] tbody tr[data-row="0"]')).toBeVisible()
+    await expect.poll(async () => await bgOf(0), { timeout: 5000 }).not.toBe(before)
   })
 })
