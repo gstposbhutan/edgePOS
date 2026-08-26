@@ -10,7 +10,7 @@ not for what is true now.
 | | |
 |---|---|
 | Web | LIVE on pos.pelbu.com, build `i9yoQ4hBLkP0IO1NpouIq` |
-| Desktop | **1.6.2** tagged and released to the **stable** channel |
+| Desktop | **1.6.8** tagged and released to the **stable** channel (1.6.1–1.6.8 all shipped 2026-08-26) |
 | Branch | **`main`** — work here. `origin/v2` is a frozen marker of the cutover; do not push to it. |
 | Migrations | lineage at **139**, all applied on this box — the only environment |
 
@@ -125,9 +125,46 @@ uninstall would have wiped `%APPDATA%\pos-terminal` — the licence *and* `pb_da
 artifact of running PocketBase by hand against a `--dir` that did not exist. The uninstall setting
 was real; the wipe was not proven.)
 
+It did not stop at two. The same day produced 1.6.3–1.6.8, and every one is the same defect
+wearing different clothes — something failed, the code knew why, and the screen did not say:
+
+- **1.6.3** — the static server was handed port 3200 and then IGNORED the port it actually bound,
+  pointing the window at the constant. A busy 3200 would have loaded whatever else was serving
+  there INTO the POS shell. It now takes any free port and the window follows it.
+- **1.6.4** — the login screen's "get logins" button looked dead. `bootstrapIfNoStoreUsers()`
+  returned void and logged its reason to a console no shopkeeper can open.
+- **1.6.5** — a pre-cutover `.lic` names `app.pelbu.com`, which 301s to `pos.pelbu.com`, and a
+  cross-origin redirect STRIPS the Authorization header. The cloud answered "Missing terminal
+  token" for a token that was present and valid. Bootstrap was the visible casualty; the **sales
+  ingest** was the quiet one. All cloud calls now refuse to follow redirects and name the address.
+- **1.6.6** — every recurring cloud job (push sync, catalogue re-pull, online + B2B polling) lived
+  inside the `sync:start` IPC, which only Settings calls. A terminal that merely booted ran none
+  of them. They start at boot now, and the sync banner prints its failure reason.
+- **1.6.7** — the till claimed `h-screen` while the root layout stacks banners above it, and the
+  header's two flex groups had no `min-w-0` so neither could shrink. Both overflowed the window.
+- **1.6.8** — the till's top bar became ACTIONS ONLY, matching the web counter. Layout presets and
+  the list/grid toggle are gone; **Alt+O** joined `COUNTER_KEYS` first, because the letter strip is
+  deliberately off the counter and those text links were the only way to the back office.
+
 The lesson worth keeping: every one of these turned a small, ordinary problem into a dead
 register, because the terminal preferred to carry on rather than say what was wrong. Prefer
 failing loudly and early. Read `desktop/CLAUDE.md` before changing anything under `desktop/`.
+
+**Two things were left open deliberately, both wanting a fresh session:**
+
+1. **The Caddy one-liner.** `infra/Caddyfile:28` proxies only `/api/desktop/*` and `/api/license/*`
+   on the `app.pelbu.com` vhost and 301s the rest. Adding `/api/sync/*` would restore bootstrap AND
+   sales sync for every terminal still on a pre-cutover licence, with no reissue and no reinstall.
+   Additive, and Caddy keeps the old config if a reload fails — but it is production routing for
+   every app on the box, so it was left for an explicit go-ahead.
+2. **`admin12345` ships on every terminal.** Two accounts share the name: the PocketBase
+   `_superusers` record, whose password is HARDCODED in `pb/pb_migrations/000_superuser.js`, and the
+   POS support login in `users`, which reads `NEXUS_SUPERADMIN_PASS`. Neither env var is set in CI.
+   PocketBase binds loopback only, so this is not remotely exploitable — but anyone at the counter
+   can open `127.0.0.1:<pb port>/_/` and edit the shop's books, which for a GST product is an audit
+   problem. The fix is a per-terminal random secret for the first (nobody needs to know it) and a
+   real managed secret plus an update path for the second. It touches `syncLocalAuth`, which every
+   sync and bootstrap depends on, so it wants a deliberate change and a `-beta` tag.
 
 ---
 

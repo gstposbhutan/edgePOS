@@ -81,8 +81,8 @@ Apps use the **instance role over IMDS** for S3 — no AWS keys on disk.
   set 2026-06-16). Earlier notes claiming they live only on the monorepo and must be
   re-created are wrong.
 - Channels: tags containing `-beta`/`-rc` → beta; terminals only query stable.
-  Current stable = **1.6.2** (tag `desktop-v1.6.2`, published 2026-08-26), installer
-  219,360,754 bytes at `img.pelbu.com/releases/1.6.2/`. Owners download it from `/downloads`,
+  Current stable = **1.6.8** (tag `desktop-v1.6.8`, published 2026-08-26), installer
+  219,361,415 bytes at `img.pelbu.com/releases/1.6.8/`. Owners download it from `/downloads`,
   which calls `/api/desktop/releases/latest`. Verify a release by checking that feed reports the
   new version and that the installer URL returns HTTP 200 with a matching `content-length`.
 - **Installed terminals bake `DEFAULT_CLOUD_URL=https://app.pelbu.com`** for update checks and
