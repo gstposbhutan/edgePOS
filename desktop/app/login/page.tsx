@@ -77,7 +77,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="flex-1 min-h-0 overflow-auto flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <img src="/branding/pelbu-stacked.png" alt="Pelbu" className="h-24 w-auto mx-auto mb-2" />

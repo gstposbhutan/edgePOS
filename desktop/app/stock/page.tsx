@@ -57,9 +57,9 @@ export default function StockPage() {
     );
   }, [products, search]);
 
-  if (authLoading) return <div className="min-h-screen flex items-center justify-center"><p className="text-muted-foreground">Loading…</p></div>;
+  if (authLoading) return <div className="flex-1 min-h-0 flex items-center justify-center"><p className="text-muted-foreground">Loading…</p></div>;
   if (!isAuthenticated) return <LoginFallback />;
-  if (!canManage) return <div className="min-h-screen flex items-center justify-center"><p className="text-muted-foreground">Stock is manager/owner only…</p></div>;
+  if (!canManage) return <div className="flex-1 min-h-0 flex items-center justify-center"><p className="text-muted-foreground">Stock is manager/owner only…</p></div>;
 
   const openAdd = () => { setEditing(null); setShowForm(true); };
   const openEdit = (p: Product) => { setEditing(p); setShowForm(true); };

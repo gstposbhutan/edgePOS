@@ -96,13 +96,13 @@ export default function PosPage() {
   }, [isAuthenticated, terminalMode, canManage, router]);
 
   if (authLoading) {
-    return <div className="min-h-screen flex items-center justify-center"><p className="text-muted-foreground">Loading...</p></div>;
+    return <div className="flex-1 min-h-0 flex items-center justify-center"><p className="text-muted-foreground">Loading...</p></div>;
   }
 
   if (!isAuthenticated) return <LoginFallback />;
 
   if (terminalMode === "BACK_OFFICE") {
-    return <div className="min-h-screen flex items-center justify-center"><p className="text-muted-foreground">Back-office terminal — opening stock…</p></div>;
+    return <div className="flex-1 min-h-0 flex items-center justify-center"><p className="text-muted-foreground">Back-office terminal — opening stock…</p></div>;
   }
 
   return <PosTerminal user={user} isManager={isManager} isOwner={isOwner} signOut={signOut} switchUser={switchUser} />;
@@ -960,11 +960,16 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
 
   const cartColumnWidth = layoutPreset === "fullcart" ? CART_WIDTH.FULL : layoutPreset === "compact" ? CART_WIDTH.COMPACT : CART_WIDTH.STANDARD;
 
+  // flex-1, NOT h-screen: layout.tsx stacks UpdateBanner + SyncNudge + OfficeChrome ABOVE this,
+  // so a full viewport here means banner-height + 100vh — and a scrollbar on the till.
   return (
-    <div className="h-screen flex flex-col bg-background">
+    <div className="flex-1 min-h-0 flex flex-col bg-background overflow-hidden">
       {/* Top Navigation */}
-      <header className="border-b border-border bg-card/80 backdrop-blur-sm px-4 py-2.5 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-4">
+      <header className="border-b border-border bg-card/80 backdrop-blur-sm px-4 py-2.5 flex items-center justify-between gap-2 shrink-0 overflow-hidden">
+        {/* Informational half: shrinks and clips first, so the ACTIONS on the right stay
+            reachable at any window width. Without min-w-0 a flex child refuses to go below
+            its content width and pushes the whole page wider than the screen. */}
+        <div className="flex items-center gap-4 min-w-0 overflow-hidden">
           <div className="flex items-center gap-2.5">
             <img src="/branding/pelbu-icon.png" alt="Pelbu" className="w-8 h-8 rounded-lg" />
             <div className="hidden sm:block">
@@ -1028,7 +1033,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
             </Badge>
           )}
           {/* Layout preset toggles */}
-          <div className="hidden lg:flex items-center gap-0.5 ml-2">
+          <div className="hidden xl:flex items-center gap-0.5 ml-2">
             <Button
               variant={layoutPreset === LAYOUT_PRESETS.STANDARD ? "default" : "ghost"}
               size="sm"
@@ -1079,7 +1084,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
           </div>
         </div>
 
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-0.5 shrink-0">
           <div className="hidden md:flex items-center gap-0.5">
             {/* Counter/till + online-order management. Catalog/inventory/purchasing/order-history
                 still live in the web back-office; here we handle customer + khata (cashier),
