@@ -61,7 +61,16 @@ export const OFFICE_MODULES = [
       { letter: 'S', label: 'Stores', href: '/pos/stores' },
     ],
   },
-  { letter: 'T', label: 'Settings', href: '/pos/settings' },
+  {
+    letter: 'T', label: 'Settings', href: '/pos/settings',
+    children: [
+      { letter: 'S', label: 'Store Settings', href: '/pos/settings' },
+      // The desktop installer used to hang off the sidebar's OWNER-only rail. The office screens
+      // and the counter stand that rail down, so the link was reachable from four obscure screens
+      // and nowhere a shopkeeper would look. It belongs on the letter menu, which every screen has.
+      { letter: 'D', label: 'Desktop App', href: '/downloads' },
+    ],
+  },
   { letter: 'X', label: 'Exit', href: '/pos' },
 ]
 
