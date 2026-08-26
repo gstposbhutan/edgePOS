@@ -43,8 +43,11 @@ first; this file covers only what is different down here.
   free, but they will fail against a machine already using 3200. Read the port from the app if
   that ever bites.
 - **`app.getPath("userData")` holds `pb_data` AND `license.lic`** — the shop's entire local
-  record. `nsis.deleteAppDataOnUninstall` MUST stay `false`. It was `true` until 1.6.2 and an
-  uninstall wiped a live terminal.
+  record. On Windows that is **`%APPDATA%\pos-terminal`**, named for package.json `name`:
+  `productName` is set only under `build.productName`, which Electron does not read. **Never add
+  a top-level `productName`** to tidy the folder name — it would move `userData` and strand the
+  data and licence of every terminal already installed. `nsis.deleteAppDataOnUninstall` MUST also
+  stay `false`; it was `true` until 1.6.2.
 - **A `.lic` cannot be re-sent.** It carries a plaintext per-terminal sync token stored only as a
   SHA-256. Lost licence = revoke and reissue in the admin panel.
 - **PocketBase rejects a partial-index `WHERE` containing parentheses** (e.g. `IN (...)`). Use

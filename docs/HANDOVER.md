@@ -65,11 +65,16 @@ balance carried down), `/b2b-orders`, `/customers`, `/online-orders`, `/settings
   sales and fixes nothing. Since 1.6.1 the launcher probes 8090–8099 and quotes PocketBase's own
   error, so this should not recur; older terminals still show the bare message.
 - **Uninstalling used to delete the shop's books.** `nsis.deleteAppDataOnUninstall` was `true`
-  until 1.6.2, so removing the app wiped `%APPDATA%\Pelbu POS` — `license.lic` and `pb_data`
+  until 1.6.2, so removing the app wiped its user-data folder — `license.lic` and `pb_data`
   both. A `.lic` **cannot be re-sent** (it carries a plaintext sync token stored only as a hash),
   so the recovery is revoke-and-reissue in the admin panel. The fix ships in the uninstaller, so
   it only protects terminals removed from **1.6.2 onward** — a terminal on 1.6.1 or earlier still
-  loses everything when uninstalled. Take a copy of `%APPDATA%\Pelbu POS` first.
+  loses everything when uninstalled. Take a copy of `%APPDATA%\pos-terminal` first.
+- **The user-data folder is `%APPDATA%\pos-terminal`, NOT `%APPDATA%\Pelbu POS`.** `productName`
+  is set only under `build.productName` (electron-builder's config); Electron's `app.getName()`
+  reads the TOP-LEVEL `productName` and falls back to `name`, which is `pos-terminal`. **Do not
+  "fix" this by adding a top-level `productName`** — that would move `userData` for every
+  installed terminal and strand its `pb_data` and `license.lic` where the app no longer looks.
 
 ## Not verified
 
@@ -115,7 +120,10 @@ Then a licence request "never arrived" in the admin panel. It had arrived; the s
 `{status:"LICENSED"}` — already licensed, no request created — and `activation.html` discarded
 that and said "ask your administrator", sending the operator to watch for a row that could not
 appear. Behind it sat the real damage: **`nsis.deleteAppDataOnUninstall` was `true`**, so the
-uninstall had wiped `%APPDATA%\Pelbu POS` — the licence *and* `pb_data`. Both fixed in **1.6.2**.
+uninstall would have wiped `%APPDATA%\pos-terminal` — the licence *and* `pb_data`. Both fixed in
+**1.6.2**. (Care with the evidence here: the empty `pb_data` that first suggested data loss was an
+artifact of running PocketBase by hand against a `--dir` that did not exist. The uninstall setting
+was real; the wipe was not proven.)
 
 The lesson worth keeping: every one of these turned a small, ordinary problem into a dead
 register, because the terminal preferred to carry on rather than say what was wrong. Prefer

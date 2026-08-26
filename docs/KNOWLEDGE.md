@@ -97,7 +97,9 @@ Apps use the **instance role over IMDS** for S3 — no AWS keys on disk.
   offers "Request license"; when the machine is already licensed the server answers `LICENSED`
   and creates **no** admin-panel row — so a support call about "my request never arrived" is
   usually this. (Before 1.6.2 the window mis-reported that case as "ask your administrator".)
-- **`%APPDATA%\Pelbu POS` holds `pb_data` and `license.lic`** — the shop's whole local record.
+- **`%APPDATA%\pos-terminal` holds `pb_data` and `license.lic`** — the shop's whole local record.
+  The folder is named for package.json `name`, NOT `build.productName`; never add a top-level
+  `productName` to "tidy" it, as that moves `userData` and strands every installed terminal's data.
   Uninstalling deleted it until 1.6.2 (`nsis.deleteAppDataOnUninstall`), and the fix ships in the
   uninstaller, so terminals removed from 1.6.1 or earlier still lose everything. **Copy that
   folder before ever telling a shopkeeper to reinstall.**
