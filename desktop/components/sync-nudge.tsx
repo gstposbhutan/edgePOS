@@ -27,6 +27,10 @@ export function SyncNudge() {
   const [configured, setConfigured] = useState(false);
   const [, setTick] = useState(0); // force re-eval of staleness on an interval
   const [syncing, setSyncing] = useState(false);
+  // Why the last attempt failed. main.js has always broadcast this on "sync:status"; the banner
+  // read only `lastSync` and dropped it, so a failing sync looked exactly like a button that
+  // does nothing.
+  const [syncError, setSyncError] = useState("");
 
   useEffect(() => {
     const api = (window as unknown as { electronAPI?: any }).electronAPI;
@@ -39,7 +43,11 @@ export function SyncNudge() {
       setConfigured(!!(s.config?.remoteUrl && s.config?.apiKey));
     };
     refresh();
-    const off = api.onSyncStatus?.((d: any) => { if (d?.lastSync) setLastSyncAt(d.lastSync); });
+    const off = api.onSyncStatus?.((d: any) => {
+      if (d?.lastSync) { setLastSyncAt(d.lastSync); setSyncError(""); }
+      if (d?.status === "error") setSyncError(d.message || "Sync failed.");
+      if (d?.status === "syncing") setSyncError("");
+    });
     const t = setInterval(() => { setTick((n) => n + 1); refresh(); }, 60000);
     return () => { alive = false; clearInterval(t); if (typeof off === "function") off(); };
   }, []);
@@ -52,10 +60,16 @@ export function SyncNudge() {
 
   const syncNow = async () => {
     setSyncing(true);
+    setSyncError("");
     try {
       await api.sync.forceSync?.();
       const s = await api.sync.getStatus?.().catch(() => null);
       if (s?.lastSyncAt) setLastSyncAt(s.lastSyncAt);
+      // A push that neither threw nor moved the clock still failed — say so rather than
+      // redrawing the same banner and leaving the cashier to guess.
+      else setSyncError((e) => e || "The cloud could not be reached. Sales stay safe on this terminal.");
+    } catch (e) {
+      setSyncError(e instanceof Error ? e.message : "Sync failed.");
     } finally {
       setSyncing(false);
     }
@@ -63,10 +77,17 @@ export function SyncNudge() {
 
   return (
     <div className="w-full bg-warning/10 border-b border-warning/30 px-4 py-2 flex items-center justify-between gap-3 text-sm shrink-0">
-      <span className="text-foreground flex items-center gap-2">
-        <CloudOff className="h-4 w-4 text-warning shrink-0" />
-        Not synced to the cloud — last sync <strong>{agoLabel(lastSyncAt)}</strong>. Sales are saved
-        locally and will upload once you&apos;re back online.
+      <span className="text-foreground flex flex-col gap-0.5 min-w-0">
+        <span className="flex items-center gap-2">
+          <CloudOff className="h-4 w-4 text-warning shrink-0" />
+          Not synced to the cloud — last sync <strong>{agoLabel(lastSyncAt)}</strong>. Sales are saved
+          locally and will upload once you&apos;re back online.
+        </span>
+        {syncError && (
+          <span className="text-xs text-destructive break-words pl-6" data-testid="sync-error">
+            {syncError}
+          </span>
+        )}
       </span>
       <button
         onClick={syncNow}

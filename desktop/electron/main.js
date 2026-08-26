@@ -769,8 +769,19 @@ ipcMain.handle("sync:get-status", () => {
   };
 });
 
-ipcMain.handle("sync:start", (_, config) => {
-  syncConfig = config;
+/**
+ * Start every recurring cloud job: push sync, catalog/team re-pull, online + B2B order polling.
+ *
+ * This used to live INSIDE the "sync:start" IPC, which only the Settings screen calls. A terminal
+ * that simply booted therefore ran none of it: no sales were pushed, no catalogue or price change
+ * arrived, no online order ever appeared, and `lastSyncAt` stayed null — which is why the "Not
+ * synced to the cloud" banner greeted every startup and only a manual click could clear it. The
+ * licence already carries the sync config, so a licensed terminal has everything it needs to
+ * start on its own, and now does.
+ */
+function startSyncJobs() {
+  if (!syncConfig || !syncConfig.remoteUrl || !syncConfig.apiKey) return false;
+  const config = syncConfig;
   if (syncInterval) clearInterval(syncInterval);
   syncInterval = setInterval(doSync, (config.intervalMinutes || 5) * 60 * 1000);
   doSync();
@@ -793,6 +804,11 @@ ipcMain.handle("sync:start", (_, config) => {
   b2bOrdersInterval = setInterval(() => pollB2bOrders().catch(() => {}), 45 * 1000);
   pollB2bOrders().catch(() => {});
   return true;
+}
+
+ipcMain.handle("sync:start", (_, config) => {
+  syncConfig = config;
+  return startSyncJobs();
 });
 
 ipcMain.handle("sync:stop", () => {
@@ -1126,6 +1142,9 @@ app.whenReady().then(async () => {
     // The licence carries the sync token, so this is the first point where the team CAN be
     // pulled. A terminal that already has its logins skips it.
     await bootstrapIfNoStoreUsers();
+    // The licence carries the sync config, so a licensed terminal starts its own cloud jobs.
+    if (startSyncJobs()) console.log("[Main] Cloud sync + order polling started");
+    else console.log("[Main] No sync config on this licence — cloud jobs not started");
     createWindow();
   } else if (isDev && !process.env.NEXUS_FORCE_LICENSE) {
     console.log(`[Main] No valid license (${lic.reason}) — dev mode, skipping gate.`);
