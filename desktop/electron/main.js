@@ -242,7 +242,7 @@ async function doSync() {
     };
 
     mainWindow?.webContents.send("sync:status", { status: "syncing", message: "Uploading…" });
-    const res = await fetch(ingestUrl, {
+    const res = await cloudFetch(ingestUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify(batch),
@@ -295,6 +295,28 @@ async function doSync() {
 // terminal). The cloud is the source of truth for products. Idempotent: upserts by business
 // key (category name, product SKU, khata phone). The endpoint already maps selling_price →
 // sale_price; we write the PB-shaped rows it returns.
+/**
+ * Call the cloud with the terminal's bearer token, refusing to follow a redirect.
+ *
+ * A cross-origin redirect STRIPS the Authorization header — that is the fetch spec, not a bug —
+ * so a terminal whose licence names an old host (app.pelbu.com, which 301s to pos.pelbu.com)
+ * arrives with no credentials and is told "Missing terminal token". It looks like a bad token
+ * and is really a bad address, and it silently breaks sales sync as well as bootstrap. Following
+ * the redirect ourselves and re-attaching the token would be worse: that hands the shop's
+ * credentials to wherever a redirect points. So we stop and say which address is wrong.
+ */
+async function cloudFetch(url, init = {}) {
+  const res = await fetch(url, { ...init, redirect: "manual" });
+  if (res.status >= 300 && res.status < 400) {
+    const to = res.headers.get("location") || "another address";
+    throw new Error(
+      `${url} redirects to ${to}, which drops this terminal's credentials. Its licence names an ` +
+      `old cloud address — issue a fresh licence for this machine and activate it.`
+    );
+  }
+  return res;
+}
+
 async function doBootstrap() {
   if (!syncConfig || !syncConfig.remoteUrl || !syncConfig.apiKey) {
     return { ok: false, error: "Sync not configured" };
@@ -310,7 +332,7 @@ async function doBootstrap() {
   try {
     mainWindow?.webContents.send("sync:status", { status: "syncing", message: "Bootstrapping…" });
 
-    const res = await fetch(bootstrapUrl, { headers: { Authorization: `Bearer ${token}` } });
+    const res = await cloudFetch(bootstrapUrl, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       throw new Error(`bootstrap ${res.status}: ${text.slice(0, 200)}`);
@@ -821,7 +843,7 @@ async function pollOnlineOrders() {
   const token = syncConfig.apiKey;
   const localUrl = syncConfig.pbUrl || getPbUrl();
   try {
-    const res = await fetch(ordersUrl, { headers: { Authorization: `Bearer ${token}` } });
+    const res = await cloudFetch(ordersUrl, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) return; // offline / not configured — keep the last-known local mirror
     const orders = (await res.json()).orders || [];
 
@@ -882,7 +904,7 @@ async function pollOnlineOrders() {
 async function onlineOrderAction(id, action, reason) {
   if (!syncConfig || !syncConfig.remoteUrl || !syncConfig.apiKey) return { ok: false, error: "Sync not configured" };
   try {
-    const res = await fetch(`${deriveSyncUrl("orders")}/${id}`, {
+    const res = await cloudFetch(`${deriveSyncUrl("orders")}/${id}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${syncConfig.apiKey}` },
       body: JSON.stringify({ action, reason: reason || null }),
@@ -908,7 +930,7 @@ async function pollB2bOrders() {
   const token = syncConfig.apiKey;
   const localUrl = syncConfig.pbUrl || getPbUrl();
   try {
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    const res = await cloudFetch(url, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) return; // offline / not configured — keep the last-known mirror
     const orders = (await res.json()).orders || [];
 
