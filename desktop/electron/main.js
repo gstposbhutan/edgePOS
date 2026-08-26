@@ -15,6 +15,10 @@ const isDev = !app.isPackaged;
 // of the renderer dev server on :3000 — useful when :3000 is taken by another app.
 const serveBuilt = process.env.NEXUS_SERVE_BUILT === "1";
 const APP_PORT = 3200;
+// Where the renderer is ACTUALLY being served. APP_PORT is only the port we ask for first; if
+// something else holds it we take any free one, and the window must follow the server rather
+// than the constant. Null until the server is up (and in `next dev`, which loads :3000).
+let appUrl = null;
 let staticServer = null;
 let mainWindow = null;
 let activationWindow = null;
@@ -66,7 +70,7 @@ function createWindow() {
     mainWindow.loadURL("http://localhost:3000");
     mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadURL(`http://127.0.0.1:${APP_PORT}`);
+    mainWindow.loadURL(appUrl || `http://127.0.0.1:${APP_PORT}`);
   }
 
   // Alt+Enter = window-fullscreen toggle, owned HERE so it works on every screen (login,
@@ -1060,12 +1064,22 @@ app.whenReady().then(async () => {
   if (!isDev || serveBuilt) {
     const serveDir = path.join(__dirname, "..", "out");
     try {
-      const { server, port, url } = await startStaticServer(serveDir, APP_PORT);
+      const { server, url } = await startStaticServer(serveDir, APP_PORT);
       staticServer = server;
+      appUrl = url;
       console.log(`[Main] Static server running at ${url}`);
     } catch (err) {
       console.error("[Main] Static server failed:", err.message);
-      dialog.showErrorBox("Startup Error", "Could not start static server.");
+      dialog.showErrorBox(
+        "Pelbu POS cannot start",
+        [
+          "The terminal could not serve its own screens, so it has stopped rather than open an empty window.",
+          "",
+          err.message,
+        ].join("\n")
+      );
+      app.quit();
+      return;
     }
   }
 

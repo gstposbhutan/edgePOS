@@ -33,9 +33,15 @@ first; this file covers only what is different down here.
 
 ## Things that bite
 
-- **The PocketBase port is a range, 8090–8099** (`electron/pb-launcher.js`). Whatever wins is
-  handed to the renderer via `electronAPI.pb.url` — never hardcode 8090 in renderer code. If the
-  whole range is taken the app refuses to start, by design.
+- **Neither port the terminal uses is guaranteed.** PocketBase takes the first free port in
+  **8090–8099** (`electron/pb-launcher.js`) and hands it to the renderer via
+  `electronAPI.pb.url`; the static server asks for **3200** and takes any free port if that is
+  busy (`electron/static-server.js`), so the window must load the URL it *returns*. Never
+  hardcode either number outside those two files. If the PocketBase range is exhausted the app
+  refuses to start, by design — there is nowhere to put the database.
+- **The Electron e2e specs hardcode `http://127.0.0.1:3200`.** Fine in CI, where the port is
+  free, but they will fail against a machine already using 3200. Read the port from the app if
+  that ever bites.
 - **`app.getPath("userData")` holds `pb_data` AND `license.lic`** — the shop's entire local
   record. `nsis.deleteAppDataOnUninstall` MUST stay `false`. It was `true` until 1.6.2 and an
   uninstall wiped a live terminal.
