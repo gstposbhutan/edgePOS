@@ -104,8 +104,13 @@ Apps use the **instance role over IMDS** for S3 — no AWS keys on disk.
 - **PocketBase binds the first free port in 8090–8099** (since 1.6.1). "Could not start local
   database" is usually another program holding the port, not a corrupt database — check with
   `netstat -ano | findstr ":8090"` + `Get-Process -Id <PID>` and read the process name.
-- Terminal auth: local PocketBase; `admin@pos.local` = internal super_admin (set
-  `NEXUS_SUPERADMIN_PASS` at build — `admin12345` is a DEV fallback, never ship it).
+- Terminal auth: local PocketBase; `admin@pos.local` = internal super_admin.
+  ⚠ **`NEXUS_SUPERADMIN_PASS` is NOT set in the release workflow** (checked 2026-08-26), so every
+  shipped terminal falls back to **`admin12345`** — the shared well-known password the code
+  comment says must never ship. Useful right now (it is the way into a terminal whose staff
+  logins have not arrived), and a real gap to close: add the CI secret and pass it to the build.
+  Note `seedDefaultUser` is idempotent, so a new password only applies to terminals installed
+  fresh afterwards — existing ones keep `admin12345` until their data dir is reset.
   Store users mirror from `/api/sync/bootstrap` (same bcrypt hash → web password works
   offline). Terminals provision from `desktop/pb/pb_migrations/` (NOT setup-pb.js).
   Box is aarch64: fetch `pocketbase_*_linux_arm64` to run PB locally.
