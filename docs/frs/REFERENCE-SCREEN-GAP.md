@@ -26,15 +26,19 @@ an opening balance — without which the running total is fiction.
 
 ---
 
-## 2. Buildable now — the data exists, the screen does not
+## 2. Built since — Day Book and Cash Book
 
-| Screen | Data available | Effort |
-|---|---|---|
-| **Day Book** | `pos.orders` carries `order_type` (POS_SALE, MARKETPLACE, PURCHASE_ORDER, PURCHASE_INVOICE, SALES_ORDER, SALES_INVOICE), `grand_total`, `created_at` | ~half a day |
-| **Cash Book** | `pos.shift_transactions` (type, payment_method, amount) + `pos.cash_adjustments` (type, amount, reason) + `pos.shifts` | ~1 day |
+Both shipped 2026-08-24 (`/pos/reports/day-book`, `/pos/reports/cash-book`), and the terminal's
+`/adjustments` became its own Cash Book on 2026-08-26. No migration was needed for any of them.
 
-Both are register-shaped and need no schema change. Day Book is every transaction for a date;
-Cash Book is cash in and out per shift/day, which the drawer already records.
+Two decisions inside them are worth knowing, because both were judgement calls:
+- The **Cash Book counts cash only.** Credit and online takings are revenue but never enter the
+  drawer, so including them would produce a balance no till count could reconcile — which is the
+  one thing the report exists to support.
+- The **Day Book does not net** sales against purchases; they total in separate columns, because
+  a single figure spanning money-in and money-out would mean nothing.
+
+**Nothing easy is left.** Everything below needs a feature or a ledger first.
 
 ---
 

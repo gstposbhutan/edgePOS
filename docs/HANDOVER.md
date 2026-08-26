@@ -1,47 +1,82 @@
-# Handover — web deployed, desktop 1.5.0 released
+# Handover — the back office reads like the counter
 
-**Read this section first.** Written 2026-08-23, updated 2026-08-24. Branch `v2`, pushed.
-Everything below is history kept for reference: the web-parity build record, the terminal's
-own handover, then the Phase 2 port.
+**Read this section first.** Written 2026-08-26. **`main` is the product** (the `v2` branch
+became `main` at the cutover; the pre-homecoming tree is tagged `legacy/main`). Everything below
+this section is history kept for reference, newest first — read it for how something came to be,
+not for what is true now.
 
----
+## Where things stand
 
-## Counter UI back-office reskin (2026-08-24)
+| | |
+|---|---|
+| Web | LIVE on pos.pelbu.com, build `i9yoQ4hBLkP0IO1NpouIq` |
+| Desktop | **1.6.0** tagged and released to the **stable** channel |
+| Branch | `main` (was `v2`) |
+| Migrations | lineage at **139**, all applied on this box — the only environment |
 
-**Status**: five screens BUILT and browser-verified; e2e not run. Branch `v2`, uncommitted.
+## What the reskin changed
 
-Innovates cannot retrain staff, so the product wears the incumbent ERP's shape. The till already
-did (commit `58aae63`). This pass extended it to the BACK OFFICE, which was still on the console
-look — so a shopkeeper crossing from the ticket to a report no longer changes visual language
-mid-task.
+Innovates cannot retrain staff, so the product wears the incumbent ERP's shape. The till
+already did; this work took the BACK OFFICE the same way, on both surfaces, so a shopkeeper
+crossing from the ticket to a report no longer changes visual language mid-task.
 
-**Naming rule, and it is a hard one:** the competitor is never named in code, UI, docs or commit
-messages. Prior mentions were scrubbed across `web/`, `desktop/`, docs and memory. One is left
-deliberately for Shawn: `web/lib/marketing/content.js` states Innovates' real credential as an
-implementation partner for that ERP — a factual claim about the partner, not imitation.
+Every framed screen has three fixed places: a **band** naming the screen, a **register** holding
+the data in columns with its totals underneath, and a **rail** printing every key the screen
+answers. Web frame: `web/components/pos/office/`. Terminal: `desktop/components/office/`.
 
-**Built** (`web/components/pos/office/`): `OfficeShell` (orange band, key rail, Esc → counter,
-Alt+O → letter menu), `OfficeGrid` (banded register, ↑↓/Enter cursor, totals foot),
-`OfficeForm`/`OfficeSection`/`OfficeField` (not yet used), rails in `lib/pos/office-keys.js`,
-tokens under `.office-ui` in `globals.css`.
+**Web — eleven routes framed**, plus the product card:
+`/pos/reports` (Tax Register) · `/pos/khata` (Bills Receivable, with aging) · `/pos/purchases` ·
+`/pos/products` + `/pos/products/[id]` (the card: the whole record on one sheet) ·
+`/pos/inventory` · `/pos/inventory/ledger` (Stock Ledger) · `/pos/registers` · `/pos/shifts` ·
+`/pos/orders` · `/pos/reports/day-book` · `/pos/reports/cash-book` · `/pos/stores`, `/pos/team`,
+`/pos/settings`. Only `/pos/licenses`, `/pos/order`, `/pos/terminals` and `/pos/touch` are still
+on the console look, and none of them is a back-office screen.
 
-**Framed**: `/pos/reports` (Tax Register), `/pos/khata` (Bills Receivable, with aging),
-`/pos/purchases` (PO/Invoice registers), `/pos/products` (Product Register), `/pos/inventory`
-(Stock Register). All five are full-bleed — `isOfficeRoute()` stands the sidebar down and Alt+O
-replaces it.
+**Terminal — all six local screens**: `/stock`, `/adjustments` (now the Cash Book, with the
+balance carried down), `/b2b-orders`, `/customers`, `/online-orders`, `/settings`.
 
-**Verified**: build clean; all five render in a real browser on live data with no page errors;
-screenshots checked against the reference frames.
+**Three new reports**, all from data already held, no migration: Stock Ledger, Day Book, Cash Book.
 
-**Not verified**: the e2e suite. Its harness resolves to `pos.pelbu.com`, so it was stopped rather
-than pointed at the live site. `e2e/storage/*.json` are untouched. Separately,
-`v7-pos-sidebar.spec.js` has been stale since `58aae63` and needs rewriting.
+## Things that will bite you
 
-**Docs**: `docs/frs/COUNTER-UI-PLAN.md` (state + what remains), `COUNTER-UI-FRS.md` (requirements),
-`COUNTER-UI-COMPONENTS.md` (design analysis), `docs/ui-reference-frames/` (180 reference stills).
+- **`next dev` writes to `web/.next`, and the Dockerfile copies that directory into the image.**
+  Always `rm -rf .next && npm run build` with `web/.env.local` ABSENT before
+  `docker compose build pos`, then check `grep -rl "localhost:3000" .next/static` comes back
+  empty. A dev server left running is enough to publish a bundle wired to localhost.
+- **Location is `Ctrl+⇧L` on web and the real `F12` on the terminal.** Not an inconsistency:
+  F12 belongs to the browser's devtools and no page can cancel it.
+- **Key matching is already solved** — `web/lib/pos/shortcuts.js` `matches()` and
+  `desktop/hooks/use-keyboard-registry.ts`. Both handle Option rewriting the character on macOS
+  (`Alt+L` arrives as `¬`), which a hand-rolled comparison gets wrong. Do not write a third one.
+- **`E2E_FORCE_SEED=1` is broken.** The fixture sends `role`, `tpn_gstin` and `shop_slug` on
+  `entities`, which moved to `merchant_profiles`, so the seed aborts on its first write. The
+  suite therefore never restores its fixtures and corrodes them a little every run — which is why
+  khata payment tests drift. Fixing the fixture is the root cause.
+- **Local e2e needs two env overrides** or it points at production:
+  `NEXT_PUBLIC_APP_URL=http://localhost:3000` (else `proxy.js` redirects to pos.pelbu.com) and
+  `NEXT_PUBLIC_COOKIE_DOMAIN=` (a `.pelbu.com` cookie is rejected on localhost, so login never
+  sticks). Pass them to the dev process — NOT via `.env.local`, which is the deploy trap above.
+- **The terminal's PocketBase binary in git is x86-64**; this box is aarch64. Local runs need
+  `npm run pb:fetch -- --force`, and `npm run pb:serve` writes to `desktop/pb_data/`.
 
-**Next**: the product card on `OfficeForm`; the remaining office screens; and access to the
-reference's **billing screen**, which the recording never showed and which staff touch most.
+## Not verified
+
+- **Desktop 1.6.0 has had no Windows runtime QA.** The six screens were checked in a browser
+  against the same code, not the packaged app. Unverified: the NSIS installer, printer paths,
+  path separators, and whether **F12** reaches the app rather than Electron.
+- Nobody has used the reskinned screens as a signed-in shopkeeper.
+- Two design calls were made without the client: the Cash Book counts **cash only** (credit and
+  online takings never enter the drawer, so including them would give a balance no till count
+  could reconcile), and the Day Book does **not net** sales against purchases.
+
+## What is next
+
+`docs/frs/REFERENCE-SCREEN-GAP.md` audits every screen in the reference recording against the
+real schema. Buildable next with no migration: nothing left of the easy set — Day Book and Cash
+Book were the last two. What remains needs a feature first (Stock Discrepancy needs stock-take
+counts; Bills Payable needs a supplier ledger) or is an accounting suite — Trial Balance, P&L,
+Balance Sheet — which means building a general ledger and should be a scope conversation with
+Innovates, not a backlog item.
 
 ---
 

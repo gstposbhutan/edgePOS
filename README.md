@@ -1,11 +1,17 @@
 # edgePOS — Pelbu POS
 
 Point-of-sale platform for Bhutanese retail: web till + back office, offline-capable
-desktop terminal, and the `pos`-schema Postgres lineage. **v2** is the POS's return to this
-repo as a standalone product, transplanted from the `bhutan-tour-operator` monorepo
-(`apps/pos` @ 2026-08-22) with all work since the July cutover: `pos` schema (121),
-product-register overhaul (129), FEFO/FIFO batch rotation (129–131), category
-consolidation onto HSN (132–133), security patches.
+desktop terminal, and the `pos`-schema Postgres lineage.
+
+The POS returned to this repo as a standalone product on 2026-08-22, transplanted from the
+`bhutan-tour-operator` monorepo (`apps/pos`) with all work since the July cutover: `pos` schema
+(121), product-register overhaul (129), FEFO/FIFO batch rotation (129–131), category
+consolidation onto HSN (132–133), security patches. That work landed on a `v2` branch which
+**became `main` on 2026-08-26**; the pre-homecoming tree is tagged `legacy/main`.
+
+Since then the whole back office — web and terminal — has been reframed to read like the
+counter, so a shopkeeper moving between the browser and the terminal reads the same columns in
+the same order and reaches for the same keys. See `docs/frs/COUNTER-UI-PLAN.md`.
 
 ## Layout
 

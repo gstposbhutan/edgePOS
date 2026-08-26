@@ -1,6 +1,11 @@
 # Counter UI — back-office reskin: plan and state
 
-**Date**: 2026-08-24 · Supersedes the earlier draft that planned a greenfield component library.
+**Date**: 2026-08-26 · Supersedes the earlier draft that planned a greenfield component library.
+
+> **State: SHIPPED.** Web is live on pos.pelbu.com and desktop 1.6.0 is released to stable. The
+> "What remains" list below is kept because its reasoning still holds, but the items are done —
+> see `docs/HANDOVER.md` for what is actually true now, and `REFERENCE-SCREEN-GAP.md` for what
+> was deliberately NOT built and why.
 
 ## What this corrects
 
@@ -69,9 +74,9 @@ stand down, the same way it already does on the counter, and Alt+O replaces it.
   the counter — pre-existing, not caused here, but it needs rewriting.
 - Desktop is untouched. The terminal already wears the counter; its back office is the cloud app.
 
-## What remains
+## What remained at the time of writing (all now done)
 
-1. **Rewrite `v7-pos-sidebar.spec.js`** against the current model (no rail on counter or office
+1. ~~**Rewrite `v7-pos-sidebar.spec.js`**~~ against the current model (no rail on counter or office
    screens; Alt+O is the way through), and add a spec for the office frame.
 2. **The rest of the office screens** — `/pos/orders`, `/pos/registers`, `/pos/shifts`,
    `/pos/team`, `/pos/stores`, `/pos/settings` — still on the console look.

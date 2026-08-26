@@ -1,18 +1,22 @@
 # POS homecoming — standalone edgePOS repo, restructured for the 10-shop client brief
 
-Status: **Phases 0–1 EXECUTED 2026-08-22** (edgePOS `v2` branch, commit `90db965`, build-verified,
-not pushed). Phase 2 (auth fold-in) next. Shawn's calls during execution: suite retired entirely;
-old project no longer public — **"just keep the backup"**, so no in-tree salvage curation
-(backup = `~/edgepos-pre-homecoming-2026-08-22.bundle` + `legacy/*` tags + `~/edgepos-salvage/`
-with the 13 gitignored tour videos + env files; old dirs parked in `~/edgePOS-trash-pre-v2/`).
-Audit findings folded in below: desktop was ALREADY ported (monorepo `desktop` branch is newer —
-used it), `sync-worker` is a zombie (source deleted 2026-07-06; kill container at Phase 5),
-`whatsapp-gateway`/`logistics-bridge` sources stay in legacy tags, **no automated DB backups have
-ever existed** (add to Phase 3), Caddyfile lives only at `/etc/caddy/Caddyfile` (worth committing
-to the repo at Phase 5). Companion to `pos-brief.html`
-(client requirements) + `pos-brief-response.html` (our reply) + the 2026-08-22 pivot
-(scale down to POS-only; travel/hotel develop separately).
+Status: **the homecoming is DONE.** Phases 0–2 and 5 executed; Phase 3 and 4 partial. The `v2`
+branch became **`main`** on 2026-08-26 (answering open question 2 below), so this document is now
+a record of how the product got here rather than a plan being worked. What is still open has
+moved to `docs/HANDOVER.md` ("What is next") and `docs/frs/REFERENCE-SCREEN-GAP.md`.
 
+| Phase | State |
+|---|---|
+| 0 — Decisions + safety | **Done.** `legacy/*` tags cut; backup at `~/edgepos-pre-homecoming-2026-08-22.bundle`. |
+| 1 — Transplant | **Done** 2026-08-22 (`90db965`). |
+| 2 — Standalone-ize (cut `apps/auth`) | **Done** — `/login` lives in the POS; the super-admin surface is reactivated. |
+| 3 — Client brief: cost + scale | **Partial.** Slim compose and the till-only feature flags are not built; the seed script is not written. |
+| 4 — Camera pad v0 | **Partial.** The pad loads a model and matches the shop's own catalog (`fbde9b2`); the enrollment flow and the pilot deliverables are not done. |
+| 5 — Cutover | **Done** 2026-08-26 — `main` is the product; the suite is retired. |
+
+Shawn's calls during execution: suite retired entirely; old project no longer public —
+**"just keep the backup"**, so no in-tree salvage curation (backup = the bundle above +
+`legacy/*` tags + `~/edgepos-salvage/`
 ## The call being made
 
 **The POS's home returns to the edgePOS repo — by transplanting the CURRENT code, never by
@@ -123,7 +127,10 @@ suite retirement has no external-stakeholder dependency.
 ## Open questions for Shawn
 
 1. Fresh client DB on their droplet (recommended) — confirmed?
-2. edgePOS `v2`: replace `main` at cutover, or keep old `main` and make `v2` the default branch?
+2. ~~edgePOS `v2`: replace `main` at cutover, or keep old `main`?~~ **ANSWERED 2026-08-26 — v2
+   replaced main.** Recorded as a merge so main's history stays reachable, but the tree is v2's
+   exactly (`-s ours`): a content merge would have resurrected purged WhatsApp code, because
+   main's side of the shared files was older. Pre-homecoming content is tagged `legacy/main`.
 3. Should the monitoring stack (grafana/prometheus) move to edgePOS `infra/` too, or stay
    Pelbu-box-only?
 4. RLS/security hardening (deferred backlog): does the client deployment finally force it, since
