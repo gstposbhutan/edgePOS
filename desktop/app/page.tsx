@@ -12,14 +12,13 @@ import { useCheckout } from "@/hooks/use-checkout";
 import { useProducts, type Product } from "@/hooks/use-products";
 import { useCart } from "@/hooks/use-cart";
 import { useFavorites } from "@/hooks/use-favorites";
-import { useLayoutPreset } from "@/hooks/use-layout-preset";
 import { useOnlineOrders } from "@/hooks/use-online-orders";
 import { useCustomers } from "@/hooks/use-customers";
 import type { Customer } from "@/hooks/use-customers";
 import { getPB } from "@/lib/pb-client";
 import { peekNextOrderNo } from "@/lib/invoice-header";
 import { PRICE_LIST_ORDER, PRICE_LIST_LABEL, priceFor, parsePriceListMode, type PriceListMode } from "@/lib/price-list";
-import { LAYOUT_PRESETS, SCREEN_LG, CART_WIDTH } from "@/lib/constants";
+import { SCREEN_LG, CART_WIDTH } from "@/lib/constants";
 import { ProductGrid } from "@/components/pos/product-grid";
 import { CartPanel } from "@/components/pos/cart-panel";
 import { CartTable, type EditField } from "@/components/pos/keyboard/cart-table";
@@ -58,9 +57,6 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
   LogOut,
-  Settings,
-  Users,
-  Wallet,
   Wifi,
   WifiOff,
   DoorOpen,
@@ -69,13 +65,10 @@ import {
   Clock,
   ShoppingCart,
   ShoppingBag,
-  Boxes,
   ArrowRight,
   FilePlus,
-  Hash,
   CalendarClock,
-  List,
-  LayoutGrid,
+  LayoutDashboard,
 } from "lucide-react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -140,7 +133,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
   const { favorites, toggleFavorite, isFavorite } = useFavorites(user?.id);
   const { heldCarts, loadHeld, holdCart, recallCart, discardHeld } = useHeldCarts();
   const undoStack = useUndo();
-  const { layoutPreset, setLayout } = useLayoutPreset();
+
   const { orders: onlineOrders } = useOnlineOrders();
 
   // Toast on a new online order (the native OS notification is fired by the main process).
@@ -202,12 +195,13 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
   // Input mode: "listing" = keyboard-driven cart table (web parity, default),
   // "grid" = the touch card grid. Persisted per-station; SSR/first-render is
   // guarded so the server and client agree until the effect reads localStorage.
-  const [inputMode, setInputMode] = useState<"listing" | "grid">("listing");
+  const [inputMode] = useState<"listing" | "grid">("listing");
+  // The header toggle that set this is gone (web parity: the web till is keyboard-listing only),
+  // so the stored preference is deliberately NOT restored — a station left in "grid" would have
+  // no way back to the listing. The grid code path is kept for when a key is given to it; the
+  // stale key is cleared so nothing silently re-enters a mode with no exit.
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem("pos_input_mode");
-      if (saved === "grid" || saved === "listing") setInputMode(saved);
-    } catch { /* no localStorage — keep the default */ }
+    try { localStorage.removeItem("pos_input_mode"); } catch { /* no localStorage — nothing to clear */ }
   }, []);
 
   // Load the local sales team once, to label each cart line's salesperson (per-line #3).
@@ -217,10 +211,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
       .then((us) => setSalespeopleById(Object.fromEntries(us.map((u) => [u.id, u.name || u.email || "Salesperson"]))))
       .catch(() => { /* offline / no users — labels just fall back to "Salesperson" */ });
   }, [pb]);
-  const changeInputMode = useCallback((mode: "listing" | "grid") => {
-    setInputMode(mode);
-    try { localStorage.setItem("pos_input_mode", mode); } catch { /* ignore */ }
-  }, []);
+
 
   // Listing-mode cart row selection + inline-qty-edit handle (mirrors web's
   // selectedRow + editRowRef). Unused in grid mode.
@@ -770,6 +761,12 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
     setLastOrder(null);
   }, []);
 
+  // The counter carries no letter strip (single letters belong to the barcode row), so Alt+O and
+  // the Office button both land on the Stock Register — the letter strip takes over from there
+  // and every module is one letter away.
+  const officeRouter = useRouter();
+  const openOffice = () => officeRouter.push("/stock");
+
   // Keyboard shortcuts
   const setupShortcuts = usePosShortcuts({
     items,
@@ -798,6 +795,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
     setShowShiftModal,
     storeName: settings?.store_name,
     onPriceList: cyclePriceList,
+    onOffice: openOffice,
     onReprintLast: reprintLast,
     // The line-scoped keys need a selected row, which only the listing layout has. Left
     // undefined in grid mode, where they report that instead.
@@ -958,43 +956,39 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
 
   const totalItemsCount = items.reduce((sum, i) => sum + i.quantity, 0);
 
-  const cartColumnWidth = layoutPreset === "fullcart" ? CART_WIDTH.FULL : layoutPreset === "compact" ? CART_WIDTH.COMPACT : CART_WIDTH.STANDARD;
+  // The Std/Cpt/Full toggle is gone (web parity), so the split is the standard one. A stored
+  // "fullcart" used to HIDE the product grid — with no control left to undo it that would
+  // have stranded the till, so the preset is not read back at all.
+  const cartColumnWidth = CART_WIDTH.STANDARD;
 
   // flex-1, NOT h-screen: layout.tsx stacks UpdateBanner + SyncNudge + OfficeChrome ABOVE this,
   // so a full viewport here means banner-height + 100vh — and a scrollbar on the till.
   return (
     <div className="flex-1 min-h-0 flex flex-col bg-background overflow-hidden">
-      {/* Top Navigation */}
-      <header className="border-b border-border bg-card/80 backdrop-blur-sm px-4 py-2.5 flex items-center justify-between gap-2 shrink-0 overflow-hidden">
-        {/* Informational half: shrinks and clips first, so the ACTIONS on the right stay
-            reachable at any window width. Without min-w-0 a flex child refuses to go below
-            its content width and pushes the whole page wider than the screen. */}
-        <div className="flex items-center gap-4 min-w-0 overflow-hidden">
-          <div className="flex items-center gap-2.5">
-            <img src="/branding/pelbu-icon.png" alt="Pelbu" className="w-8 h-8 rounded-lg" />
-            <div className="hidden sm:block">
-              <h1 className="font-heading font-bold text-base leading-tight">
-                {settings?.store_name || "Pelbu"}
-              </h1>
-              <p className="text-[10px] text-muted-foreground leading-tight">POS Terminal</p>
-            </div>
+      {/* Top bar = ACTIONS only, mirroring the web till. The counter is full-screen — it is a till,
+          not a console — so page navigation is the Office menu (Alt+O), not a row of links. The
+          left half is standing facts that shrink and clip; the right half is actions that never do. */}
+      <header className="border-b border-border bg-card/80 backdrop-blur-sm px-4 py-2 flex items-center justify-between gap-3 shrink-0 overflow-hidden">
+        <div className="flex items-center gap-3 min-w-0">
+          <img src="/branding/pelbu-icon.png" alt="Pelbu" className="w-7 h-7 rounded-lg shrink-0" />
+          <div className="hidden sm:block min-w-0">
+            <p className="text-sm font-heading font-bold leading-none truncate">{settings?.store_name || "Pelbu"}</p>
+            <p className="text-[10px] text-muted-foreground leading-tight truncate">POS Terminal</p>
           </div>
-          <div className="hidden md:flex items-center gap-1.5 text-xs text-muted-foreground border-l border-border pl-4">
-            <Clock className="h-3.5 w-3.5" />
-            <span className="font-mono tabular-nums">{currentTime}</span>
-          </div>
-          <Badge
-            variant="outline"
-            className="text-[10px] gap-1 font-mono cursor-pointer select-none"
-            title="Next invoice number — double-click to look up a past invoice"
+          <button
             onDoubleClick={() => setShowInvoiceSearch(true)}
+            title="Next invoice number — double-click to search past invoices"
+            className="hidden md:inline text-[11px] font-mono text-muted-foreground border border-border bg-muted/30 px-2 py-0.5 rounded-full shrink-0 cursor-pointer hover:bg-muted"
           >
-            <Hash className="h-3 w-3" />
-            {nextInvoiceNo || "—"}
-          </Badge>
+            Inv: {nextInvoiceNo || "—"}
+          </button>
+          <span className="hidden lg:inline-flex items-center gap-1 text-[11px] tabular-nums text-muted-foreground border border-border bg-muted/30 px-2 py-0.5 rounded-full shrink-0">
+            <Clock className="h-3 w-3" />
+            {currentTime}
+          </span>
           {isOwner && (
             <div
-              className="hidden lg:flex items-center gap-1 text-[10px] text-muted-foreground"
+              className="hidden xl:flex items-center gap-1 text-[10px] text-muted-foreground shrink-0"
               title="Override the invoice date for the next sale (F2, owner only). Blank = now."
             >
               <CalendarClock className="h-3.5 w-3.5" />
@@ -1004,153 +998,55 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
                 onChange={(e) => setDateOverride(e.target.value || null)}
                 className="h-6 bg-transparent border border-border rounded px-1 text-[10px] text-foreground"
               />
-              {dateOverride && (
-                <button type="button" onClick={() => setDateOverride(null)} className="hover:text-foreground" title="Clear override">
-                  ×
-                </button>
-              )}
             </div>
           )}
-          <Badge
-            variant={online ? "outline" : "destructive"}
-            className={`text-[10px] gap-1 ${online ? "border-emerald-500/30 text-emerald-400" : ""}`}
-          >
-            {online ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
-            {online ? "Online" : "Offline"}
-          </Badge>
-          {(lowStockCount > 0 || outOfStockCount > 0) && (
-            <Badge variant="outline" className="text-[10px] border-warning/50 text-warning gap-1">
-              {outOfStockCount > 0 && (
-                <span className="bg-destructive/20 text-destructive rounded px-1 text-[9px]">
-                  {outOfStockCount} OUT
-                </span>
-              )}
-              {lowStockCount > 0 && (
-                <span className="bg-warning/20 text-warning rounded px-1 text-[9px]">
-                  {lowStockCount} LOW
-                </span>
-              )}
-            </Badge>
-          )}
-          {/* Layout preset toggles */}
-          <div className="hidden xl:flex items-center gap-0.5 ml-2">
-            <Button
-              variant={layoutPreset === LAYOUT_PRESETS.STANDARD ? "default" : "ghost"}
-              size="sm"
-              className="text-[10px] h-6 px-2"
-              onClick={() => setLayout(LAYOUT_PRESETS.STANDARD)}
-            >
-              Std
-            </Button>
-            <Button
-              variant={layoutPreset === LAYOUT_PRESETS.COMPACT ? "default" : "ghost"}
-              size="sm"
-              className="text-[10px] h-6 px-2"
-              onClick={() => setLayout(LAYOUT_PRESETS.COMPACT)}
-            >
-              Cpt
-            </Button>
-            <Button
-              variant={layoutPreset === LAYOUT_PRESETS.FULLCART ? "default" : "ghost"}
-              size="sm"
-              className="text-[10px] h-6 px-2"
-              onClick={() => setLayout(LAYOUT_PRESETS.FULLCART)}
-            >
-              Full
-            </Button>
-          </div>
-          {/* Input mode: keyboard listing vs touch grid (persists per station) */}
-          <div className="hidden lg:flex items-center border border-border rounded-md overflow-hidden ml-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              className={`text-[10px] h-6 px-2 rounded-none gap-1 ${inputMode === "listing" ? "bg-primary text-primary-foreground hover:bg-primary/90" : "text-muted-foreground"}`}
-              onClick={() => changeInputMode("listing")}
-              title="Keyboard listing layout"
-            >
-              <List className="h-3 w-3" />
-              List
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className={`text-[10px] h-6 px-2 rounded-none gap-1 ${inputMode === "grid" ? "bg-primary text-primary-foreground hover:bg-primary/90" : "text-muted-foreground"}`}
-              onClick={() => changeInputMode("grid")}
-              title="Touch card grid"
-            >
-              <LayoutGrid className="h-3 w-3" />
-              Grid
-            </Button>
-          </div>
         </div>
 
         <div className="flex items-center gap-0.5 shrink-0">
-          <div className="hidden md:flex items-center gap-0.5">
-            {/* Counter/till + online-order management. Catalog/inventory/purchasing/order-history
-                still live in the web back-office; here we handle customer + khata (cashier),
-                cash-in/out (manager/owner), and incoming online (marketplace) orders. */}
-            <Link href="/online-orders">
-              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
-                <ShoppingBag className="h-5 w-5 mr-1.5" />
-                Online
-                {onlineOrders.length > 0 && (
-                  <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold h-4 min-w-4 px-1">
-                    {onlineOrders.length}
-                  </span>
-                )}
-              </Button>
-            </Link>
-            <Link href="/customers">
-              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
-                <Users className="h-5 w-5 mr-1.5" />
-                Customers
-              </Button>
-            </Link>
-            {(isManager || isOwner) && (
-            <Link href="/stock">
-              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
-                <Boxes className="h-5 w-5 mr-1.5" />
-                Stock
-              </Button>
-            </Link>
-            )}
-            {isManager && (
-            <Link href="/adjustments">
-              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
-                <Wallet className="h-5 w-5 mr-1.5" />
-                Cash
-              </Button>
-            </Link>
-            )}
-          </div>
-          <div className="hidden md:block w-px h-6 bg-border mx-1" />
-          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground" onClick={handleNewTransaction} title="New Sale (F2)">
+          <Button
+            variant="ghost"
+            size="sm"
+            title="Office — back office [Alt+O]"
+            onClick={openOffice}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <LayoutDashboard className="h-5 w-5 mr-1.5" />
+            Office
+          </Button>
+          {/* Online orders stay on the bar as a NOTIFICATION, not navigation: a waiting order is
+              time-sensitive and a cashier must see the count without opening a menu. */}
+          <Link href="/online-orders">
+            <Button variant="ghost" size="sm" title="Online orders" className="text-muted-foreground hover:text-foreground">
+              <ShoppingBag className="h-5 w-5" />
+              {onlineOrders.length > 0 && (
+                <span className="ml-1 inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold h-4 min-w-4 px-1">
+                  {onlineOrders.length}
+                </span>
+              )}
+            </Button>
+          </Link>
+          <div className="w-px h-6 bg-border mx-1" />
+          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground" onClick={handleNewTransaction} title="New Sale [Ctrl+D]">
             <FilePlus className="h-5 w-5" />
           </Button>
           {!activeShift ? (
-            <Button variant="outline" size="sm" onClick={() => setShowShiftModal("open")} className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10">
+            <Button variant="outline" size="sm" onClick={() => setShowShiftModal("open")} title="Open Shift [F11]" className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10">
               <DoorOpen className="h-5 w-5 mr-1.5" />
               Open Shift
             </Button>
           ) : (
-            <Button variant="outline" size="sm" onClick={() => setShowShiftModal("close")} className="border-warning/30 text-warning hover:bg-warning/10">
+            <Button variant="outline" size="sm" onClick={() => setShowShiftModal("close")} title="Close Shift [F11]" className="border-warning/30 text-warning hover:bg-warning/10">
               <DoorClosed className="h-5 w-5 mr-1.5" />
               Close Shift
             </Button>
           )}
-          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground" onClick={() => setShowZReport(true)}>
+          <Button variant="ghost" size="sm" title="Z-Report" className="text-muted-foreground hover:text-foreground" onClick={() => setShowZReport(true)}>
             <FileBarChart className="h-5 w-5" />
           </Button>
-          {isOwner && (
-          <Link href="/settings">
-            <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
-              <Settings className="h-5 w-5" />
-            </Button>
-          </Link>
-          )}
           <Button
             variant="ghost"
             size="sm"
+            title="Sign out"
             className="text-muted-foreground hover:text-destructive"
             onClick={() => { if (activeShift) setShowHandover(true); else signOut(); }}
           >
@@ -1200,7 +1096,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
       ) : (
         <div className="flex-1 flex overflow-hidden">
           {/* Product Grid */}
-          <div className={`flex-1 min-w-0 ${layoutPreset === "fullcart" && !showCart ? "hidden" : ""}`}>
+          <div className="flex-1 min-w-0">
             <ProductGrid
               onAddProduct={handleAddProduct}
               onScan={() => setShowScanner(true)}
@@ -1211,7 +1107,7 @@ function PosTerminal({ user, isManager, isOwner, signOut, switchUser }: { user: 
 
           {/* Cart Panel — always visible on lg+, slide-over on md */}
           {(showCart || screenWidth >= SCREEN_LG) && (
-            <div className={`${cartColumnWidth} shrink-0 hidden md:block ${layoutPreset === "fullcart" && !showCart ? "hidden" : ""}`}>
+            <div className={`${cartColumnWidth} shrink-0 hidden md:block`}>
             <CartPanel
               customer={selectedCustomer}
               isManager={isManager}

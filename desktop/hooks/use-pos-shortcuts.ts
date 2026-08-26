@@ -51,6 +51,7 @@ interface PosShortcutsInput {
   /** Alt+T — whether catalog rates already contain GST. */
   onGstIncluded?: () => void;
   onPriceList?: () => void;
+  onOffice?: () => void;
   onReprintLast?: () => void;
   /** Ask the cashier for a number. Replaces window.prompt, which throws in Electron. */
   askAmount?: (request: {
@@ -119,6 +120,7 @@ export function usePosShortcuts(input: PosShortcutsInput) {
       itemRemark:    input.onItemRemark ?? needsListing("Item remark"),
       gstIncluded:   () => input.onGstIncluded?.(),
       priceList:     () => input.onPriceList?.(),
+      office:        () => input.onOffice?.(),
       print:         () => input.onReprintLast?.(),
       lastGst:       () => input.onReprintLast?.(),
       itemDiscount:  input.onItemDiscount ?? needsListing("Item discount"),

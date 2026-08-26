@@ -57,6 +57,9 @@ export const COUNTER_KEYS: KeyEntry[] = [
   { id: "day",          combo: "F11",    match: { key: "F11" },                label: "Day",             rail: 2, group: "Ticket" },
   { id: "location",     combo: "F12",    match: { key: "F12" },                label: "Location",        rail: 2, group: "Ticket" },
   { id: "barcodePrn",   combo: "Ctrl+B", match: { key: "b", ctrl: true },      label: "Barcode Prn",     rail: 2, group: "Ticket" },
+  // The counter has no letter strip — single letters belong to the barcode row — so this is the
+  // one way off the ticket and into the office. Alt-modified, so it cannot swallow a scan.
+  { id: "office",       combo: "Alt+O",  match: { key: "o", alt: true },       label: "Office",          rail: 2, group: "Ticket" },
 
   // ── Ours, kept alongside the inherited set ───────────────────────────────────────────────
   // Bill discount and quotation moved off Ctrl+D / Alt+Q, which the spec gives to Clear Ticket
