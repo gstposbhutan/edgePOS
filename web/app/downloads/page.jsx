@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Download, Loader2, ShieldCheck, Monitor } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Logo } from '@/components/ui/logo'
+import { useRouter } from 'next/navigation'
+import { OfficeShell } from '@/components/pos/office/office-shell'
+import { OfficeForm, OfficeSection, OfficeField } from '@/components/pos/office/office-form'
+import { MASTER_KEYS, withHandlers } from '@/lib/pos/office-keys'
 
 function formatBytes(b) {
   if (!b) return null
@@ -14,6 +15,7 @@ function formatBytes(b) {
 }
 
 export default function DownloadsPage() {
+  const router = useRouter()
   const [release, setRelease] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState(null)
@@ -29,73 +31,80 @@ export default function DownloadsPage() {
     })()
   }, [])
 
+  // The installer, read as a release record (spec WF-09).
+  //
+  // This screen is reached from the Office letter menu (Alt+O → T → D) like any other office
+  // screen, so it wears the same frame. The record is a SHEET rather than a card: version, size,
+  // date and checksum are facts about one release, and a shopkeeper checking "am I on the newest
+  // one" reads them the way they read a product card.
+  const day = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-') : null)
+
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center px-4 py-12">
-      <div className="w-full max-w-2xl">
-        <div className="flex flex-col items-center text-center mb-8">
-          <Logo variant="stacked" className="h-20 w-auto mb-3" />
-          <h1 className="text-2xl font-serif font-bold text-foreground">Pelbu POS — Desktop App</h1>
-          <p className="text-sm text-muted-foreground mt-1">Install or update the offline POS terminal on your Windows PC.</p>
-        </div>
+    <OfficeShell
+      crumb="Settings"
+      title="Desktop App"
+      keys={[
+        ...(release?.download_url
+          ? [{ key: 'D', label: 'Download', onClick: () => { window.location.href = release.download_url } }]
+          : []),
+        { key: 'L', label: 'Settings', onClick: () => router.push('/pos/settings') },
+        ...withHandlers(MASTER_KEYS, {}).filter(k => k.key === 'Esc'),
+      ]}
+    >
+      {loading ? (
+        <p className="text-[12px] opacity-60 p-4">Loading…</p>
+      ) : error ? (
+        <p className="text-[12px] text-red-700 p-4">{error}</p>
+      ) : !release ? (
+        <p className="text-[12px] opacity-60 p-4">No desktop release is available yet.</p>
+      ) : (
+        <>
+          <OfficeForm>
+            <div>
+              <OfficeSection title="Release">
+                <OfficeField label="Version" value={release.version} />
+                <OfficeField label="Platform" value="Windows" />
+                <OfficeField label="Channel" value={release.channel ?? 'stable'} />
+                <OfficeField label="Released" value={day(release.published_at)} />
+                <OfficeField label="Required" value={release.mandatory ? 'Yes' : 'No'} />
+              </OfficeSection>
 
-        {loading ? (
-          <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
-        ) : error ? (
-          <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg text-sm text-red-500">{error}</div>
-        ) : !release ? (
-          <div className="p-6 border border-border rounded-xl bg-card text-center text-muted-foreground">
-            No desktop release is available yet. Please check back soon.
-          </div>
-        ) : (
-          <div className="border border-border rounded-xl bg-card overflow-hidden">
-            <div className="p-6 flex items-start justify-between gap-4 border-b border-border">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Monitor className="h-5 w-5 text-primary" />
-                  <span className="text-lg font-semibold">Version {release.version}</span>
-                  {release.mandatory && <span className="text-[10px] uppercase tracking-wide bg-amber-500/15 text-amber-600 px-2 py-0.5 rounded-full">Required</span>}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Windows {release.file_size ? `· ${formatBytes(release.file_size)}` : ''}
-                  {release.published_at ? ` · released ${new Date(release.published_at).toLocaleDateString()}` : ''}
-                </p>
-              </div>
-              {release.download_url ? (
-                <Button asChild className="shrink-0">
-                  <a href={release.download_url} download>
-                    <Download className="h-4 w-4 mr-2" /> Download
-                  </a>
-                </Button>
-              ) : (
-                <Button disabled className="shrink-0">Installer pending</Button>
-              )}
+              <OfficeSection title="Installer">
+                <OfficeField label="File" value={release.file_name} />
+                <OfficeField label="Size" value={formatBytes(release.file_size)} />
+              </OfficeSection>
             </div>
 
-            {release.notes && (
-              <div className="p-6 border-b border-border">
-                <p className="text-sm font-medium mb-2">What's new</p>
-                <p className="text-sm text-muted-foreground whitespace-pre-line">{release.notes}</p>
-              </div>
-            )}
+            <div>
+              <OfficeSection title="How to install">
+                <ol className="list-decimal list-inside space-y-1 text-[12px]">
+                  <li>Press D, or use the Download key below.</li>
+                  <li>Run the .exe and follow the prompts.</li>
+                  <li>Open Pelbu POS and activate it with your licence key.</li>
+                  <li>To update later, run the newest installer over the existing one — your data is kept.</li>
+                </ol>
+              </OfficeSection>
 
-            <div className="p-6 space-y-3 text-sm text-muted-foreground">
-              <p className="font-medium text-foreground">How to install</p>
-              <ol className="list-decimal list-inside space-y-1">
-                <li>Download the installer above.</li>
-                <li>Run the <code className="text-xs bg-muted px-1 py-0.5 rounded">.exe</code> and follow the prompts.</li>
-                <li>Open Pelbu POS and activate it with your license key.</li>
-                <li>To update later, download the newest version and run it over your existing install — your data is preserved.</li>
-              </ol>
+              {release.notes && (
+                <OfficeSection title="What&apos;s new">
+                  <p className="text-[12px] whitespace-pre-line">{release.notes}</p>
+                </OfficeSection>
+              )}
+
               {release.sha256 && (
-                <p className="flex items-center gap-1.5 text-xs pt-2">
-                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
-                  SHA-256: <span className="font-mono break-all">{release.sha256}</span>
-                </p>
+                <OfficeSection title="Checksum">
+                  <p className="text-[10px] font-mono break-all opacity-75">SHA-256: {release.sha256}</p>
+                </OfficeSection>
               )}
             </div>
-          </div>
-        )}
-      </div>
-    </div>
+          </OfficeForm>
+
+          <p className="mt-2 text-[10px] opacity-60">
+            The terminal also updates itself: it checks this same release on launch, so a shop only
+            needs this page for a first install or when an update has to be forced.
+          </p>
+        </>
+      )}
+    </OfficeShell>
   )
 }

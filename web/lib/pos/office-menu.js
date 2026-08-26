@@ -104,6 +104,7 @@ export const OFFICE_ROUTES = [
   '/pos/orders',
   '/pos/reports/day-book',
   '/pos/reports/cash-book',
+  '/downloads',
 ]
 
 /**
