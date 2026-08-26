@@ -6,6 +6,9 @@ import { useCustomers } from "@/hooks/use-customers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { OfficeShell } from "@/components/office/office-shell";
+import { OfficeGrid } from "@/components/office/office-grid";
+import { REPORT_KEYS, withHandlers } from "@/lib/office-keys";
 import {
   Table,
   TableBody,
@@ -106,120 +109,76 @@ export default function CustomersPage() {
     }
   };
 
+  // Bills Receivable on the terminal (spec WF-09) — the same register the cloud app shows, so a
+  // shopkeeper chasing a debt reads the same columns in the same order on either.
+  const money = (n: number) => Number(n ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const customerRows = filtered.map((c) => ({
+    id: c.id,
+    _c: c,
+    name: c.debtor_name || c.debtor_phone || "—",
+    phone: c.debtor_phone || "—",
+    limit: money(c.credit_limit),
+    balance: money(c.outstanding_balance),
+    status: c.status === KHATA_STATUS.FROZEN ? "Frozen" : "Active",
+  }));
+
+  const CUSTOMER_COLUMNS = [
+    { key: "name",    label: "Account" },
+    { key: "phone",   label: "Phone",        width: 150 },
+    { key: "limit",   label: "Credit Limit", width: 130, align: "right" as const },
+    { key: "balance", label: "Outstanding",  width: 130, align: "right" as const },
+    { key: "status",  label: "Status",       width: 100 },
+    { key: "_act",    label: "",             width: 210,
+      render: (_v: unknown, row: { _c: typeof filtered[number] }) => (
+        <span className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          {row._c.outstanding_balance > 0 && (
+            <button type="button" className="underline"
+              onClick={() => { setShowRepay(row._c.id); setRepayAmount(Math.min(row._c.outstanding_balance, 1000)); }}>
+              Repay
+            </button>
+          )}
+          <button type="button" className="underline"
+            onClick={() => { setShowAdjust(row._c.id); setAdjustAmount(0); setAdjustReason(""); }}>
+            Adjust
+          </button>
+          <button type="button" className="underline" onClick={() => handleToggleFreeze(row._c.id)}>
+            {row._c.status === KHATA_STATUS.FROZEN ? "Unfreeze" : "Freeze"}
+          </button>
+        </span>
+      ) },
+  ];
+
+  const totalOutstanding = filtered.reduce((sum, c) => sum + Number(c.outstanding_balance ?? 0), 0);
+  const totalLimit = filtered.reduce((sum, c) => sum + Number(c.credit_limit ?? 0), 0);
+
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link href="/">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="h-4 w-4 mr-1" />
-              POS
-            </Button>
-          </Link>
-          <h1 className="font-serif font-bold text-lg">Customers</h1>
-        </div>
-        <Button size="sm" onClick={() => setShowCreate(true)}>
-          <UserPlus className="h-4 w-4 mr-1" />
-          Add
-        </Button>
-      </header>
+    <OfficeShell
+      crumb="Financial Management"
+      title="Bills Receivable (Khata)"
+      keys={[
+        { key: "N", label: "New Account", onClick: () => setShowCreate(true) },
+        ...withHandlers(REPORT_KEYS, {}),
+      ]}
+    >
+      <div className="flex flex-wrap items-center gap-3 mb-3 text-[12px]">
+        <label className="flex items-center gap-1.5">
+          <span className="sr-only">Search</span>
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search customers..."
+            className="px-1.5 py-0.5 border bg-white w-64" style={{ borderColor: "var(--office-line)" }} />
+        </label>
+        <span className="ml-auto opacity-75">{customerRows.length} account{customerRows.length === 1 ? "" : "s"}</span>
+      </div>
 
-      <main className="p-4 max-w-5xl mx-auto space-y-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search customers..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
+      <OfficeGrid
+        columns={CUSTOMER_COLUMNS}
+        rows={customerRows}
+        totals={{ name: "Total", limit: money(totalLimit), balance: money(totalOutstanding) }}
+        empty="No customers yet."
+      />
 
-        {loading ? (
-          <p className="text-muted-foreground text-center py-8">Loading...</p>
-        ) : (
-          <div className="rounded-lg border border-border overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead className="text-right">Credit Limit</TableHead>
-                  <TableHead className="text-right">Balance</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((customer) => (
-                  <TableRow key={customer.id}>
-                    <TableCell className="font-medium">{customer.debtor_name}</TableCell>
-                    <TableCell className="text-muted-foreground text-sm">{customer.debtor_phone}</TableCell>
-                    <TableCell className="text-right">
-                      {customer.credit_limit > 0 ? `Nu. ${customer.credit_limit.toFixed(0)}` : "—"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {customer.outstanding_balance > 0 ? (
-                        <Badge variant="destructive" className="text-xs">
-                          Nu. {customer.outstanding_balance.toFixed(2)}
-                        </Badge>
-                      ) : (
-                        <span className="text-muted-foreground text-sm">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {customer.status === KHATA_STATUS.FROZEN ? (
-                        <Badge variant="outline" className="text-xs border-blue-400/50 text-blue-400">Frozen</Badge>
-                      ) : (
-                        <Badge variant="secondary" className="text-xs">Active</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center gap-1 justify-end">
-                        {customer.outstanding_balance > 0 && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setShowRepay(customer.id);
-                              setRepayAmount(Math.min(customer.outstanding_balance, 1000));
-                            }}
-                          >
-                            <ArrowDownCircle className="h-4 w-4 mr-1" />
-                            Repay
-                          </Button>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setShowAdjust(customer.id);
-                            setAdjustAmount(0);
-                            setAdjustReason("");
-                          }}
-                        >
-                          <SlidersHorizontal className="h-4 w-4 mr-1" />
-                          Adjust
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          title={customer.status === KHATA_STATUS.FROZEN ? "Unfreeze account" : "Freeze account"}
-                          onClick={() => handleToggleFreeze(customer.id)}
-                        >
-                          {customer.status === KHATA_STATUS.FROZEN ? <Sun className="h-4 w-4" /> : <Snowflake className="h-4 w-4" />}
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </main>
+      <p className="mt-2 text-[10px] opacity-60">Amounts in Nu.</p>
 
-      {/* Create Customer Modal */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -366,6 +325,6 @@ export default function CustomersPage() {
           })()}
         </DialogContent>
       </Dialog>
-    </div>
+    </OfficeShell>
   );
 }

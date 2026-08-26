@@ -15,10 +15,11 @@ import { loadLabelConfig } from "@/lib/label-config";
 import { DEFAULT_GST_RATE } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { OfficeShell } from "@/components/office/office-shell";
+import { OfficeGrid } from "@/components/office/office-grid";
+import { REPORT_KEYS, withHandlers } from "@/lib/office-keys";
 import { toast } from "sonner";
-import { ArrowLeft, Boxes, Plus, Search, ScanLine, PackagePlus, Pencil, Tag, Truck } from "lucide-react";
+import { Plus, Search, PackagePlus } from "lucide-react";
 import dynamic from "next/dynamic";
 
 const LoginFallback = dynamic(() => import("@/app/login/page"), { ssr: false });
@@ -97,75 +98,90 @@ export default function StockPage() {
     else toast.error(res.error || "Could not receive order");
   };
 
-  return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border px-4 py-3 flex items-center gap-3">
-        <Link href="/"><Button variant="ghost" size="icon-sm"><ArrowLeft className="h-4 w-4" /></Button></Link>
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-          <Boxes className="h-5 w-5 text-primary" />
-          <h1 className="font-serif font-bold">Stock</h1>
-          {lowStockCount > 0 && <Badge variant="outline" className="text-amber-600 border-amber-500/30">{lowStockCount} low</Badge>}
-          {outOfStockCount > 0 && <Badge variant="outline" className="text-tibetan border-tibetan/30">{outOfStockCount} out</Badge>}
-        </div>
-        <Link href="/b2b-orders"><Button variant="ghost" size="sm">B2B orders</Button></Link>
-        <Link href="/online-orders"><Button variant="ghost" size="sm">Online orders</Button></Link>
-        <Link href="/customers"><Button variant="ghost" size="sm">Customers</Button></Link>
-      </header>
+  // The stock register (spec WF-09) — the terminal's copy of the cloud app's screen, so a
+  // shopkeeper crossing between them does not change visual language mid-task.
+  const stockRows = filtered.map((p) => {
+    const low = p.current_stock > 0 && p.current_stock <= p.reorder_point;
+    const out = p.current_stock <= 0;
+    return {
+      id: p.id,
+      _p: p,
+      name: p.name,
+      sku: p.sku || "—",
+      stock: String(p.current_stock ?? 0),
+      unit: p.unit || "",
+      status: out ? "Out of Stock" : low ? "Low Stock" : "In Stock",
+      price: (p.sale_price || p.mrp || 0).toFixed(2),
+    };
+  });
 
-      <div className="px-4 pt-3 flex gap-1">
-        <Button variant={tab === "products" ? "default" : "ghost"} size="sm" onClick={() => setTab("products")}><Boxes className="h-4 w-4 mr-1" />Products &amp; inventory</Button>
-        <Button variant={tab === "restock" ? "default" : "ghost"} size="sm" onClick={() => setTab("restock")}><Truck className="h-4 w-4 mr-1" />Restock</Button>
+  const STOCK_COLUMNS = [
+    { key: "name",   label: "Product" },
+    { key: "sku",    label: "SKU",    width: 130 },
+    { key: "stock",  label: "Stock",  width: 90,  align: "right" as const },
+    { key: "unit",   label: "Unit",   width: 70 },
+    { key: "status", label: "Status", width: 110,
+      render: (_v: unknown, row: { status: string }) => (
+        <span style={{ color: row.status === "Out of Stock" ? "#B91C1C" : row.status === "Low Stock" ? "#B45309" : "#15803D" }}>
+          {row.status}
+        </span>
+      ) },
+    { key: "price",  label: "Price",  width: 110, align: "right" as const },
+    { key: "_act",   label: "",       width: 190,
+      render: (_v: unknown, row: { _p: Product }) => (
+        <span className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          <button type="button" className="underline" onClick={() => setReceiveFor(row._p)}>Receive</button>
+          <button type="button" className="underline" onClick={() => printProductLabel(row._p)}>Label</button>
+          <button type="button" className="underline" onClick={() => openEdit(row._p)}>Edit</button>
+        </span>
+      ) },
+  ];
+
+  return (
+    <OfficeShell
+      crumb="Warehouse Management"
+      title="Stock Register"
+      keys={[
+        { key: "N", label: "Add Product", onClick: openAdd },
+        { key: "S", label: "Scan", onClick: () => setShowScanner(true) },
+        ...withHandlers(REPORT_KEYS, {}),
+      ]}
+    >
+      <div className="flex flex-wrap items-center gap-2 mb-3 text-[12px]">
+        {([["products", "Products & inventory"], ["restock", "Restock"]] as const).map(([key, label]) => (
+          <button key={key} type="button" onClick={() => setTab(key)}
+            className="px-3 py-1 text-[11px] border"
+            style={{
+              borderColor: "var(--office-line)",
+              background: tab === key ? "var(--office-menu-sel)" : "var(--office-panel-bg)",
+              color: tab === key ? "#fff" : undefined,
+              fontWeight: tab === key ? 700 : 400,
+            }}>
+            {label}
+          </button>
+        ))}
+        {lowStockCount > 0 && <span className="opacity-75">{lowStockCount} low</span>}
+        {outOfStockCount > 0 && <span className="opacity-75">{outOfStockCount} out</span>}
       </div>
 
-      <div className="p-4">
+      <div>
         {tab === "products" ? (
           <>
-            <div className="flex items-center gap-2 mb-3">
-              <div className="relative flex-1 max-w-md">
-                <Search className="h-4 w-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, SKU, or barcode" className="pl-8" />
-              </div>
-              <Button variant="outline" size="sm" onClick={() => setShowScanner(true)}><ScanLine className="h-4 w-4 mr-1" />Scan</Button>
-              <Button size="sm" onClick={openAdd}><Plus className="h-4 w-4 mr-1" />Add product</Button>
+            <div className="flex flex-wrap items-center gap-2 mb-3 text-[12px]">
+              <label className="flex items-center gap-1.5">
+                <span className="sr-only">Search</span>
+                <input value={search} onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search name, SKU, or barcode"
+                  className="px-1.5 py-0.5 border bg-white w-72" style={{ borderColor: "var(--office-line)" }} />
+              </label>
+              <span className="ml-auto opacity-75">{stockRows.length} product{stockRows.length === 1 ? "" : "s"}</span>
             </div>
-            <div className="rounded-lg border border-border overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Product</TableHead>
-                    <TableHead>SKU</TableHead>
-                    <TableHead className="text-right">Stock</TableHead>
-                    <TableHead className="text-right">Price</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading ? (
-                    <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">Loading…</TableCell></TableRow>
-                  ) : filtered.length === 0 ? (
-                    <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">No products.</TableCell></TableRow>
-                  ) : filtered.map((p) => {
-                    const low = p.current_stock > 0 && p.current_stock <= p.reorder_point;
-                    const out = p.current_stock <= 0;
-                    return (
-                      <TableRow key={p.id}>
-                        <TableCell className="font-medium">{p.name}</TableCell>
-                        <TableCell className="text-muted-foreground text-xs">{p.sku || "—"}</TableCell>
-                        <TableCell className="text-right"><span className={out ? "text-tibetan" : low ? "text-amber-600" : ""}>{p.current_stock}</span> <span className="text-xs text-muted-foreground">{p.unit || ""}</span></TableCell>
-                        <TableCell className="text-right">Nu. {(p.sale_price || p.mrp || 0).toFixed(2)}</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <Button variant="ghost" size="icon-sm" title="Receive stock" onClick={() => setReceiveFor(p)}><PackagePlus className="h-4 w-4" /></Button>
-                            <Button variant="ghost" size="icon-sm" title="Print barcode label" onClick={() => printProductLabel(p)}><Tag className="h-4 w-4" /></Button>
-                            <Button variant="ghost" size="icon-sm" title="Edit" onClick={() => openEdit(p)}><Pencil className="h-4 w-4" /></Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+
+            {loading ? (
+              <p className="text-[12px] opacity-60 p-4">Loading…</p>
+            ) : (
+              <OfficeGrid columns={STOCK_COLUMNS} rows={stockRows} empty="No products." />
+            )}
           </>
         ) : (
           <div className="space-y-4">
@@ -230,6 +246,6 @@ export default function StockPage() {
         }}
       />
       <BarcodeScanner open={showScanner} onClose={() => setShowScanner(false)} onScan={handleScan} />
-    </div>
+    </OfficeShell>
   );
 }

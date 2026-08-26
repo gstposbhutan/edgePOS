@@ -7,6 +7,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { useRequireRole } from "@/hooks/use-require-role";
 import { usePlatform } from "@/hooks/use-platform";
 import { Button } from "@/components/ui/button";
+import { OfficeShell } from "@/components/office/office-shell";
+import { MASTER_KEYS, withHandlers } from "@/lib/office-keys";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -187,21 +189,15 @@ export default function SettingsPage() {
     }
   };
 
+  // Settings keeps its cards: it is a form, not a register, and the reference's own settings
+  // screens are forms too. The frame is what carries the recognition — band, rail, Esc home.
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link href="/">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="h-4 w-4 mr-1" />
-              POS
-            </Button>
-          </Link>
-          <h1 className="font-serif font-bold text-lg">Settings</h1>
-        </div>
-      </header>
-
-      <main className="p-4 max-w-2xl mx-auto space-y-4">
+    <OfficeShell
+      crumb="Settings"
+      title="Terminal Settings"
+      keys={withHandlers(MASTER_KEYS, {})}
+    >
+      <main className="max-w-2xl space-y-4">
         {/* Store Profile */}
         <Card>
           <CardHeader>
@@ -618,6 +614,6 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       </main>
-    </div>
+    </OfficeShell>
   );
 }

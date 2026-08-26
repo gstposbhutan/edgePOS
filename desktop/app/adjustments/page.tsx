@@ -10,6 +10,9 @@ import { usePlatform } from "@/hooks/use-platform";
 import { useSettings } from "@/hooks/use-settings";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { OfficeShell } from "@/components/office/office-shell";
+import { OfficeGrid } from "@/components/office/office-grid";
+import { REPORT_KEYS, withHandlers } from "@/lib/office-keys";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
@@ -109,124 +112,67 @@ export default function AdjustmentsPage() {
     setSubmitting(false);
   };
 
+  // The terminal's cash book (spec WF-09) — the drawer's own ledger, with the balance carried
+  // down. The mirror of the cloud app's Cash Book, so the two read the same; the difference is
+  // that this one covers the shift in front of the cashier rather than a period.
+  //
+  // Direction lives in the TYPE, not the sign — CASH_OUT is stored positive — so the running
+  // balance has to apply it rather than summing the column.
+  let running = 0;
+  const ledgerRows = adjustments.map((adj) => {
+    const amount = Number(adj.amount ?? 0);
+    const isIn = adj.type === "CASH_IN";
+    running += isIn ? amount : -amount;
+    return {
+      id: adj.id,
+      when: formatDateTime(adj.created_at),
+      particulars: isIn ? "Cash in" : "Cash out",
+      reason: adj.reason || "",
+      notes: adj.notes || "",
+      in_amt: isIn ? amount.toFixed(2) : "",
+      out_amt: isIn ? "" : amount.toFixed(2),
+      balance: running.toFixed(2),
+    };
+  });
+
+  const LEDGER_COLUMNS = [
+    { key: "when",        label: "Time",        width: 150 },
+    { key: "particulars", label: "Particulars", width: 110 },
+    { key: "reason",      label: "Reason" },
+    { key: "notes",       label: "Notes",       width: 200 },
+    { key: "in_amt",      label: "Cash In",     width: 110, align: "right" as const },
+    { key: "out_amt",     label: "Cash Out",    width: 110, align: "right" as const },
+    { key: "balance",     label: "Balance",     width: 120, align: "right" as const },
+  ];
+
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border bg-card px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link href="/">
-            <Button variant="ghost" size="icon-sm">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-lg font-heading font-bold">Cash Adjustments</h1>
-            <p className="text-xs text-muted-foreground">Shift cash movement ledger</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={handleOpenDrawer}>
-            <Unlock className="h-4 w-4 mr-1.5" />
-            Open Drawer
-          </Button>
-          <Button onClick={() => setShowAdd(true)} disabled={!activeShift}>
-            <Plus className="h-4 w-4 mr-1.5" />
-            Add Adjustment
-          </Button>
-        </div>
-      </header>
-
-      {/* Summary Cards */}
-      <div className="px-4 py-4 grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="rounded-xl border border-border bg-card p-4">
-          <p className="text-xs text-muted-foreground mb-1">Cash In</p>
-          <div className="flex items-center gap-1.5">
-            <ArrowDownToLine className="h-4 w-4 text-emerald-500" />
-            <span className="text-lg font-bold text-emerald-500 tabular-nums">
-              {formatCurrency(totalCashIn)}
-            </span>
-          </div>
-        </div>
-        <div className="rounded-xl border border-border bg-card p-4">
-          <p className="text-xs text-muted-foreground mb-1">Cash Out</p>
-          <div className="flex items-center gap-1.5">
-            <ArrowUpToLine className="h-4 w-4 text-destructive" />
-            <span className="text-lg font-bold text-destructive tabular-nums">
-              {formatCurrency(totalCashOut)}
-            </span>
-          </div>
-        </div>
-        <div className="rounded-xl border border-border bg-card p-4">
-          <p className="text-xs text-muted-foreground mb-1">Net Adjustment</p>
-          <div className="flex items-center gap-1.5">
-            <Scale className="h-4 w-4 text-primary" />
-            <span className={`text-lg font-bold tabular-nums ${netAdjustment >= 0 ? "text-emerald-500" : "text-destructive"}`}>
-              {formatCurrency(netAdjustment)}
-            </span>
-          </div>
-        </div>
-        <div className="rounded-xl border border-border bg-card p-4">
-          <p className="text-xs text-muted-foreground mb-1">Entries</p>
-          <div className="flex items-center gap-1.5">
-            <Wallet className="h-4 w-4 text-primary" />
-            <span className="text-lg font-bold tabular-nums">{adjustments.length}</span>
-          </div>
-        </div>
+    <OfficeShell
+      crumb="Financial Management"
+      title="Cash Book"
+      keys={[
+        { key: "N", label: "Add Adjustment", onClick: () => setShowAdd(true) },
+        { key: "O", label: "Open Drawer", onClick: handleOpenDrawer },
+        ...withHandlers(REPORT_KEYS, {}),
+      ]}
+    >
+      <div className="flex flex-wrap items-center gap-3 mb-3 text-[12px]">
+        <span className="opacity-75">
+          in {formatCurrency(totalCashIn)} · out {formatCurrency(totalCashOut)} · {adjustments.length} movement{adjustments.length === 1 ? "" : "s"}
+        </span>
+        {!activeShift && <span className="ml-auto opacity-75">No open shift — adjustments need one.</span>}
       </div>
 
-      {/* Table */}
-      <div className="px-4 pb-8">
-        <div className="rounded-xl border border-border overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-40">Time</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Reason</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-                <TableHead>Notes</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {adjustments.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-12">
-                    <Clock className="h-8 w-8 mx-auto mb-2 opacity-20" />
-                    <p className="text-sm">No adjustments recorded</p>
-                    <p className="text-xs mt-1">Cash movements will appear here</p>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                adjustments.map((adj) => (
-                  <TableRow key={adj.id}>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {formatDateTime(adj.created_at)}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={adj.type === "CASH_IN" ? "default" : "destructive"} className="text-[10px]">
-                        {adj.type === "CASH_IN" ? (
-                          <><ArrowDownToLine className="h-3 w-3 mr-0.5" /> In</>
-                        ) : (
-                          <><ArrowUpToLine className="h-3 w-3 mr-0.5" /> Out</>
-                        )}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm">{adj.reason}</TableCell>
-                    <TableCell className={`text-right font-medium tabular-nums ${adj.type === "CASH_IN" ? "text-emerald-500" : "text-destructive"}`}>
-                      {adj.type === "CASH_IN" ? "+" : "-"}{formatCurrency(adj.amount)}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
-                      {adj.notes || "—"}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </div>
+      <OfficeGrid
+        columns={LEDGER_COLUMNS}
+        rows={ledgerRows}
+        totals={{ when: "Closing", in_amt: totalCashIn.toFixed(2), out_amt: totalCashOut.toFixed(2), balance: running.toFixed(2) }}
+        empty="No adjustments recorded. Cash movements will appear here."
+      />
 
-      {/* Add Adjustment Dialog */}
+      <p className="mt-2 text-[10px] opacity-60">
+        Cash only, and only this shift&apos;s movements. Amounts in Nu.
+      </p>
+
       <Dialog open={showAdd} onOpenChange={(v) => { if (!v) setShowAdd(false); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -331,6 +277,6 @@ export default function AdjustmentsPage() {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </OfficeShell>
   );
 }

@@ -6,6 +6,9 @@ import { useAuth } from "@/hooks/use-auth";
 import { useOnlineOrders, type OnlineOrder } from "@/hooks/use-online-orders";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { OfficeShell } from "@/components/office/office-shell";
+import { OfficeGrid } from "@/components/office/office-grid";
+import { REPORT_KEYS, withHandlers } from "@/lib/office-keys";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import {
@@ -62,6 +65,7 @@ function RiderHandoff({ o }: { o: OnlineOrder }) {
 export default function OnlineOrdersPage() {
   const { isManager, isOwner } = useAuth();
   const { orders, loading, refresh, act } = useOnlineOrders();
+  const [openOrder, setOpenOrder] = useState<OnlineOrder | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [cancelFor, setCancelFor] = useState<OnlineOrder | null>(null);
   const [cancelReason, setCancelReason] = useState("");
@@ -86,104 +90,86 @@ export default function OnlineOrdersPage() {
     else toast.error(res.error || "Could not cancel");
   }
 
+  // The online order register (spec WF-09). Same shape as the B2B register: the lines and the
+  // rider details do not fit a row, so the row opens the order and the sheet carries the actions.
+  const orderRows = orders.map((o) => ({
+    id: o.id,
+    _o: o,
+    order_no: o.order_no,
+    customer: o.customer_name || o.customer_phone || o.customer_email || "—",
+    phone: o.customer_phone || "—",
+    mode: o.fulfilment_mode || "—",
+    status: o.status,
+    total: Number(o.grand_total ?? 0).toFixed(2),
+  }));
+
+  const ORDER_COLUMNS = [
+    { key: "order_no", label: "Order No", width: 170 },
+    { key: "customer", label: "Customer" },
+    { key: "phone",    label: "Phone",    width: 140 },
+    { key: "mode",     label: "Fulfilment", width: 120 },
+    { key: "status",   label: "Status",   width: 150 },
+    { key: "total",    label: "Amount",   width: 120, align: "right" as const },
+  ];
+
+  const total = orders.reduce((sum, o) => sum + Number(o.grand_total ?? 0), 0);
+
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link href="/">
-            <Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button>
-          </Link>
-          <div className="flex items-center gap-2">
-            <ShoppingBag className="h-5 w-5" />
-            <h1 className="font-semibold">Online Orders</h1>
-            <Badge variant="outline">{orders.length}</Badge>
-          </div>
-        </div>
-        <div className="flex items-center gap-1">
-          {(isManager || isOwner) && <Link href="/b2b-orders"><Button variant="ghost" size="sm">B2B orders</Button></Link>}
-          <Button variant="ghost" size="icon" onClick={refresh} disabled={loading} title="Refresh">
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          </Button>
-        </div>
-      </header>
+    <OfficeShell
+      crumb="Customer Service"
+      title="Online Order Register"
+      keys={[
+        { key: "R", label: "Refresh", onClick: refresh },
+        ...withHandlers(REPORT_KEYS, {}),
+      ]}
+    >
+      <div className="flex flex-wrap items-center gap-3 mb-3 text-[12px]">
+        <span className="opacity-75">{orders.length} order{orders.length === 1 ? "" : "s"}</span>
+        <span className="ml-auto opacity-60">Enter opens the order.</span>
+      </div>
 
-      <main className="max-w-3xl mx-auto px-4 py-5">
-        {orders.length === 0 ? (
-          <div className="text-center py-20 text-muted-foreground">
-            <ShoppingBag className="h-12 w-12 mx-auto mb-3 opacity-20" />
-            <p className="text-sm">No online orders right now.</p>
-            <p className="text-xs opacity-60 mt-1">New marketplace orders appear here automatically.</p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {orders.map((o) => (
-              <div key={o.id} className="border border-border rounded-xl overflow-hidden">
-                <div className="px-4 py-3 bg-muted/30 border-b border-border flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-muted-foreground font-mono">{o.order_no}</p>
-                    <p className="text-sm font-semibold text-primary">Nu. {Number(o.grand_total).toFixed(2)}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-xs">{o.fulfilment_mode === "PICKUP" ? "Pickup" : "Delivery"}</Badge>
-                    <StatusBadge status={o.status} />
-                  </div>
-                </div>
+      {loading ? (
+        <p className="text-[12px] opacity-60 p-4">Loading…</p>
+      ) : (
+        <OfficeGrid
+          columns={ORDER_COLUMNS}
+          rows={orderRows}
+          totals={{ order_no: "Total", total: total.toFixed(2) }}
+          onOpen={(row) => setOpenOrder(row._o)}
+          openOnClick
+          empty="No online orders right now. New marketplace orders appear here automatically."
+        />
+      )}
 
-                <div className="p-4 space-y-3">
-                  {/* Customer */}
-                  <div className="space-y-1 text-sm">
-                    <div className="flex items-center gap-1.5 font-medium"><Store className="h-3.5 w-3.5 text-muted-foreground" /> {o.customer_name || "Customer"}</div>
-                    {o.customer_phone && <a href={`tel:${o.customer_phone}`} className="flex items-center gap-1.5 text-xs text-primary hover:underline"><Phone className="h-3 w-3" /> {o.customer_phone}</a>}
-                    {o.customer_email && <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Mail className="h-3 w-3" /> {o.customer_email}</div>}
-                  </div>
-
-                  {/* Delivery */}
-                  {o.fulfilment_mode !== "PICKUP" && (
-                    <div className="text-sm">
-                      <div className="flex items-start gap-1.5">
-                        <MapPin className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
-                        <span>{o.delivery_address || "No address provided"}</span>
-                      </div>
-                      {o.delivery_lat != null && (
-                        <a href={`https://maps.google.com/?q=${o.delivery_lat},${o.delivery_lng}`} target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline ml-5">Open in Maps →</a>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Items */}
-                  {o.items?.length > 0 && (
-                    <div className="text-xs text-muted-foreground">
-                      {o.items.map((i, idx) => (
-                        <div key={idx} className="flex justify-between">
-                          <span>{i.name} × {i.quantity}</span>
-                          <span>Nu. {Number(i.total || 0).toFixed(2)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Rider handoff / OTP */}
-                  <RiderHandoff o={o} />
-
-                  {/* Actions */}
-                  <div className="flex gap-2 pt-1">
-                    {o.status === "CONFIRMED" && (
-                      <Button onClick={() => confirmOrder(o)} disabled={busyId === o.cloud_id} className="flex-1">
-                        {busyId === o.cloud_id ? <Loader2 className="h-4 w-4 animate-spin" /> : <><CheckCircle className="h-4 w-4 mr-1.5" /> Confirm</>}
-                      </Button>
-                    )}
-                    {(o.status === "CONFIRMED" || o.status === "PROCESSING") && (
-                      <Button variant="outline" onClick={() => setCancelFor(o)} disabled={busyId === o.cloud_id} className="flex-1 text-tibetan border-tibetan/30 hover:bg-tibetan/10">
-                        <XCircle className="h-4 w-4 mr-1.5" /> Cancel
-                      </Button>
-                    )}
-                  </div>
-                </div>
+      <Dialog open={!!openOrder} onOpenChange={(v) => { if (!v) setOpenOrder(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>{openOrder?.order_no}</DialogTitle></DialogHeader>
+          {openOrder && (
+            <div className="space-y-3 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="font-medium">{openOrder.customer_name || "Customer"}</span>
+                <StatusBadge status={openOrder.status} />
               </div>
-            ))}
-          </div>
-        )}
-      </main>
+              {openOrder.customer_phone && <div className="text-xs text-muted-foreground">{openOrder.customer_phone}</div>}
+              {openOrder.delivery_address && <div className="text-xs text-muted-foreground">{openOrder.delivery_address}</div>}
+              <RiderHandoff o={openOrder} />
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-xs text-muted-foreground">{openOrder.fulfilment_mode}</span>
+                <span className="font-semibold text-primary">Nu. {Number(openOrder.grand_total ?? 0).toFixed(2)}</span>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <Button onClick={() => confirmOrder(openOrder)} disabled={busyId === openOrder.cloud_id} className="flex-1">
+                  {busyId === openOrder.cloud_id ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}
+                </Button>
+                <Button variant="outline" onClick={() => setCancelFor(openOrder)} disabled={busyId === openOrder.cloud_id}
+                  className="flex-1 text-tibetan border-tibetan/30 hover:bg-tibetan/10">
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!cancelFor} onOpenChange={(v) => { if (!v) { setCancelFor(null); setCancelReason(""); } }}>
         <DialogContent>
@@ -204,6 +190,6 @@ export default function OnlineOrdersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </OfficeShell>
   );
 }

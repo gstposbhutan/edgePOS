@@ -6,6 +6,9 @@ import { useRequireRole } from "@/hooks/use-require-role";
 import { useB2bOrders, type B2bOrder } from "@/hooks/use-b2b-orders";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { OfficeShell } from "@/components/office/office-shell";
+import { OfficeGrid } from "@/components/office/office-grid";
+import { REPORT_KEYS, withHandlers } from "@/lib/office-keys";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { ArrowLeft, RefreshCw, Boxes, Store, Phone, Loader2, XCircle } from "lucide-react";
@@ -32,6 +35,7 @@ export default function B2bOrdersPage() {
   useRequireRole(["owner", "manager"] as const); // wholesale/purchase orders — manager+ (super_admin bypasses)
   const { orders, loading, refresh, act } = useB2bOrders();
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [openOrder, setOpenOrder] = useState<B2bOrder | null>(null);
   const [cancelFor, setCancelFor] = useState<B2bOrder | null>(null);
   const [cancelReason, setCancelReason] = useState("");
 
@@ -56,84 +60,108 @@ export default function B2bOrdersPage() {
     else toast.error(res.error || "Could not cancel");
   }
 
+  // The purchase order register (spec WF-09) — incoming B2B orders, scannable.
+  //
+  // The lines of an order do not fit a register row, and dropping them would leave a shopkeeper
+  // accepting an order they cannot see. So the row opens the order: the register is for finding
+  // it, the sheet is for reading and acting on it. That is how a voucher works on the incumbent.
+  const orderRows = orders.map((o) => ({
+    id: o.id,
+    _o: o,
+    order_no: o.order_no,
+    buyer: o.buyer_name || "Buyer",
+    phone: o.buyer_phone || "—",
+    method: o.payment_method || "—",
+    status: o.status,
+    items: `${o.items?.length ?? 0}`,
+    total: Number(o.grand_total).toFixed(2),
+  }));
+
+  const ORDER_COLUMNS = [
+    { key: "order_no", label: "Order No", width: 170 },
+    { key: "buyer",    label: "Buyer" },
+    { key: "phone",    label: "Phone",   width: 140 },
+    { key: "method",   label: "Payment", width: 110 },
+    { key: "status",   label: "Status",  width: 150 },
+    { key: "items",    label: "Lines",   width: 70,  align: "right" as const },
+    { key: "total",    label: "Amount",  width: 120, align: "right" as const },
+  ];
+
+  const total = orders.reduce((sum, o) => sum + Number(o.grand_total ?? 0), 0);
+
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link href="/"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
-          <div className="flex items-center gap-2">
-            <Boxes className="h-5 w-5" />
-            <h1 className="font-semibold">B2B Orders</h1>
-            <Badge variant="outline">{orders.length}</Badge>
-          </div>
-        </div>
-        <Button variant="ghost" size="icon" onClick={refresh} disabled={loading} title="Refresh">
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-        </Button>
-      </header>
+    <OfficeShell
+      crumb="Purchase Management"
+      title="Purchase Order Register"
+      keys={[
+        { key: "R", label: "Refresh", onClick: refresh },
+        ...withHandlers(REPORT_KEYS, {}),
+      ]}
+    >
+      <div className="flex flex-wrap items-center gap-3 mb-3 text-[12px]">
+        <span className="opacity-75">{orders.length} incoming order{orders.length === 1 ? "" : "s"}</span>
+        <span className="ml-auto opacity-60">Enter opens the order and its lines.</span>
+      </div>
 
-      <main className="max-w-3xl mx-auto px-4 py-5">
-        {orders.length === 0 ? (
-          <div className="text-center py-20 text-muted-foreground">
-            <Boxes className="h-12 w-12 mx-auto mb-3 opacity-20" />
-            <p className="text-sm">No incoming B2B orders right now.</p>
-            <p className="text-xs opacity-60 mt-1">Orders your buyers place appear here automatically.</p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {orders.map((o) => {
-              const actions = NEXT_ACTIONS[o.status] || [];
-              return (
-                <div key={o.id} className="border border-border rounded-xl overflow-hidden">
-                  <div className="px-4 py-3 bg-muted/30 border-b border-border flex items-center justify-between">
-                    <div>
-                      <p className="text-xs text-muted-foreground font-mono">{o.order_no}</p>
-                      <p className="text-sm font-semibold text-primary">Nu. {Number(o.grand_total).toFixed(2)}</p>
+      {loading ? (
+        <p className="text-[12px] opacity-60 p-4">Loading…</p>
+      ) : (
+        <OfficeGrid
+          columns={ORDER_COLUMNS}
+          rows={orderRows}
+          totals={{ order_no: "Total", total: total.toFixed(2) }}
+          onOpen={(row) => setOpenOrder(row._o)}
+          openOnClick
+          empty="No incoming B2B orders right now. Orders your buyers place appear here automatically."
+        />
+      )}
+
+      {/* The order itself: its lines, and the actions its status allows. */}
+      <Dialog open={!!openOrder} onOpenChange={(v) => { if (!v) setOpenOrder(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>{openOrder?.order_no}</DialogTitle></DialogHeader>
+          {openOrder && (
+            <div className="space-y-3 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="font-medium">{openOrder.buyer_name || "Buyer"}</span>
+                <StatusBadge status={openOrder.status} />
+              </div>
+              {openOrder.buyer_phone && <div className="text-xs text-muted-foreground">{openOrder.buyer_phone}</div>}
+              {openOrder.buyer_tpn && <div className="text-xs text-muted-foreground">TPN: {openOrder.buyer_tpn}</div>}
+
+              {openOrder.items?.length > 0 && (
+                <div className="text-xs rounded-lg border border-border divide-y divide-border">
+                  {openOrder.items.map((i, idx) => (
+                    <div key={idx} className="flex justify-between px-3 py-1.5">
+                      <span>{i.name} × {i.quantity}</span>
+                      <span>Nu. {Number(i.total || 0).toFixed(2)}</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">{o.payment_method}</Badge>
-                      <StatusBadge status={o.status} />
-                    </div>
-                  </div>
-
-                  <div className="p-4 space-y-3">
-                    <div className="space-y-1 text-sm">
-                      <div className="flex items-center gap-1.5 font-medium"><Store className="h-3.5 w-3.5 text-muted-foreground" /> {o.buyer_name || "Buyer"}</div>
-                      {o.buyer_phone && <a href={`tel:${o.buyer_phone}`} className="flex items-center gap-1.5 text-xs text-primary hover:underline"><Phone className="h-3 w-3" /> {o.buyer_phone}</a>}
-                      {o.buyer_tpn && <div className="text-xs text-muted-foreground">TPN: {o.buyer_tpn}</div>}
-                    </div>
-
-                    {o.items?.length > 0 && (
-                      <div className="text-xs text-muted-foreground rounded-lg border border-border divide-y divide-border">
-                        {o.items.map((i, idx) => (
-                          <div key={idx} className="flex justify-between px-3 py-1.5">
-                            <span>{i.name} × {i.quantity}</span>
-                            <span>Nu. {Number(i.total || 0).toFixed(2)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {actions.length > 0 && (
-                      <div className="flex flex-wrap gap-2 pt-1">
-                        {busyId === o.cloud_id ? (
-                          <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Working…</span>
-                        ) : actions.map((a) => (
-                          <Button key={a.to} onClick={() => advance(o, a.to)}
-                            variant={a.danger ? "outline" : "default"}
-                            className={a.danger ? "text-tibetan border-tibetan/30 hover:bg-tibetan/10" : ""}>
-                            {a.danger && <XCircle className="h-4 w-4 mr-1.5" />}{a.label}
-                          </Button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  ))}
                 </div>
-              );
-            })}
-          </div>
-        )}
-      </main>
+              )}
+
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-xs text-muted-foreground">{openOrder.payment_method}</span>
+                <span className="font-semibold text-primary">Nu. {Number(openOrder.grand_total).toFixed(2)}</span>
+              </div>
+
+              {(NEXT_ACTIONS[openOrder.status] || []).length > 0 && (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {busyId === openOrder.cloud_id ? (
+                    <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Working…</span>
+                  ) : (NEXT_ACTIONS[openOrder.status] || []).map((a) => (
+                    <Button key={a.to} onClick={() => advance(openOrder, a.to)}
+                      variant={a.danger ? "outline" : "default"}
+                      className={a.danger ? "text-tibetan border-tibetan/30 hover:bg-tibetan/10" : ""}>
+                      {a.danger && <XCircle className="h-4 w-4 mr-1.5" />}{a.label}
+                    </Button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!cancelFor} onOpenChange={(v) => { if (!v) { setCancelFor(null); setCancelReason(""); } }}>
         <DialogContent>
@@ -149,6 +177,6 @@ export default function B2bOrdersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </OfficeShell>
   );
 }

@@ -288,3 +288,27 @@
 .numpad-key {
   @apply h-10 rounded-md text-sm font-medium transition-colors active:scale-95;
 }
+
+/* ── Counter UI: the back-office chrome ──────────────────────────────────────────────────────
+   The mirror of web/app/globals.css. The terminal's back office is a handful of local screens —
+   stock, adjustments, orders, customers — and they wear the same clothes as the cloud app's, so
+   a shopkeeper crossing between the two does not change visual language mid-task. Scoped to
+   .office-ui; the counter keeps the till's own palette. */
+.office-ui {
+  --office-title-bg:      #F5A623;
+  --office-title-fg:      #1A1A1A;
+  --office-page-bg:       #E8F0D4;
+  --office-panel-bg:      #F7F6E8;
+  --office-grid-head-bg:  #7A7A7A;
+  --office-grid-head-fg:  #FFFFFF;
+  --office-row-a:         #FFFFFF;
+  --office-row-b:         #FFFCE8;
+  --office-row-sel-bg:    #6E6047;
+  --office-row-sel-fg:    #FFFFFF;
+  --office-line:          #BFBFBF;
+  --office-total-bg:      #D8E6B0;
+  --office-key-bg:        #7A7A7A;
+  --office-key-fg:        #FFFFFF;
+  --office-menu-bg:       #A8C070;
+  --office-menu-sel:      #7E9B4A;
+}

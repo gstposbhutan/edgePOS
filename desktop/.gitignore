@@ -54,5 +54,8 @@ pb/pocketbase.darwin
 # PocketBase runtime database — local per-install state, not source.
 # (pb/pb_data/types.d.ts stays tracked — migrations reference it.)
 pb/pb_data/*.db
+# `npm run pb:serve` passes --dir=./pb_data, so a local run writes HERE, not under pb/. Those are
+# a developer's own database, not source.
+pb_data/
 pb/pb_data/*.db-shm
 pb/pb_data/*.db-wal
