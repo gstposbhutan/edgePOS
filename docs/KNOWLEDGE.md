@@ -146,8 +146,13 @@ Apps use the **instance role over IMDS** for S3 — no AWS keys on disk.
   never re-wired to email — marketplace order confirmation (`api/shop/orders`), payment
   receipt (`api/shop/pay/[orderId]`), DELIVERED payment-link (`api/shop/orders/[id]` +
   `api/rider/orders/[id]/deliver`). Wire to `sendEmail`/`notifyEntity` when wanted.
-- **Dev test logins** (dev box only): `retailer@nexus.bt` / `manager@nexus.bt` = test1234;
-  super-admin `admin@nexus.bt`. Terminal-flow test artifacts should be deleted after use.
+- **Dev test logins** (dev box only): the three staff accounts all belong to **Dawai
+  Tshongkhang** (`dawai-tshongkhang`, RETAILER, entity `a0000000-0000-4000-8000-000000000004`)
+  and share the password **test1234** — `retailer@nexus.bt` (OWNER), `manager@nexus.bt`
+  (MANAGER), `cashier@nexus.bt` (CASHIER); super-admin `admin@nexus.bt`. Verified against the
+  stored hashes 2026-08-26. The same credentials work on a terminal once it has bootstrapped
+  (the bcrypt hash mirrors down); `admin@pos.local` is the terminal-only super_admin and never
+  syncs. Terminal-flow test artifacts should be deleted after use.
 - **Email conventions**: owner/commit identity `shawn.manuel@gmail.com`; user-testing
   account `shan.manuel@gmail.com`; NEVER use `shawn.manuel@stirrup.works`; use
   `@example.com` for generic test data.
