@@ -5,6 +5,26 @@ Offline-first Electron + PocketBase retail terminal. Versions are the
 (`/api/desktop/releases/latest`); release notes are also entered in the
 admin **Releases** console at publish time.
 
+## 1.6.0 — the back office reads like the counter (2026-08-26)
+- **The terminal's back-office screens now look and work like the till.** Stock,
+  cash adjustments, B2B orders, customers, online orders and settings all carry the same
+  frame: a band naming the screen, the data as a dense register with its totals underneath,
+  and a strip along the bottom printing every key the screen answers. The cloud app's back
+  office was rebuilt the same way, so a shopkeeper moving between the terminal and the
+  browser reads the same columns in the same order and reaches for the same keys.
+- **Cash adjustments became the Cash Book.** The same movements, but with the running
+  balance carried down each row, so the drawer's figure can be read against the movement
+  that changed it rather than worked out.
+- **Every key on the strip works, and tapping one does exactly what pressing it does.**
+  A tap fires the keystroke it names rather than a separate handler, so the button and the
+  key can never drift apart. Keys that are not built yet stay visible but dimmed and say so.
+- **Location is F12 here**, the key the trade expects. The browser cannot take F12 — it
+  belongs to devtools — so the web till offers Ctrl+Shift+L instead; a terminal has no such
+  owner.
+- Orders keep their detail sheet: a register finds the order, and opening it shows the lines
+  and the actions, because an order's contents do not fit a row and a shopkeeper should not
+  accept what they cannot see.
+
 ## 1.5.0 — the five reserved counter keys (2026-08-23)
 - **A new terminal can no longer be left with nobody able to sign in.** Staff logins are
   mirrored from the cloud (same email and password as the website) when the licence is
