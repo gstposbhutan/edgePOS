@@ -156,7 +156,9 @@ Apps use the **instance role over IMDS** for S3 — no AWS keys on disk.
 - **Dev test logins** (dev box only): the three staff accounts all belong to **Dawai
   Tshongkhang** (`dawai-tshongkhang`, RETAILER, entity `a0000000-0000-4000-8000-000000000004`)
   and share the password **test1234** — `retailer@nexus.bt` (OWNER), `manager@nexus.bt`
-  (MANAGER), `cashier@nexus.bt` (CASHIER); super-admin `admin@nexus.bt`. Verified against the
+  (MANAGER), `cashier@nexus.bt` (CASHIER); super-admin `admin@nexus.bt` (same password). NOTE its SUPER_ADMIN claim lives in
+  `raw_user_meta_data.role`, while `super@pelbu.test` carries it in `raw_app_meta_data.role` —
+  a query that checks only one of the two will wrongly conclude an account is not an admin. Verified against the
   stored hashes 2026-08-26. The same credentials work on a terminal once it has bootstrapped
   (the bcrypt hash mirrors down); `admin@pos.local` is the terminal-only super_admin and never
   syncs. Terminal-flow test artifacts should be deleted after use.
