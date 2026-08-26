@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, Tray, Menu, dialog, shell, Notification } = require("electron");
 const path = require("path");
 const fs = require("fs");
-const { launchPocketBase, PB_URL } = require("./pb-launcher");
+const { launchPocketBase, getPbUrl, getLastError, PB_PORT_START, PB_PORT_END } = require("./pb-launcher");
 const { printReceipt, getPrinterStatus, testPrint, listPrinters } = require("./printer");
 const { kickDrawer } = require("./drawer");
 const { startStaticServer } = require("./static-server");
@@ -164,7 +164,7 @@ const { getMachineId } = require("./machine-id");
 ipcMain.handle("system:get-machine-id", () => getMachineId());
 
 ipcMain.handle("pb:get-url", () => {
-  return syncConfig?.pbUrl || PB_URL;
+  return syncConfig?.pbUrl || getPbUrl();
 });
 
 ipcMain.handle("pb:set-url", (_, url) => {
@@ -196,7 +196,7 @@ async function doSync() {
   if (!syncConfig || !syncConfig.remoteUrl || !syncConfig.apiKey) return;
   const ingestUrl = syncConfig.remoteUrl;
   const token = syncConfig.apiKey;
-  const localUrl = syncConfig.pbUrl || PB_URL;
+  const localUrl = syncConfig.pbUrl || getPbUrl();
   const machineId = getMachineId();
 
   try {
@@ -301,7 +301,7 @@ async function doBootstrap() {
           ? syncConfig.remoteUrl.replace(/\/api\/sync\/[^/]+\/?$/, "/api/sync/bootstrap")
           : syncConfig.remoteUrl.replace(/\/$/, "") + "/api/sync/bootstrap");
   const token = syncConfig.apiKey;
-  const localUrl = syncConfig.pbUrl || PB_URL;
+  const localUrl = syncConfig.pbUrl || getPbUrl();
 
   try {
     mainWindow?.webContents.send("sync:status", { status: "syncing", message: "Bootstrapping…" });
@@ -464,7 +464,7 @@ ipcMain.handle("auth:store-logins", async (_e, { retry = false } = {}) => {
   if (retry) await bootstrapIfNoStoreUsers();
   // The local PB is always readable; whether the cloud is reachable is a separate question,
   // reported as syncConfigured so the screen can tell "not pulled yet" from "cannot pull".
-  const localUrl = (syncConfig && syncConfig.pbUrl) || PB_URL;
+  const localUrl = (syncConfig && syncConfig.pbUrl) || getPbUrl();
   try {
     const token = await syncLocalAuth(localUrl);
     const filter = encodeURIComponent('email != "admin@pos.local"');
@@ -492,10 +492,10 @@ async function seedDefaultUser() {
   try {
     const pass = process.env.NEXUS_SUPERADMIN_PASS || "admin12345";
     const filter = encodeURIComponent('email="admin@pos.local"');
-    const listRes = await fetch(PB_URL + `/api/collections/users/records?perPage=1&filter=${filter}`);
+    const listRes = await fetch(getPbUrl() + `/api/collections/users/records?perPage=1&filter=${filter}`);
     const listData = await listRes.json().catch(() => ({}));
     if (listData.items && listData.items.length) return; // already present
-    const createRes = await fetch(PB_URL + "/api/collections/users/records", {
+    const createRes = await fetch(getPbUrl() + "/api/collections/users/records", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -525,7 +525,7 @@ async function seedDefaultUser() {
 // Best-effort and idempotent — a terminal that already has its team skips the call entirely.
 async function bootstrapIfNoStoreUsers() {
   if (!syncConfig || !syncConfig.remoteUrl || !syncConfig.apiKey) return;
-  const localUrl = syncConfig.pbUrl || PB_URL;
+  const localUrl = syncConfig.pbUrl || getPbUrl();
   try {
     // Listing `users` UNAUTHENTICATED returns an empty page whatever the collection actually
     // holds, so this check must carry the superuser token — without it the terminal would
@@ -638,7 +638,7 @@ function applyLicensePayload(payload) {
       ...(syncConfig || {}),
       remoteUrl: payload.sync.ingest_url,
       apiKey: payload.sync.token,
-      pbUrl: (syncConfig && syncConfig.pbUrl) || PB_URL,
+      pbUrl: (syncConfig && syncConfig.pbUrl) || getPbUrl(),
     };
   }
   // Terminal mode is carried in the license payload (and refreshed from bootstrap). A mode change
@@ -803,7 +803,7 @@ async function pollOnlineOrders() {
   if (!syncConfig || !syncConfig.remoteUrl || !syncConfig.apiKey) return;
   const ordersUrl = deriveSyncUrl("orders");
   const token = syncConfig.apiKey;
-  const localUrl = syncConfig.pbUrl || PB_URL;
+  const localUrl = syncConfig.pbUrl || getPbUrl();
   try {
     const res = await fetch(ordersUrl, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) return; // offline / not configured — keep the last-known local mirror
@@ -890,7 +890,7 @@ async function pollB2bOrders() {
   if (!syncConfig || !syncConfig.remoteUrl || !syncConfig.apiKey) return;
   const url = deriveSyncUrl("wholesale-orders");
   const token = syncConfig.apiKey;
-  const localUrl = syncConfig.pbUrl || PB_URL;
+  const localUrl = syncConfig.pbUrl || getPbUrl();
   try {
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) return; // offline / not configured — keep the last-known mirror
@@ -997,6 +997,10 @@ ipcMain.handle("payment:extract-journal", async (_, { imageBase64, mimeType, exp
   }
 });
 
+// The renderer must never guess the database's address — guessing 8090 is what let it spend 700
+// sockets on a stranger. Synchronous by design: getPB() is called during render.
+ipcMain.on("pb:url-sync", (e) => { e.returnValue = getPbUrl(); });
+
 // ── App Lifecycle ───────────────────────────────────────────────────────────
 
 // Single-instance lock: a 2nd launch (e.g. the shopkeeper double-clicking the icon again) must NOT
@@ -1024,16 +1028,32 @@ app.whenReady().then(async () => {
   pbDataDir = isDev
     ? path.join(__dirname, "..", "pb", "pb_data")
     : path.join(app.getPath("userData"), "pb_data");
-  const { proc, ready } = launchPocketBase(pbDataDir);
-  pbProcess = proc;
-
+  // The database is NOT optional, and this is the one place that must act like it. A terminal that
+  // opens its till over a dead database looks workable: it draws, it takes keystrokes, and it
+  // mirrors nothing — while its client retries the port until the machine is on its knees. So the
+  // failure is named out loud (PocketBase's own last line, not a shrug) and the app stops.
   try {
+    const { proc, url, ready } = await launchPocketBase(pbDataDir);
+    pbProcess = proc;
     await ready();
-    console.log("[Main] PocketBase is ready");
+    console.log(`[Main] PocketBase is ready on ${url}`);
     await seedDefaultUser();
   } catch (err) {
-    console.error("[Main] PocketBase failed to start:", err.message);
-    dialog.showErrorBox("PocketBase Error", "Could not start local database.");
+    const detail = getLastError();
+    console.error("[Main] PocketBase failed to start:", err.message, detail);
+    dialog.showErrorBox(
+      "Pelbu POS cannot start",
+      [
+        "The local database did not start, so the terminal has stopped instead of running without it.",
+        "",
+        err.message,
+        detail && detail !== err.message ? `\n${detail}` : "",
+        "",
+        `If another program is using ports ${PB_PORT_START}-${PB_PORT_END} on this PC, close it and start Pelbu POS again.`,
+      ].filter(Boolean).join("\n")
+    );
+    app.quit();
+    return;
   }
 
   // Start static file server (serves out/ in production, or in dev when NEXUS_SERVE_BUILT=1)

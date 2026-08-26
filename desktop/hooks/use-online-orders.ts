@@ -53,12 +53,20 @@ export function useOnlineOrders() {
     const invalidate = () => qc.invalidateQueries({ queryKey: ["online_orders"] });
     const offChanged = api()?.onlineOrders?.onChanged?.(invalidate);
     let unsub: (() => void) | undefined;
+    let cancelled = false;
+    // `subscribe` resolves asynchronously, so an effect that tears down before it settles would
+    // drop the unsubscriber on the floor and strand the subscription. Cheap on a page you visit
+    // once; not on a till that mounts and unmounts all day.
     getPB()
       .collection("online_orders")
       .subscribe("*", invalidate)
-      .then((u) => { unsub = u as unknown as () => void; })
+      .then((u) => {
+        const off = u as unknown as () => void;
+        if (cancelled) off();
+        else unsub = off;
+      })
       .catch(() => {});
-    return () => { offChanged?.(); if (unsub) unsub(); };
+    return () => { cancelled = true; offChanged?.(); unsub?.(); };
   }, [qc]);
 
   const refresh = useCallback(async () => {

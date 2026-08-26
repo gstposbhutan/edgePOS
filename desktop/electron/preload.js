@@ -1,6 +1,10 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("electronAPI", {
+  // Where the local database actually is. Resolved at preload time (sendSync) because the PB
+  // client is built during render and cannot await. The main process picks the port; nobody guesses.
+  pb: { url: ipcRenderer.sendSync("pb:url-sync") },
+
   // Printer
   printer: {
     list: () => ipcRenderer.invoke("printer:list"),

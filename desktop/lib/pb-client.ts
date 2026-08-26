@@ -4,6 +4,21 @@ import { PB_REQ } from './constants';
 const DEFAULT_URL = process.env.NEXT_PUBLIC_POCKETBASE_URL || 'http://127.0.0.1:8090';
 const AUTH_KEY = 'pb_auth';
 
+/**
+ * The address the MAIN process actually put PocketBase on.
+ *
+ * 8090 is a wish, not a fact: anything else on the machine may hold it (a VS Code forwarded port
+ * once did, for two days), in which case the terminal runs on the next free port instead. Trusting
+ * the constant is what let the renderer open ~700 sockets against a stranger and eat 3.7 GB, so
+ * the bridge is asked first and the constant is only the last resort — for `next dev` in a browser,
+ * where there is no bridge to ask.
+ */
+function bridgeUrl(): string | null {
+  if (typeof window === 'undefined') return null;
+  const api = (window as unknown as { electronAPI?: { pb?: { url?: string } } }).electronAPI;
+  return api?.pb?.url || null;
+}
+
 let pb: PocketBase | null = null;
 let currentUrl: string | null = null;
 
@@ -13,7 +28,7 @@ export function getPB(): PocketBase {
     return new PocketBase(DEFAULT_URL);
   }
 
-  const url = localStorage.getItem('pb_url') || DEFAULT_URL;
+  const url = localStorage.getItem('pb_url') || bridgeUrl() || DEFAULT_URL;
 
   // Re-initialize if URL changed or first time
   if (!pb || currentUrl !== url) {
@@ -70,7 +85,7 @@ export function setPBUrl(url: string): void {
 
 export function getPBUrl(): string {
   if (typeof window === 'undefined') return DEFAULT_URL;
-  return localStorage.getItem('pb_url') || DEFAULT_URL;
+  return localStorage.getItem('pb_url') || bridgeUrl() || DEFAULT_URL;
 }
 
 // 'super_admin' is the internal Pelbu support login (seeded locally as

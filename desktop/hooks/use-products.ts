@@ -90,13 +90,20 @@ export function useProducts() {
   // Realtime subscription — invalidate on changes
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
+    let cancelled = false;
+    // `subscribe` resolves asynchronously, so an effect that tears down before it settles would
+    // drop the unsubscriber on the floor and strand the subscription. Cheap on a page you visit
+    // once; not on a till that mounts and unmounts all day.
     pb.collection("products")
       .subscribe("*", () => {
         queryClient.invalidateQueries({ queryKey: ["products"] });
       })
-      .then((fn) => { unsubscribe = fn; })
+      .then((fn) => {
+        if (cancelled) fn();
+        else unsubscribe = fn;
+      })
       .catch(() => {});
-    return () => { if (unsubscribe) unsubscribe(); };
+    return () => { cancelled = true; unsubscribe?.(); };
   }, [pb, queryClient]);
 
   // Filter state from zustand
