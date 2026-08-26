@@ -94,8 +94,20 @@
       if (!url) { setStatus("Enter your cloud server URL first.", "err"); return; }
       setStatus("Registering this machine…", "info");
       const r = await window.activation.request(url);
-      if (r && r.ok) setStatus("Registered. Ask your administrator to issue the license, then paste it below.", "ok");
-      else setStatus("Request failed: " + ((r && r.error) || "unknown error"), "err");
+      if (!r || !r.ok) { setStatus("Request failed: " + ((r && r.error) || "unknown error"), "err"); return; }
+      // The server answers PENDING (a request now waits for an admin) or LICENSED (this machine
+      // already holds an active licence, so NO request was created and none ever will be). Saying
+      // "ask your administrator" in the LICENSED case sends the operator to watch an admin panel
+      // for a row that cannot appear — which is exactly what it did.
+      if (r.status === "LICENSED") {
+        setStatus(
+          "This machine is already licensed, so no new request was created. Its .lic cannot be re-sent — "
+          + "ask your administrator to revoke this machine in Licenses and issue it again, then load the new file below.",
+          "ok"
+        );
+        return;
+      }
+      setStatus("Registered. Ask your administrator to issue the license, then paste it below.", "ok");
     });
 
     async function doActivate(lic) {
