@@ -1,9 +1,11 @@
 # edgePOS (Pelbu POS) — working notes
 
 Standalone POS product repo. Transplanted 2026-08-22 from the monorepo's `apps/pos` on a `v2`
-branch, which **became `main` at the cutover on 2026-08-26** — `main` is the product now, and
-`v2` is kept only as that branch's name in history. The pre-homecoming tree is tagged
-`legacy/main`.
+branch, which **became `main` at the cutover on 2026-08-26**.
+
+**Work on `main`.** `origin/v2` is kept as a historical marker of the cutover and is FROZEN — do
+not branch from it or push to it; it will drift behind and holds nothing `main` lacks. The
+pre-homecoming tree is tagged `legacy/main`.
 See README.md for layout. The old root CLAUDE.md described an aspirational architecture
 (YOLO26, Hono/Bun, PouchDB) that never shipped — ignore anything from it.
 

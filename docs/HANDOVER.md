@@ -11,7 +11,7 @@ not for what is true now.
 |---|---|
 | Web | LIVE on pos.pelbu.com, build `i9yoQ4hBLkP0IO1NpouIq` |
 | Desktop | **1.6.0** tagged and released to the **stable** channel |
-| Branch | `main` (was `v2`) |
+| Branch | **`main`** — work here. `origin/v2` is a frozen marker of the cutover; do not push to it. |
 | Migrations | lineage at **139**, all applied on this box — the only environment |
 
 ## What the reskin changed
