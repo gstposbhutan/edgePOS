@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { OfficeShell } from '@/components/pos/office/office-shell'
 import { OfficeForm, OfficeSection, OfficeField } from '@/components/pos/office/office-form'
@@ -16,6 +16,7 @@ function formatBytes(b) {
 
 export default function DownloadsPage() {
   const router = useRouter()
+  const downloadRef = useRef(null)
   const [release, setRelease] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState(null)
@@ -44,8 +45,9 @@ export default function DownloadsPage() {
       crumb="Settings"
       title="Desktop App"
       keys={[
+        // D presses the same link the sheet shows, so the key and the click are one path.
         ...(release?.download_url
-          ? [{ key: 'D', label: 'Download', onClick: () => { window.location.href = release.download_url } }]
+          ? [{ key: 'D', label: 'Download', onClick: () => downloadRef.current?.click() }]
           : []),
         { key: 'L', label: 'Settings', onClick: () => router.push('/pos/settings') },
         ...withHandlers(MASTER_KEYS, {}).filter(k => k.key === 'Esc'),
@@ -70,9 +72,44 @@ export default function DownloadsPage() {
               </OfficeSection>
 
               <OfficeSection title="Installer">
-                <OfficeField label="File" value={release.file_name} />
+                <OfficeField label="File">
+                  {release.download_url ? (
+                    // A real <a download>, not the rail's key handler. The rail is how a trained
+                    // hand reaches it; this is how everyone else does, and it is the ONE thing
+                    // this screen exists for — leaving it only on the rail hid the whole point.
+                    // An anchor also downloads properly, where a scripted location change can be
+                    // taken as navigation and lose the filename.
+                    <a
+                      href={release.download_url}
+                      download
+                      className="underline font-medium"
+                      style={{ color: '#1D4ED8' }}
+                    >
+                      {release.file_name}
+                    </a>
+                  ) : (
+                    <span className="opacity-60">Installer pending</span>
+                  )}
+                </OfficeField>
                 <OfficeField label="Size" value={formatBytes(release.file_size)} />
               </OfficeSection>
+
+              {release.download_url && (
+                <a
+                  ref={downloadRef}
+                  href={release.download_url}
+                  download
+                  className="inline-flex items-center gap-2 px-4 py-2 mb-4 text-[13px] font-bold border cursor-pointer"
+                  style={{
+                    background: 'var(--office-menu-sel)',
+                    borderColor: 'var(--office-line)',
+                    color: '#fff',
+                  }}
+                >
+                  <span>D</span>
+                  <span>Download {release.file_name}</span>
+                </a>
+              )}
             </div>
 
             <div>
