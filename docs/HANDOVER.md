@@ -10,7 +10,7 @@ not for what is true now.
 | | |
 |---|---|
 | Web | LIVE on pos.pelbu.com, build `i9yoQ4hBLkP0IO1NpouIq` |
-| Desktop | **1.6.0** tagged and released to the **stable** channel |
+| Desktop | **1.6.2** tagged and released to the **stable** channel |
 | Branch | **`main`** — work here. `origin/v2` is a frozen marker of the cutover; do not push to it. |
 | Migrations | lineage at **139**, all applied on this box — the only environment |
 
@@ -58,12 +58,27 @@ balance carried down), `/b2b-orders`, `/customers`, `/online-orders`, `/settings
   sticks). Pass them to the dev process — NOT via `.env.local`, which is the deploy trap above.
 - **The terminal's PocketBase binary in git is x86-64**; this box is aarch64. Local runs need
   `npm run pb:fetch -- --force`, and `npm run pb:serve` writes to `desktop/pb_data/`.
+- **"Could not start local database" usually means something else holds the port** — not a
+  corrupt database. On 2026-08-26 a terminal had **VS Code** sitting on `127.0.0.1:8090` for two
+  days. Diagnose with `netstat -ano | findstr ":8090"` then `Get-Process -Id <PID>`, and *read the
+  process name* — it is not always `pocketbase`. Do NOT delete `pb_data`: that destroys unsynced
+  sales and fixes nothing. Since 1.6.1 the launcher probes 8090–8099 and quotes PocketBase's own
+  error, so this should not recur; older terminals still show the bare message.
+- **Uninstalling used to delete the shop's books.** `nsis.deleteAppDataOnUninstall` was `true`
+  until 1.6.2, so removing the app wiped `%APPDATA%\Pelbu POS` — `license.lic` and `pb_data`
+  both. A `.lic` **cannot be re-sent** (it carries a plaintext sync token stored only as a hash),
+  so the recovery is revoke-and-reissue in the admin panel. The fix ships in the uninstaller, so
+  it only protects terminals removed from **1.6.2 onward** — a terminal on 1.6.1 or earlier still
+  loses everything when uninstalled. Take a copy of `%APPDATA%\Pelbu POS` first.
 
 ## Not verified
 
-- **Desktop 1.6.0 has had no Windows runtime QA.** The six screens were checked in a browser
+- **Desktop 1.6.2 has had no Windows runtime QA.** The six screens were checked in a browser
   against the same code, not the packaged app. Unverified: the NSIS installer, printer paths,
-  path separators, and whether **F12** reaches the app rather than Electron.
+  path separators, and whether **F12** reaches the app rather than Electron. Also unverified on
+  Windows: the 1.6.1 port probe, the fail-closed database dialog, and the preload URL bridge.
+  What a real terminal DID prove on 2026-08-26 is that the bundled PocketBase binary runs, and
+  that all 28 app migrations apply cleanly from an empty data directory.
 - Nobody has used the reskinned screens as a signed-in shopkeeper.
 - Two design calls were made without the client: the Cash Book counts **cash only** (credit and
   online takings never enter the drawer, so including them would give a balance no till count
@@ -77,6 +92,34 @@ Book were the last two. What remains needs a feature first (Stock Discrepancy ne
 counts; Bills Payable needs a supplier ledger) or is an accounting suite — Trial Balance, P&L,
 Balance Sheet — which means building a general ledger and should be a scope conversation with
 Innovates, not a backlog item.
+
+## The first terminal in the field, 2026-08-26
+
+A real Windows terminal reported "Could not start pocketbase", an unresponsive UI, and no
+recovery from uninstall + reinstall. It was worth the day: nothing was wrong with the release,
+and four separate defects were hiding behind one useless error message.
+
+**VS Code held `127.0.0.1:8090`.** PocketBase could not bind, the app said "Could not start local
+database" — and then **carried on booting**, pointed its client at 8090, and spent ~700 sockets
+and 3.7 GB talking to the editor until the till froze. Reinstalling could not help: a port is
+machine state.
+
+Shipped as **1.6.1**: the launcher probes 8090–8099 and takes the first port it can actually
+hold; the renderer is *told* the address over the preload bridge (`electronAPI.pb.url`) instead
+of assuming 8090; PocketBase's own last line is quoted in the dialog; and a database that will
+not start is now **fatal** — a till drawn over a dead database looks workable, takes keystrokes
+and records nothing. The health check also verifies the responder is PocketBase, closing the gap
+where another process claims the port between probe and bind.
+
+Then a licence request "never arrived" in the admin panel. It had arrived; the server answered
+`{status:"LICENSED"}` — already licensed, no request created — and `activation.html` discarded
+that and said "ask your administrator", sending the operator to watch for a row that could not
+appear. Behind it sat the real damage: **`nsis.deleteAppDataOnUninstall` was `true`**, so the
+uninstall had wiped `%APPDATA%\Pelbu POS` — the licence *and* `pb_data`. Both fixed in **1.6.2**.
+
+The lesson worth keeping: every one of these turned a small, ordinary problem into a dead
+register, because the terminal preferred to carry on rather than say what was wrong. Prefer
+failing loudly and early. Read `desktop/CLAUDE.md` before changing anything under `desktop/`.
 
 ---
 

@@ -16,7 +16,10 @@ moved to `docs/HANDOVER.md` ("What is next") and `docs/frs/REFERENCE-SCREEN-GAP.
 
 Shawn's calls during execution: suite retired entirely; old project no longer public —
 **"just keep the backup"**, so no in-tree salvage curation (backup = the bundle above +
-`legacy/*` tags + `~/edgepos-salvage/`
+`legacy/*` tags + `~/edgepos-salvage/`).
+
+---
+
 ## The call being made
 
 **The POS's home returns to the edgePOS repo — by transplanting the CURRENT code, never by

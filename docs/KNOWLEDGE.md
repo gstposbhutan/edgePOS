@@ -49,9 +49,9 @@ Apps use the **instance role over IMDS** for S3 — no AWS keys on disk.
   (kong.yml embeds the JWT keys); the stack still runs from there. Copy to
   `infra-supabase-live/` here (gitignored) when convenient:
   `cp -r ~/bhutan-tour-operator/infra/supabase ~/edgePOS/infra-supabase-live`
-- **NOT transferable as files**: GitHub Actions secrets (`APP_URL`,
-  `RELEASE_INGEST_TOKEN`) — set on the monorepo repo, must be re-created on this repo's
-  GitHub before a desktop release; Cloudflare DNS + AWS account access are dashboard-level.
+- **NOT transferable as files**: Cloudflare DNS + AWS account access are dashboard-level.
+  (GitHub Actions secrets used to be listed here as missing — they are not. All four are
+  present on this repo; see "Desktop terminal releases" below.)
 
 ## Shared services (used by the POS)
 
@@ -81,15 +81,29 @@ Apps use the **instance role over IMDS** for S3 — no AWS keys on disk.
   set 2026-06-16). Earlier notes claiming they live only on the monorepo and must be
   re-created are wrong.
 - Channels: tags containing `-beta`/`-rc` → beta; terminals only query stable.
-  Current stable = **1.5.0** (tag `desktop-v1.5.0`, published 2026-08-23), installer
-  219,255,075 bytes at `img.pelbu.com/releases/1.5.0/`. Owners download it from `/downloads`,
-  which calls `/api/desktop/releases/latest`.
+  Current stable = **1.6.2** (tag `desktop-v1.6.2`, published 2026-08-26), installer
+  219,360,754 bytes at `img.pelbu.com/releases/1.6.2/`. Owners download it from `/downloads`,
+  which calls `/api/desktop/releases/latest`. Verify a release by checking that feed reports the
+  new version and that the installer URL returns HTTP 200 with a matching `content-length`.
 - **Installed terminals bake `DEFAULT_CLOUD_URL=https://app.pelbu.com`** for update checks and
   license register/status, and sync to `pos.pelbu.com/api/sync/*`. The auth app is retired, but
   this is **already handled**: `/etc/caddy/Caddyfile` keeps an `app.pelbu.com` vhost that
   reverse-proxies `/api/desktop/*` and `/api/license/*` to the POS app on :3100 and 301s
   everything else to `pos.pelbu.com`. Verified live 2026-08-24 — terminals keep auto-update.
   Do not delete that vhost.
+- **A `.lic` cannot be re-sent.** It carries a plaintext per-terminal sync token stored only as
+  a SHA-256, so there is no re-download endpoint by design. Lost or wiped licence → revoke the
+  machine in the admin panel and issue it again. Note the terminal's activation window only
+  offers "Request license"; when the machine is already licensed the server answers `LICENSED`
+  and creates **no** admin-panel row — so a support call about "my request never arrived" is
+  usually this. (Before 1.6.2 the window mis-reported that case as "ask your administrator".)
+- **`%APPDATA%\Pelbu POS` holds `pb_data` and `license.lic`** — the shop's whole local record.
+  Uninstalling deleted it until 1.6.2 (`nsis.deleteAppDataOnUninstall`), and the fix ships in the
+  uninstaller, so terminals removed from 1.6.1 or earlier still lose everything. **Copy that
+  folder before ever telling a shopkeeper to reinstall.**
+- **PocketBase binds the first free port in 8090–8099** (since 1.6.1). "Could not start local
+  database" is usually another program holding the port, not a corrupt database — check with
+  `netstat -ano | findstr ":8090"` + `Get-Process -Id <PID>` and read the process name.
 - Terminal auth: local PocketBase; `admin@pos.local` = internal super_admin (set
   `NEXUS_SUPERADMIN_PASS` at build — `admin12345` is a DEV fallback, never ship it).
   Store users mirror from `/api/sync/bootstrap` (same bcrypt hash → web password works

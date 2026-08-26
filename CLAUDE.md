@@ -22,6 +22,9 @@ See README.md for layout. The old root CLAUDE.md described an aspirational archi
   an applied migration. Lineage is at 139.
 - **`desktop/`** is the Electron + PocketBase offline terminal — own toolchain and
   lockfile, NOT part of the npm workspaces. Release CI: tag `desktop-vX.Y.Z`.
+  **Read `desktop/CLAUDE.md` before changing anything under it** — it is current as of
+  2026-08-26 and carries the traps that have actually bitten live terminals (the PocketBase
+  port range, what an uninstall must never delete, why a `.lic` cannot be re-sent).
 - **Secrets** live in `web/.env` (gitignored). Never commit env files or keys.
 - Two unrelated carts share the name `useCart`: `web/hooks/use-cart.js` (POS terminal)
   vs `web/lib/cart-context.js` (consumer shop). Check which one you're importing.
