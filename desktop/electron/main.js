@@ -465,7 +465,8 @@ ipcMain.handle("sync:bootstrap", () => doBootstrap());
 // `retry: true` pulls the team again first — the cashier's one-button recovery once the shop's
 // internet is back, with no settings screen to get into.
 ipcMain.handle("auth:store-logins", async (_e, { retry = false } = {}) => {
-  if (retry) await bootstrapIfNoStoreUsers();
+  let pull = null;
+  if (retry) pull = await bootstrapIfNoStoreUsers();
   // The local PB is always readable; whether the cloud is reachable is a separate question,
   // reported as syncConfigured so the screen can tell "not pulled yet" from "cannot pull".
   const localUrl = (syncConfig && syncConfig.pbUrl) || getPbUrl();
@@ -478,9 +479,10 @@ ipcMain.handle("auth:store-logins", async (_e, { retry = false } = {}) => {
     const data = await res.json().catch(() => ({}));
     // totalItems is authoritative; an unauthenticated read would always say zero.
     return { count: typeof data.totalItems === "number" ? data.totalItems : null,
-             syncConfigured: !!(syncConfig && syncConfig.remoteUrl && syncConfig.apiKey) };
+             syncConfigured: !!(syncConfig && syncConfig.remoteUrl && syncConfig.apiKey),
+             pullError: pull && !pull.ok ? pull.reason : null };
   } catch (e) {
-    return { count: null, error: e.message };
+    return { count: null, error: e.message, pullError: pull && !pull.ok ? pull.reason : null };
   }
 });
 
@@ -528,7 +530,12 @@ async function seedDefaultUser() {
 //
 // Best-effort and idempotent — a terminal that already has its team skips the call entirely.
 async function bootstrapIfNoStoreUsers() {
-  if (!syncConfig || !syncConfig.remoteUrl || !syncConfig.apiKey) return;
+  // Returns why it could not pull, so a caller with a screen can SAY so. This used to return
+  // void and log to a console nobody on a shop counter can open, which is how the login screen's
+  // "get logins" button came to look like it did nothing at all.
+  if (!syncConfig || !syncConfig.remoteUrl || !syncConfig.apiKey) {
+    return { ok: false, reason: "This terminal has no licence yet, so it does not know which shop to ask. Activate its licence first." };
+  }
   const localUrl = syncConfig.pbUrl || getPbUrl();
   try {
     // Listing `users` UNAUTHENTICATED returns an empty page whatever the collection actually
@@ -540,14 +547,19 @@ async function bootstrapIfNoStoreUsers() {
       headers: { Authorization: token },
     });
     const data = await res.json().catch(() => ({}));
-    if (Array.isArray(data.items) && data.items.length > 0) return; // the shop has its logins
+    if (Array.isArray(data.items) && data.items.length > 0) return { ok: true }; // the shop has its logins
     console.log("[Main] No store logins on this terminal — pulling the team from the cloud");
     const result = await doBootstrap();
-    console.log(result && result.ok
-      ? `[Main] Recovered ${result.users} store login(s) from the cloud`
-      : `[Main] Could not pull the team: ${(result && result.error) || "unknown error"}`);
+    if (result && result.ok) {
+      console.log(`[Main] Recovered ${result.users} store login(s) from the cloud`);
+      return { ok: true, users: result.users };
+    }
+    const reason = (result && result.error) || "unknown error";
+    console.log(`[Main] Could not pull the team: ${reason}`);
+    return { ok: false, reason };
   } catch (e) {
     console.log("[Main] Store-login check skipped:", e.message);
+    return { ok: false, reason: e.message };
   }
 }
 
