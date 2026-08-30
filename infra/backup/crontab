@@ -1,0 +1,8 @@
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin
+# Hourly LOCAL backup (RPO ~1h)
+0 * * * * root /usr/local/bin/edgepos-pg-backup-local.sh >> /var/log/edgepos-backup.log 2>&1
+# Daily OFFSITE backup to S3 — 20:00 UTC = 02:00 Asia/Thimphu
+0 20 * * * root /usr/local/bin/edgepos-pg-backup.sh >> /var/log/edgepos-backup.log 2>&1
+# Prune local dumps after the daily push — 20:30 UTC = 02:30 BTT
+30 20 * * * root /usr/local/bin/edgepos-pg-backup-cleanup.sh >> /var/log/edgepos-backup.log 2>&1

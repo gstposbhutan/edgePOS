@@ -42,3 +42,7 @@ Hotel Items for Sales.xlsx
 docs/ui-reference.mov
 docs/ui-reference-frames/
 docs/Screen\ Recording*.mov
+
+# Migration/rescue archives taken off the retired AWS box (2026-08-30).
+# These carry plaintext credentials — Google Drive only, never git.
+*.zip
